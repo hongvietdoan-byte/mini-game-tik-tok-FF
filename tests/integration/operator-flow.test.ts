@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import WebSocket from 'ws';
 import { DEFAULT_TIMINGS } from '@quiz/contracts';
 import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
@@ -52,11 +55,12 @@ type TestServer = {
   baseUrl: string | null;
   requestUrls: string[];
   wsUrls: string[];
+  tempRoot: string;
   closed: boolean;
 };
 
 type HttpResult = { status: number; body: any };
-type WsMessage = { type: string; payload?: any; seq?: number };
+type WsMessage = { type: string; payload?: any; seq?: number; stateVersion?: number };
 
 const open: TestServer[] = [];
 
@@ -71,10 +75,20 @@ async function bootServer(opts: { dbPath?: string; seedQuestions?: boolean; ques
   if (opts.seedQuestions !== false)
     store.seedQuestions({ id: 'demo', name: 'Demo' }, makeQuestions(opts.questions ?? 20), scheduler.now());
   const connections: FakeTikTokConnection[] = [];
+  const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-operator-preflight-'));
+  const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
+  for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
+  for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
+    const path = join(webRoots.assets, relative);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, 'test asset placeholder');
+  }
   const quiz = await buildApp({
     store,
     scheduler,
     adminToken: TOKEN,
+    repositoryRoot: process.cwd(),
+    webRoots,
     logger: opts.logger ?? false,
     adapterFactory: (mode, config) => {
       if (mode !== 'TIKTOK') throw new Error(`Không mong đợi mode ${mode} trong test operator LIVE.`);
@@ -100,6 +114,7 @@ async function bootServer(opts: { dbPath?: string; seedQuestions?: boolean; ques
     baseUrl: null,
     requestUrls: [],
     wsUrls: [],
+    tempRoot,
     closed: false,
   };
   open.push(h);
@@ -118,6 +133,7 @@ async function closeServer(h: TestServer) {
   h.closed = true;
   await h.quiz.close().catch(() => {});
   h.store.close();
+  rmSync(h.tempRoot, { recursive: true, force: true });
 }
 
 async function request(
@@ -222,7 +238,10 @@ async function connectOverlay(h: TestServer) {
   socket.on('message', (data) => {
     const raw = String(data);
     rawMessages.push(raw);
-    messages.push(JSON.parse(raw) as WsMessage);
+    const message = JSON.parse(raw) as WsMessage;
+    messages.push(message);
+    if (message.type === 'STATE_SNAPSHOT')
+      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, seq: message.seq }));
   });
   await new Promise<void>((resolve, reject) => {
     socket.once('open', resolve);
@@ -243,7 +262,15 @@ async function closeSocket(socket: WebSocket) {
 
 async function openLobbyAndRound(h: TestServer) {
   expect((await command(h, { type: 'OPEN_LOBBY' })).status).toBe(200);
+  await waitForOverlayAck(h);
   expect((await command(h, { type: 'START_ROUND' })).status).toBe(200);
+}
+
+async function waitForOverlayAck(h: TestServer) {
+  await waitFor(async () => {
+    const result = await request(h, 'GET', '/api/preflight');
+    return result.body.checks.some((item: { id: string; status: string }) => item.id === 'overlayAck' && item.status === 'PASS');
+  });
 }
 
 async function waitAccepting(h: TestServer, questionIndex?: number) {
@@ -291,9 +318,10 @@ describe('C-0057 — luồng operator TIKTOK qua HTTP API và WebSocket', () => 
 
     const overlay = await connectOverlay(h);
     expect((await command(h, { type: 'OPEN_LOBBY' })).status).toBe(200);
+    await waitForOverlayAck(h);
     const insufficient = await command(h, { type: 'START_ROUND' });
     expect(insufficient.status).toBe(422);
-    expect(insufficient.body.code).toBe('INSUFFICIENT_QUESTIONS');
+    expect(insufficient.body.code).toBe('PREFLIGHT_FAILED');
 
     const newlyApproved = pool[10]!;
     await reviewQuestion(h, newlyApproved.id, 'APPROVE');

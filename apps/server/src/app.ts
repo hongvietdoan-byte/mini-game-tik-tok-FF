@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import websocket from '@fastify/websocket';
@@ -16,6 +17,7 @@ import {
   QuestionReviewSchema,
   SimulatorRequestSchema,
 } from '@quiz/contracts';
+import { isEligible } from '@quiz/quiz-core';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
 import type { SessionConfig, SystemCheck } from '@quiz/contracts';
@@ -43,6 +45,8 @@ export type AppOptions = {
   adapterFactory?: (mode: 'MOCK' | 'TIKTOK', config: SessionConfig) => LiveAdapter;
   logger?: boolean;
   startedAtMs?: number;
+  /** Gốc checkout để đối chiếu thời điểm commit với các bản build web. */
+  repositoryRoot?: string;
   /** Thư mục bản build (vite build) để phục vụ cùng origin: /dashboard/ và /overlay/ (bộ cài Windows, OBS). */
   webRoots?: { dashboard?: string; overlay?: string; assets?: string };
   /** Kho nhân vật mặc định cho mọi phiên (từ manifest asset cục bộ). */
@@ -106,6 +110,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
             ...(process.env.EULER_API_KEY ? { signApiKey: process.env.EULER_API_KEY } : {}),
           }));
   const startedAtMs = opts.startedAtMs ?? scheduler.now();
+  const repositoryRoot = opts.repositoryRoot ?? process.cwd();
+  let headCommitAtMs: number | null = null;
+  try {
+    const epoch = execFileSync('git', ['-C', repositoryRoot, 'log', '-1', '--format=%ct', 'HEAD'], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    const parsed = Number(epoch);
+    if (Number.isFinite(parsed) && parsed > 0) headCommitAtMs = parsed * 1000;
+  } catch {
+    // Repo không có Git (ví dụ bản đóng gói): preflight sẽ ghi WARN cho độ mới build.
+  }
   const voiceCredentials = opts.mcVoice?.credentials ?? new EnvironmentMcVoiceCredentialStore();
   const voiceService = opts.mcVoice?.service ?? null;
   const voiceProfile = opts.mcVoice?.profile ?? null;
@@ -181,6 +196,135 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     return rt;
   }
 
+  type PreflightStatus = 'PASS' | 'FAIL' | 'WARN';
+  type PreflightCheck = { id: string; label: string; status: PreflightStatus; reason: string };
+  function makePreflight(session: SessionRuntime | null = rt) {
+    const checkedAtMs = Math.floor(scheduler.now());
+    const checks: PreflightCheck[] = [];
+    const check = (id: string, label: string, status: PreflightStatus, reason: string) =>
+      checks.push({ id, label, status, reason });
+
+    if (!session) {
+      check('questions', 'Ngân hàng câu hỏi', 'WARN', 'Chưa có phiên để xác định bộ câu hỏi và số câu mỗi vòng.');
+    } else {
+      const config = session.config;
+      const allowDemo = config.mode === 'MOCK' && config.allowDemoQuestions;
+      const questions = store.listQuestions(config.packId);
+      const eligible = questions.filter((question) => isEligible(question, { allowDemo, nowMs: checkedAtMs }));
+      const used = store.usedQuestionIdsInSession(session.id);
+      const unused = eligible.filter((question) => !used.has(question.id)).length;
+      const enough = unused >= config.questionsPerRound;
+      const excludesDemo = config.mode !== 'TIKTOK' || eligible.every((question) => question.verificationStatus !== 'DEMO');
+      check(
+        'questions',
+        'Câu APPROVED đủ và không lặp trong phiên',
+        enough && excludesDemo ? 'PASS' : 'FAIL',
+        `Bộ ${config.packId}: ${eligible.length} câu hợp lệ, ${unused} câu chưa dùng / cần ${config.questionsPerRound}; mode ${config.mode}${config.mode === 'TIKTOK' ? ', đã loại DEMO' : ''}.`,
+      );
+    }
+
+    let dbReason = `Ghi/đọc thử OK — ${store.path}`;
+    let dbStatus: PreflightStatus = 'PASS';
+    try {
+      if (!store.probeWrite(checkedAtMs)) {
+        dbStatus = 'FAIL';
+        dbReason = `Không đọc lại được bản ghi kiểm tra — ${store.path}`;
+      }
+    } catch (err) {
+      dbStatus = 'FAIL';
+      dbReason = `Không ghi được DB ${store.path}: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    check('database', 'DB ghi được', dbStatus, dbReason);
+
+    const assetRoot = opts.webRoots?.assets;
+    if (!assetRoot) {
+      check('assets', 'Asset bắt buộc', 'FAIL', 'Chưa cấu hình thư mục assets-local.');
+    } else {
+      const requiredFiles = ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg'];
+      const missingFiles = requiredFiles.filter((relative) => !existsSync(join(assetRoot, relative)));
+      let hasChibi = false;
+      try {
+        hasChibi = readdirSync(join(assetRoot, 'chibi'), { withFileTypes: true })
+          .some((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.png'));
+      } catch {
+        hasChibi = false;
+      }
+      const hasMc = existsSync(join(assetRoot, 'mc', 'kelly.png')) || existsSync(join(assetRoot, 'mc', 'kelly', 'poster.png'));
+      if (!hasChibi) missingFiles.push('chibi/*.png');
+      if (!hasMc) missingFiles.push('mc/kelly.png hoặc mc/kelly/poster.png');
+      check(
+        'assets',
+        'Asset bắt buộc',
+        missingFiles.length === 0 ? 'PASS' : 'FAIL',
+        missingFiles.length === 0 ? `Đủ logo, trophy-stage, bg, chibi và MC trong ${assetRoot}.` : `Thiếu ${missingFiles.join(', ')} trong ${assetRoot}.`,
+      );
+    }
+
+    if (!session) {
+      check('overlayAck', 'Overlay đã ACK', 'WARN', 'Chưa có phiên mở để đối chiếu ACK với stateVersion.');
+      check('commentSource', 'Nguồn comment', 'WARN', 'Chưa có phiên để xác định MOCK/TIKTOK.');
+    } else {
+      const acked = overlayClients.size > 0 && lastAck !== null && lastAck.stateVersion >= session.engine.stateVersion;
+      check(
+        'overlayAck',
+        'Overlay đã ACK',
+        acked ? 'PASS' : 'FAIL',
+        acked
+          ? `${overlayClients.size} overlay đang kết nối; đã ACK v${lastAck!.stateVersion} (server v${session.engine.stateVersion}).`
+          : overlayClients.size === 0
+            ? 'Chưa có overlay kết nối.'
+            : `Chưa có ACK mới tới stateVersion ${session.engine.stateVersion}.`,
+      );
+      const live = session.liveHealth();
+      if (session.config.mode === 'MOCK') {
+        check('commentSource', 'Nguồn comment', 'WARN', `Phiên đang dùng MOCK (${live.status}); không xác nhận nguồn TikTok LIVE.`);
+      } else {
+        const connected = live.source === 'TIKTOK' && live.status === 'CONNECTED';
+        check(
+          'commentSource',
+          'Nguồn comment',
+          connected ? 'PASS' : 'FAIL',
+          `Mode TIKTOK; adapter ${live.source} đang ${live.status}${live.detail ? ` — ${live.detail}` : ''}.`,
+        );
+      }
+    }
+
+    const buildCheck = (id: string, label: string, directory: string | undefined) => {
+      if (!directory) {
+        check(id, label, 'WARN', 'Chưa cấu hình thư mục dist để kiểm tra.');
+        return;
+      }
+      if (!existsSync(directory)) {
+        check(id, label, 'FAIL', `Không tìm thấy ${directory}; cần build lại web.`);
+        return;
+      }
+      let distMtime = 0;
+      try {
+        distMtime = statSync(directory).mtimeMs;
+      } catch {
+        check(id, label, 'FAIL', `Không đọc được mtime của ${directory}.`);
+        return;
+      }
+      if (headCommitAtMs === null) {
+        check(id, label, 'WARN', `Không đọc được thời điểm commit HEAD để đối chiếu ${directory}.`);
+      } else if (distMtime < headCommitAtMs) {
+        check(id, label, 'FAIL', `Bản build ${directory} cũ hơn HEAD (${new Date(headCommitAtMs).toISOString()}); cần build lại.`);
+      } else {
+        check(id, label, 'PASS', `mtime ${new Date(distMtime).toISOString()} không cũ hơn HEAD ${new Date(headCommitAtMs).toISOString()}.`);
+      }
+    };
+    buildCheck('overlayBuild', 'Build overlay không cũ hơn HEAD', opts.webRoots?.overlay);
+    buildCheck('dashboardBuild', 'Build dashboard không cũ hơn HEAD', opts.webRoots?.dashboard);
+
+    return {
+      checkedAtMs,
+      sessionId: session?.id ?? null,
+      mode: session?.config.mode ?? null,
+      canStartTikTok: !checks.some((item) => item.status === 'FAIL'),
+      checks,
+    };
+  }
+
   async function voiceSettingsSnapshot() {
     const token = await voiceCredentials.get();
     return {
@@ -222,6 +366,11 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     sessionId: rt?.id ?? null,
     web: { dashboard: servedDashboard, overlay: servedOverlay },
   }));
+
+  app.get('/api/preflight', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return makePreflight();
+  });
 
   app.get('/api/mc-voice/settings', async (req, reply) => {
     if (!guard(req, reply, false)) return reply;
@@ -377,6 +526,18 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!guard(req, reply, true)) return reply;
     const s = sessionOr404(req.params.id, reply);
     if (!s) return reply;
+    const requestedCommand = (req.body as { command?: { type?: unknown } } | null)?.command?.type;
+    if (s.config.mode === 'TIKTOK' && requestedCommand === 'START_ROUND') {
+      const preflight = makePreflight(s);
+      const failures = preflight.checks.filter((item) => item.status === 'FAIL');
+      if (failures.length > 0)
+        return reply.code(422).send({
+          ok: false,
+          code: 'PREFLIGHT_FAILED',
+          message: 'Không thể bắt đầu vòng TIKTOK khi preflight còn mục FAIL.',
+          details: failures,
+        });
+    }
     const out = s.dispatch(req.body);
     return reply.code(out.status).send(out.result);
   });
