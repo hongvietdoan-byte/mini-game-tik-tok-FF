@@ -1,7 +1,7 @@
 {
   "role": "coordinator",
-  "last_read": 73,
-  "heartbeat": "2026-11-11T17:30:13+07:00",
+  "last_read": 74,
+  "heartbeat": "2026-11-11T17:48:24+07:00",
   "state": "working",
   "task": "M10",
   "note": "Chờ C-0020 audience-engine để tích hợp; M11 chờ TikTok trả lời",
