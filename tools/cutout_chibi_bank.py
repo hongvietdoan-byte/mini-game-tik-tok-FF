@@ -1,8 +1,9 @@
 """Tách nền rembg cho kho chibi, giữ ảnh nguồn nguyên vẹn.
 
-Mặc định đọc 2026-11-11_chibi_kho/ và ghi ra assets-local/chibi-clean/ cùng
-assets-local/review/cutout-sheet.html. Dùng --workspace-root khi chạy từ worktree
-nhưng assets-local và ảnh nguồn nằm trong checkout chính.
+Đọc 2026-11-11_chibi_kho/, ghi chibi runtime vào assets-local/chibi/ và bảng soát
+vào assets-local/review/cutout-sheet.html. Kelly luôn được tách từ ảnh nguồn vào
+assets-local/chibi-clean/; không ghi đè assets-local/mc/kelly.png. Dùng
+--workspace-root khi chạy từ worktree nhưng ảnh nguồn và assets-local ở checkout chính.
 
 Chạy từ worktree:
   .claude/venv-rembg/Scripts/python.exe tools/cutout_chibi_bank.py --workspace-root "<checkout chính>"
@@ -17,7 +18,7 @@ import unicodedata
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from rembg import new_session, remove
 from scipy import ndimage
 
@@ -104,10 +105,28 @@ def crop_and_resize(image: Image.Image, height: int, crop: bool = True) -> Image
     return image
 
 
-def rembg_cutout(src: Path, session, target_height: int, keep_largest: bool = True) -> tuple[Image.Image, dict]:
+def rembg_cutout(
+    src: Path,
+    session,
+    target_height: int,
+    keep_largest: bool = True,
+    *,
+    alpha_matting: bool = False,
+    foreground_threshold: int = 240,
+    background_threshold: int = 15,
+    erode_size: int = 8,
+) -> tuple[Image.Image, dict]:
     source = Image.open(src).convert("RGB")
     rgb = np.asarray(source, dtype=np.uint8)
-    result = remove(source, session=session, post_process_mask=True)
+    result = remove(
+        source,
+        session=session,
+        post_process_mask=True,
+        alpha_matting=alpha_matting,
+        alpha_matting_foreground_threshold=foreground_threshold,
+        alpha_matting_background_threshold=background_threshold,
+        alpha_matting_erode_size=erode_size,
+    )
     if not isinstance(result, Image.Image):
         result = Image.open(result)
     raw_alpha = np.asarray(result.convert("RGBA").getchannel("A"), dtype=np.uint8)
@@ -122,36 +141,21 @@ def rembg_cutout(src: Path, session, target_height: int, keep_largest: bool = Tr
     }
 
 
-def existing_cutout(src: Path, target_height: int, keep_largest: bool) -> Image.Image:
-    source = Image.open(src).convert("RGBA")
-    rgba = np.asarray(source, dtype=np.uint8)
-    alpha = clean_alpha(rgba[:, :, 3], keep_largest=keep_largest)
-    rgb = rgba[:, :, :3].copy()
-    solid = alpha >= 245
-    if solid.any():
-        _, nearest = ndimage.distance_transform_edt(~solid, return_indices=True)
-        weak = alpha < 16
-        rgb[weak] = rgb[nearest[0][weak], nearest[1][weak]]
-    output = Image.fromarray(np.dstack((rgb, alpha)), mode="RGBA")
-    return crop_and_resize(output, target_height)
-
-
 def render_contact_sheet(out_dir: Path, review_file: Path, manifest: list[dict]) -> None:
     cards = []
     for index, item in enumerate(manifest):
-        filename = html.escape(Path(item["file"]).name, quote=True)
+        image_path = html.escape(Path(item["file"]).as_posix(), quote=True)
         label = html.escape(item["name"])
         cls = "dark" if index % 2 == 0 else "light"
-        cards.append(
-            f'<article class="card {cls}"><img src="../chibi-clean/{filename}" alt="{label}" '
-            f'loading="lazy"><div><b>{label}</b><small>{html.escape(item["id"])}</small></div></article>'
-        )
+        cards.append(f'<article class="card {cls}"><img src="../{image_path}" alt="{label}" '
+                     f'loading="lazy"><div><b>{label}</b><small>{html.escape(item["id"])}</small></div></article>')
 
     extras = []
-    for key, label in (("mc-kelly.png", "Kelly MC"), ("trophy-stage.png", "Cúp / sân khấu")):
+    for key, label in (("../chibi-clean/mc-kelly.png", "Kelly MC · bản soát"),
+                       ("../chibi-clean/trophy-stage.png", "Cúp / sân khấu")):
         extras.append(
-            f'<article class="card dark"><img src="../chibi-clean/{key}" alt="{label}" '
-            f'loading="lazy"><div><b>{label}</b><small>{key}</small></div></article>'
+            f'<article class="card dark"><img src="{key}" alt="{label}" '
+            f'loading="lazy"><div><b>{label}</b><small>{Path(key).name}</small></div></article>'
         )
 
     doc = f"""<!doctype html>
@@ -170,20 +174,72 @@ h1{{margin:0 0 8px}}p{{color:#cbd5e1;margin:0 0 22px}}h2{{margin:32px 0 12px}}
     review_file.write_text(doc, encoding="utf-8")
 
 
+def render_kelly_variants(review_file: Path, variants: list[tuple[str, Path]]) -> None:
+    columns = 2
+    cell_width, cell_height = 640, 760
+    gap, header_height = 24, 88
+    rows = (len(variants) + columns - 1) // columns
+    canvas = Image.new(
+        "RGB",
+        (gap + columns * (cell_width + gap), header_height + gap + rows * (cell_height + gap)),
+        "#0b1120",
+    )
+    draw = ImageDraw.Draw(canvas)
+    font_candidates = (
+        Path("C:/Windows/Fonts/arial.ttf"),
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+    )
+
+    def font(size: int):
+        for font_path in font_candidates:
+            if font_path.is_file():
+                try:
+                    return ImageFont.truetype(str(font_path), size=size)
+                except OSError:
+                    continue
+        return ImageFont.load_default()
+
+    title_font = font(24)
+    label_font = font(18)
+    detail_font = font(16)
+    draw.text((gap, 12), "Kelly · so sánh tách nền", fill="#f8fafc", font=title_font)
+    draw.text((gap, 46), "Nền tối để soát khe tay–thân, khoảng giữa chân và viền tóc/vai.", fill="#cbd5e1", font=detail_font)
+
+    for index, (label, path) in enumerate(variants):
+        x = gap + (index % columns) * (cell_width + gap)
+        y = header_height + gap + (index // columns) * (cell_height + gap)
+        draw.rounded_rectangle((x, y, x + cell_width, y + cell_height), radius=14, fill="#172033", outline="#475569", width=2)
+        draw.text((x + 18, y + 12), label, fill="#f8fafc", font=label_font)
+        draw.text((x + 18, y + 42), path.name, fill="#94a3b8", font=detail_font)
+        with Image.open(path) as source:
+            image = source.convert("RGBA")
+        image.thumbnail((cell_width - 32, cell_height - 82), Image.Resampling.LANCZOS)
+        tile = Image.new("RGBA", image.size, "#172033")
+        tile.alpha_composite(image)
+        canvas.paste(tile.convert("RGB"), (x + (cell_width - image.width) // 2, y + 70))
+
+    review_file.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(review_file, format="PNG", optimize=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--model", default="isnet-general-use")
     parser.add_argument("--limit", type=int, default=0, help="Process only N chibi images.")
     parser.add_argument("--preview", action="store_true", help="Write samples under .preview without a manifest/review sheet.")
-    parser.add_argument("--skip-existing", action="store_true", help="Keep existing PNGs and rebuild manifests/review outputs.")
+    parser.add_argument("--skip-existing", action="store_true", help="Keep existing runtime chibis and rebuild manifests/review outputs.")
+    parser.add_argument("--alpha-matting", action="store_true", help="Use alpha matting (foreground 240, background 15, erode 8) for chibi cutouts.")
+    parser.add_argument("--kelly-variants", action="store_true", help="Write Kelly model comparisons to assets-local/review/kelly-variants.png; never changes the runtime Kelly.")
     args = parser.parse_args()
 
     workspace = args.workspace_root.resolve()
     source_dir = workspace / "2026-11-11_chibi_kho"
     asset_root = workspace / "assets-local"
-    output_dir = asset_root / "chibi-clean"
-    preview_dir = output_dir / ".preview"
+    output_dir = asset_root / "chibi"
+    staging_dir = asset_root / "chibi-clean"
+    preview_dir = staging_dir / ".preview"
     destination = preview_dir if args.preview else output_dir
     destination.mkdir(parents=True, exist_ok=True)
 
@@ -204,17 +260,17 @@ def main() -> None:
                 {
                     "id": char_id,
                     "name": source_name(src.stem),
-                    "file": out_name if args.preview else f"chibi-clean/{out_name}",
+                    "file": out_name if args.preview else f"chibi/{out_name}",
                 }
             )
             print(f"skip existing: {char_id}")
             continue
-        image, stats = rembg_cutout(src, session, target_height=360)
+        image, stats = rembg_cutout(src, session, target_height=360, alpha_matting=args.alpha_matting)
         image.save(out_path, format="PNG", optimize=True)
         item = {
             "id": char_id,
             "name": source_name(src.stem),
-            "file": out_name if args.preview else f"chibi-clean/{out_name}",
+            "file": out_name if args.preview else f"chibi/{out_name}",
         }
         manifest.append(item)
         print(f"{char_id} -> {out_path.name}: {image.width}x{image.height}, retained={stats['retained']:.1%}")
@@ -223,15 +279,69 @@ def main() -> None:
         print(f"preview: {len(manifest)} PNG -> {preview_dir}")
         return
 
-    kelly_src = asset_root / "mc" / "kelly.png"
-    kelly_out = destination / "mc-kelly.png"
-    if not (args.skip_existing and kelly_out.exists()):
-        kelly = existing_cutout(kelly_src, target_height=640, keep_largest=True)
-        kelly.save(kelly_out, format="PNG", optimize=True)
-        print(f"{kelly_src.name} -> {kelly_out.name}: {kelly.width}x{kelly.height}")
+    kelly_src = source_dir / "Kelly.png"
+    if not kelly_src.is_file():
+        raise SystemExit(f"Kelly source not found: {kelly_src}")
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    kelly_session = session if args.model == "isnet-general-use" else new_session("isnet-general-use")
+    kelly_out = staging_dir / "mc-kelly.png"
+    kelly, _ = rembg_cutout(
+        kelly_src,
+        kelly_session,
+        target_height=640,
+        alpha_matting=True,
+        foreground_threshold=240,
+        background_threshold=15,
+        erode_size=8,
+    )
+    kelly.save(kelly_out, format="PNG", optimize=True)
+    print(f"Kelly source -> {kelly_out.name}: {kelly.width}x{kelly.height} (alpha matting 240/15/8; runtime Kelly unchanged)")
+
+    if args.kelly_variants:
+        variant_dir = asset_root / "review" / "kelly-variants"
+        variant_dir.mkdir(parents=True, exist_ok=True)
+        variants: list[tuple[str, Path]] = []
+        current_kelly = asset_root / "mc" / "kelly.png"
+        if current_kelly.is_file():
+            variants.append(("Đang dùng · assets-local/mc/kelly.png", current_kelly))
+
+        base_path = variant_dir / "isnet-general-use-fg240-bg15-erode08.png"
+        kelly.save(base_path, format="PNG", optimize=True)
+        variants.append(("isnet-general-use · alpha 240/15/8", base_path))
+
+        anime_session = new_session("isnet-anime")
+        anime, _ = rembg_cutout(
+            kelly_src,
+            anime_session,
+            target_height=640,
+            alpha_matting=True,
+            foreground_threshold=240,
+            background_threshold=15,
+            erode_size=8,
+        )
+        anime_path = variant_dir / "isnet-anime-fg240-bg15-erode08.png"
+        anime.save(anime_path, format="PNG", optimize=True)
+        variants.append(("isnet-anime · alpha 240/15/8", anime_path))
+
+        eroded, _ = rembg_cutout(
+            kelly_src,
+            kelly_session,
+            target_height=640,
+            alpha_matting=True,
+            foreground_threshold=240,
+            background_threshold=15,
+            erode_size=16,
+        )
+        eroded_path = variant_dir / "isnet-general-use-fg240-bg15-erode16.png"
+        eroded.save(eroded_path, format="PNG", optimize=True)
+        variants.append(("isnet-general-use · alpha 240/15/16", eroded_path))
+
+        comparison = asset_root / "review" / "kelly-variants.png"
+        render_kelly_variants(comparison, variants)
+        print(f"Kelly comparison -> {comparison}")
 
     trophy_src = asset_root / "victory" / "trophy-stage.png"
-    trophy_out = destination / "trophy-stage.png"
+    trophy_out = staging_dir / "trophy-stage.png"
     trophy = Image.open(trophy_src).convert("RGBA")
     # Nguồn đã có alpha và cao đúng 900 px; giữ nguyên toàn bộ khung hình/cúp.
     if trophy.height != 900:
