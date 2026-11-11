@@ -1,0 +1,185 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './overlayLogic';
+import { useSnapshot } from './net/useSnapshot';
+import { MOCK_SCENES } from './mock/snapshots';
+import './style.css';
+
+function useStageScale() {
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const resize = () => setScale(Math.min(window.innerWidth / 1080, window.innerHeight / 1920));
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+  return scale;
+}
+
+function formatTime(ms: number) {
+  const seconds = Math.ceil(ms / 1000);
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function useTimer(snapshot: PublicSnapshot, serverTimeMs: number, clockOffsetMs: number) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    let frame = 0;
+    const tick = () => { setNow(Date.now()); frame = requestAnimationFrame(tick); };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [snapshot.stateVersion, snapshot.timer?.remainingMs, snapshot.timer?.running, serverTimeMs]);
+  if (!snapshot.timer) return 0;
+  return interpolateRemainingMs(snapshot.timer.remainingMs, snapshot.timer.running, now + clockOffsetMs - serverTimeMs);
+}
+
+function Leaderboard({ entries, compact = false }: { entries: LeaderboardEntry[]; compact?: boolean }) {
+  return <div className={`leaderboard ${compact ? 'leaderboard-compact' : ''}`}>
+    {entries.map((entry) => <div className="leaderboard-row" data-testid="leaderboard-row" key={entry.playerId}>
+      <span className="rank">{entry.rank}</span>
+      <span className="player-name" title={entry.displayName}>{entry.displayName}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>
+      <span className="score">{entry.score.toLocaleString('vi-VN')}<small>điểm</small></span>
+    </div>)}
+  </div>;
+}
+
+function Podium({ slots, tied }: { slots: PodiumSlot[]; tied: boolean }) {
+  return <div className="podium-row">
+    {podiumLeftToRight(slots).map((slot) => <div className={`podium-card place-${slot.place}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} key={slot.place}>
+      <div className="avatar-silhouette" aria-hidden="true"><span /></div>
+      <div className="nameplate">
+        {slot.entries.map((entry) => <div className="podium-name" key={entry.playerId}>{entry.displayName}</div>)}
+        <b>{slot.entries.map((entry) => entry.score.toLocaleString('vi-VN')).join(' · ')} điểm</b>
+        {(slot.tied || (tied && slot.entries.length > 1)) && <strong className="tie-label">ĐỒNG HẠNG</strong>}
+      </div>
+      <div className="podium-base"><small>{slot.place}</small></div>
+    </div>)}
+  </div>;
+}
+
+function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
+  const { scene } = snapshot;
+  const [page, setPage] = useState(0);
+  const entries = snapshot.leaderboard?.entries ?? [];
+  const reveal = snapshot.reveal;
+  const pages = useMemo(() => leaderboardPages(entries, 5), [entries]);
+  useEffect(() => {
+    if (scene !== 'INTERIM_TOP10' || pages.length < 2) return;
+    const timer = window.setInterval(() => setPage((value) => (value + 1) % pages.length), 2_000);
+    return () => window.clearInterval(timer);
+  }, [scene, pages.length]);
+
+  if (scene === 'LOBBY') return <section className="lobby-panel">
+    <div className="eyebrow">ĐẤU TRƯỜNG TRỰC TIẾP</div>
+    <h1>BÁ VƯƠNG<br /><span>ĐẠI CHIẾN</span></h1>
+    <p className="instruction">Bình luận <b>A, B, C hoặc D</b><br />để trả lời câu hỏi</p>
+    <div className="participant-pill"><i /> {snapshot.participantCount} chiến binh tham gia</div>
+  </section>;
+
+  if (scene === 'QUESTION') return <section className="question-scene">
+    {snapshot.state === 'PREPARE' ? <div className="prepare-card"><span>CHUẨN BỊ</span><strong>Chuẩn bị…</strong><Timer ms={remainingMs} /></div> : <>
+      <div className="question-meta"><span>CÂU HỎI {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}<i>/{snapshot.round?.questionCount ?? 15}</i></span><span className="live-dot">ĐANG DIỄN RA</span></div>
+      <div className="question-card"><p data-testid="question-prompt">{snapshot.question?.prompt ?? 'Đang chờ câu hỏi…'}</p></div>
+      <Timer ms={remainingMs} />
+      <div className="option-list">
+        {snapshot.question?.options.map((option) => <div className="option-card" data-testid={`option-${option.id}`} key={option.id}>
+          <span className="option-letter">{option.id}</span><span>{option.text}</span>
+        </div>)}
+      </div>
+      <div className="answer-count" data-testid="answer-count"><span className="people-icon">◉</span><b>{snapshot.answerCount}</b> người đã trả lời</div>
+    </>}
+  </section>;
+
+  if (scene === 'REVEAL') return <section className="reveal-scene">
+    <div className="eyebrow">KẾT QUẢ CÂU {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}</div>
+    <h2>ĐÁP ÁN <span>CHÍNH XÁC</span></h2>
+    <div className="option-list reveal-options">
+      {snapshot.question?.options.map((option) => <div className={`option-card ${snapshot.reveal?.correctOptionId === option.id ? 'is-correct' : ''}`} data-testid={`option-${option.id}`} key={option.id}>
+        <span className="option-letter">{option.id}</span><span>{option.text}</span>{snapshot.reveal?.correctOptionId === option.id && <b className="checkmark">✓</b>}
+      </div>)}
+    </div>
+    <div className="distribution"><div className="section-label">PHÂN BỐ LỰA CHỌN</div>
+      {reveal && <div className="distribution-bars">{(['A', 'B', 'C', 'D'] as const).map((id) => {
+        const total = Object.values(reveal.optionCounts).reduce((sum, count) => sum + count, 0) || 1;
+        return <div key={id} className={`distribution-item ${reveal.correctOptionId === id ? 'is-correct' : ''}`}><span>{id}</span><i style={{ height: `${Math.max(8, reveal.optionCounts[id] / total * 80)}px` }} /><b>{reveal.optionCounts[id]}</b></div>;
+      })}</div>}
+    </div>
+    <p className="explanation">{snapshot.reveal?.explanation}</p>
+  </section>;
+
+  if (scene === 'INTERIM_TOP10') return <section className="top10-scene">
+    <div className="eyebrow">BẢNG XẾP HẠNG</div><h2>TOP <span>10</span></h2>
+    <p className="round-caption">SAU CÂU {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}</p>
+    <Leaderboard entries={pages[page] ?? []} />
+    {pages.length > 1 && <div className="page-indicator">{page + 1} / {pages.length}</div>}
+  </section>;
+
+  if (scene === 'ROUND_WINNER') return <section className="winner-scene">
+    <div className="eyebrow">VÒNG {snapshot.round?.roundNumber ?? 1}</div><h2>KẾT THÚC<br /><span>VÒNG ĐẤU</span></h2>
+    <Leaderboard entries={entries.slice(0, 3)} compact />
+  </section>;
+
+  if (scene === 'VICTORY') return <section className="victory-scene">
+    <div className="eyebrow">VINH DANH NHÀ VÔ ĐỊCH</div><h2>VINH QUANG<br /><span>THUỘC VỀ</span></h2>
+    {snapshot.podium && <Podium slots={snapshot.podium.slots} tied={snapshot.podium.tieAcrossCutoff} />}
+  </section>;
+
+  if (scene === 'INTERMISSION') return <section className="intermission-scene">
+    <div className="eyebrow">HẾT VÒNG {snapshot.round?.roundNumber ?? 1}</div><h2>NGHỈ GIỮA<br /><span>VÒNG</span></h2><Timer ms={remainingMs} />
+    <p>Hãy sẵn sàng cho chặng tiếp theo</p>
+  </section>;
+
+  return <section className="connection-scene"><div className="connection-icon">!</div>
+    <div className="eyebrow">KẾT NỐI GIÁN ĐOẠN</div>
+    <h2>{snapshot.state === 'ERROR' ? 'TẠM DỪNG KỸ THUẬT' : 'ĐANG TẠM DỪNG'}</h2>
+    <p>Mất kết nối nguồn bình luận<br />Trò chơi đang tạm dừng</p>
+  </section>;
+}
+
+function Timer({ ms }: { ms: number }) {
+  return <div className="timer" data-testid="timer"><span className="timer-ring" /><strong>{formatTime(ms)}</strong><small>THỜI GIAN</small></div>;
+}
+
+function App() {
+  const scale = useStageScale();
+  const query = new URLSearchParams(location.search);
+  const requestedMock = query.get('mock');
+  const [cycleScene, setCycleScene] = useState('lobby');
+  const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
+  const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene);
+  useEffect(() => {
+    if (requestedMock !== 'cycle') return;
+    const available = MOCK_SCENES.filter((scene) => scene !== 'paused');
+    const timer = window.setInterval(() => setCycleScene((current) => {
+      const index = available.indexOf(current);
+      return available[(index + 1) % available.length] ?? 'lobby';
+    }), 3_000);
+    return () => window.clearInterval(timer);
+  }, [requestedMock]);
+  const snapshot = networkSnapshot;
+  const remainingMs = useTimer(snapshot ?? ({ timer: null } as PublicSnapshot), serverTimeMs, clockOffsetMs);
+  const guides = query.get('guides') === '1';
+  const safeZone = snapshot?.safeZone;
+
+  return <main className="viewport">
+    {snapshot ? <div id="stage" data-testid="stage" data-scene={snapshot.scene} style={{
+      transform: `translate(-50%, -50%) scale(${scale})`,
+      '--safe-top': `${snapshot.safeZone.top}px`,
+      '--safe-bottom': `${snapshot.safeZone.bottom}px`,
+      '--safe-left': `${snapshot.safeZone.left}px`,
+      '--safe-right': `${snapshot.safeZone.right}px`,
+    } as React.CSSProperties}>
+      <div className="arena-glow" aria-hidden="true" />
+      <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
+      <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} /></div>
+      {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
+      {guides && safeZone && <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px ${safeZone.right}px ${safeZone.bottom}px ${safeZone.left}px` }}>
+        <span>Preset thử nghiệm — không phải số chính thức TikTok</span>
+      </div>}
+      {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
+    </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
+  </main>;
+}
+
+createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
