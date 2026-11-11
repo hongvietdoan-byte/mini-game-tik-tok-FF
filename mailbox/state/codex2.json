@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 31,
-  "heartbeat": "2026-11-11T16:54:08+07:00",
-  "state": "waiting",
-  "task": "C-0039",
-  "note": "Đã hoàn tất STEP 1–2; chờ người dùng duyệt Inventory/Contact Sheet/Gap Analysis trước khi rebase và bắt đầu C-0039.",
+  "heartbeat": "2026-11-11T18:08:09+07:00",
+  "state": "working",
+  "task": "C-0032",
+  "note": "Đang gắn logo C-0049, áp dụng phong cách thẻ C-0050 và giữ đúng nguồn ảnh C-0046 trong worktree c0032-v3-redesign",
   "done": [
     38
   ]
