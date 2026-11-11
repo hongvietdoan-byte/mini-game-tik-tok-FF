@@ -1,0 +1,54 @@
+{
+  "fixtureOnly": true,
+  "description": "Kịch bản một vòng TikTok hư cấu; tất cả user ID, message ID và nickname đều tổng hợp.",
+  "questionsPerRound": 10,
+  "primaryPlayer": {
+    "userId": "demo-viewer-201",
+    "nicknames": ["Mây Bạc", "Mây Xanh"]
+  },
+  "beforeOpen": {
+    "userId": "demo-viewer-202",
+    "nickname": "Sương Sớm",
+    "eventId": "replay-before-open",
+    "text": "A"
+  },
+  "afterClose": {
+    "userId": "demo-viewer-203",
+    "nickname": "Lá Non",
+    "eventId": "replay-after-close",
+    "text": "B"
+  },
+  "changeOfMind": {
+    "userId": "demo-viewer-204",
+    "nickname": "Mặt Trời Nhỏ",
+    "firstEventId": "replay-change-a",
+    "secondEventId": "replay-change-b",
+    "firstText": "A",
+    "secondText": "B"
+  },
+  "duplicateMessage": {
+    "userId": "demo-viewer-205",
+    "nickname": "Sao Mai",
+    "text": "{correct}"
+  },
+  "invalidTexts": ["B.", "đáp án c", "C nha", "d!!!", "🔥", "Chào bạn", "A B C D"],
+  "staleComment": {
+    "userId": "demo-viewer-206",
+    "nickname": "Mưa Rào",
+    "eventId": "replay-stale-source-time",
+    "sourceLagMs": 6000,
+    "text": "{correct}"
+  },
+  "roundComments": [
+    { "eventId": "replay-round-001", "text": "{correctLower}" },
+    { "eventId": "replay-round-002", "text": "{correctLower}" },
+    { "eventId": "replay-round-003", "text": "{correctLower}" },
+    { "eventId": "replay-round-004", "text": "{correctLower}" },
+    { "eventId": "replay-round-005", "text": "{correctLower}" },
+    { "eventId": "replay-round-006", "text": "{correctLower}" },
+    { "eventId": "replay-round-007", "text": "{correctLower}" },
+    { "eventId": "replay-round-008", "text": "{correctLower}" },
+    { "eventId": "replay-round-009", "text": "{correctLower}" },
+    { "eventId": "replay-round-010", "text": "{correctLower}" }
+  ]
+}
