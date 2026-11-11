@@ -15,7 +15,8 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 
 | Thư | Làn | Việc | Phụ thuộc | Trạng thái |
 |---|---|---|---|---|
-| C-0001 | codex1 | Fixtures: ≥ 30 câu DEMO tiếng Việt + người chơi hư cấu | — | CHỜ |
+| C-0001 | codex1 | Fixtures: ≥ 30 câu DEMO tiếng Việt + người chơi hư cấu | — | XONG, đã gộp (`aff786b`) |
+| C-0010 | codex1 | Sửa câu Sahara/Tokyo, rà 36 câu | C-0001 | CHỜ |
 | C-0002 | codex1 | Unit test `answers` / `scoring` / `selection` | — | CHỜ |
 | C-0003 | codex1 | Unit test reducer `engine.ts` (mọi nhánh) | — | CHỜ |
 | C-0004 | codex1 | Unit test `Store` (persistence) | C-0001 (dùng fixtures) | CHỜ |
