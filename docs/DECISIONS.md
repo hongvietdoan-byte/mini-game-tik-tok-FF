@@ -38,8 +38,9 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 ## D-09 · Kênh công khai không lộ đáp án
 - `PublicQuestion` dựng tường minh, không có `correctOptionId`/`originalOptionId`. Trong ACCEPTING chỉ gửi TỔNG số đáp án; phân bố A–D chỉ lúc REVEAL. Có test WS.
 
-## D-10 · LEADERBOARD chỉ ở mốc
-- Sau mỗi `leaderboardInterval` (5) câu và câu cuối; các câu khác REVEAL → PREPARE. REVEAL có Top 3 gọn.
+## D-10 · LEADERBOARD sau mỗi câu (V3, thay bản V2)
+- REVEAL → LEADERBOARD 4 s (scene REVEAL, Top 10 gọn cập nhật); mốc mỗi 5 câu + câu cuối → BXH lớn `INTERIM_TOP10` 6 s. Câu huỷ trước công bố chỉ vào BXH ở mốc.
+- PREPARE chỉ hiện câu hỏi; ACCEPTING mới hiện 4 đáp án (người dùng chốt 11/11).
 
 ## D-11 · Câu hỏi DEMO
 - `verificationStatus='DEMO'`, chỉ vào vòng khi `mode=MOCK` và `allowDemoQuestions=true` (schema chặn ở LIVE). Overlay luôn gắn nhãn DEMO.
@@ -67,6 +68,10 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 - Màn Question Bank (Phase 2) phải có form sửa đầy đủ + nút duyệt/từ chối; `MANUAL_PLAYLIST` để người dùng tự chọn bộ câu cho vòng.
 - `fixtures/questions.ts` chỉ là dữ liệu DEMO để kiểm thử engine ở chế độ MOCK.
 - **Toàn bộ câu hỏi phải thuộc chủ đề Free Fire** (người dùng chốt 11/11), kể cả bộ DEMO. Dữ kiện giải BVĐC chỉ dùng khi người dùng duyệt nguồn.
+
+## D-18 · Ưu tiên V3 (người dùng chốt 11/11)
+- Tập trung: game đúng + kết nối TikTok LIVE ổn định + đóng gói Windows. Animation chỉ ở mức tối thiểu (PNG tĩnh + transform nhẹ); không Spine/Rive/Pixi ở MVP.
+- Đóng gói: Electron (server chạy trong tiến trình chính, phục vụ dashboard + overlay cùng một origin loopback), bộ cài NSIS, dữ liệu ở %APPDATA%.
 
 ## Hoãn (backlog)
 SMART_RANDOM theo quota 7/5/3 (Phase 2) · auto mode nhiều vòng có preflight đầy đủ (Phase 6) · purge/export dữ liệu người chơi (Phase 6) ·
