@@ -77,10 +77,24 @@ async function sessionWithCorrectA(
   return h;
 }
 
-function questionScoreRows(h: Harness, questionId: string): number {
-  return (h.store.raw
-    .prepare('SELECT COUNT(*) AS n FROM score_events WHERE question_instance_id = ?')
+function expectQuestionScoresNotDuplicated(h: Harness, questionId: string): void {
+  const duplicates = (h.store.raw
+    .prepare(`
+      SELECT COUNT(*) AS n FROM (
+        SELECT player_id, score_reason
+        FROM score_events
+        WHERE question_instance_id = ?
+        GROUP BY player_id, score_reason
+        HAVING COUNT(*) > 1
+      )
+    `)
     .get(questionId) as { n: number }).n;
+  const correctRows = (h.store.raw
+    .prepare("SELECT COUNT(*) AS n FROM score_events WHERE question_instance_id = ? AND score_reason = 'CORRECT'")
+    .get(questionId) as { n: number }).n;
+
+  expect(duplicates).toBe(0);
+  expect(correctRows).toBe(1);
 }
 
 function answerRows(h: Harness, questionId: string) {
@@ -144,7 +158,7 @@ describe('V3 §17 — acceptance', () => {
     expect(r.metrics.accepted).toBe(1);
     expect(r.metrics.rejected.DUPLICATE_ANSWER).toBe(99);
     runUntil(h, () => r.engine.state === 'REVEAL');
-    expect(questionScoreRows(h, questionId)).toBe(1);
+    expectQuestionScoresNotDuplicated(h, questionId);
   });
 
   it('đổi A→B vẫn chỉ tính đáp án đầu tiên', async () => {
@@ -160,7 +174,7 @@ describe('V3 §17 — acceptance', () => {
     expect(answerRows(h, questionId)).toEqual([{ playerId: 'MOCK:change-answer', optionId: 'A' }]);
 
     runUntil(h, () => r.engine.state === 'REVEAL');
-    expect(questionScoreRows(h, questionId)).toBe(1);
+    expectQuestionScoresNotDuplicated(h, questionId);
   });
 
   it('MC không tự vào leaderboard; comment mang tên MC KELLY/FFVN.Kelly tạo player thường', async () => {
@@ -260,7 +274,7 @@ describe('V3 §17 — acceptance', () => {
     runUntil(h, () => r.engine.state === 'REVEAL');
     const roundId = r.engine.round!.roundId;
     const ledgerBefore = h.store.ledgerRows(roundId);
-    expect(questionScoreRows(h, questionId)).toBe(1);
+    expectQuestionScoresNotDuplicated(h, questionId);
 
     const scheduler = new ManualScheduler(h.scheduler.now() + 5_000);
     await h.quiz.close();
@@ -280,7 +294,7 @@ describe('V3 §17 — acceptance', () => {
     runUntil(recovered, () => rt(recovered).engine.state === 'VICTORY', 250);
 
     expect(recovered.store.ledgerRows(roundId)).toEqual(ledgerBefore);
-    expect(questionScoreRows(recovered, questionId)).toBe(1);
+    expectQuestionScoresNotDuplicated(recovered, questionId);
     const duplicateScores = recovered.store.raw.prepare(
       'SELECT COUNT(*) AS n FROM (SELECT 1 FROM score_events WHERE round_id = ? AND question_instance_id = ? GROUP BY player_id, score_reason HAVING COUNT(*) > 1)',
     ).get(roundId, questionId) as { n: number };
