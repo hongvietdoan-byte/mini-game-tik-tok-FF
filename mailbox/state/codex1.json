@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 3,
-  "heartbeat": "2026-11-11T11:53:20+07:00",
+  "heartbeat": "2026-11-11T11:54:32+07:00",
   "state": "working",
-  "task": "C-0003",
-  "note": "Đang viết test các nhánh reducer engine",
+  "task": "C-0013",
+  "note": "Đang cập nhật fixtures; cần chốt vị trí bảng duyệt ngoài phạm vi hiện tại",
   "done": [
     10,
     11
