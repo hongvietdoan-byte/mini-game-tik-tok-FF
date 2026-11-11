@@ -1,4 +1,4 @@
-import type { AdminSnapshot, CommandBody, CommandEnvelope, CommandType, GameState } from '@quiz/contracts';
+import type { AdminSnapshot, CheckStatus, CommandBody, CommandEnvelope, CommandType, ConnectionStatus, GameState } from '@quiz/contracts';
 
 export type DashboardAction = {
   type: CommandType;
@@ -15,7 +15,6 @@ const normalActions: Record<GameState, DashboardAction[]> = {
   ],
   ACCEPTING: [
     { type: 'PAUSE', label: 'Tạm dừng' },
-    { type: 'MANUAL_NEXT', label: 'Tiếp' },
   ],
   REVEAL: [
     { type: 'PAUSE', label: 'Tạm dừng' },
@@ -46,6 +45,58 @@ export function shouldAcceptSnapshotSeq(
 ): boolean {
   if (!Number.isSafeInteger(incomingSeq) || incomingSeq < 0) return false;
   return awaitingFreshSnapshot || currentSeq === null || incomingSeq > currentSeq;
+}
+
+export function checkStatusTone(status: CheckStatus): 'pass' | 'fail' | 'not-tested' {
+  return status === 'PASS' ? 'pass' : status === 'FAIL' ? 'fail' : 'not-tested';
+}
+
+export function connectionStatusLabel(status: ConnectionStatus): string {
+  const labels: Record<ConnectionStatus, string> = {
+    DISCONNECTED: 'Đã ngắt',
+    CONNECTING: 'Đang kết nối',
+    CONNECTED: 'Đã kết nối',
+    RECONNECTING: 'Đang kết nối lại',
+    BLOCKED: 'Bị chặn',
+  };
+  return labels[status];
+}
+
+export function connectionStatusTone(status: ConnectionStatus): 'pass' | 'fail' | 'pending' | 'muted' {
+  if (status === 'CONNECTED') return 'pass';
+  if (status === 'BLOCKED') return 'fail';
+  if (status === 'CONNECTING' || status === 'RECONNECTING') return 'pending';
+  return 'muted';
+}
+
+export function formatTimeAgo(timestampMs: number | null, nowMs: number): string {
+  if (timestampMs === null) return 'Chưa có bình luận';
+  const seconds = Math.floor(Math.max(0, nowMs - timestampMs) / 1_000);
+  return seconds < 1 ? 'Vừa xong' : `${seconds} giây trước`;
+}
+
+export function hasSilentAcceptingWarning(
+  state: GameState,
+  lastCommentAtMs: number | null,
+  acceptingSinceMs: number | null,
+  nowMs: number,
+): boolean {
+  if (state !== 'ACCEPTING') return false;
+  const lastActivity = lastCommentAtMs ?? acceptingSinceMs;
+  return lastActivity !== null && nowMs - lastActivity > 10_000;
+}
+
+export function overlayUrlFromLocation(href: string): string {
+  const url = new URL(href);
+  url.search = '';
+  url.hash = '';
+  if (url.port === '5173') {
+    url.port = '5174';
+    url.pathname = '/';
+  } else {
+    url.pathname = '/overlay/';
+  }
+  return url.toString();
 }
 
 export const dangerousActions: DashboardAction[] = [

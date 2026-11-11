@@ -12,10 +12,12 @@ export function useSnapshot(mockScene: string | null) {
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const latest = useRef<PublicSnapshot | null>(null);
   const latestSeq = useRef<number | null>(null);
+  const activeSocket = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (mockScene) {
       const mock = makeMockSnapshot(mockScene);
+      activeSocket.current = null;
       latest.current = mock;
       latestSeq.current = null;
       setSnapshot(mock);
@@ -35,6 +37,7 @@ export function useSnapshot(mockScene: string | null) {
       const currentSocket = new WebSocket(`${scheme}//${location.host}/ws`);
       let awaitingFreshSnapshot = true;
       socket = currentSocket;
+      activeSocket.current = currentSocket;
       currentSocket.onopen = () => {
         if (socket !== currentSocket) return;
         setConnection(delay > 500 ? 'reconnecting' : 'connected');
@@ -65,6 +68,7 @@ export function useSnapshot(mockScene: string | null) {
       currentSocket.onclose = () => {
         if (closed) return;
         if (socket !== currentSocket) return;
+        activeSocket.current = null;
         setConnection('reconnecting');
         retryTimer = window.setTimeout(connect, delay);
         delay = Math.min(5_000, delay * 2);
@@ -75,9 +79,17 @@ export function useSnapshot(mockScene: string | null) {
     return () => {
       closed = true;
       window.clearTimeout(retryTimer);
+      if (activeSocket.current === socket) activeSocket.current = null;
       socket?.close();
     };
   }, [mockScene]);
+
+  useEffect(() => {
+    if (mockScene || !snapshot) return;
+    const socket = activeSocket.current;
+    if (socket?.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: 'ACK', stateVersion: snapshot.stateVersion }));
+  }, [mockScene, snapshot]);
 
   return { snapshot, connection, serverTimeMs, clockOffsetMs };
 }

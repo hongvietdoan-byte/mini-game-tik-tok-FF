@@ -1,19 +1,23 @@
 import {
   INITIAL_TEST_SAFE_ZONE,
   SessionConfigSchema,
+  SYSTEM_CHECK_IDS,
   type AdminSnapshot,
+  type CheckStatus,
   type CommandBody,
   type CommandEnvelope,
   type CommandResult,
   type CreateSessionRequest,
   type GameState,
   type LeaderboardEntry,
+  type LiveSourceHealth,
   type PublicQuestion,
   type PublicSnapshot,
   type RejectReason,
   type SimulatorRequest,
+  type SystemCheck,
 } from '@quiz/contracts';
-import type { CommandResponse, DashboardClient, SocketStatus } from './client';
+import type { CommandResponse, DashboardClient, SelfTestResponse, SocketStatus, SourceControlAction, SystemChecksResponse } from './client';
 
 const rejectReasons: RejectReason[] = [
   'INVALID_EVENT', 'NOT_AN_ANSWER', 'NOT_ACCEPTING', 'EARLY', 'LATE',
@@ -51,7 +55,13 @@ class MockDashboardClient implements DashboardClient {
   private roundNumber = 1;
   private autoMode = false;
   private simulator: { running: boolean; players: number } | null = null;
-  private connection: 'CONNECTED' | 'BLOCKED' = 'CONNECTED';
+  private connection: AdminSnapshot['public']['connection'] = 'CONNECTED';
+  private connectedSinceMs: number | null = Date.now();
+  private lastCommentAtMs: number | null = null;
+  private commentsReceived = 0;
+  private reconnects = 0;
+  private sourceDetail: string | null = null;
+  private selfTestResult: SelfTestResponse | null = null;
   private answerCount = 0;
   private participantCount = 34;
   private optionCounts = { A: 4, B: 14, C: 3, D: 2 };
@@ -74,6 +84,12 @@ class MockDashboardClient implements DashboardClient {
       this.questionIndex = 0;
       this.voidedCurrent = false;
       this.roundNumber = 1;
+      this.connectedSinceMs = Date.now();
+      this.lastCommentAtMs = null;
+      this.commentsReceived = 0;
+      this.reconnects = 0;
+      this.sourceDetail = null;
+      this.selfTestResult = null;
       this.answerCount = 0;
       this.participantCount = 34;
       this.optionCounts = { A: 4, B: 14, C: 3, D: 2 };
@@ -125,12 +141,14 @@ class MockDashboardClient implements DashboardClient {
     this.assertSession(sessionId);
     if (action === 'LOSE') {
       this.connection = 'BLOCKED';
+      this.connectedSinceMs = null;
       if (this.state === 'ACCEPTING') {
         this.suspendedFrom = this.state;
         this.state = 'CONNECTION_INTERRUPTED';
       }
     } else {
       this.connection = 'CONNECTED';
+      this.connectedSinceMs = Date.now();
       // Có mạng lại không tự tiếp tục câu hỏi đang nhận đáp án.
     }
     this.stateVersion += 1;
@@ -138,9 +156,52 @@ class MockDashboardClient implements DashboardClient {
     return { ok: true, status: this.connection };
   }
 
+  async controlSource(_token: string, sessionId: string, action: SourceControlAction) {
+    this.assertSession(sessionId);
+    if (action === 'DISCONNECT') {
+      this.connection = 'DISCONNECTED';
+      this.connectedSinceMs = null;
+    } else {
+      if (action === 'RECONNECT') this.reconnects += 1;
+      this.connection = 'CONNECTED';
+      this.connectedSinceMs = Date.now();
+    }
+    this.sourceDetail = null;
+    this.stateVersion += 1;
+    this.emit();
+    return { ok: true, health: this.liveHealth() };
+  }
+
+  async getSystemChecks(_token: string): Promise<SystemChecksResponse> {
+    const checkedAtMs = Date.now();
+    const check = (id: SystemCheck['id'], label: string, status: CheckStatus, detail: string): SystemCheck => ({ id, label, status, detail, checkedAtMs });
+    const selfTest = this.selfTestResult;
+    const byId: Record<SystemCheck['id'], SystemCheck> = {
+      backend: check('backend', 'Backend hoạt động', 'PASS', 'MOCK dashboard đang hoạt động trong trình duyệt'),
+      database: check('database', 'Database hoạt động', 'PASS', 'Mô phỏng trong bộ nhớ'),
+      theme: check('theme', 'Theme Pack tải thành công', 'NOT_TESTED', 'Đang dùng giao diện mặc định'),
+      overlay: check('overlay', 'Overlay hiển thị', 'FAIL', 'Mock dashboard không mở kết nối overlay thật'),
+      mockComment: check('mockComment', 'Mock Comment hoạt động', selfTest ? (selfTest.mockComment ? 'PASS' : 'FAIL') : 'NOT_TESTED', selfTest?.detail ?? 'Bấm "Chạy tự kiểm"'),
+      tiktokConnector: check('tiktokConnector', 'TikTok Connector kết nối', 'NOT_TESTED', 'MOCK không kết nối TikTok'),
+      testComment: check('testComment', 'Nhận được comment thử nghiệm', 'NOT_TESTED', 'Chỉ áp dụng khi có kết nối TikTok'),
+      engineRecorded: check('engineRecorded', 'Quiz Engine ghi nhận câu trả lời', selfTest ? (selfTest.engineRecorded ? 'PASS' : 'FAIL') : 'NOT_TESTED', selfTest?.detail ?? 'Bấm "Chạy tự kiểm"'),
+      overlayUpdated: check('overlayUpdated', 'Overlay cập nhật đúng', 'NOT_TESTED', 'Mock dashboard không có overlay ACK'),
+    };
+    return { checks: SYSTEM_CHECK_IDS.map((id) => byId[id]), live: this.liveHealth(), overlay: { clients: 0, lastAck: null } };
+  }
+
+  async runSystemSelfTest(_token: string): Promise<SelfTestResponse> {
+    this.selfTestResult = { ok: true, mockComment: true, engineRecorded: true, detail: 'MOCK: pipeline giả lập đã ghi nhận đáp án vào sổ điểm.', durationMs: 5 };
+    return this.selfTestResult;
+  }
+
   async sendComment(_token: string, sessionId: string, comment: { userId: string; displayName: string; text: string }) {
     this.assertSession(sessionId);
-    if (this.state === 'ACCEPTING' && comment.text.trim().toUpperCase() in this.optionCounts) {
+    if (this.connection === 'CONNECTED') {
+      this.commentsReceived += 1;
+      this.lastCommentAtMs = Date.now();
+    }
+    if (this.connection === 'CONNECTED' && this.state === 'ACCEPTING' && comment.text.trim().toUpperCase() in this.optionCounts) {
       const answer = comment.text.trim().toUpperCase() as keyof typeof this.optionCounts;
       this.optionCounts[answer] += 1;
       this.answerCount += 1;
@@ -167,6 +228,18 @@ class MockDashboardClient implements DashboardClient {
 
   private assertSession(sessionId: string) {
     if (!this.sessionId || sessionId !== this.sessionId) throw new Error('Không có phiên MOCK đang mở.');
+  }
+
+  private liveHealth(): LiveSourceHealth {
+    return {
+      source: 'MOCK',
+      status: this.connection,
+      connectedSinceMs: this.connectedSinceMs,
+      lastCommentAtMs: this.lastCommentAtMs,
+      commentsReceived: this.commentsReceived,
+      reconnects: this.reconnects,
+      detail: this.sourceDetail,
+    };
   }
 
   private isDangerous(command: CommandBody) {
@@ -287,11 +360,11 @@ class MockDashboardClient implements DashboardClient {
       live: {
         source: 'MOCK',
         status: this.connection,
-        connectedSinceMs: null,
-        lastCommentAtMs: null,
-        commentsReceived: 0,
-        reconnects: 0,
-        detail: null,
+        connectedSinceMs: this.connectedSinceMs,
+        lastCommentAtMs: this.lastCommentAtMs,
+        commentsReceived: this.commentsReceived,
+        reconnects: this.reconnects,
+        detail: this.sourceDetail,
       },
       overlay: { clients: 0, lastAckStateVersion: null, lastAckAtMs: null },
       config: this.config,
