@@ -225,6 +225,8 @@
   box-shadow: inset 0 0 18px rgba(112, 73, 245, 0.45);
   overflow-wrap: anywhere;
 }
+.v3-question.is-long { font-size: 29px; line-height: 1.2; }
+.v3-question.is-xlong { font-size: 25px; line-height: 1.18; }
 .v3-question em { font-style: normal; color: var(--gold); font-weight: 900; }
 .v3-options { position: absolute; left: 18px; right: 18px; top: 270px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
 .v3-option {
@@ -241,7 +243,10 @@
   transition: opacity 0.3s, filter 0.3s;
 }
 .v3-letter { font-size: 38px; font-weight: 900; text-align: center; }
-.v3-option-text { font-size: 24px; font-weight: 700; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.v3-option-text { font-size: 24px; font-weight: 700; line-height: 1.12; overflow-wrap: anywhere; }
+/* Đáp án dài: giảm cỡ chữ, KHÔNG cắt chữ (người xem phải đọc được toàn bộ đáp án) */
+.v3-option-text.is-long { font-size: 20px; }
+.v3-option-text.is-xlong { font-size: 17px; line-height: 1.08; }
 .v3-option-count { font-size: 20px; font-weight: 800; color: #e7e1ff; }
 .v3-option.is-hidden { opacity: 0.55; }
 .v3-option.is-correct {
@@ -254,7 +259,7 @@
 .v3-option.is-dim { opacity: 0.55; }
 .v3-answer-count { position: absolute; right: 168px; top: 36px; font-size: 20px; font-weight: 700; color: #d9d0ff; }
 .v3-answer-count b { color: var(--gold); }
-.v3-demo { position: absolute; left: 34px; top: 100px; z-index: 2; font-size: 14px !important; padding: 1px 8px !important; padding: 4px 14px; border: 2px solid var(--gold); color: var(--gold); font-weight: 900; letter-spacing: 3px; font-size: 18px; }
+.v3-demo { position: absolute; left: 318px; top: 40px; z-index: 2; font-size: 14px !important; padding: 1px 8px !important; padding: 4px 14px; border: 2px solid var(--gold); color: var(--gold); font-weight: 900; letter-spacing: 3px; font-size: 18px; }
 
 /* ---------- MC Kelly ---------- */
 .v3-mc { position: absolute; left: 0; right: 0; top: 700px; height: 330px; z-index: 7; }

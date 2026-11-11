@@ -79,6 +79,18 @@ function Timer({ ms, totalMs, running }: { ms: number; totalMs: number; running:
   );
 }
 
+/** Câu hỏi dài tự giảm cỡ chữ để luôn nằm trọn trong khung (không cắt chữ). */
+function promptSize(prompt: string | undefined) {
+  const n = prompt?.length ?? 0;
+  return n > 170 ? 'is-xlong' : n > 110 ? 'is-long' : '';
+}
+
+/** Đáp án dài (tối đa 90 ký tự theo QUESTION_LIMITS) giảm cỡ chữ để hiện đủ trong 3 dòng. */
+function optionSize(text: string | undefined) {
+  const n = text?.length ?? 0;
+  return n > 52 ? 'is-xlong' : n > 30 ? 'is-long' : '';
+}
+
 function QuestionBoard({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
   const q = snapshot.question;
   const reveal = snapshot.reveal;
@@ -90,7 +102,7 @@ function QuestionBoard({ snapshot, remainingMs }: { snapshot: PublicSnapshot; re
     <section className="v3-board" data-layer="quiz-hud">
       <div className="v3-board-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
       {snapshot.timer && !isLobby && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
-      <div className="v3-question" data-testid="question-prompt">
+      <div className={`v3-question ${promptSize(q?.prompt)}`} data-testid="question-prompt">
         {isLobby ? (
           <>Bình luận <em>A, B, C</em> hoặc <em>D</em> để trả lời câu hỏi về Free Fire!</>
         ) : (
@@ -110,7 +122,7 @@ function QuestionBoard({ snapshot, remainingMs }: { snapshot: PublicSnapshot; re
                 data-testid={`option-${id}`}
               >
                 <span className="v3-letter">{id}</span>
-                <span className="v3-option-text">{opt?.text ?? ''}</span>
+                <span className={`v3-option-text ${optionSize(opt?.text)}`}>{opt?.text ?? ''}</span>
                 {reveal && (
                   <span className="v3-option-count">{totalAnswers ? Math.round((count / totalAnswers) * 100) : 0}%</span>
                 )}
