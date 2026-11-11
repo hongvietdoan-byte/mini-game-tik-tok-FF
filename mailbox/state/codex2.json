@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 54,
-  "heartbeat": "2026-11-11T19:41:09+07:00",
+  "heartbeat": "2026-11-11T20:03:53+07:00",
   "state": "working",
-  "task": "C-0060",
-  "note": "Đang chuyển giao diện theo ảnh storm-arena-ref; dùng nền sân bão assets-local/victory/bg.jpg, giữ an toàn crop C-0058",
+  "task": "C-0063",
+  "note": "Đang bỏ dải dưới logo trên nhánh C-0060, kiểm tra live preview và mọi mock scene",
   "done": []
 }
