@@ -35,7 +35,7 @@ const stepCopy: Record<SetupStepId, { eyebrow: string; title: string; descriptio
   health: { eyebrow: 'BƯỚC 01 · HỆ THỐNG', title: 'Kiểm tra hệ thống', description: 'Xác nhận server cục bộ đang phản hồi trước khi tiếp tục.' },
   database: { eyebrow: 'BƯỚC 02 · LƯU TRỮ', title: 'Database', description: 'Đọc đúng kết quả ghi/đọc thử do server trả về.' },
   theme: { eyebrow: 'BƯỚC 03 · GIAO DIỆN', title: 'Theme Pack', description: 'Theme Pack chưa được triển khai; bước này chỉ hiển thị chẩn đoán và không chặn chạy Mock.' },
-  tiktokConnector: { eyebrow: 'BƯỚC 04 · NGUỒN COMMENT', title: 'TikTok LIVE Connector', description: 'Đang chờ kênh chính thức của TikTok; có thể bỏ qua để chạy offline (Mock).' },
+  tiktokConnector: { eyebrow: 'BƯỚC 04 · NGUỒN COMMENT', title: 'TikTok LIVE Connector', description: 'Nhập username để điền sẵn khi tạo phiên TikTok. Bước này không kết nối hoặc tạo phiên.' },
   mock: { eyebrow: 'BƯỚC 05 · MOCK', title: 'Kiểm tra bằng Mock', description: 'Chạy pipeline tự kiểm trên database tạm; không tác động phiên LIVE.' },
   obs: { eyebrow: 'BƯỚC 06 · PHÁT HÌNH', title: 'OBS / TikTok LIVE Studio', description: 'Xem URL overlay và cách thêm nguồn hình vào phần mềm phát.' },
   overlay: { eyebrow: 'BƯỚC 07 · OVERLAY', title: 'Kiểm tra Overlay', description: 'Mở overlay trong cửa sổ riêng. Wizard tự kiểm tra kết nối và ACK render mỗi 2 giây.' },
@@ -43,6 +43,11 @@ const stepCopy: Record<SetupStepId, { eyebrow: string; title: string; descriptio
 };
 
 const stepOrder: SetupStepId[] = SETUP_STEPS.map((step) => step.id);
+const TIKTOK_USERNAME_KEY = 'quiz.tiktokUsername';
+
+function readSavedTikTokUsername() {
+  try { return localStorage.getItem(TIKTOK_USERNAME_KEY) ?? ''; } catch { return ''; }
+}
 
 function statusForStep(status: SetupWizardStatus) {
   const tone = status === 'PASS' ? 'pass' : status === 'FAIL' ? 'fail' : status === 'SKIPPED' ? 'skipped' : 'not-tested';
@@ -72,6 +77,7 @@ export function SetupWizard({
   const [stepIndex, setStepIndex] = useState(0);
   const [statuses, setStatuses] = useState<SetupStatuses>({ ...INITIAL_SETUP_STATUSES });
   const [offlineMode, setOfflineMode] = useState(false);
+  const [tiktokUsername, setTikTokUsername] = useState(readSavedTikTokUsername);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState('');
   const [healthLoading, setHealthLoading] = useState(false);
@@ -194,6 +200,16 @@ export function SetupWizard({
     setStepIndex(nextSetupStep(stepIndex));
   }
 
+  function updateTikTokUsername(value: string) {
+    setTikTokUsername(value);
+    try {
+      if (value.trim()) localStorage.setItem(TIKTOK_USERNAME_KEY, value.trim());
+      else localStorage.removeItem(TIKTOK_USERNAME_KEY);
+    } catch {
+      // The value remains available for this wizard visit even when browser storage is unavailable.
+    }
+  }
+
   function skipOverlayCheck() {
     setStepStatus('overlay', overlayStatusAfterAction(statuses.overlay, 'skip'));
     setStepIndex(nextSetupStep(stepIndex));
@@ -264,8 +280,8 @@ export function SetupWizard({
         </div>}
 
         {currentStep === 'tiktokConnector' && <div className="setup-check-panel" data-testid="setup-step-tiktok">
-          <label className="disabled-username">TikTok username<input disabled value="" placeholder="Đang chờ kênh chính thức của TikTok" /></label>
-          <p className="setup-note">Đang chờ kênh chính thức của TikTok; có thể bỏ qua để chạy offline (Mock).</p>
+          <label>TikTok username<input value={tiktokUsername} onChange={(event) => updateTikTokUsername(event.target.value)} placeholder="@ten_tai_khoan hoặc URL TikTok LIVE" /></label>
+          <p className="setup-note">Username chỉ được lưu trên thiết bị để điền sẵn khi tạo phiên TikTok. Bước này không tạo phiên.</p>
           <button className="primary-button" type="button" onClick={skipTikTokOffline}>Bỏ qua — chạy offline</button>
         </div>}
 

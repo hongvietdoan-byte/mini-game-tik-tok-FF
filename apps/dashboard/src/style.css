@@ -280,6 +280,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--violet); box-sha
 .create-form { padding-top: 15px; border-top: 1px solid var(--line); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .demo-enabled { padding: 9px 10px; border: 1px solid rgba(115,219,180,.18); border-radius: 7px; color: #9ce7c9; background: rgba(115,219,180,.05); font-size: 10px; }
+.speed-bonus-note { margin-top: -7px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.score-cap-preview { padding: 10px 11px; display: grid; gap: 5px; border: 1px solid rgba(140,200,251,.18); border-radius: 8px; color: #e9ecf6; background: rgba(140,200,251,.045); }
+.score-cap-preview b { font-size: 11px; }
+.score-cap-preview small { color: var(--muted); font-size: 9px; }
 .entry-note { position: relative; min-height: 270px; padding: 22px 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
 .entry-note > span { color: var(--blue); font-size: 10px; font-weight: 900; letter-spacing: 2px; }
 .entry-note strong { position: relative; margin-top: 22px; font-size: 52px; line-height: 1.05; letter-spacing: -1px; }
@@ -349,4 +353,76 @@ input:focus, select:focus, textarea:focus { border-color: var(--violet); box-sha
   .setup-selftest-card { grid-template-columns: 34px minmax(0,1fr); }
   .setup-selftest-card .primary-button { grid-column: 1 / -1; }
   .setup-navigation { flex-wrap: wrap; }
+}
+
+.create-mode-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; background: rgba(8,10,20,.32); }
+.create-mode-picker button { min-height: 36px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 850; }
+.create-mode-picker button.is-selected { border-color: rgba(140,200,251,.2); color: var(--blue); background: rgba(140,200,251,.08); }
+.form-row.single-column { grid-template-columns: 1fr; }
+.tiktok-warning { padding: 11px 12px; border: 1px solid rgba(255,204,88,.42); border-left: 3px solid var(--gold); border-radius: 7px; color: #ffe39a; background: rgba(255,204,88,.09); font-size: 11px; font-weight: 700; line-height: 1.55; }
+.approved-question-gate { display: grid; gap: 8px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px; color: #d6d9e7; background: rgba(255,255,255,.025); font-size: 11px; }
+.approved-question-gate button { justify-self: start; padding: 0; border: 0; color: var(--blue); background: transparent; font-size: 11px; font-weight: 800; text-decoration: underline; }
+.tiktok-account { margin: 12px 0; padding: 9px 11px; display: grid; gap: 4px; border: 1px solid rgba(255,204,88,.22); border-radius: 8px; background: rgba(255,204,88,.05); }
+.tiktok-account small { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: 1.2px; }
+.tiktok-account b { color: #ffe39a; font-size: 13px; }
+.tiktok-live-state { margin-top: 10px; padding: 11px 12px; display: grid; gap: 4px; border: 1px solid rgba(255,204,88,.34); border-radius: 8px; color: #ffe39a; background: rgba(255,204,88,.07); }
+.tiktok-live-state.is-live { border-color: rgba(115,219,180,.34); color: #9ce7c9; background: rgba(115,219,180,.06); }
+.tiktok-live-state b { font-size: 12px; }
+.tiktok-live-state span { color: #e9d7a7; font-size: 11px; line-height: 1.5; }
+.question-review-page { max-width: 1480px; margin: 22px auto 0; padding: 0 24px; }
+.review-heading { margin-bottom: 14px; display: flex; align-items: end; justify-content: space-between; gap: 14px; }
+.review-heading h1 { margin-top: 4px; font-size: 26px; }
+.review-heading p { margin-top: 6px; color: var(--muted); font-size: 12px; }
+.review-heading .secondary-button { min-height: 36px; }
+.review-summary { margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 16px; border-color: rgba(140,200,251,.2); }
+.review-summary > div { display: grid; gap: 6px; }
+.review-summary strong { color: #e9ecf6; font-size: 14px; }
+.review-summary label, .review-toolbar label, .review-modal label { display: grid; gap: 5px; color: #b8bdd0; font-size: 10px; font-weight: 750; }
+.review-summary select, .review-toolbar select, .review-modal textarea { min-height: 36px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; color: #f4f4fb; background: #171a2c; }
+.review-toolbar { margin-bottom: 12px; display: grid; grid-template-columns: minmax(170px,1.3fr) repeat(2,minmax(145px,1fr)) auto; align-items: end; gap: 10px; }
+.review-result-count { padding-bottom: 9px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.review-bulk-row { margin: 0 0 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 11px; }
+.review-bulk-row button { min-height: 36px; }
+.question-review-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; gap: 12px; }
+.question-review-card { padding: 16px; }
+.question-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.question-card-header > div { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.review-status-tag, .demo-tag { padding: 4px 7px; border: 1px solid var(--line); border-radius: 999px; color: #d8dced; font-size: 9px; font-weight: 850; }
+.review-status-tag.status-pending { color: #ffe39a; border-color: rgba(255,204,88,.25); background: rgba(255,204,88,.07); }
+.review-status-tag.status-approved { color: #9ce7c9; border-color: rgba(115,219,180,.25); background: rgba(115,219,180,.06); }
+.review-status-tag.status-rejected { color: #ffc4b6; border-color: rgba(228,126,95,.26); background: rgba(228,126,95,.06); }
+.demo-tag { color: #e6caff; border-color: rgba(112,73,245,.3); background: rgba(112,73,245,.12); }
+.question-taxonomy, .question-version { color: var(--muted); font-size: 9px; }
+.question-review-card h2 { margin-top: 13px; font-size: 15px; line-height: 1.45; }
+.review-options { margin: 12px 0; padding: 0; display: grid; gap: 6px; list-style: none; }
+.review-options li { min-height: 35px; padding: 7px 9px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 7px; color: #d7daea; background: rgba(255,255,255,.02); font-size: 10px; }
+.review-options li > b { width: 19px; height: 19px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 5px; color: var(--muted); background: rgba(255,255,255,.07); font-size: 9px; }
+.review-options li > span { flex: 1; }
+.review-options li > strong { color: #9ce7c9; font-size: 9px; white-space: nowrap; }
+.review-options li.is-correct { border-color: rgba(115,219,180,.3); background: rgba(115,219,180,.055); }
+.question-explanation { padding: 9px 10px; border-left: 2px solid var(--violet); background: rgba(112,73,245,.06); }
+.question-explanation b { color: #c4b8ff; font-size: 9px; text-transform: uppercase; letter-spacing: .6px; }
+.question-explanation p { margin-top: 4px; color: #c4c8d8; font-size: 10px; line-height: 1.5; }
+.question-card-footer { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.question-card-footer small { color: var(--muted); font-size: 9px; }
+.question-card-footer > div { display: flex; gap: 7px; }
+.question-card-footer button { min-height: 32px; padding: 7px 10px; font-size: 10px; }
+.review-modal { width: min(480px,100%); padding: 22px; border: 1px solid rgba(140,200,251,.25); border-radius: 14px; background: #202237; box-shadow: 0 24px 80px rgba(0,0,0,.5); }
+.review-modal h2 { margin-top: 8px; font-size: 19px; }
+.review-modal > p { margin: 8px 0 16px; color: #c4c8d8; font-size: 11px; line-height: 1.55; }
+.review-modal textarea { min-height: 98px; resize: vertical; }
+.review-modal .danger-button { min-height: 36px; padding: 8px 12px; }
+@media (max-width: 1000px) {
+  .question-review-list { grid-template-columns: 1fr; }
+  .review-toolbar { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 650px) {
+  .question-review-page { margin-top: 14px; padding: 0 12px; }
+  .review-heading { align-items: start; flex-direction: column; }
+  .review-summary { align-items: start; flex-direction: column; }
+  .review-summary label { width: 100%; }
+  .review-toolbar { grid-template-columns: 1fr; }
+  .review-result-count { padding-bottom: 0; }
+  .review-bulk-row { align-items: start; flex-direction: column; }
+  .review-bulk-row button { width: 100%; }
 }

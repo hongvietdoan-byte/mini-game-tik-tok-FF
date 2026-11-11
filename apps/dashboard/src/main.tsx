@@ -14,7 +14,9 @@ import { ApiError, apiClient, type DashboardClient, type SelfTestResponse, type 
 import { mockClient } from './api/mockClient';
 import { adminTokenForRuntime, overlayUrlForRuntime, shouldPersistAdminToken, type StormArenaInfo } from './desktopBridge';
 import { SetupWizard } from './SetupWizard';
+import { QuestionReviewPage } from './QuestionReviewPage';
 import { isSetupComplete, SETUP_DONE_KEY } from './setupWizardLogic';
+import { approvedQuestionCount, canCreateTikTokSession, displayTikTokUsername, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
 import {
   actionsFor,
   buildCommandEnvelope,
@@ -32,6 +34,7 @@ import {
 import './style.css';
 
 const TOKEN_KEY = 'quiz.adminToken';
+const TIKTOK_USERNAME_KEY = 'quiz.tiktokUsername';
 const isMock = new URLSearchParams(location.search).get('mock') === '1';
 const client: DashboardClient = isMock ? mockClient : apiClient;
 
@@ -58,13 +61,50 @@ function App() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [needsSession, setNeedsSession] = useState(isMock);
-  const [page, setPage] = useState<'live' | 'checks' | 'obs'>('live');
+  const [page, setPage] = useState<'live' | 'checks' | 'obs' | 'questions'>('live');
+  const [createMode, setCreateMode] = useState<'MOCK' | 'TIKTOK'>('MOCK');
+  const [questionsPerRound, setQuestionsPerRound] = useState(15);
+  const [speedBonusMax, setSpeedBonusMax] = useState(50);
+  const [tiktokUsername, setTikTokUsername] = useState(() => {
+    try { return localStorage.getItem(TIKTOK_USERNAME_KEY) ?? ''; } catch { return ''; }
+  });
+  const [approvedCountForCreation, setApprovedCountForCreation] = useState<number | null>(null);
+  const [questionCountLoading, setQuestionCountLoading] = useState(false);
+  const [questionReviewRevision, setQuestionReviewRevision] = useState(0);
   const [operatorId, setOperatorId] = useState('operator');
   const [pendingDanger, setPendingDanger] = useState<PendingDanger | null>(null);
   const [reason, setReason] = useState('');
   const [pendingEnvelope, setPendingEnvelope] = useState<CommandEnvelope | null>(null);
   const [acceptingSinceMs, setAcceptingSinceMs] = useState<number | null>(null);
   const disconnectRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    try {
+      if (tiktokUsername.trim()) localStorage.setItem(TIKTOK_USERNAME_KEY, tiktokUsername.trim());
+      else localStorage.removeItem(TIKTOK_USERNAME_KEY);
+    } catch {
+      // Username is still usable for the current dashboard visit when storage is unavailable.
+    }
+  }, [tiktokUsername]);
+
+  useEffect(() => {
+    if (!needsSession || (!token.trim() && !isMock)) {
+      setApprovedCountForCreation(null);
+      setQuestionCountLoading(false);
+      return;
+    }
+    let active = true;
+    setQuestionCountLoading(true);
+    setApprovedCountForCreation(null);
+    void client.getQuestions(token.trim()).then((questions) => {
+      if (active) setApprovedCountForCreation(approvedQuestionCount(questions));
+    }).catch(() => {
+      if (active) setApprovedCountForCreation(null);
+    }).finally(() => {
+      if (active) setQuestionCountLoading(false);
+    });
+    return () => { active = false; };
+  }, [needsSession, token, questionReviewRevision]);
 
   useEffect(() => () => disconnectRef.current?.(), []);
 
@@ -171,6 +211,7 @@ function App() {
   function completeSetupWizard() {
     try {
       localStorage.setItem(SETUP_DONE_KEY, '1');
+      setTikTokUsername(localStorage.getItem(TIKTOK_USERNAME_KEY) ?? '');
       setWizardOpen(false);
     } catch {
       setError('Không lưu được trạng thái hoàn tất trên thiết bị. Wizard có thể xuất hiện lại lần sau.');
@@ -186,11 +227,21 @@ function App() {
       setError('Nhập mã quản trị để tạo phiên.');
       return;
     }
+    if (createMode === 'TIKTOK' && !isValidTikTokUsername(tiktokUsername)) {
+      setError('Nhập username TikTok hợp lệ (ví dụ @ten_tai_khoan hoặc URL LIVE).');
+      return;
+    }
+    if (createMode === 'TIKTOK' && (approvedCountForCreation === null || !canCreateTikTokSession(approvedCountForCreation, questionsPerRound))) {
+      setPage('questions');
+      return;
+    }
     const config = SessionConfigSchema.parse({
-      mode: 'MOCK',
-      questionsPerRound: Number(data.get('questionCount')),
-      allowDemoQuestions: true,
-      speedMultiplier: Number(data.get('speedMultiplier')),
+      mode: createMode,
+      questionsPerRound,
+      speedBonusMax,
+      allowDemoQuestions: createMode === 'MOCK',
+      speedMultiplier: createMode === 'MOCK' ? Number(data.get('speedMultiplier')) : 1,
+      ...(createMode === 'TIKTOK' ? { tiktokUsername: tiktokUsername.trim() } : {}),
       ...(String(data.get('seed')).trim() ? { seed: Number(data.get('seed')) } : {}),
     });
     const request: CreateSessionRequest = { name: String(data.get('name') || 'Phiên LIVE').trim(), config };
@@ -353,10 +404,11 @@ function App() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark">BV</span><div><b>BÁ VƯƠNG</b><span>ĐẠI CHIẾN · LIVE CONTROL</span></div></div>
       <div className="topbar-right">
-        {!wizardOpen && snapshot && sessionId && <nav className="page-nav" aria-label="Các trang điều hành">
+        {!wizardOpen && ((snapshot && sessionId) || needsSession) && <nav className="page-nav" aria-label="Các trang điều hành">
           <button className={page === 'live' ? 'is-active' : ''} type="button" aria-current={page === 'live' ? 'page' : undefined} onClick={() => setPage('live')}>Live Control</button>
           <button className={page === 'checks' ? 'is-active' : ''} type="button" aria-current={page === 'checks' ? 'page' : undefined} onClick={() => setPage('checks')}>Kiểm tra kết nối</button>
           <button className={page === 'obs' ? 'is-active' : ''} type="button" aria-current={page === 'obs' ? 'page' : undefined} onClick={() => setPage('obs')}>OBS / LIVE Studio</button>
+          <button className={page === 'questions' ? 'is-active' : ''} type="button" aria-current={page === 'questions' ? 'page' : undefined} onClick={() => setPage('questions')}>Duyệt câu hỏi</button>
         </nav>}
         <span className={`mode-pill ${isMock ? 'mode-mock' : ''}`}>{isMock ? 'MOCK · DEMO' : 'LOCAL SERVER'}</span>
         {sessionId && <span className={`socket-pill socket-${socketStatus}`}><i />{socketLabel(socketStatus)}</span>}
@@ -381,7 +433,7 @@ function App() {
     /> : snapshot && sessionId ? <>
       <section className="session-heading">
         <div><span className="eyebrow">ĐIỀU KHIỂN PHIÊN</span><h1>{snapshot.config.mode === 'MOCK' ? 'Phiên MOCK' : 'Phiên LIVE'}</h1></div>
-        <div className="session-meta"><span>ID <b>{sessionId}</b></span><span>Phiên bản <b>{snapshot.public.stateVersion}</b></span><span>Round <b>{snapshot.public.round?.roundNumber ?? '—'}</b></span></div>
+        <div className="session-meta"><span>ID <b>{sessionId}</b></span><span>Phiên bản <b>{snapshot.public.stateVersion}</b></span><span>Round <b>{snapshot.public.round?.roundNumber ?? '—'}</b></span><span>Điểm tối đa/vòng <b>{maxRoundScore(snapshot.config.questionsPerRound, snapshot.config.speedBonusMax, snapshot.config.scoringMode).toLocaleString('vi-VN')}</b></span></div>
       </section>
       {error && <div className="alert alert-error" role="alert">{error}<button type="button" onClick={() => setError('')} aria-label="Đóng">×</button></div>}
       {notice && <div className="alert alert-success" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Đóng">×</button></div>}
@@ -396,7 +448,7 @@ function App() {
         </div>
       </section>}
 
-      {page === 'live' ? <div className="dashboard-grid">
+      {page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'live' ? <div className="dashboard-grid">
         <div className="main-column">
           <section className="panel state-panel">
             <div className="panel-title"><div><span className="eyebrow">TRẠNG THÁI HIỆN TẠI</span><h2>{stateName(snapshot.public.state)}</h2></div><span className={`state-chip state-${snapshot.public.state.toLowerCase()}`}>{sceneName(snapshot.public.state, snapshot.public.scene)}</span></div>
@@ -414,6 +466,7 @@ function App() {
 
           <section className="panel connection-manager" data-testid="connection-manager">
             <div className="panel-title"><div><span className="eyebrow">V3.1 · NGUỒN COMMENT</span><h2>Connection Manager</h2></div><span className={`connection-status-badge tone-${connectionStatusTone(snapshot.live.status)}`}>{connectionStatusLabel(snapshot.live.status)}</span></div>
+            {snapshot.config.mode === 'TIKTOK' && <div className="tiktok-account"><small>TIKTOK ACCOUNT</small><b>{displayTikTokUsername(snapshot.config.tiktokUsername)}</b></div>}
             <div className="connection-facts">
               <div><small>NGUỒN</small><b>{snapshot.live.source === 'MOCK' ? 'MOCK' : 'TikTok LIVE'}</b></div>
               <div><small>KẾT NỐI TỪ</small><b>{snapshot.live.connectedSinceMs === null ? '—' : new Date(snapshot.live.connectedSinceMs).toLocaleString('vi-VN')}</b></div>
@@ -421,15 +474,15 @@ function App() {
               <div><small>TỔNG COMMENT</small><b>{snapshot.live.commentsReceived}</b></div>
               <div><small>SỐ LẦN KẾT NỐI LẠI</small><b>{snapshot.live.reconnects}</b></div>
             </div>
-            {snapshot.live.detail && <div className="source-detail" role="status">{snapshot.live.detail}</div>}
+            {snapshot.config.mode === 'TIKTOK' && <div className={`tiktok-live-state ${snapshot.live.status === 'CONNECTED' ? 'is-live' : ''}`} role="status"><b>{snapshot.live.status === 'CONNECTED' ? 'Đang LIVE' : 'Chưa LIVE'}</b><span>{snapshot.live.detail ?? 'Nguồn TikTok chưa kết nối. Bấm Kết nối để kiểm tra trạng thái LIVE.'}</span></div>}
+            {snapshot.live.detail && snapshot.config.mode !== 'TIKTOK' && <div className="source-detail" role="status">{snapshot.live.detail}</div>}
             {silentWarning && <div className="quiet-warning" role="status"><b>Chưa có comment mới hơn 10 giây</b><span>Trạng thái đang nhận đáp án. Kiểm tra nguồn comment và kết nối LIVE.</span></div>}
             <div className="source-actions">
               <button type="button" className="primary-button" disabled={busy} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
               <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('DISCONNECT')}>Ngắt</button>
               <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('RECONNECT')}>Kết nối lại</button>
             </div>
-            <label className="disabled-username">TikTok username<input disabled value="" placeholder="Chưa hỗ trợ kết nối TikTok" /></label>
-            <p className="connector-note">Kết nối TikTok chưa được duyệt — xem <code>docs/TIKTOK_CONNECTOR_SPIKE.md</code>.</p>
+            {snapshot.config.mode === 'TIKTOK' && <p className="connector-note">Kết nối bằng connector cộng đồng; trạng thái nguồn và chi tiết kết nối do server cung cấp.</p>}
           </section>
 
           <section className="panel actions-panel">
@@ -486,9 +539,9 @@ function App() {
       </div> : page === 'checks'
         ? <ConnectionChecksPage client={client} token={token.trim()} />
         : <ObsGuidePage overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} desktopInfo={desktopInfo} />}
-    </> : <section className="entry-layout">
+    </> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : <section className="entry-layout">
       <div className="entry-card">
-        <span className="eyebrow">TIKTOK LIVE QUIZ</span><h1>{needsSession ? 'Tạo phiên MOCK' : 'Kết nối điều khiển'}</h1>
+        <span className="eyebrow">TIKTOK LIVE QUIZ</span><h1>{needsSession ? (createMode === 'MOCK' ? 'Tạo phiên MOCK' : 'Tạo phiên TikTok LIVE') : 'Kết nối điều khiển'}</h1>
         <p>{isMock ? 'Môi trường thử nghiệm trong trình duyệt. Không cần server.' : 'Kết nối tới server cục bộ để điều khiển phiên quiz.'}</p>
         {isDesktop && desktopAuthLoading && <p className="desktop-auth-status" role="status">Đang kết nối ứng dụng desktop…</p>}
         {!isMock && !isDesktop && <form className="entry-form" onSubmit={(event) => void connectToServer(event)}>
@@ -496,11 +549,23 @@ function App() {
           <button className="primary-button" disabled={busy}>{busy ? 'Đang kết nối…' : 'Kết nối'}</button>
         </form>}
         {needsSession && <form className="create-form" onSubmit={(event) => void createSession(event)}>
+          <div className="create-mode-picker" role="group" aria-label="Chế độ phiên">
+            <button className={createMode === 'MOCK' ? 'is-selected' : ''} type="button" aria-pressed={createMode === 'MOCK'} onClick={() => setCreateMode('MOCK')}>Mock</button>
+            <button className={createMode === 'TIKTOK' ? 'is-selected' : ''} type="button" aria-pressed={createMode === 'TIKTOK'} onClick={() => setCreateMode('TIKTOK')}>TikTok LIVE</button>
+          </div>
           <label>Tên phiên<input name="name" maxLength={100} defaultValue="Phiên DEMO" /></label>
-          <div className="form-row"><label>Số câu mỗi vòng<select name="questionCount" defaultValue="15"><option value="10">10 câu</option><option value="15">15 câu</option><option value="20">20 câu</option></select></label><label>Tốc độ MOCK<select name="speedMultiplier" defaultValue="1">{Array.from({ length: 20 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}×</option>)}</select></label></div>
+          <div className={`form-row ${createMode === 'TIKTOK' ? 'single-column' : ''}`}><label>Số câu mỗi vòng<select name="questionCount" value={questionsPerRound} onChange={(event) => setQuestionsPerRound(Number(event.target.value))}><option value="10">10 câu</option><option value="15">15 câu</option><option value="20">20 câu</option></select></label>{createMode === 'MOCK' && <label>Tốc độ MOCK<select name="speedMultiplier" defaultValue="1">{Array.from({ length: 20 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}×</option>)}</select></label>}</div>
+          <label>Thưởng tốc độ tối đa<input name="speedBonusMax" type="number" min="0" max="500" step="1" value={speedBonusMax} onChange={(event) => setSpeedBonusMax(Number(event.target.value))} /></label>
+          <p className="speed-bonus-note">Giảm dần từ lúc mở câu tới hết giờ; người xem mạng chậm có thể bị thiệt — đặt 0 để tắt.</p>
+          <div className="score-cap-preview"><b>Điểm tối đa/vòng (Kahoot): {maxRoundScore(questionsPerRound, speedBonusMax, 'KAHOOT').toLocaleString('vi-VN')}</b><small>Classic: {questionsPerRound} × (100 + {speedBonusMax}) + 180 = {maxRoundScore(questionsPerRound, speedBonusMax, 'CLASSIC').toLocaleString('vi-VN')}</small></div>
+          {createMode === 'TIKTOK' && <>
+            <label>TikTok username<input name="tiktokUsername" required value={tiktokUsername} onChange={(event) => setTikTokUsername(event.target.value)} placeholder="@ten_tai_khoan hoặc URL TikTok LIVE" /></label>
+            <div className="tiktok-warning" role="note">Kết nối TikTok dùng thư viện cộng đồng, KHÔNG CHÍNH THỨC — có thể ngừng hoạt động bất kỳ lúc nào. Chỉ đọc bình luận, không đăng nhập, không gửi tin.</div>
+            <div className="approved-question-gate" role="status">{questionCountLoading ? 'Đang kiểm tra số câu đã duyệt…' : approvedCountForCreation === null ? 'Chưa tải được số câu đã duyệt.' : `Đã duyệt ${approvedCountForCreation} / cần ${questionsPerRound} cho một vòng.`}<button type="button" onClick={() => setPage('questions')}>Mở Duyệt câu hỏi</button></div>
+          </>}
           <label>Seed (tuỳ chọn)<input name="seed" type="number" placeholder="Để trống để tự tạo" /></label>
-          <div className="demo-enabled">✓ Cho phép câu hỏi DEMO · nguồn MOCK</div>
-          <button className="primary-button" disabled={busy}>{busy ? 'Đang tạo…' : 'Tạo phiên và mở Live Control'}</button>
+          {createMode === 'MOCK' && <div className="demo-enabled">✓ Cho phép câu hỏi DEMO · nguồn MOCK</div>}
+          <button className="primary-button" disabled={busy || (createMode === 'TIKTOK' && (questionCountLoading || approvedCountForCreation === null || !canCreateTikTokSession(approvedCountForCreation, questionsPerRound)))}>{busy ? 'Đang tạo…' : 'Tạo phiên và mở Live Control'}</button>
         </form>}
         {error && <div className="alert alert-error" role="alert">{error}</div>}
       </div>

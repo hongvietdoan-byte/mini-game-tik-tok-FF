@@ -4,6 +4,8 @@ import type {
   CommandResult,
   CreateSessionRequest,
   LiveSourceHealth,
+  Question,
+  QuestionReview,
   SimulatorRequest,
   SystemCheck,
 } from '@quiz/contracts';
@@ -30,6 +32,8 @@ export interface DashboardClient {
   controlConnection(token: string, sessionId: string, action: 'LOSE' | 'RESTORE'): Promise<{ ok: boolean; status: string }>;
   controlSource(token: string, sessionId: string, action: SourceControlAction): Promise<{ ok: boolean; health: LiveSourceHealth }>;
   sendComment(token: string, sessionId: string, comment: { userId: string; displayName: string; text: string }): Promise<{ ok: boolean }>;
+  getQuestions(token: string): Promise<Question[]>;
+  reviewQuestion(token: string, questionId: string, decision: QuestionReview['decision'], reason?: string): Promise<{ ok: boolean; question: Question }>;
   getSystemChecks(token: string): Promise<SystemChecksResponse>;
   runSystemSelfTest(token: string): Promise<SelfTestResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
@@ -116,6 +120,16 @@ export const apiClient: DashboardClient = {
   sendComment(token, sessionId, comment) {
     return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/comments`, token, {
       method: 'POST', body: JSON.stringify(comment),
+    });
+  },
+
+  getQuestions(token) {
+    return jsonRequest('/api/questions', token);
+  },
+
+  reviewQuestion(token, questionId, decision, reason) {
+    return jsonRequest(`/api/questions/${encodeURIComponent(questionId)}/approve`, token, {
+      method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }),
     });
   },
 
