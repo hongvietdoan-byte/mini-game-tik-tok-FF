@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 29,
-  "heartbeat": "2026-11-11T15:54:09+07:00",
+  "heartbeat": "2026-11-11T15:55:04+07:00",
   "state": "working",
-  "task": "C-0024",
-  "note": "C-0021 đã push/report/done; C-0026 huỷ theo C-0028. Bắt đầu C-0024 trên worktree riêng, chỉ apps/dashboard/**.",
+  "task": "C-0032",
+  "note": "C-0024 đã push xong; bắt đầu thiết kế lại Overlay V3 và sửa tràn Top 10 theo C-0033.",
   "done": [
     31
   ]
