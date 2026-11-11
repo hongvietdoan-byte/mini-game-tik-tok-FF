@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 const LOGO_URL = '/assets/brand/logo.png';
 
-export function BrandMark({ ribbon }: { ribbon: string }) {
+export function BrandMark({ ribbon }: { ribbon?: string }) {
   const [logoAvailable, setLogoAvailable] = useState(true);
 
   return (
@@ -27,7 +27,7 @@ export function BrandMark({ ribbon }: { ribbon: string }) {
           </div>
         </>
       )}
-      <div className="v3-title-ribbon">{ribbon}</div>
+      {ribbon && <div className="v3-title-ribbon">{ribbon}</div>}
     </div>
   );
 }
