@@ -31,3 +31,5 @@ apps/desktop/dist-installer/
 *.msi
 # Asset cục bộ chưa xác nhận quyền phân phối (MC Kelly, chibi...) — không commit
 /assets-local/
+
+__pycache__/
