@@ -236,6 +236,8 @@ def _pull_remote() -> bool:
                            f"mailbox: gộp main vào {branch}", check=False)
                 if proc.returncode != 0:
                     git("merge", "--abort", check=False)
+                elif git("rev-list", "--count", f"origin/{branch}..HEAD", check=False).stdout.strip() not in ("", "0"):
+                    git("push", "--quiet", "-u", "origin", branch, check=False)  # giữ nhánh cloud không bị "ahead"
     PULL_OK = proc.returncode == 0
     if not PULL_OK:
         print(f"[mb] CẢNH BÁO: đồng bộ nhánh {branch} lỗi:\n{proc.stdout.strip()}\n{proc.stderr.strip()}",
