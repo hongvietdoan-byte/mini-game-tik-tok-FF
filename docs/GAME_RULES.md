@@ -1,3 +1,5 @@
+> **Cập nhật 11/11 (người dùng chốt):** có **thưởng tốc độ** cho câu đúng — tối đa +50, giảm đều từ lúc mở câu tới hết giờ (theo giờ server nhận bình luận); cấu hình `speedBonusMax` theo phiên (0 = tắt). Phần "không thưởng tốc độ" bên dưới đã lỗi thời.
+
 # Luật chơi dành cho operator
 
 > **Bản nháp vận hành — TikTok LIVE Quiz.** Tài liệu mô tả luật chấm điểm và xử lý tình huống của engine hiện tại. Nếu giao diện hoặc câu dẫn khác tài liệu, hãy theo snapshot server và lịch sử phiên; không tự sửa điểm thủ công.

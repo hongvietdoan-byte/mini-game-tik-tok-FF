@@ -204,6 +204,8 @@ export const SessionConfigSchema = z
     questionsPerRound: QuestionsPerRoundSchema.default(15),
     /** Hiện Top 10 đầy đủ sau mỗi N câu (mặc định 5) và luôn sau câu cuối. */
     leaderboardInterval: z.number().int().min(1).max(20).default(5),
+    /** Thưởng tốc độ tối đa cho câu đúng (0 = tắt). Người dùng chốt 11/11: có thưởng tốc độ. */
+    speedBonusMax: z.number().int().min(0).max(500).default(50),
     timings: TimingsSchema.default({}),
     /** Chỉ hợp lệ trong MOCK. */
     speedMultiplier: z.number().min(1).max(200).default(1),

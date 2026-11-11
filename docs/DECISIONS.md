@@ -61,8 +61,11 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 ### (bản cũ) TikTok connector bị chặn cho tới cổng khả thi (Phase 4)
 - `TikTokAdapterBlocked` luôn báo `BLOCKED`; server từ chối tạo phiên mode TIKTOK (`LIVE_CONNECTOR_BLOCKED`). Không khẳng định có API chính thức khi chưa có bằng chứng.
 
-## D-16 · Không thưởng tốc độ
-- Độ trễ giao comment của TikTok không dự đoán được; chấm theo thời điểm server nhận, cửa sổ end-exclusive.
+## D-16 · Thưởng tốc độ (người dùng chốt 11/11, thay bản "không thưởng tốc độ")
+- Câu đúng được thêm tối đa `speedBonusMax` (mặc định 50): `⌊max × (cửa sổ − thời gian) / cửa sổ⌋`, thời gian = lúc SERVER nhận − lúc mở câu; ghi dòng sổ điểm `SPEED`.
+- Rủi ro đã báo người dùng: độ trễ giao bình luận TikTok khác nhau giữa người xem → người mạng chậm bị thiệt; operator có thể tắt (0) theo phiên.
+- Sau khi Tiếp tục từ tạm dừng, thời gian vẫn tính từ lúc mở câu lần đầu (thưởng giảm) — chấp nhận ở MVP.
+- Tối đa vòng 15 câu: 15 × 150 + 180 = 2.430 điểm.
 
 ## D-17 · Người dùng làm chủ bộ câu hỏi (người dùng chốt 11/11)
 - Tool (AI Question Studio, Phase 3) chỉ **đề xuất** bản nháp (`DRAFT`/`PENDING_REVIEW`). Người dùng **sửa** (câu hỏi, 4 đáp án, đáp án đúng, giải thích, độ khó),

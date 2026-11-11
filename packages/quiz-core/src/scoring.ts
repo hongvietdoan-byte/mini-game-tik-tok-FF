@@ -9,7 +9,18 @@ export const SCORE_RULES = {
   ],
 } as const;
 
-export type ScoreReason = 'CORRECT' | 'STREAK_3' | 'STREAK_5' | 'STREAK_10';
+export type ScoreReason = 'CORRECT' | 'SPEED' | 'STREAK_3' | 'STREAK_5' | 'STREAK_10';
+
+/**
+ * Thưởng tốc độ (người dùng chốt 11/11): chỉ cho câu ĐÚNG, giảm tuyến tính từ `max` (trả lời ngay khi mở)
+ * về 0 (hết giờ), tính theo thời điểm SERVER nhận đáp án. Làm tròn xuống số nguyên.
+ */
+export function speedBonus(elapsedMs: number, windowMs: number, max: number): number {
+  if (!(max > 0) || !(windowMs > 0) || !Number.isFinite(elapsedMs)) return 0;
+  // số học nguyên (tránh sai số dấu phẩy động: 1 − 0,9 = 0,0999…)
+  const remain = Math.min(windowMs, Math.max(0, windowMs - Math.round(elapsedMs)));
+  return Math.floor((max * remain) / windowMs);
+}
 
 export type RoundQuestionInput = {
   questionInstanceId: string;
@@ -18,9 +29,18 @@ export type RoundQuestionInput = {
   /** Câu đã chốt (đã qua ACCEPTING). Câu chưa chốt không được chấm. */
   closed: boolean;
   voided: boolean;
+  /** Thời điểm mở nhận đáp án (server) — cần cho thưởng tốc độ. */
+  openedAtMs?: number | null;
+  /** Độ dài cửa sổ nhận đáp án (ms). */
+  windowMs?: number;
 };
 
-export type AnswerInput = { questionInstanceId: string; playerId: string; option: OptionId };
+export type AnswerInput = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs?: number };
+
+export type ScoringOptions = {
+  /** Thưởng tốc độ tối đa cho một câu đúng (0 = tắt). */
+  speedBonusMax?: number;
+};
 
 export type LedgerEntry = {
   questionInstanceId: string;
@@ -37,6 +57,7 @@ export type PlayerTotals = { playerId: string; score: number; correctCount: numb
  *
  * Luật:
  *  - đúng +100; sai/không trả lời +0;
+ *  - thưởng tốc độ (tuỳ chọn) cho câu đúng: tối đa speedBonusMax, giảm tuyến tính theo thời gian server nhận;
  *  - mốc chuỗi đúng 3/5/10 cộng thưởng MỘT LẦN ngay tại câu đạt mốc;
  *  - sai hoặc bỏ lỡ câu (sau khi đã tham gia) → chuỗi về 0;
  *  - người vào giữa vòng bắt đầu từ 0, không bị tính các câu trước khi tham gia;
@@ -45,14 +66,20 @@ export type PlayerTotals = { playerId: string; score: number; correctCount: numb
 export function computeRoundScores(
   questions: RoundQuestionInput[],
   answers: AnswerInput[],
+  opts: ScoringOptions = {},
 ): { ledger: LedgerEntry[]; totals: Map<string, PlayerTotals> } {
   const byQuestion = new Map<string, Map<string, OptionId>>();
+  const receivedAt = new Map<string, number>();
   for (const a of answers) {
     let m = byQuestion.get(a.questionInstanceId);
     if (!m) byQuestion.set(a.questionInstanceId, (m = new Map()));
     // câu trả lời đầu tiên thắng — DB đã đảm bảo UNIQUE, ở đây phòng thủ thêm
-    if (!m.has(a.playerId)) m.set(a.playerId, a.option);
+    if (!m.has(a.playerId)) {
+      m.set(a.playerId, a.option);
+      if (a.receivedAtMs !== undefined) receivedAt.set(`${a.questionInstanceId}\u0000${a.playerId}`, a.receivedAtMs);
+    }
   }
+  const speedMax = opts.speedBonusMax ?? 0;
 
   const ordered = [...questions].sort((x, y) => x.index - y.index);
   const totals = new Map<string, PlayerTotals>();
@@ -78,6 +105,14 @@ export function computeRoundScores(
           reason: 'CORRECT',
           points: SCORE_RULES.correct,
         });
+        const at = receivedAt.get(`${q.questionInstanceId}\u0000${t.playerId}`);
+        if (speedMax > 0 && q.openedAtMs != null && q.windowMs && at !== undefined) {
+          const b = speedBonus(at - q.openedAtMs, q.windowMs, speedMax);
+          if (b > 0) {
+            t.score += b;
+            ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'SPEED', points: b });
+          }
+        }
         const m = SCORE_RULES.streakMilestones.find((x) => x.streak === t.streak);
         if (m) {
           t.score += m.bonus;

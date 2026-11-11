@@ -43,7 +43,7 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 
 1. Chỉ chấp nhận comment **chính xác** `A|B|C|D` sau NFKC + trim + uppercase. `"đáp án A"`, `"AA"`, `"!A"` = không phải đáp án.
 2. Cửa sổ nhận đáp án `[openAtMs, deadlineMs)` (end-exclusive). Đáp án đầu tiên thắng (`UNIQUE(question_instance_id, player_id)`).
-3. Đúng +100; chuỗi 3/5/10 thưởng +30/+50/+100 tại câu đạt mốc; sai/bỏ lỡ → chuỗi về 0; người vào giữa vòng bắt đầu 0; câu void không tính và không ảnh hưởng chuỗi. Không thưởng tốc độ.
+3. Đúng +100 + **thưởng tốc độ tối đa +50** (người dùng chốt 11/11 chiều; giảm tuyến tính từ lúc mở câu tới hết giờ, theo giờ SERVER nhận, chỉ cho câu đúng, `speedBonusMax` cấu hình được, 0 = tắt); chuỗi 3/5/10 thưởng +30/+50/+100 tại câu đạt mốc; sai/bỏ lỡ → chuỗi về 0; người vào giữa vòng bắt đầu 0; câu void không tính và không ảnh hưởng chuỗi.
 4. Xếp hạng: điểm ↓, số câu đúng ↓, hoà tuyệt đối **dùng chung hạng** (1,1,3); thứ tự hiển thị trong nhóm hoà theo `playerId`. Không bịa người khi < 10.
 5. Podium: nhóm hoà vắt qua ngưỡng 3 → `tieAcrossCutoff=true`, UI hiển thị **ĐỒNG HẠNG**, không gán hạng khác nhau. Trái = hạng 2, giữa = hạng 1, phải = hạng 3.
 6. Overlay công khai **không bao giờ** thấy đáp án đúng trước REVEAL; trong ACCEPTING chỉ thấy TỔNG số đáp án, phân bố A/B/C/D chỉ lúc REVEAL.

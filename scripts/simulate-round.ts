@@ -63,6 +63,7 @@ const rt = await SessionRuntime.create(
       seed,
       maxSourceLagMs: 5_000,
       audienceRotateEvery: 2,
+      speedBonusMax: 50,
       audiencePinTop: 3,
     },
   },

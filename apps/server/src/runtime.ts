@@ -432,14 +432,9 @@ export class SessionRuntime {
     const r = this.engine.round!;
     this.loadRound(r.roundId);
     const { ledger, totals } = computeRoundScores(
-      [...this.snapshots.values()].map((s) => ({
-        questionInstanceId: s.questionInstanceId,
-        index: s.index,
-        correctOptionId: s.correctOptionId,
-        closed: r.closed.includes(s.questionInstanceId),
-        voided: r.voided.includes(s.questionInstanceId),
-      })),
+      this.scoringQuestions(r),
       this.store.answersForRound(r.roundId),
+      { speedBonusMax: this.config.speedBonusMax ?? 0 },
     );
     this.store.insertLedger(r.roundId, ledger, now);
     this.store.saveRoundPlayers(r.roundId, totals.values(), now);
@@ -455,6 +450,22 @@ export class SessionRuntime {
       now,
     });
     return integrity;
+  }
+
+  /** Câu hỏi của vòng cho bộ chấm điểm: kèm thời điểm mở + độ dài cửa sổ (thưởng tốc độ). */
+  private scoringQuestions(r: NonNullable<EngineState['round']>) {
+    this.loadRound(r.roundId);
+    const opened = new Map(this.store.roundQuestions(r.roundId).map((q) => [q.id, q.openedAtMs]));
+    const windowMs = Math.max(0, Math.round(this.config.timings.answerMs / this.engine.speedMultiplier));
+    return [...this.snapshots.values()].map((s) => ({
+      questionInstanceId: s.questionInstanceId,
+      index: s.index,
+      correctOptionId: s.correctOptionId,
+      closed: r.closed.includes(s.questionInstanceId),
+      voided: r.voided.includes(s.questionInstanceId),
+      openedAtMs: opened.get(s.questionInstanceId) ?? null,
+      windowMs,
+    }));
   }
 
   private compareLedger(roundId: string, totals: Map<string, { score: number }>): string | null {
@@ -473,14 +484,9 @@ export class SessionRuntime {
     if (!r) return null;
     this.loadRound(r.roundId);
     const { totals } = computeRoundScores(
-      [...this.snapshots.values()].map((s) => ({
-        questionInstanceId: s.questionInstanceId,
-        index: s.index,
-        correctOptionId: s.correctOptionId,
-        closed: r.closed.includes(s.questionInstanceId),
-        voided: r.voided.includes(s.questionInstanceId),
-      })),
+      this.scoringQuestions(r),
       this.store.answersForRound(r.roundId),
+      { speedBonusMax: this.config.speedBonusMax ?? 0 },
     );
     return this.compareLedger(r.roundId, totals);
   }

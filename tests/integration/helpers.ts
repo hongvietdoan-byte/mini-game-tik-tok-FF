@@ -107,20 +107,27 @@ export function runUntil(h: Harness, pred: () => boolean, stepMs = 100, maxMs = 
 }
 
 /** Bản tính THAM CHIẾU ĐỘC LẬP (không dùng quiz-core) — chỉ từ bảng answers + round_questions. */
-export function referenceScores(store: Store, roundId: string) {
+export function referenceScores(store: Store, roundId: string, opts: { speedBonusMax?: number; windowMs?: number } = {}) {
+  // Mặc định khớp cấu hình phiên mặc định: thưởng tốc độ tối đa 50, cửa sổ 15 s, tốc độ ×1.
+  const speedMax = opts.speedBonusMax ?? 50;
+  const windowMs = opts.windowMs ?? 15_000;
   const qs = store.raw
-    .prepare('SELECT id, position, correct_option_id AS c, status FROM round_questions WHERE round_id = ? ORDER BY position')
-    .all(roundId) as { id: string; position: number; c: string; status: string }[];
+    .prepare('SELECT id, position, correct_option_id AS c, status, opened_at_ms AS openedAt FROM round_questions WHERE round_id = ? ORDER BY position')
+    .all(roundId) as { id: string; position: number; c: string; status: string; openedAt: number | null }[];
   const ans = store.raw
-    .prepare('SELECT question_instance_id AS q, player_id AS p, option_id AS o FROM answers WHERE round_id = ? ORDER BY id')
-    .all(roundId) as { q: string; p: string; o: string }[];
+    .prepare('SELECT question_instance_id AS q, player_id AS p, option_id AS o, received_at_ms AS at FROM answers WHERE round_id = ? ORDER BY id')
+    .all(roundId) as { q: string; p: string; o: string; at: number }[];
+  const answeredAt = new Map<string, number>();
   const pos = new Map(qs.map((q) => [q.id, q.position]));
   const byQ = new Map<string, Map<string, string>>();
   const joined = new Map<string, number>();
   for (const a of ans) {
     const m = byQ.get(a.q) ?? new Map<string, string>();
     byQ.set(a.q, m);
-    if (!m.has(a.p)) m.set(a.p, a.o);
+    if (!m.has(a.p)) {
+      m.set(a.p, a.o);
+      answeredAt.set(`${a.q}|${a.p}`, a.at);
+    }
     const at = pos.get(a.q)!;
     joined.set(a.p, Math.min(joined.get(a.p) ?? Infinity, at));
   }
@@ -137,7 +144,14 @@ export function referenceScores(store: Store, roundId: string) {
       if (o === q.c) {
         const s = (streak.get(p) ?? 0) + 1;
         streak.set(p, s);
-        t.score += 100 + (bonus[s] ?? 0);
+        // thưởng tốc độ: tối đa speedMax, giảm tuyến tính theo thời gian server nhận (viết độc lập với quiz-core)
+        let speed = 0;
+        const at = answeredAt.get(`${q.id}|${p}`);
+        if (speedMax > 0 && q.openedAt !== null && at !== undefined) {
+          const left = Math.min(windowMs, Math.max(0, windowMs - (at - q.openedAt)));
+          speed = Math.floor((speedMax * left) / windowMs);
+        }
+        t.score += 100 + speed + (bonus[s] ?? 0);
         t.correct += 1;
       } else streak.set(p, 0);
     }

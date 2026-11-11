@@ -140,10 +140,12 @@ describe('Store: người chơi và đáp án', () => {
     expect(store.insertAnswer({ questionInstanceId: 'round-1:q01', roundId: 'round-1', playerId: p1, option: 'A', receivedAtMs: 400, sourceEventId: 'evt-1' })).toBe(true);
     expect(store.insertAnswer({ questionInstanceId: 'round-1:q01', roundId: 'round-1', playerId: p1, option: 'B', receivedAtMs: 401, sourceEventId: 'evt-2' })).toBe(false);
     expect(store.insertAnswer({ questionInstanceId: 'round-1:q01', roundId: 'round-1', playerId: p2, option: 'C', receivedAtMs: 402, sourceEventId: null })).toBe(true);
-    expect(store.answersForRound('round-1')).toEqual([
+    // receivedAtMs có thêm từ khi có thưởng tốc độ (11/11)
+    expect(store.answersForRound('round-1')).toMatchObject([
       { questionInstanceId: 'round-1:q01', playerId: p1, option: 'A' },
       { questionInstanceId: 'round-1:q01', playerId: p2, option: 'C' },
     ]);
+    expect(store.answersForRound('round-1').every((a) => Number.isFinite(a.receivedAtMs))).toBe(true);
     expect(store.participantCount('round-1')).toBe(2);
     expect(store.optionCounts('round-1:q01')).toEqual({ A: 1, B: 0, C: 1, D: 0 });
   });

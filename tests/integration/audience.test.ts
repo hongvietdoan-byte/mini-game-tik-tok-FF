@@ -56,8 +56,10 @@ describe('V3 §6 — 35 ghế khán giả', () => {
     expect(k1.occupant!.result).toBe('correct');
     // Người không có ghế vẫn được chấm điểm như người có ghế
     const lb = h.store.ledgerTotals(r.engine.round!.roundId);
-    expect(lb.get('MOCK:v499')).toBe(100);
-    expect([...lb.values()].filter((x) => x === 100)).toHaveLength(250);
+    // đúng = 100 + thưởng tốc độ (> 100); sai = 0
+    expect(lb.get('MOCK:v499')).toBeGreaterThan(100);
+    expect([...lb.values()].filter((x) => x > 100)).toHaveLength(250);
+    expect(lb.size).toBe(250); // người trả lời sai không có dòng nào trong sổ điểm
   });
 
   it('xoay ghế giữa câu: ≤ 5 ghế đổi người, Top 3 đang ngồi được giữ nguyên, không ai ngồi 2 ghế', async () => {

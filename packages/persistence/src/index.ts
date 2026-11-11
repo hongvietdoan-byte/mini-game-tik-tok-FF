@@ -41,9 +41,10 @@ export type RoundQuestionRow = {
   snapshot: QuestionSnapshot;
   status: 'PENDING' | 'OPEN' | 'CLOSED' | 'VOIDED';
   voidedAfterReveal: boolean;
+  openedAtMs: number | null;
 };
 
-export type StoredAnswer = { questionInstanceId: string; playerId: string; option: OptionId };
+export type StoredAnswer = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs: number };
 
 function prepareStatements(r: Database.Database) {
   return {
@@ -379,6 +380,7 @@ export class Store {
       snapshot: JSON.parse(r.snapshot_json),
       status: r.status,
       voidedAfterReveal: !!r.voided_after_reveal,
+      openedAtMs: r.opened_at_ms ?? null,
     }));
   }
 
@@ -451,7 +453,7 @@ export class Store {
   answersForRound(roundId: string): StoredAnswer[] {
     return this.raw
       .prepare(
-        'SELECT question_instance_id AS questionInstanceId, player_id AS playerId, option_id AS option FROM answers WHERE round_id = ? ORDER BY id',
+        'SELECT question_instance_id AS questionInstanceId, player_id AS playerId, option_id AS option, received_at_ms AS receivedAtMs FROM answers WHERE round_id = ? ORDER BY id',
       )
       .all(roundId) as StoredAnswer[];
   }
