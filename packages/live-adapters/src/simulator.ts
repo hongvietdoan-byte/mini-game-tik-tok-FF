@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { OptionId } from '@quiz/contracts';
 import type { MockAdapter } from './adapter';
 import type { Scheduler } from './scheduler';
@@ -50,6 +51,7 @@ const FORMATS: ((o: OptionId) => string)[] = [
  */
 export class MockSimulator {
   private handles = new Set<unknown>();
+  private readonly runId = randomUUID();
   private seq = 0;
   private skill: number[];
   running = true;
@@ -89,7 +91,7 @@ export class MockSimulator {
   }
 
   private at(delayMs: number, p: SimPlayer, text: string, eventId?: string) {
-    const id = eventId ?? `sim-${++this.seq}`;
+    const id = eventId ?? `sim-${this.runId}-${++this.seq}`;
     const h = this.scheduler.setTimeout(
       () => {
         this.handles.delete(h);
