@@ -11,17 +11,18 @@ const leaderboard: LeaderboardEntry[] = Array.from({ length: 10 }, (_, index) =>
 }));
 
 const options = [
-  { id: 'A' as const, text: 'Đáp án A · lựa chọn thử nghiệm' },
-  { id: 'B' as const, text: 'Đáp án B · lựa chọn nổi bật' },
-  { id: 'C' as const, text: 'Đáp án C · kiến thức tổng hợp' },
-  { id: 'D' as const, text: 'Đáp án D · câu trả lời cuối' },
+  { id: 'A' as const, text: '2 người' },
+  { id: 'B' as const, text: '4 người' },
+  { id: 'C' as const, text: '3 người' },
+  { id: 'D' as const, text: '5 người' },
 ];
 
 const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   lobby: { scene: 'LOBBY', state: 'LOBBY' },
   prepare: { scene: 'QUESTION', state: 'PREPARE' },
   question: { scene: 'QUESTION', state: 'ACCEPTING' },
-  reveal: { scene: 'REVEAL', state: 'REVEAL' },
+  // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
+  reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-short': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'round-winner': { scene: 'ROUND_WINNER', state: 'ROUND_END' },
@@ -52,7 +53,8 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
   const short = name === 'top10-short';
-  const question = name === 'question' || name === 'reveal' || name === 'paused';
+  const question = name === 'prepare' || name === 'question' || name === 'reveal' || name === 'paused';
+  const optionsVisible = name !== 'prepare';
   const isReveal = name === 'reveal';
   return {
     contractVersion: 1,
@@ -67,26 +69,30 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     question: question ? {
       questionInstanceId: 'demo-question-5',
       index: 4,
-      prompt: 'Trong chế độ thử nghiệm, lựa chọn nào đại diện cho đáp án mẫu?',
-      options,
-      optionsVisible: true,
+      prompt: 'Free Fire · Trong chế độ Clash Squad, mỗi đội có bao nhiêu người?',
+      options: optionsVisible ? options : [],
+      optionsVisible,
       isDemo: true,
     } : null,
-    answerCount: 42,
+    answerCount: name === 'prepare' ? 0 : 42,
     participantCount: short ? 3 : 57,
     reveal: isReveal ? {
       questionInstanceId: 'demo-question-5',
-      correctOptionId: 'C',
-      optionCounts: { A: 5, B: 12, C: 19, D: 6 },
-      explanation: 'Đây là câu hỏi DEMO để kiểm tra cách trình bày phần giải thích.',
+      correctOptionId: 'B',
+      optionCounts: { A: 5, B: 19, C: 12, D: 6 },
+      explanation: 'DEMO Free Fire: chế độ Clash Squad có 4 người trong mỗi đội.',
     } : null,
-    leaderboard: ['top10', 'top10-short', 'round-winner', 'victory', 'victory-tie'].includes(name)
-      ? { kind: name === 'top10' || name === 'top10-short' ? 'FULL' : 'COMPACT', entries: short ? leaderboard.slice(0, 3) : leaderboard.slice(0, name === 'round-winner' ? 3 : 10) }
-      : null,
+    leaderboard: question
+      ? { kind: 'COMPACT', entries: leaderboard.slice(0, 10) }
+      : ['top10', 'top10-short', 'round-winner', 'victory', 'victory-tie'].includes(name)
+        ? { kind: name === 'top10' || name === 'top10-short' ? 'FULL' : 'COMPACT', entries: short ? leaderboard.slice(0, 3) : leaderboard.slice(0, name === 'round-winner' ? 3 : 10) }
+        : null,
     podium: name === 'victory' || name === 'victory-tie' ? podium(name === 'victory-tie') : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
-    // TODO(codex2, C-0016): mock theo hợp đồng mới — PREPARE options rỗng, Top 10 COMPACT trong cảnh câu hỏi, lời thoại MC.
-    mc: { state: 'idle', bubble: 'Bình luận A/B/C/D để tham gia' },
+    mc: {
+      state: name === 'prepare' ? 'ask' : isReveal ? 'react' : 'idle',
+      bubble: name === 'prepare' ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.' : 'Bình luận A, B, C hoặc D để tham gia.',
+    },
     safeZone: INITIAL_TEST_SAFE_ZONE,
   };
 }

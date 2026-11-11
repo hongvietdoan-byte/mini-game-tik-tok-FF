@@ -5,6 +5,7 @@ import type {
   CreateSessionRequest,
   SimulatorRequest,
 } from '@quiz/contracts';
+import { shouldAcceptSnapshotSeq } from '../logic';
 
 export type CommandResponse = { status: number; result: CommandResult };
 export type SocketStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
@@ -100,22 +101,30 @@ export const apiClient: DashboardClient = {
     let delay = 500;
     let closed = false;
     let latestVersion = -1;
+    let latestSeq: number | null = null;
+    let awaitingFreshSnapshot = true;
 
     const connect = () => {
       if (closed) return;
       onStatus(delay > 500 ? 'reconnecting' : 'connecting');
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      socket = new WebSocket(`${protocol}//${location.host}/ws`);
-      socket.onopen = () => {
+      const currentSocket = new WebSocket(`${protocol}//${location.host}/ws`);
+      socket = currentSocket;
+      currentSocket.onopen = () => {
+        if (socket !== currentSocket) return;
+        awaitingFreshSnapshot = true;
         onStatus('connected');
-        socket?.send(JSON.stringify({ type: 'HELLO', role: 'admin', token, lastStateVersion: latestVersion >= 0 ? latestVersion : undefined }));
+        currentSocket.send(JSON.stringify({ type: 'HELLO', role: 'admin', token, lastStateVersion: latestVersion >= 0 ? latestVersion : undefined }));
       };
-      socket.onmessage = (event) => {
+      currentSocket.onmessage = (event) => {
         try {
-          const message = JSON.parse(String(event.data)) as { type?: string; payload?: AdminSnapshot; serverTimeMs?: number };
-          if (message.type !== 'ADMIN_SNAPSHOT' || !message.payload) return;
+          const message = JSON.parse(String(event.data)) as { type?: string; seq?: number; payload?: AdminSnapshot; serverTimeMs?: number };
+          if (socket !== currentSocket || message.type !== 'ADMIN_SNAPSHOT' || !message.payload || typeof message.seq !== 'number') return;
+          if (!shouldAcceptSnapshotSeq(latestSeq, message.seq, awaitingFreshSnapshot)) return;
           const version = message.payload.public.stateVersion;
-          if (version < latestVersion) return;
+          if (!awaitingFreshSnapshot && version < latestVersion) return;
+          latestSeq = message.seq;
+          awaitingFreshSnapshot = false;
           latestVersion = version;
           delay = 500;
           onSnapshot(message.payload, typeof message.serverTimeMs === 'number' ? message.serverTimeMs : Date.now());
@@ -123,9 +132,10 @@ export const apiClient: DashboardClient = {
           // Ignore malformed or unrelated server messages.
         }
       };
-      socket.onerror = () => socket?.close();
-      socket.onclose = () => {
+      currentSocket.onerror = () => currentSocket.close();
+      currentSocket.onclose = () => {
         if (closed) return;
+        if (socket !== currentSocket) return;
         onStatus('reconnecting');
         timer = window.setTimeout(connect, delay);
         delay = Math.min(5_000, delay * 2);

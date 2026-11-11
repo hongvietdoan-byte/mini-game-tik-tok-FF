@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminSnapshot, CommandBody } from '@quiz/contracts';
-import { actionsFor, buildCommandEnvelope, commandErrorMessage, commandForAction } from './logic';
+import { actionsFor, buildCommandEnvelope, commandErrorMessage, commandForAction, shouldAcceptSnapshotSeq } from './logic';
 
 function snapshot(state: AdminSnapshot['public']['state'] = 'LOBBY'): AdminSnapshot {
   return {
@@ -51,5 +51,11 @@ describe('dashboard command logic', () => {
   it('shows the stale-state message without generating an automatic retry', () => {
     expect(commandErrorMessage(409, 'stale')).toContain('xem lại rồi bấm lại');
     expect(commandErrorMessage(422, 'Thiếu câu đã duyệt.')).toBe('Thiếu câu đã duyệt.');
+  });
+
+  it('rejects stale websocket seq values and accepts a fresh server run on reconnect', () => {
+    expect(shouldAcceptSnapshotSeq(14, 13)).toBe(false);
+    expect(shouldAcceptSnapshotSeq(14, 14)).toBe(false);
+    expect(shouldAcceptSnapshotSeq(14, 1, true)).toBe(true);
   });
 });

@@ -3,8 +3,19 @@ import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contrac
 export function selectNewestSnapshot(
   current: PublicSnapshot | null,
   incoming: PublicSnapshot,
+  allowVersionReset = false,
 ): PublicSnapshot {
-  return current && incoming.stateVersion < current.stateVersion ? current : incoming;
+  return current && incoming.stateVersion < current.stateVersion && !allowVersionReset ? current : incoming;
+}
+
+/** seq advances within one server run; the first snapshot after reconnect may start a new run. */
+export function shouldAcceptSnapshotSeq(
+  currentSeq: number | null,
+  incomingSeq: number,
+  awaitingFreshSnapshot = false,
+): boolean {
+  if (!Number.isSafeInteger(incomingSeq) || incomingSeq < 0) return false;
+  return awaitingFreshSnapshot || currentSeq === null || incomingSeq > currentSeq;
 }
 
 export function interpolateRemainingMs(

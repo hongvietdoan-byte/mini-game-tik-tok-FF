@@ -77,36 +77,41 @@ function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; rem
     <div className="participant-pill"><i /> {snapshot.participantCount} chiến binh tham gia</div>
   </section>;
 
-  if (scene === 'QUESTION') return <section className="question-scene">
-    {snapshot.state === 'PREPARE' ? <div className="prepare-card"><span>CHUẨN BỊ</span><strong>Chuẩn bị…</strong><Timer ms={remainingMs} /></div> : <>
-      <div className="question-meta"><span>CÂU HỎI {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}<i>/{snapshot.round?.questionCount ?? 15}</i></span><span className="live-dot">ĐANG DIỄN RA</span></div>
+  if (scene === 'QUESTION' || scene === 'REVEAL') {
+    const isPrepare = snapshot.state === 'PREPARE';
+    const canReveal = scene === 'REVEAL' && reveal !== null;
+    const optionsVisible = snapshot.question?.optionsVisible === true && !isPrepare;
+    const optionIds = ['A', 'B', 'C', 'D'] as const;
+    return <section className={`question-scene ${canReveal ? 'question-scene-reveal' : ''}`}>
+      <div className="question-meta">
+        <span>CÂU HỎI {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}<i>/{snapshot.round?.questionCount ?? 15}</i></span>
+        <span className={isPrepare ? 'prepare-status' : canReveal ? 'reveal-status' : 'live-dot'}>{isPrepare ? 'CHUẨN BỊ' : canReveal ? 'ĐÃ KHÓA · KẾT QUẢ' : 'ĐANG DIỄN RA'}</span>
+      </div>
       <div className="question-card"><p data-testid="question-prompt">{snapshot.question?.prompt ?? 'Đang chờ câu hỏi…'}</p></div>
       <Timer ms={remainingMs} />
-      <div className="option-list">
-        {snapshot.question?.options.map((option) => <div className="option-card" data-testid={`option-${option.id}`} key={option.id}>
-          <span className="option-letter">{option.id}</span><span>{option.text}</span>
-        </div>)}
+      <div className="option-list" data-testid="option-list">
+        {optionsVisible
+          ? snapshot.question?.options.map((option) => <div className={`option-card ${canReveal && reveal?.correctOptionId === option.id ? 'is-correct' : ''}`} data-testid={`option-${option.id}`} key={option.id}>
+            <span className="option-letter">{option.id}</span><span>{option.text}</span>{canReveal && reveal?.correctOptionId === option.id && <b className="checkmark">✓</b>}
+          </div>)
+          : optionIds.map((id) => <div className="option-card option-placeholder" data-testid={`option-${id}`} aria-hidden="true" key={id}><span className="option-letter">{id}</span></div>)}
       </div>
       <div className="answer-count" data-testid="answer-count"><span className="people-icon">◉</span><b>{snapshot.answerCount}</b> người đã trả lời</div>
-    </>}
-  </section>;
-
-  if (scene === 'REVEAL') return <section className="reveal-scene">
-    <div className="eyebrow">KẾT QUẢ CÂU {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}</div>
-    <h2>ĐÁP ÁN <span>CHÍNH XÁC</span></h2>
-    <div className="option-list reveal-options">
-      {snapshot.question?.options.map((option) => <div className={`option-card ${snapshot.reveal?.correctOptionId === option.id ? 'is-correct' : ''}`} data-testid={`option-${option.id}`} key={option.id}>
-        <span className="option-letter">{option.id}</span><span>{option.text}</span>{snapshot.reveal?.correctOptionId === option.id && <b className="checkmark">✓</b>}
-      </div>)}
-    </div>
-    <div className="distribution"><div className="section-label">PHÂN BỐ LỰA CHỌN</div>
-      {reveal && <div className="distribution-bars">{(['A', 'B', 'C', 'D'] as const).map((id) => {
-        const total = Object.values(reveal.optionCounts).reduce((sum, count) => sum + count, 0) || 1;
-        return <div key={id} className={`distribution-item ${reveal.correctOptionId === id ? 'is-correct' : ''}`}><span>{id}</span><i style={{ height: `${Math.max(8, reveal.optionCounts[id] / total * 80)}px` }} /><b>{reveal.optionCounts[id]}</b></div>;
-      })}</div>}
-    </div>
-    <p className="explanation">{snapshot.reveal?.explanation}</p>
-  </section>;
+      {canReveal && <>
+        <div className="distribution"><div className="section-label">PHÂN BỐ LỰA CHỌN</div>
+          <div className="distribution-bars">{(['A', 'B', 'C', 'D'] as const).map((id) => {
+            const total = Object.values(reveal.optionCounts).reduce((sum, count) => sum + count, 0) || 1;
+            return <div key={id} className={`distribution-item ${reveal.correctOptionId === id ? 'is-correct' : ''}`}><span>{id}</span><i style={{ height: `${Math.max(8, reveal.optionCounts[id] / total * 80)}px` }} /><b>{reveal.optionCounts[id]}</b></div>;
+          })}</div>
+        </div>
+        <p className="explanation">{reveal.explanation}</p>
+        <div className="reveal-top10" data-testid="reveal-top10">
+          <div className="section-label">BẢNG XẾP HẠNG NHANH · TOP 10</div>
+          <Leaderboard entries={entries.slice(0, 10)} compact />
+        </div>
+      </>}
+    </section>;
+  }
 
   if (scene === 'INTERIM_TOP10') return <section className="top10-scene">
     <div className="eyebrow">BẢNG XẾP HẠNG</div><h2>TOP <span>10</span></h2>
@@ -172,6 +177,7 @@ function App() {
     } as React.CSSProperties}>
       <div className="arena-glow" aria-hidden="true" />
       <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
+      {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
       <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} /></div>
       {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
       {guides && safeZone && <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px ${safeZone.right}px ${safeZone.bottom}px ${safeZone.left}px` }}>

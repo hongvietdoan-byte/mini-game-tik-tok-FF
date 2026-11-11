@@ -52,6 +52,11 @@ h1, h2, p { margin: 0; }
 .metric { min-width: 0; padding: 11px 12px; border: 1px solid rgba(176,188,230,.1); border-radius: 9px; background: rgba(11,13,26,.35); }
 .metric span { display: block; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: 1px; }
 .metric b { display: block; margin-top: 6px; overflow: hidden; color: #f7f7fd; font-size: 19px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.mc-status { margin: -4px 0 14px; padding: 10px 12px; display: flex; align-items: center; gap: 11px; border: 1px solid rgba(140,200,251,.18); border-left: 3px solid var(--gold); border-radius: 8px; background: rgba(140,200,251,.045); }
+.mc-mark { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border: 1px solid rgba(255,204,88,.35); border-radius: 50%; color: var(--gold); font-size: 9px; font-weight: 900; }
+.mc-status > div { min-width: 0; display: grid; gap: 3px; }
+.mc-status small { color: var(--blue); font-size: 8px; font-weight: 900; letter-spacing: 1px; }
+.mc-status p { overflow-wrap: anywhere; color: #e7e8f1; font-size: 11px; line-height: 1.3; }
 .connection-line { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .connection-line b { color: #e8e9f2; }
 .connection-spacer { width: 14px; }

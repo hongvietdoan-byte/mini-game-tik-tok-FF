@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
-import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight, selectNewestSnapshot } from './overlayLogic';
+import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight, selectNewestSnapshot, shouldAcceptSnapshotSeq } from './overlayLogic';
 
 const base = { stateVersion: 4 } as PublicSnapshot;
 
@@ -10,6 +10,14 @@ describe('overlay logic', () => {
     const same = { stateVersion: 4, answerCount: 8 } as PublicSnapshot;
     expect(selectNewestSnapshot(base, older)).toBe(base);
     expect(selectNewestSnapshot(base, same)).toBe(same);
+  });
+
+  it('ignores an older seq but accepts the first fresh snapshot after a server restart', () => {
+    expect(shouldAcceptSnapshotSeq(20, 19)).toBe(false);
+    expect(shouldAcceptSnapshotSeq(20, 20)).toBe(false);
+    expect(shouldAcceptSnapshotSeq(20, 1, true)).toBe(true);
+    const restarted = { stateVersion: 1 } as PublicSnapshot;
+    expect(selectNewestSnapshot(base, restarted, true)).toBe(restarted);
   });
 
   it('interpolates a running timer and freezes a paused one', () => {
