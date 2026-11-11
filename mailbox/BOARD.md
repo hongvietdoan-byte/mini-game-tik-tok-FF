@@ -23,8 +23,8 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 | C-0006 | codex2 | `apps/overlay` 1080×1920, 8 cảnh, chế độ mock, client WS | — | CHỜ |
 | C-0007 | codex2 | `apps/dashboard` tối thiểu (Live Control) | C-0006 (dùng chung khung Vite) | CHỜ |
 | C-0008 | codex2 | Playwright smoke + ảnh chụp cảnh overlay (Edge) | C-0006 | CHỜ |
-| — | coordinator | `apps/server`: SessionRuntime, routes, WS, recovery | — | ĐANG LÀM |
-| — | coordinator | Test tích hợp 15 câu × 100 người, crash/restart, test tải | server | CHỜ |
+| — | coordinator | `apps/server`: SessionRuntime, routes, WS, recovery (`04aa4a4`) | — | XONG — 14 test tích hợp + 1 test tải xanh |
+| — | coordinator | Test tích hợp 15 câu × 100 người, crash/restart, test tải | server | XONG (`tests/integration`, `tests/load`) |
 | — | coordinator | Docs + báo cáo nghiệm thu Phase 0 / Phase 1 | tất cả | CHỜ |
 
 ## Việc dự phòng (hết việc chính thì tự nhận, gửi `ack` trước)
