@@ -25,6 +25,19 @@ describe('fixtures DEMO', () => {
     expect(DEMO_QUESTIONS.flatMap((question) => question.options).filter((option) => option.text.length >= 70 && option.text.length <= 90).length).toBeGreaterThanOrEqual(2);
   });
 
+  it('giữ câu Tokyo và Sahara đúng loại đáp án, với prompt dài tự nhiên', () => {
+    const tokyo = DEMO_QUESTIONS.find((question) => question.id === 'demo-001')!;
+    const sahara = DEMO_QUESTIONS.find((question) => question.id === 'demo-008')!;
+    const correctText = (question: (typeof DEMO_QUESTIONS)[number]) => question.options.find((option) => option.id === question.correctOptionId)!.text;
+    expect(tokyo.prompt.length).toBeGreaterThanOrEqual(180);
+    expect(tokyo.prompt.length).toBeLessThanOrEqual(220);
+    expect(correctText(tokyo)).toBe('Tokyo');
+    expect(sahara.prompt.length).toBeGreaterThanOrEqual(180);
+    expect(sahara.prompt.length).toBeLessThanOrEqual(220);
+    expect(correctText(sahara)).toBe('Sahara');
+    expect(sahara.options.map((option) => option.text)).toEqual(['Gobi', 'Kalahari', 'Atacama', 'Sahara']);
+  });
+
   it('từ chối các mẫu câu hỏi không hợp lệ', () => {
     expect(INVALID_QUESTION_SAMPLES.length).toBeGreaterThanOrEqual(5);
     for (const sample of INVALID_QUESTION_SAMPLES) expect(QuestionSchema.safeParse(sample).success).toBe(false);
@@ -53,6 +66,7 @@ describe('fixtures DEMO', () => {
       expect(sanitized).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u206f\ufeff]/);
       expect(Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(sanitized)).length).toBeLessThanOrEqual(24);
     }
+    expect(sanitizeDisplayName(EDGE_CASE_PLAYERS[2]!.displayName)).toContain('👨‍👩‍👧‍👦');
   });
 
   it('không chứa tên giải đấu hoặc đội được cấm trong fixtures', () => {
