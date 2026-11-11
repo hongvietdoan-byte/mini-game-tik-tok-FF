@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # Thư hòm thư/tài liệu được push liên tục: không chạy CI cho chúng để khỏi spam mail báo lỗi.
   push:
+    branches: [main, "codex1/**", "codex2/**"]
+    paths-ignore: ["mailbox/**", "docs/**", "**/*.md"]
   pull_request:
+    paths-ignore: ["mailbox/**", "docs/**", "**/*.md"]
 
 jobs:
   verify:
