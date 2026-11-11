@@ -6,7 +6,17 @@ Vòng ngữ cảnh: `.claude/settings.json` (cục bộ) đặt `CLAUDE_CODE_AUT
 
 Phiên trước đầy context. Phiên mới: **chỉ điều phối** (memory `coordinator-delegate-not-code`) — giao code cho Codex qua hòm thư, rà report, gộp nhánh.
 
-## Mới nhất (11/11 ~22:45) — main ≈ `d420374`, 227 test + e2e 42 xanh
+## Mới nhất (12/11 sáng) — đọc khối này trước, các khối dưới đã cũ
+- Plan V4 đã vào repo (`docs/STORM_ARENA_MASTER_DIRECTION_ACTION_PLAN_V4.txt`), quyết định D-19..D-22 (`docs/DECISIONS.md`), BOARD #18–#21. Người dùng chốt: giữ điểm Kahoot; dừng giọng MC sau mốc 2; P0 trước.
+- Đã gộp main: C-0077, C-0078 mốc 1 + 2 (pha READING, API giọng MC giả). 260 unit test xanh; e2e coordinator chưa chạy lại.
+- codex1: **C-0092** P0 (preflight, backup + `CHAY_GAME.cmd`, QUIZ_ASSETS_DIR, rehearsal Mock). codex2: **C-0080** màn câu hỏi 6 điểm + READING; C-0079 hoãn. cloud: **C-0093** `docs/IMPLEMENTATION_GAP_MATRIX_V4.md` (nhánh `claude/zen-dijkstra-sop0bt`).
+- Victory vòng 2 ở nhánh `codex2/c0068-victory-ref` (`1d6bbd8`) **CHƯA gộp** — chờ người dùng duyệt ảnh `assets-local/review/c0089-victory-vong2-so-ref.jpg` (BOARD #19: ảnh cạnh ref, người dùng duyệt rồi mới gộp). Khi duyệt: gộp trong worktree, typecheck + test + e2e, push, `corepack pnpm build:web`.
+- Ref: ảnh gốc repo "Sân Khấu Neon" = ref **Victory**; `assets-local/ref/storm-arena-ref.png` = ref **màn câu hỏi**.
+- 36 câu đã APPROVED để chạy thử (BOARD #20) — hỏi lại trước 13–14/11.
+- Người dùng hỏi đổi repo sang private: đã trả lời (cần cấp quyền cho phiên cloud; phút Actions có hạn; kiểm CI qua API công khai hết dùng được). Chưa đổi.
+- Chờ người dùng: duyệt Victory vòng 2; giữ/ẩn MC ở Victory; quyền LIVE PC + @username; chibi nét hơn; PNG tư thế MC.
+
+## Cũ (11/11 ~22:45) — main ≈ `d420374`, 227 test + e2e 42 xanh
 - Tool game chạy bằng `CHAY_GAME.cmd` (cửa sổ riêng, data ở `data/`, token tự chép clipboard). Hướng dẫn LIVE: `docs/HUONG_DAN_LIVE.md`. Người dùng phải tự thêm nguồn Link `http://127.0.0.1:8787/overlay/` trong LIVE Studio (tôi không bấm được app native). LIVE Studio báo "No access" = tài khoản chưa có quyền LIVE PC.
 - Đã gộp Victory/logo/safe-zone (Y-0124, nhánh codex2/c0068-victory-ref).
 - codex2: C-0080 ĐÃ ACK (Y-0125), đang làm (người dùng chưa duyệt: bám ref, logo ≥40 %, đếm ngược che chữ, đáp án bị cắt, bỏ icon sét ô thoại MC, MC đổi chuyển động theo phase) → rồi C-0079 Voice Settings.
