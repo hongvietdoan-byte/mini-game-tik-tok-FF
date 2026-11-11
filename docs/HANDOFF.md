@@ -1,6 +1,6 @@
 # HANDOFF — phiên coordinator (cập nhật 11/11/2026 ~22:45)
 
-**PHIÊN KẾ (điều phối quiz TikTok sau nén) — ĐÃ NHẬN 11/11 (sau nén).**
+**PHIÊN KẾ (điều phối quiz TikTok sau nén) — ĐỌC ĐẦU TIÊN.** (người dùng đổi tài khoản Claude 11/11 ~22:55; phiên mới tiếp quản điều phối)
 
 Vòng ngữ cảnh: `.claude/settings.json` (cục bộ) đặt `CLAUDE_CODE_AUTO_COMPACT_WINDOW=350000` + hook SessionStart `py -X utf8 tools/session_handoff.py` → tự nén ở ~70 % rồi nạp lại file này. Khi context ~70 %: cập nhật file này, đổi dòng in đậm trên thành `— ĐỌC ĐẦU TIÊN.`, commit + push. KHÔNG clear/archive/mở phiên mới cho phiên chính.
 
@@ -9,8 +9,10 @@ Phiên trước đầy context. Phiên mới: **chỉ điều phối** (memory `
 ## Mới nhất (11/11 ~22:45) — main ≈ `d420374`, 227 test + e2e 42 xanh
 - Tool game chạy bằng `CHAY_GAME.cmd` (cửa sổ riêng, data ở `data/`, token tự chép clipboard). Hướng dẫn LIVE: `docs/HUONG_DAN_LIVE.md`. Người dùng phải tự thêm nguồn Link `http://127.0.0.1:8787/overlay/` trong LIVE Studio (tôi không bấm được app native). LIVE Studio báo "No access" = tài khoản chưa có quyền LIVE PC.
 - Đã gộp Victory/logo/safe-zone (Y-0124, nhánh codex2/c0068-victory-ref).
-- codex2: C-0080 (người dùng chưa duyệt: bám ref, logo ≥40 %, đếm ngược che chữ, đáp án bị cắt, bỏ icon sét ô thoại MC, MC đổi chuyển động theo phase) → rồi C-0079 Voice Settings.
+- codex2: C-0080 ĐÃ ACK (Y-0125), đang làm (người dùng chưa duyệt: bám ref, logo ≥40 %, đếm ngược che chữ, đáp án bị cắt, bỏ icon sét ô thoại MC, MC đổi chuyển động theo phase) → rồi C-0079 Voice Settings.
 - codex1: C-0077 (privacy fixture + e2e ổn định) → C-0078 voice mốc 1–3.
+- Khi C-0080 report: rà ảnh (question câu dài, question-hud, reveal, victory, victory-tie, top10) cạnh `ref/storm-arena-ref.png`, gộp trong worktree `.claude/worktrees/coord-merge2`, chạy typecheck+test+e2e, push, rồi `corepack pnpm build:web` ở checkout chính (tool đang chạy tự phục vụ bản mới, chỉ cần reload overlay) và gửi ảnh cho người dùng.
+- Ảnh người dùng ở gốc repo (Thẻ nhân vật…, logo_BAVUONG.png, Đấu Trường Bão Tố…png) KHÔNG commit (đã có bản trong assets-local).
 - Chờ người dùng: PNG tư thế MC vào `assets-local/mc/kelly/{welcome,ask,react,celebrate,idle}`; @username + quyền LIVE; duyệt 36 câu.
 
 ## Bắt đầu phiên mới
