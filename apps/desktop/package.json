@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Storm Arena LIVE Quiz \u2014 \u1ee9ng d\u1ee5ng Windows (Electron)",
-  "main": "dist/main.cjs",
+  "main": "build/app/main.mjs",
   "scripts": {
     "bundle": "node scripts/bundle.mjs",
-    "start": "node scripts/bundle.mjs && electron .",
-    "dist": "node scripts/bundle.mjs && electron-builder --win nsis"
+    "start": "node scripts/bundle.mjs && electron build/app",
+    "dist": "node scripts/bundle.mjs && electron-builder --win nsis --config electron-builder.yml"
   },
   "devDependencies": {
     "electron": "42.11.18",

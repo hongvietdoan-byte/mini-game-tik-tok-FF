@@ -21,7 +21,9 @@
     "simulate": "tsx scripts/simulate-round.ts",
     "privacy:check": "node scripts/privacy-check.mjs",
     "ci": "node scripts/privacy-check.mjs && tsc --noEmit -p tsconfig.json && vitest run --project unit --project integration",
-    "start": "corepack pnpm build:web && corepack pnpm server"
+    "start": "corepack pnpm build:web && corepack pnpm server",
+    "desktop": "corepack pnpm --filter @quiz/desktop start",
+    "dist:win": "corepack pnpm --filter @quiz/desktop dist"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
