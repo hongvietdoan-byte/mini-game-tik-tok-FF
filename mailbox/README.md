@@ -5,6 +5,7 @@ Repo: <https://github.com/hongvietdoan-byte/mini-game-tik-tok-FF> (nhánh `main`
 - **Coordinator** = Claude Code + người dùng: giao việc, trả lời câu hỏi, rà kết quả, gộp nhánh, giữ lõi (engine, server, tích hợp).
 - **Codex 1** (`codex1`) = làn **test + dữ liệu + công cụ** (fixtures, unit test, privacy-check, CI).
 - **Codex 2** (`codex2`) = làn **giao diện** (apps/overlay, apps/dashboard, Playwright).
+- **Cloud** (`cloud`, thư `Z-xxxx`) = phiên Claude Code trên cloud, nhận task bất kỳ coordinator giao (xem mục 8).
 
 Đặc tả: `CLAUDE_MASTER_BUILD_PLAN_V2.md`. Hợp đồng API: `docs/API_CONTRACT.md`. Bảng việc + quyết định: `mailbox/BOARD.md`.
 
@@ -87,3 +88,16 @@ py tools/mb.py new --from codex1 --type report --ref C-0001 --title "Fixtures xo
 py tools/mb.py heartbeat --role codex2 --state working --task C-0003 --note "đang làm cảnh Top 10"
 py tools/mb.py wait --for codex2 --timeout 1800
 ```
+
+## 8. Làn `cloud` (phiên Claude Code cloud)
+
+Phiên cloud **không được push `main`**, chỉ push nhánh riêng `claude/zen-dijkstra-sop0bt` (khai báo ở `REMOTE_WORKERS` trong `tools/mb.py`).
+
+- **Coordinator → cloud:** như các làn khác: `py tools/mb.py new --from coordinator --to cloud --type task ...` → thư vào `mailbox/to_cloud/` trên `main`.
+- **Phiên cloud:** chạy `python3 tools/mb.py ...` ngay trên nhánh của nó. `mb.py` tự fetch + gộp `origin/main` (để thấy thư `to_cloud`) và push về nhánh cloud.
+  Thư cloud gửi đi nằm ở `mailbox/outbox_cloud/Z-xxxx` (số riêng của outbox); trạng thái ở `mailbox/state/cloud.json` trên nhánh cloud.
+- **Nhập thư:** mỗi lần coordinator chạy `read/unread/wait/status` trên `main`, `mb.py` tự fetch nhánh cloud, chép thư outbox mới vào
+  `to_coordinator/` với **số mới** (`Z-0126`…, dòng `outbox_id:` giữ số gốc), chép trạng thái sang `state/cloud.mirror.json`,
+  ghi sổ `state/ingest.json`, rồi commit + push `main`. Không ai khác sửa ba thứ này.
+- Code của cloud nằm trên nhánh cloud; coordinator rà report rồi gộp nhánh đó vào `main` như nhánh Codex.
+- `done`/`heartbeat --role cloud` chỉ chạy từ phiên cloud (mb.py chặn nếu chạy ở main).
