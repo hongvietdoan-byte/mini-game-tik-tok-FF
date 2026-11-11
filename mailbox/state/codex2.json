@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 54,
-  "heartbeat": "2026-11-11T20:56:21+07:00",
+  "heartbeat": "2026-11-11T20:58:52+07:00",
   "state": "working",
   "task": "C-0066",
-  "note": "Sửa nhánh c0056 để HUD chỉ phủ, không dời quiz; lần pull báo FETCH_HEAD lỗi, không reset/force",
+  "note": "Sửa HUD overlay trên nhánh C-0065, preview port 5180 vẫn mở",
   "done": [
     56,
     58,
