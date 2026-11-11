@@ -35,6 +35,52 @@ export const McReadingFallbackReasonSchema = z.enum([
 ]);
 export type McReadingFallbackReason = z.infer<typeof McReadingFallbackReasonSchema>;
 
+export const McVoiceSettingsSchema = z.object({
+  provider: z.literal('CLIPAI'),
+  voiceName: z.literal('Kelly'),
+  /** Chỉ biểu thị có token; API không trả lại token hay dạng đã che. */
+  hasToken: z.boolean(),
+  ready: z.boolean(),
+  primaryOverlayInstanceId: z.string().nullable(),
+});
+export type McVoiceSettings = z.infer<typeof McVoiceSettingsSchema>;
+
+export const McVoiceSettingsUpdateSchema = z.object({
+  token: z.string().trim().min(1).max(4_096).optional(),
+  clearToken: z.boolean().optional(),
+  primaryOverlayInstanceId: z.string().trim().min(1).max(128).nullable().optional(),
+  confirmPrimaryOverlayChange: z.boolean().optional(),
+}).superRefine((value, ctx) => {
+  if (value.clearToken && value.token !== undefined)
+    ctx.addIssue({ code: 'custom', path: ['token'], message: 'Không thể vừa đặt vừa xoá token.' });
+});
+export type McVoiceSettingsUpdate = z.infer<typeof McVoiceSettingsUpdateSchema>;
+
+export const McVoiceTestRequestSchema = z.object({
+  confirmed: z.literal(true),
+  text: z.string().trim().min(1).max(1_000),
+});
+export type McVoiceTestRequest = z.infer<typeof McVoiceTestRequestSchema>;
+
+export const McVoicePreGenerateRequestSchema = z.object({
+  questionIds: z.array(z.string().trim().min(1).max(64)).min(1).max(200),
+}).superRefine((value, ctx) => {
+  if (new Set(value.questionIds).size !== value.questionIds.length)
+    ctx.addIssue({ code: 'custom', path: ['questionIds'], message: 'Danh sách câu hỏi không được trùng.' });
+});
+export type McVoicePreGenerateRequest = z.infer<typeof McVoicePreGenerateRequestSchema>;
+
+export const McVoicePreGenerateProgressSchema = z.object({
+  jobId: z.string().min(1).max(100),
+  status: z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED']),
+  total: z.number().int().min(0),
+  completed: z.number().int().min(0),
+  failed: z.number().int().min(0),
+  tooLong: z.number().int().min(0),
+  updatedAtMs: z.number().finite(),
+});
+export type McVoicePreGenerateProgress = z.infer<typeof McVoicePreGenerateProgressSchema>;
+
 /** Trần đọc câu hỏi và bốn đáp án trong một lần phát MC. */
 export const MAX_MC_READING_MS = 20_000;
 
