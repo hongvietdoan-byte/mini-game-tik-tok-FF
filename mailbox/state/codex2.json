@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 76,
-  "heartbeat": "2026-11-12T00:04:54+07:00",
+  "heartbeat": "2026-11-12T00:05:11+07:00",
   "state": "working",
-  "task": "C-0089",
-  "note": "Đang chỉnh Victory vòng 2 theo C-0089 trên cùng nhánh C-0068",
+  "task": "C-0080",
+  "note": "C-0089 đã push/report xong; tiếp tục hoàn thiện READING và các lỗi toàn bộ Playwright của C-0080",
   "done": [
     82,
     87,
