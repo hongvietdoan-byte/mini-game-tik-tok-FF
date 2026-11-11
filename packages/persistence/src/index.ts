@@ -17,7 +17,9 @@ import * as schema from './schema';
 
 export { schema };
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+/** Bản đóng gói (Electron) đặt QUIZ_MIGRATIONS_DIR vì không còn đường dẫn source. Đọc lúc mở Store, không lúc nạp module. */
+const migrationsDir = () =>
+  process.env.QUIZ_MIGRATIONS_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 
 export type SessionRow = {
   id: string;
@@ -94,7 +96,7 @@ export class Store {
     this.raw.pragma('foreign_keys = ON');
     this.raw.pragma('busy_timeout = 5000');
     this.db = drizzle(this.raw, { schema });
-    migrate(this.db, { migrationsFolder: MIGRATIONS_DIR });
+    migrate(this.db, { migrationsFolder: migrationsDir() });
     this.stmt = prepareStatements(this.raw);
   }
 
