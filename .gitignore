@@ -20,3 +20,6 @@ playwright-report/
 # Worktree của Codex/Claude
 .claude/
 .codex-wt/
+
+# Kho chibi người dùng cung cấp (11/11) — tài liệu đầu vào, chưa xác nhận quyền phân phối
+/2026-11-11_chibi_kho/
