@@ -8,6 +8,8 @@ export default defineConfig({
       {
         test: {
           name: 'unit',
+          // test thuộc tính (200 seed) có thể > 5 s khi máy chạy song song nhiều bộ test
+          testTimeout: 20_000,
           include: ['packages/*/src/**/*.test.ts', 'apps/*/src/**/*.test.ts', 'fixtures/**/*.test.ts', 'scripts/**/*.test.ts'],
           environment: 'node',
           exclude: ['**/node_modules/**', '.claude/**'],
