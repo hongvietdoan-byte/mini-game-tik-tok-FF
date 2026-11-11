@@ -69,8 +69,8 @@
 
 /* ---------- header ---------- */
 .v3-header { position: absolute; left: 0; right: 0; top: 60px; height: 180px; z-index: 5; }
-.v3-title { position: absolute; left: 50%; top: -50px; transform: translateX(-50%); width: 300px; text-align: center; }
-.v3-brand-logo { display: block; width: 270px; height: 230px; max-width: 100%; object-fit: contain; margin: 0 auto; }
+.v3-title { position: absolute; left: 52.5%; top: -23px; transform: translateX(-50%); width: 300px; text-align: center; }
+.v3-brand-logo { display: block; width: 270px; height: 210px; max-width: 100%; object-fit: contain; margin: 0 auto; }
 .v3-crown { width: 120px; height: 56px; display: block; margin: 0 auto -4px; }
 .v3-crown path,
 .v3-mc-plate path,
@@ -468,8 +468,8 @@
     radial-gradient(ellipse 38% 58% at 100% 35%, rgba(140,200,251,.2), transparent 75%);
 }
 .v3-header { top: 42px; height: 196px; contain: layout paint; }
-.v3-title { top: -50px; width: 300px; }
-.v3-brand-logo { width: 270px; height: 230px; }
+.v3-title { left: 52.5%; top: -23px; width: 300px; }
+.v3-brand-logo { width: 270px; height: 210px; }
 .v3-title-main { font-size: 46px; }
 .v3-title-ribbon { margin-top: 0; padding: 5px 24px; font-size: 15px; }
 .v3-top10 {
@@ -566,11 +566,11 @@
 .v3-mc-figure img { width: 220px; max-height: 270px; object-fit: contain; filter: none; }
 .v3-mc-ask .v3-mc-figure img, .v3-mc-react .v3-mc-figure img { animation: none; }
 .v3-mc-placeholder { width: 190px; height: 248px; margin-top: 8px; background: linear-gradient(160deg, rgba(224,214,255,.22), rgba(112,73,245,.12)); border: 2px solid rgba(190,164,255,.36); }
-.v3-mc-plate { left: 75px; top: 268px; width: 280px; height: 56px; font-size: 27px; }
+.v3-mc-plate { left: 100px; top: 268px; width: 280px; height: 56px; font-size: 27px; }
 .v3-bubble {
   left: 390px;
   top: 28px;
-  width: 660px;
+  width: 580px;
   height: 222px;
   padding: 0 42px;
   background: linear-gradient(145deg, rgba(41, 25, 124, .97), rgba(19, 12, 69, .97));
@@ -610,9 +610,9 @@
 .v3-aux-stage .v3-header { z-index: 5; }
 .v3-leaderboard-full {
   position: absolute;
-  left: 42px;
-  top: 250px;
-  width: 888px;
+  left: 98px;
+  top: 296px;
+  width: 884px;
   height: 920px;
   padding: 28px 32px 30px;
   z-index: 6;
@@ -820,8 +820,8 @@
 .v3v-floor { position: absolute; z-index: 2; left: 0; right: 0; top: 1438px; height: 482px; overflow: hidden; background: radial-gradient(ellipse 55% 38% at 50% 0%, rgba(153, 91, 255, .42), transparent 78%), linear-gradient(180deg, rgba(28, 19, 91, .76), rgba(7, 8, 35, .98) 64%); }
 .v3v-floor::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 137px, rgba(186, 145, 255, .12) 138px 140px, transparent 141px 270px), repeating-linear-gradient(173deg, transparent 0 76px, rgba(88, 176, 255, .15) 77px 79px, transparent 80px 154px); transform: perspective(500px) rotateX(30deg) scale(1.25); transform-origin: top center; }
 .v3v-floor::after { content: ''; position: absolute; left: 15%; right: 15%; top: 0; height: 200px; background: linear-gradient(180deg, rgba(205, 152, 255, .26), transparent); filter: blur(20px); }
-.v3v-header { top: 14px; height: 320px; z-index: 10; display: flex; flex-direction: column; align-items: center; }
-.v3v-header .v3-title { position: relative; left: auto; top: auto; width: 320px; transform: none; }
+.v3v-header { top: 20px; height: 320px; z-index: 10; display: flex; flex-direction: column; align-items: center; }
+.v3v-header .v3-title { position: relative; left: auto; top: auto; width: 320px; margin-left: 80px; transform: none; }
 .v3v-header .v3-brand-logo { width: 300px; height: 270px; }
 .v3v-caption { display: block; margin-top: 2px; color: #eeeaff; font-size: 16px; font-weight: 800; letter-spacing: 2px; text-align: center; text-shadow: 0 2px 8px #1a0c5e, 0 0 14px #7d52ff; }
 .v3v-header .v3-title-ribbon { display: none; }
@@ -916,8 +916,8 @@
 .v3-bolt-l, .v3-bolt-r { opacity: .08; }
 .v3-lights { opacity: .38; }
 .v3-header { height: 220px; }
-.v3-title { top: -50px; width: 300px; }
-.v3-brand-logo { width: 270px; height: 230px; }
+.v3-title { left: 52.5%; top: -23px; width: 300px; }
+.v3-brand-logo { width: 270px; height: 210px; }
 .v3-title-ribbon { padding: 4px 28px; font-size: 16px; }
 
 /* ---------- C-0065: Storm Arena v2 ---------- */

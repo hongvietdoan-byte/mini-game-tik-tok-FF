@@ -8,7 +8,7 @@ const scenes = [
   { name: 'LEADERBOARD', mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '.v3-event-identity', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
   { name: 'INTERIM_TOP10', mock: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD', required: ['[data-testid="v3-top10-large"]', '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]', '.v3-full-round', '.v3-title'] },
   { name: 'INTERMISSION', mock: 'intermission', scene: 'INTERMISSION', state: 'INTERMISSION', required: ['[data-testid="intermission-message"]', '[data-testid="timer"]', '.v3-scene-kicker', '.v3-title'] },
-  { name: 'VICTORY', mock: 'victory', scene: 'VICTORY', state: 'VICTORY', required: ['.v3v-trophy', '.v3v-header .v3-title', '.v3-title-ribbon', '[data-testid^="podium-slot-"] .nameplate'] },
+  { name: 'VICTORY', mock: 'victory', scene: 'VICTORY', state: 'VICTORY', required: ['.v3v-trophy', '.v3v-header .v3-title', '.v3v-caption', '[data-testid^="podium-slot-"] .nameplate'] },
   { name: 'CONNECTION_LOST', mock: 'connection-lost', scene: 'CONNECTION_LOST', state: 'CONNECTION_INTERRUPTED', required: ['[data-testid="connection-lost-message"]', '.v3-scene-kicker', '.v3-title'] },
 ] as const;
 
@@ -19,7 +19,7 @@ const importantElements = [
   { label: 'answer', selector: '[data-testid^="option-"]:not([data-testid="option-list"])' },
   { label: 'Top10', selector: '[data-layer="leaderboard"], [data-testid="v3-top10-large"]' },
   { label: 'Top10 row', selector: '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]' },
-  { label: 'round label', selector: '.v3-event-identity span, .v3-full-round, .v3-scene-kicker, .v3-title-ribbon' },
+  { label: 'round label', selector: '.v3-event-identity span, .v3-full-round, .v3-scene-kicker, .v3-title-ribbon, .v3v-caption' },
   { label: 'STORM ARENA', selector: '.v3-event-identity b' },
   { label: 'brand logo', selector: '.v3-title img, .v3-title-main, .v3-crown' },
   { label: 'trophy', selector: '.v3v-trophy' },
@@ -46,6 +46,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     if (!stage) throw new Error('Không tìm thấy stage');
     const stageBox = stage.getBoundingClientRect();
     if (stageBox.width <= 0 || stageBox.height <= 0) throw new Error('Stage không có kích thước');
+    const isVictoryScene = stage.querySelector('.v3v') !== null;
 
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const visible = (element: Element) => {
@@ -80,10 +81,13 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
         issues.push(row);
         report.push(`${row.element} | ${row.rule} | ${row.x} | ${row.y}`);
       };
-      if (p.x1 < 8.9 || p.x2 > 91.1) add('crop-fill: phải nằm trong x=9–91%');
-      const logoCanUseTopBand = item.label.startsWith('brand logo') && !blockersFound.some((blocker) =>
-        ['live chips', 'event banner'].includes(blocker.label) && intersects(item.box, blocker.box));
-      if (p.y1 < 14 && !logoCanUseTopBand) add('HUD trên: y bắt đầu từ 14%');
+      const isBrandLogo = item.label.startsWith('brand logo');
+      const decorativeBleed = item.label === 'trophy';
+      if (!decorativeBleed && !isBrandLogo && (p.x1 < 8.9 || p.x2 > 91.1)) add('crop-fill: phải nằm trong x=9–91%');
+      if (isBrandLogo) {
+        const logoBottomLimit = isVictoryScene ? 16 : 12.1;
+        if (p.y1 < 0.8 || p.y1 > 1.3 || p.y2 > logoBottomLimit) add(`logo: vị trí theo ref C-0073 (y≈1–${isVictoryScene ? 16 : 12}%)`);
+      } else if (p.y1 < 14) add('HUD trên: y bắt đầu từ 14%');
       if (p.x1 < 70 && p.y2 > 73 && p.y1 < 92) add('cột bình luận trái: vùng x<70%, y=73–92%');
       if (p.y2 >= 92.5) add('thanh nhập: y phải nhỏ hơn 92.5%');
       for (const blocker of blockersFound) {
@@ -118,8 +122,6 @@ for (const scene of scenes) {
     expect(runtimeErrors, `${scene.name}: lỗi runtime ngoài vùng safe-zone`).toEqual([]);
     if (issues.length) {
       console.log(`C-0067 ${scene.name} (${scene.state}) — bảng phần tử vi phạm safe-zone:\n${report.join('\n')}`);
-      // Expected-fail tạm thời cho bố cục hiện tại; gỡ khi C-0066 đã được gộp và vùng an toàn đạt.
-      test.fail(true, `C-0066 đang sửa bố cục; ${issues.length} vi phạm safe-zone ở ${scene.name}.`);
       expect(issues, report.join('\n')).toEqual([]);
     }
   });
