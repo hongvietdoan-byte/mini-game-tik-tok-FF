@@ -1,6 +1,6 @@
 # Khảo sát khả thi TikTok LIVE connector (11/11/2026)
 
-Trạng thái: **BLOCKED — chờ quyết định người dùng / pháp lý**. Chưa viết dòng code connector nào.
+Trạng thái: **BLOCKED — người dùng chọn hỏi kênh chính thức (11/11)**; thư nháp `docs/TIKTOK_OFFICIAL_REQUEST.md`. Không dùng repo/dịch vụ không chính thức. Chưa viết dòng code connector nào.
 Nguồn: khảo sát web (danh mục TikTok for Developers, ToS TikTok, README các repo). Mục ghi "chưa xác minh" là chưa đối chiếu được.
 
 ## 1. Kênh chính thức

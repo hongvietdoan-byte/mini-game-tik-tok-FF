@@ -60,3 +60,4 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
     **ưu tiên: game chạy đúng + kết nối TikTok LIVE ổn định; KHÔNG đầu tư animation** (MC/khán giả dùng PNG tĩnh, chuyển động transform nhẹ) ·
     huỷ C-0012, chưa chốt ảnh baseline C-0008 · đóng gói Electron + NSIS · connector TikTok phải qua khảo sát khả thi, không dùng cách vượt cơ chế bảo vệ.
 16. Victory: **không có 3 khối bục TOP 1/2/3**; giữ cúp + sân khấu gốc, 3 chibi đứng sàn phía trước (V3 §11).
+17. **TikTok connector: hỏi kênh chính thức** (người dùng chốt 11/11). KHÔNG dùng TikTok-Live-Connector / Euler Stream / TikFinity / sign server hay bất kỳ cách không chính thức nào. UI hiển thị 'đang chờ kênh chính thức', cho bỏ qua để chạy offline.
