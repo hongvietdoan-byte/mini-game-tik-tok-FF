@@ -1,9 +1,9 @@
 {
   "role": "cloud",
   "last_read": 93,
-  "heartbeat": "2026-11-11T17:19:27+00:00",
-  "state": "working",
+  "heartbeat": "2026-11-11T17:19:29+00:00",
+  "state": "waiting",
   "task": null,
-  "note": "C-0093 ma trận khoảng trống V4",
+  "note": "C-0093 đã report; chờ task",
   "done": []
 }
