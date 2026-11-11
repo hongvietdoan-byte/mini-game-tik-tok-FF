@@ -1,9 +1,12 @@
 {
   "role": "codex2",
   "last_read": 23,
-  "heartbeat": "2026-11-11T15:09:26+07:00",
+  "heartbeat": "2026-11-11T15:10:11+07:00",
   "state": "working",
   "task": "C-0021",
   "note": "Wizard đã rebase lên origin/main; fix summary Overlay đã build, typecheck/Vitest xanh; cần ảnh step 8 sau fix và push/report/done. C-0024, C-0026 đã ack, có phụ thuộc nối tiếp.",
-  "done": []
+  "done": [
+    26,
+    28
+  ]
 }
