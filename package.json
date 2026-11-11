@@ -1,0 +1,37 @@
+{
+  "name": "tiktok-live-quiz",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.12.1",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "dev": "concurrently -k -n server,overlay,dashboard \"pnpm --filter @quiz/server dev\" \"pnpm --filter @quiz/overlay dev\" \"pnpm --filter @quiz/dashboard dev\"",
+    "server": "pnpm --filter @quiz/server start",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --project unit --project integration",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:load": "vitest run --project load",
+    "test:e2e": "playwright test",
+    "db:generate": "pnpm --filter @quiz/persistence generate",
+    "simulate": "tsx scripts/simulate-round.ts",
+    "privacy:check": "node scripts/privacy-check.mjs",
+    "ci": "pnpm privacy:check && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0",
+    "ws": "^8.18.0",
+    "@quiz/contracts": "workspace:*",
+    "@quiz/quiz-core": "workspace:*",
+    "@quiz/persistence": "workspace:*",
+    "@quiz/live-adapters": "workspace:*",
+    "@quiz/server": "workspace:*"
+  }
+}

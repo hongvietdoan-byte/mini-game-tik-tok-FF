@@ -1,0 +1,471 @@
+/**
+ * @quiz/contracts — nguồn sự thật duy nhất cho schema, DTO và kiểu sự kiện.
+ * Mọi package khác chỉ phụ thuộc vào đây; không package nào được định nghĩa lại các kiểu này.
+ */
+import { z } from 'zod';
+
+export const CONTRACT_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Trạng thái & cảnh (scene)
+// ---------------------------------------------------------------------------
+
+export const GameStateSchema = z.enum([
+  'IDLE',
+  'LOBBY',
+  'PREPARE',
+  'ACCEPTING',
+  'REVEAL',
+  'LEADERBOARD',
+  'ROUND_END',
+  'VICTORY',
+  'INTERMISSION',
+  'PAUSED',
+  'CONNECTION_INTERRUPTED',
+  'ERROR',
+]);
+export type GameState = z.infer<typeof GameStateSchema>;
+
+export const SceneSchema = z.enum([
+  'LOBBY',
+  'QUESTION',
+  'REVEAL',
+  'INTERIM_TOP10',
+  'ROUND_WINNER',
+  'VICTORY',
+  'INTERMISSION',
+  'CONNECTION_LOST',
+]);
+export type Scene = z.infer<typeof SceneSchema>;
+
+export const OptionIdSchema = z.enum(['A', 'B', 'C', 'D']);
+export type OptionId = z.infer<typeof OptionIdSchema>;
+export const OPTION_IDS: readonly OptionId[] = ['A', 'B', 'C', 'D'];
+
+export const LiveSourceSchema = z.enum(['MOCK', 'TIKTOK']);
+export type LiveSource = z.infer<typeof LiveSourceSchema>;
+
+// ---------------------------------------------------------------------------
+// Comment (mục 4 của đặc tả)
+// ---------------------------------------------------------------------------
+
+export const CommentEventSchema = z.object({
+  source: LiveSourceSchema,
+  eventId: z.string().min(1).max(200).optional(),
+  userId: z.string().min(1).max(200),
+  displayName: z.string().max(400),
+  text: z.string().max(2000),
+  receivedAtMs: z.number().finite(),
+  sourceTimestampMs: z.number().finite().optional(),
+});
+export type CommentEvent = z.infer<typeof CommentEventSchema>;
+
+/** Comment thô từ adapter — server đóng dấu receivedAtMs tại biên. */
+export type RawComment = Omit<CommentEvent, 'receivedAtMs'>;
+
+export const RejectReasonSchema = z.enum([
+  'INVALID_EVENT',
+  'NOT_AN_ANSWER',
+  'NOT_ACCEPTING',
+  'EARLY',
+  'LATE',
+  'DUPLICATE_EVENT',
+  'DUPLICATE_ANSWER',
+  'STALE_SOURCE_TIMESTAMP',
+]);
+export type RejectReason = z.infer<typeof RejectReasonSchema>;
+
+export type IngestMetrics = {
+  received: number;
+  accepted: number;
+  rejected: Record<RejectReason, number>;
+};
+
+// ---------------------------------------------------------------------------
+// Câu hỏi (mục 6)
+// ---------------------------------------------------------------------------
+
+export const DifficultySchema = z.enum(['EASY', 'MEDIUM', 'HARD']);
+export type Difficulty = z.infer<typeof DifficultySchema>;
+
+export const VerificationStatusSchema = z.enum([
+  'UNVERIFIED',
+  'VERIFIED',
+  'OPERATOR_VERIFIED',
+  /** Câu hỏi hư cấu / demo — chỉ được dùng trong phiên MOCK và luôn gắn nhãn DEMO. */
+  'DEMO',
+]);
+export type VerificationStatus = z.infer<typeof VerificationStatusSchema>;
+
+export const ApprovalStatusSchema = z.enum([
+  'DRAFT',
+  'NEEDS_EVIDENCE',
+  'PENDING_REVIEW',
+  'APPROVED',
+  'REJECTED',
+  'ARCHIVED',
+]);
+export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
+
+export const QUESTION_LIMITS = { promptMax: 220, optionMax: 90, explanationMax: 400 } as const;
+
+export const QuestionOptionSchema = z.object({
+  id: z.string().min(1).max(64),
+  text: z.string().trim().min(1).max(QUESTION_LIMITS.optionMax),
+});
+
+export const QuestionSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    packId: z.string().min(1).max(64),
+    subtopicId: z.string().min(1).max(64),
+    prompt: z.string().trim().min(1).max(QUESTION_LIMITS.promptMax),
+    options: z.array(QuestionOptionSchema).length(4),
+    correctOptionId: z.string().min(1),
+    explanation: z.string().max(QUESTION_LIMITS.explanationMax).default(''),
+    difficulty: DifficultySchema,
+    tags: z.array(z.string().max(40)).max(20).default([]),
+    sourceRefs: z.array(z.string().max(200)).max(20).default([]),
+    verificationStatus: VerificationStatusSchema,
+    approvalStatus: ApprovalStatusSchema,
+    version: z.number().int().min(1).default(1),
+    media: z.object({ assetId: z.string().min(1) }).nullable().default(null),
+    validFrom: z.number().nullable().default(null),
+    validUntil: z.number().nullable().default(null),
+    lastUsedAt: z.number().nullable().default(null),
+  })
+  .superRefine((q, ctx) => {
+    const ids = new Set(q.options.map((o) => o.id));
+    if (ids.size !== 4) ctx.addIssue({ code: 'custom', message: 'option id phải duy nhất' });
+    const texts = new Set(q.options.map((o) => o.text.trim().toLocaleLowerCase('vi')));
+    if (texts.size !== 4) ctx.addIssue({ code: 'custom', message: '4 đáp án phải khác nhau' });
+    if (!ids.has(q.correctOptionId))
+      ctx.addIssue({ code: 'custom', message: 'correctOptionId không thuộc options' });
+  });
+export type Question = z.infer<typeof QuestionSchema>;
+
+/** Ảnh chụp bất biến của câu hỏi tại thời điểm tạo vòng (đã xáo đáp án). */
+export type QuestionSnapshot = {
+  questionInstanceId: string;
+  questionId: string;
+  questionVersion: number;
+  index: number;
+  prompt: string;
+  /** Theo thứ tự hiển thị A..D sau khi xáo. */
+  options: { id: OptionId; text: string; originalOptionId: string }[];
+  correctOptionId: OptionId;
+  explanation: string;
+  difficulty: Difficulty;
+  subtopicId: string;
+  isDemo: boolean;
+};
+
+/** Phiên bản công khai — KHÔNG BAO GIỜ chứa đáp án đúng. */
+export type PublicQuestion = {
+  questionInstanceId: string;
+  index: number;
+  prompt: string;
+  options: { id: OptionId; text: string }[];
+  isDemo: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// Cấu hình
+// ---------------------------------------------------------------------------
+
+export const TimingsSchema = z.object({
+  lobbyMs: z.number().int().min(0).max(600_000).default(30_000),
+  prepareMs: z.number().int().min(500).max(60_000).default(3_000),
+  answerMs: z.number().int().min(3_000).max(120_000).default(15_000),
+  revealMs: z.number().int().min(500).max(60_000).default(4_000),
+  leaderboardMs: z.number().int().min(500).max(60_000).default(4_000),
+  roundEndMs: z.number().int().min(0).max(60_000).default(2_000),
+  victoryMs: z.number().int().min(1_000).max(120_000).default(18_000),
+  intermissionMs: z.number().int().min(1_000).max(600_000).default(25_000),
+});
+export type Timings = z.infer<typeof TimingsSchema>;
+export const DEFAULT_TIMINGS: Timings = TimingsSchema.parse({});
+
+export const QuestionsPerRoundSchema = z.union([z.literal(10), z.literal(15), z.literal(20)]);
+
+export const SessionConfigSchema = z
+  .object({
+    mode: LiveSourceSchema.default('MOCK'),
+    packId: z.string().min(1).max(64).default('demo'),
+    questionsPerRound: QuestionsPerRoundSchema.default(15),
+    /** Hiện Top 10 đầy đủ sau mỗi N câu (mặc định 5) và luôn sau câu cuối. */
+    leaderboardInterval: z.number().int().min(1).max(20).default(5),
+    timings: TimingsSchema.default({}),
+    /** Chỉ hợp lệ trong MOCK. */
+    speedMultiplier: z.number().min(1).max(200).default(1),
+    /** Cho phép câu hỏi DEMO/hư cấu — chỉ hợp lệ trong MOCK. */
+    allowDemoQuestions: z.boolean().default(false),
+    seed: z.number().int().optional(),
+    /** Bỏ comment có sourceTimestamp cũ hơn ngưỡng này so với lúc nhận (cách ly sự kiện trễ). */
+    maxSourceLagMs: z.number().int().min(0).max(60_000).default(5_000),
+  })
+  .superRefine((c, ctx) => {
+    if (c.mode !== 'MOCK' && c.speedMultiplier !== 1)
+      ctx.addIssue({ code: 'custom', message: 'speedMultiplier chỉ dùng được trong MOCK' });
+    if (c.mode !== 'MOCK' && c.allowDemoQuestions)
+      ctx.addIssue({ code: 'custom', message: 'Câu hỏi DEMO không được vào LIVE thật' });
+  });
+export type SessionConfig = z.infer<typeof SessionConfigSchema>;
+
+/**
+ * Vùng an toàn (px trên khung 1080×1920). GIÁ TRỊ MẶC ĐỊNH LÀ PRESET THỬ NGHIỆM BẢO THỦ,
+ * KHÔNG PHẢI đặc tả chính thức của TikTok — phải tinh chỉnh theo thiết bị (Phase 5).
+ */
+export const SafeZonePresetSchema = z.object({
+  id: z.string().min(1).max(64),
+  label: z.string().max(100),
+  top: z.number().int().min(0).max(1920),
+  bottom: z.number().int().min(0).max(1920),
+  left: z.number().int().min(0).max(1080),
+  right: z.number().int().min(0).max(1080),
+  commentRegion: z
+    .object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+    .nullable()
+    .default(null),
+  official: z.literal(false).default(false),
+});
+export type SafeZonePreset = z.infer<typeof SafeZonePresetSchema>;
+export const INITIAL_TEST_SAFE_ZONE: SafeZonePreset = {
+  id: 'initial-conservative-test',
+  label: 'Preset thử nghiệm ban đầu (chưa hiệu chỉnh, không phải số chính thức của TikTok)',
+  top: 230,
+  bottom: 690,
+  left: 0,
+  right: 130,
+  commentRegion: null,
+  official: false,
+};
+
+// ---------------------------------------------------------------------------
+// Lệnh điều hành (mục 3, 12)
+// ---------------------------------------------------------------------------
+
+const reason = z.string().trim().min(3, 'Bắt buộc nêu lý do (≥ 3 ký tự)').max(500);
+const optReason = z.string().trim().max(500).optional();
+
+export const CommandBodySchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('OPEN_LOBBY'), reason: optReason }),
+  z.object({
+    type: z.literal('START_ROUND'),
+    reason: optReason,
+    questionCount: QuestionsPerRoundSchema.optional(),
+    /** Chỉ dùng khi ngân hàng thiếu câu: operator CHỦ ĐỘNG cho phép lặp lại. */
+    allowReuse: z.boolean().optional(),
+  }),
+  z.object({ type: z.literal('PAUSE'), reason: optReason }),
+  z.object({ type: z.literal('RESUME'), reason: optReason }),
+  z.object({ type: z.literal('MANUAL_NEXT'), reason: optReason }),
+  z.object({ type: z.literal('NEXT_ROUND'), reason: optReason }),
+  z.object({ type: z.literal('SET_AUTO_MODE'), enabled: z.boolean(), reason: optReason }),
+  // --- Hành động nguy hiểm: bắt buộc lý do ---
+  z.object({ type: z.literal('SKIP_QUESTION'), reason }),
+  z.object({ type: z.literal('VOID_QUESTION'), reason }),
+  z.object({
+    type: z.literal('RESTART_ROUND'),
+    reason,
+    questionCount: QuestionsPerRoundSchema.optional(),
+    allowReuse: z.boolean().optional(),
+  }),
+  z.object({ type: z.literal('STOP'), reason }),
+  z.object({
+    type: z.literal('RESOLVE_RECOVERY'),
+    decision: z.enum(['RESUME', 'VOID', 'STOP']),
+    reason,
+  }),
+]);
+export type CommandBody = z.infer<typeof CommandBodySchema>;
+export type CommandType = CommandBody['type'];
+
+export const DANGEROUS_COMMANDS: readonly CommandType[] = [
+  'SKIP_QUESTION',
+  'VOID_QUESTION',
+  'RESTART_ROUND',
+  'STOP',
+  'RESOLVE_RECOVERY',
+];
+
+export const CommandEnvelopeSchema = z.object({
+  /** Khoá idempotency — gửi lại cùng commandId không tạo thêm chuyển trạng thái. */
+  commandId: z.string().min(8).max(100),
+  expectedStateVersion: z.number().int().min(0),
+  operatorId: z.string().min(1).max(100),
+  requestedAtMs: z.number().finite(),
+  command: CommandBodySchema,
+});
+export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;
+
+export const CommandErrorCodeSchema = z.enum([
+  'STALE_STATE_VERSION',
+  'ILLEGAL_TRANSITION',
+  'SESSION_CLOSED',
+  'RECOVERY_PENDING',
+  'CONNECTION_NOT_READY',
+  'INSUFFICIENT_QUESTIONS',
+  'NOT_ALLOWED_IN_MODE',
+  'VALIDATION_FAILED',
+]);
+export type CommandErrorCode = z.infer<typeof CommandErrorCodeSchema>;
+
+export type CommandResult =
+  | { ok: true; stateVersion: number; state: GameState; duplicate: boolean }
+  | {
+      ok: false;
+      code: CommandErrorCode;
+      message: string;
+      stateVersion: number;
+      duplicate: boolean;
+      details?: unknown;
+    };
+
+// ---------------------------------------------------------------------------
+// Bảng xếp hạng (mục 5)
+// ---------------------------------------------------------------------------
+
+export type LeaderboardEntry = {
+  /** Hạng dùng chung khi hoà tuyệt đối (1,1,3…). */
+  rank: number;
+  tied: boolean;
+  playerId: string;
+  displayName: string;
+  score: number;
+  correctCount: number;
+};
+
+export type PodiumSlot = { place: 1 | 2 | 3; rank: number; tied: boolean; entries: LeaderboardEntry[] };
+export type Podium = {
+  /** Tối đa 3 vị trí; KHÔNG bịa người chơi nếu thiếu. */
+  slots: PodiumSlot[];
+  /** true nếu nhóm đồng hạng vắt qua ngưỡng bục (cần hiển thị ĐỒNG HẠNG). */
+  tieAcrossCutoff: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// Snapshot & thông điệp WebSocket (mục 11)
+// ---------------------------------------------------------------------------
+
+export type TimerView = {
+  durationMs: number;
+  remainingMs: number;
+  running: boolean;
+};
+
+export type RevealView = {
+  questionInstanceId: string;
+  correctOptionId: OptionId;
+  optionCounts: Record<OptionId, number>;
+  explanation: string;
+};
+
+export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'BLOCKED';
+
+export type PublicSnapshot = {
+  contractVersion: number;
+  sessionId: string;
+  stateVersion: number;
+  state: GameState;
+  scene: Scene;
+  paused: boolean;
+  mode: LiveSource;
+  timer: TimerView | null;
+  round: { roundNumber: number; questionIndex: number; questionCount: number } | null;
+  question: PublicQuestion | null;
+  answerCount: number;
+  participantCount: number;
+  reveal: RevealView | null;
+  leaderboard: { kind: 'COMPACT' | 'FULL'; entries: LeaderboardEntry[] } | null;
+  podium: Podium | null;
+  connection: ConnectionStatus;
+  safeZone: SafeZonePreset;
+};
+
+export type AdminSnapshot = {
+  public: PublicSnapshot;
+  sessionStatus: 'OPEN' | 'CLOSED';
+  autoMode: boolean;
+  recoveryPending: boolean;
+  suspendedFrom: GameState | null;
+  config: SessionConfig;
+  current: {
+    questionInstanceId: string;
+    correctOptionId: OptionId;
+    optionCounts: Record<OptionId, number>;
+    voided: boolean;
+  } | null;
+  metrics: IngestMetrics;
+  recentRejections: { atMs: number; reason: RejectReason }[];
+  pool: { eligible: number; unusedInSession: number; requiredNextRound: number; lowPoolWarning: boolean };
+  simulator: { running: boolean; players: number } | null;
+  error: { code: string; message: string } | null;
+};
+
+export const WS_MESSAGE_TYPES = [
+  'STATE_SNAPSHOT',
+  'SCENE_CHANGED',
+  'TIMER_SYNC',
+  'QUESTION_OPENED_PUBLIC',
+  'ANSWER_COUNTS',
+  'ANSWER_REVEALED',
+  'LEADERBOARD_UPDATED',
+  'VICTORY_STARTED',
+  'CONNECTION_STATUS',
+  'ERROR_PUBLIC',
+  // chỉ gửi tới kênh admin đã xác thực
+  'ADMIN_SNAPSHOT',
+] as const;
+export type WsMessageType = (typeof WS_MESSAGE_TYPES)[number];
+
+export type WsPayloads = {
+  STATE_SNAPSHOT: PublicSnapshot;
+  SCENE_CHANGED: { scene: Scene; state: GameState };
+  TIMER_SYNC: TimerView | null;
+  QUESTION_OPENED_PUBLIC: PublicQuestion;
+  ANSWER_COUNTS: { questionInstanceId: string; answerCount: number; participantCount: number };
+  ANSWER_REVEALED: RevealView;
+  LEADERBOARD_UPDATED: { kind: 'COMPACT' | 'FULL'; entries: LeaderboardEntry[] };
+  VICTORY_STARTED: { podium: Podium };
+  CONNECTION_STATUS: { status: ConnectionStatus };
+  ERROR_PUBLIC: { code: string; message: string };
+  ADMIN_SNAPSHOT: AdminSnapshot;
+};
+
+export type WsMessage<T extends WsMessageType = WsMessageType> = {
+  [K in T]: {
+    v: number;
+    type: K;
+    sessionId: string;
+    stateVersion: number;
+    serverTimeMs: number;
+    payload: WsPayloads[K];
+  };
+}[T];
+
+export const ClientHelloSchema = z.object({
+  type: z.literal('HELLO'),
+  role: z.enum(['overlay', 'admin']),
+  /** Chỉ admin; không bao giờ đặt token trong URL. */
+  token: z.string().max(200).optional(),
+  lastStateVersion: z.number().int().optional(),
+});
+export type ClientHello = z.infer<typeof ClientHelloSchema>;
+
+export const CreateSessionRequestSchema = z.object({
+  name: z.string().trim().min(1).max(100).default('Phiên LIVE'),
+  config: SessionConfigSchema.default({}),
+});
+export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
+
+export const SimulatorRequestSchema = z.object({
+  action: z.enum(['START', 'STOP']),
+  players: z.number().int().min(1).max(2000).default(100),
+  accuracy: z.number().min(0).max(1).default(0.6),
+  participation: z.number().min(0).max(1).default(0.9),
+  spamRate: z.number().min(0).max(1).default(0.15),
+  noiseRate: z.number().min(0).max(1).default(0.1),
+  seed: z.number().int().default(20261111),
+});
+export type SimulatorRequest = z.infer<typeof SimulatorRequestSchema>;

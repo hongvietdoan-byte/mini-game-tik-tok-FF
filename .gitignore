@@ -1,0 +1,22 @@
+node_modules/
+dist/
+data/
+*.db
+*.db-wal
+*.db-shm
+test-results/
+playwright-report/
+.env
+.env.*
+
+# --- INPUT NỘI BỘ: KHÔNG BAO GIỜ COMMIT / ĐÓNG GÓI (xem docs/DATA_PRIVACY.md) ---
+*.xlsx
+*.xls
+/Ảnh ChatGPT*
+/4.png
+/Screenshot*.png
+/_inputs/
+
+# Worktree của Codex/Claude
+.claude/
+.codex-wt/

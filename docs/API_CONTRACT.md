@@ -1,0 +1,59 @@
+# Hợp đồng API Phase 1 (server ↔ overlay / dashboard)
+
+Nguồn kiểu dữ liệu duy nhất: `packages/contracts/src/index.ts`. File này chỉ chốt **đường dẫn, cổng, xác thực**.
+Coordinator giữ file này; Codex không tự đổi — cần đổi thì gửi `question`.
+
+## Cổng (mặc định, đổi bằng biến môi trường)
+
+| Thành phần | Địa chỉ | Biến |
+|---|---|---|
+| server (Fastify + WS) | `http://127.0.0.1:8787` | `QUIZ_PORT`, `QUIZ_HOST` (mặc định `127.0.0.1`) |
+| dashboard (Vite) | `http://127.0.0.1:5173` | — |
+| overlay (Vite) | `http://127.0.0.1:5174` | — |
+
+Cả hai app Vite proxy `/api` và `/ws` (ws: true) sang `127.0.0.1:8787`, nên trong code luôn gọi **đường dẫn tương đối**
+(`/api/...`, `ws(s)://<location.host>/ws`).
+
+## Xác thực admin
+
+- Token sinh lần chạy đầu, lưu `data/admin-token.txt` (thư mục `data/` bị ignore). Server in ra console đường dẫn file, **không in token**.
+- HTTP admin: header `Authorization: Bearer <token>`. Không bao giờ đặt token trong URL/query.
+- Dashboard: operator dán token vào ô "Mã quản trị" → lưu `sessionStorage` (không `localStorage`).
+- Mọi request đổi dữ liệu (POST) kiểm `Origin`: chỉ chấp nhận không có Origin hoặc
+  `http://127.0.0.1:5173|5174`, `http://localhost:5173|5174`. Sai → 403.
+
+## HTTP
+
+| Method | Path | Auth | Body → Response |
+|---|---|---|---|
+| GET | `/health` | — | `{ ok: true, contractVersion, sessionId: string \| null }` |
+| GET | `/api/sessions/current` | — | `{ sessionId: string \| null }` (phiên OPEN mới nhất) |
+| POST | `/api/sessions` | admin | `CreateSessionRequest` → `201 { sessionId, snapshot: AdminSnapshot }` |
+| GET | `/api/sessions/:id/state` | — / admin | không token → `PublicSnapshot`; có token → `AdminSnapshot` |
+| POST | `/api/sessions/:id/commands` | admin | `CommandEnvelope` → `CommandResult` (xem mã HTTP dưới) |
+| POST | `/api/sessions/:id/simulator` | admin, chỉ MOCK | `SimulatorRequest` → `{ ok, running, players }` |
+| POST | `/api/sessions/:id/connection` | admin, chỉ MOCK | `{ action: 'LOSE' \| 'RESTORE' }` → `{ ok, status }` (giả lập rớt nguồn comment) |
+| POST | `/api/sessions/:id/comments` | admin, chỉ MOCK | `{ userId, displayName, text, eventId? }` → `{ ok }` (bơm 1 comment tay) |
+| GET | `/api/sessions/:id/history` | admin | `{ rounds: [...], actions: [...] }` (xem `Store.history`) |
+| GET | `/api/questions` | admin | `Question[]` của pack phiên hiện tại |
+| GET | `/api/diagnostics` | admin | `{ metrics, recentRejections, db: { path, walMode }, uptimeMs }` |
+
+Mã HTTP của `/commands`:
+- `200` — `ok: true` (kể cả `duplicate: true` khi gửi lại cùng `commandId`).
+- `409` — `code: 'STALE_STATE_VERSION'`. Dashboard phải lấy snapshot mới rồi cho operator bấm lại (không tự gửi lại).
+- `422` — các `code` khác (`ILLEGAL_TRANSITION`, `RECOVERY_PENDING`, `INSUFFICIENT_QUESTIONS`, `CONNECTION_NOT_READY`, …) hoặc body sai schema (`VALIDATION_FAILED`).
+- `401` thiếu/sai token, `403` sai Origin, `404` không có phiên.
+
+`commandId`: dashboard sinh `crypto.randomUUID()` **một lần cho mỗi lần bấm**; nếu mạng lỗi thì gửi lại **cùng** commandId.
+
+## WebSocket `/ws`
+
+1. Client mở kết nối, gửi ngay `ClientHello` (`{type:'HELLO', role:'overlay'|'admin', token?, lastStateVersion?}`).
+   Admin gửi token trong HELLO (không trong URL). Sai token → server đóng với code `4401`.
+2. Server trả ngay một snapshot: overlay nhận `STATE_SNAPSHOT` (PublicSnapshot), admin nhận `ADMIN_SNAPSHOT`.
+3. Sau đó mỗi lần trạng thái đổi server gửi lại snapshot đầy đủ (+ có thể kèm các thông điệp sự kiện trong `WS_MESSAGE_TYPES`).
+   **Client chỉ cần render từ snapshot**; bỏ qua mọi thông điệp có `stateVersion` nhỏ hơn bản đang giữ.
+4. `ANSWER_COUNTS` có thể đến nhiều lần trong cùng `stateVersion` (đếm số đáp án) — cập nhật `answerCount`/`participantCount`.
+5. Đồng hồ: dùng `timer.remainingMs` + `serverTimeMs` của thông điệp để nội suy; khi `timer.running=false` thì đứng yên.
+6. Mất kết nối: tự nối lại (backoff 0.5 s → tối đa 5 s), gửi lại HELLO với `lastStateVersion`; **không phát lại hiệu ứng cũ**.
+7. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).
