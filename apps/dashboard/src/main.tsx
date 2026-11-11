@@ -10,9 +10,22 @@ import {
   type CreateSessionRequest,
   type SimulatorRequest,
 } from '@quiz/contracts';
-import { ApiError, apiClient, type DashboardClient, type SocketStatus } from './api/client';
+import { ApiError, apiClient, type DashboardClient, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './api/client';
 import { mockClient } from './api/mockClient';
-import { actionsFor, buildCommandEnvelope, commandErrorMessage, commandForAction, dangerousActions, type DashboardAction } from './logic';
+import {
+  actionsFor,
+  buildCommandEnvelope,
+  checkStatusTone,
+  commandErrorMessage,
+  commandForAction,
+  connectionStatusLabel,
+  connectionStatusTone,
+  dangerousActions,
+  formatTimeAgo,
+  hasSilentAcceptingWarning,
+  overlayUrlFromLocation,
+  type DashboardAction,
+} from './logic';
 import './style.css';
 
 const TOKEN_KEY = 'quiz.adminToken';
@@ -23,6 +36,7 @@ type RecoveryDecision = 'RESUME' | 'VOID' | 'STOP';
 type PendingDanger = { action: DashboardAction; decision?: RecoveryDecision };
 
 function App() {
+  const overlayUrl = useMemo(() => overlayUrlFromLocation(location.href), []);
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) ?? '');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AdminSnapshot | null>(null);
@@ -33,10 +47,12 @@ function App() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [needsSession, setNeedsSession] = useState(isMock);
+  const [page, setPage] = useState<'live' | 'checks' | 'obs'>('live');
   const [operatorId, setOperatorId] = useState('operator');
   const [pendingDanger, setPendingDanger] = useState<PendingDanger | null>(null);
   const [reason, setReason] = useState('');
   const [pendingEnvelope, setPendingEnvelope] = useState<CommandEnvelope | null>(null);
+  const [acceptingSinceMs, setAcceptingSinceMs] = useState<number | null>(null);
   const disconnectRef = useRef<(() => void) | null>(null);
 
   useEffect(() => () => disconnectRef.current?.(), []);
@@ -60,6 +76,11 @@ function App() {
     const interval = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(interval);
   }, [snapshot?.public.timer?.running, snapshot?.public.timer?.remainingMs, timerAnchor.serverTimeMs]);
+
+  useEffect(() => {
+    if (snapshot?.public.state === 'ACCEPTING') setAcceptingSinceMs((value) => value ?? Date.now());
+    else setAcceptingSinceMs(null);
+  }, [snapshot?.public.state]);
 
   useEffect(() => {
     if (!isMock) return;
@@ -223,6 +244,16 @@ function App() {
     await runRequest(() => client.controlConnection(token.trim(), sessionId, action), action === 'LOSE' ? 'Đã mô phỏng mất kết nối.' : 'Đã khôi phục kết nối nguồn.');
   }
 
+  async function controlSource(action: SourceControlAction) {
+    if (!sessionId) return;
+    const labels: Record<SourceControlAction, string> = { CONNECT: 'Đã yêu cầu kết nối nguồn.', DISCONNECT: 'Đã ngắt nguồn comment.', RECONNECT: 'Đã yêu cầu kết nối lại nguồn.' };
+    await runRequest(async () => {
+      const result = await client.controlSource(token.trim(), sessionId, action);
+      if (!result.ok) throw new Error(result.health.detail ?? `Không thể thực hiện ${action}.`);
+      return result;
+    }, labels[action]);
+  }
+
   async function sendManualComment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!sessionId) return;
@@ -256,11 +287,17 @@ function App() {
   const timerRemainingMs = snapshot?.public.timer
     ? Math.max(0, snapshot.public.timer.remainingMs - Math.max(0, now + timerAnchor.offsetMs - timerAnchor.serverTimeMs))
     : null;
+  const silentWarning = snapshot ? hasSilentAcceptingWarning(snapshot.public.state, snapshot.live.lastCommentAtMs, acceptingSinceMs, now) : false;
 
   return <main className="app-shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">BV</span><div><b>BÁ VƯƠNG</b><span>ĐẠI CHIẾN · LIVE CONTROL</span></div></div>
       <div className="topbar-right">
+        {snapshot && sessionId && <nav className="page-nav" aria-label="Các trang điều hành">
+          <button className={page === 'live' ? 'is-active' : ''} type="button" aria-current={page === 'live' ? 'page' : undefined} onClick={() => setPage('live')}>Live Control</button>
+          <button className={page === 'checks' ? 'is-active' : ''} type="button" aria-current={page === 'checks' ? 'page' : undefined} onClick={() => setPage('checks')}>Kiểm tra kết nối</button>
+          <button className={page === 'obs' ? 'is-active' : ''} type="button" aria-current={page === 'obs' ? 'page' : undefined} onClick={() => setPage('obs')}>OBS / LIVE Studio</button>
+        </nav>}
         <span className={`mode-pill ${isMock ? 'mode-mock' : ''}`}>{isMock ? 'MOCK · DEMO' : 'LOCAL SERVER'}</span>
         {sessionId && <span className={`socket-pill socket-${socketStatus}`}><i />{socketLabel(socketStatus)}</span>}
       </div>
@@ -284,7 +321,7 @@ function App() {
         </div>
       </section>}
 
-      <div className="dashboard-grid">
+      {page === 'live' ? <div className="dashboard-grid">
         <div className="main-column">
           <section className="panel state-panel">
             <div className="panel-title"><div><span className="eyebrow">TRẠNG THÁI HIỆN TẠI</span><h2>{stateName(snapshot.public.state)}</h2></div><span className={`state-chip state-${snapshot.public.state.toLowerCase()}`}>{sceneName(snapshot.public.state, snapshot.public.scene)}</span></div>
@@ -298,6 +335,26 @@ function App() {
             <div className="connection-line"><span className={`connection-dot connection-${snapshot.public.connection.toLowerCase()}`} />Nguồn bình luận <b>{connectionName(snapshot.public.connection)}</b><span className="connection-spacer" />WebSocket <b>{socketLabel(socketStatus)}</b></div>
             <div className="operator-answer"><div><small>ĐÁP ÁN ĐÚNG · CHỈ HIỂN THỊ CHO OPERATOR</small><strong>{snapshot.current?.correctOptionId ?? '—'}</strong></div><span>{snapshot.public.question?.options.find((option) => option.id === snapshot.current?.correctOptionId)?.text ?? 'Chưa có câu hỏi đang mở'}</span></div>
             <div className="answer-distribution"><b>Phân bố A / B / C / D</b><div>{(['A', 'B', 'C', 'D'] as const).map((option) => <span key={option}><i>{option}</i><strong>{snapshot.current?.optionCounts[option] ?? 0}</strong></span>)}</div></div>
+          </section>
+
+          <section className="panel connection-manager" data-testid="connection-manager">
+            <div className="panel-title"><div><span className="eyebrow">V3.1 · NGUỒN COMMENT</span><h2>Connection Manager</h2></div><span className={`connection-status-badge tone-${connectionStatusTone(snapshot.live.status)}`}>{connectionStatusLabel(snapshot.live.status)}</span></div>
+            <div className="connection-facts">
+              <div><small>NGUỒN</small><b>{snapshot.live.source === 'MOCK' ? 'MOCK' : 'TikTok LIVE'}</b></div>
+              <div><small>KẾT NỐI TỪ</small><b>{snapshot.live.connectedSinceMs === null ? '—' : new Date(snapshot.live.connectedSinceMs).toLocaleString('vi-VN')}</b></div>
+              <div><small>COMMENT GẦN NHẤT</small><b data-testid="last-comment-age">{formatTimeAgo(snapshot.live.lastCommentAtMs, now)}</b></div>
+              <div><small>TỔNG COMMENT</small><b>{snapshot.live.commentsReceived}</b></div>
+              <div><small>SỐ LẦN KẾT NỐI LẠI</small><b>{snapshot.live.reconnects}</b></div>
+            </div>
+            {snapshot.live.detail && <div className="source-detail" role="status">{snapshot.live.detail}</div>}
+            {silentWarning && <div className="quiet-warning" role="status"><b>Chưa có comment mới hơn 10 giây</b><span>Trạng thái đang nhận đáp án. Kiểm tra nguồn comment và kết nối LIVE.</span></div>}
+            <div className="source-actions">
+              <button type="button" className="primary-button" disabled={busy} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
+              <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('DISCONNECT')}>Ngắt</button>
+              <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('RECONNECT')}>Kết nối lại</button>
+            </div>
+            <label className="disabled-username">TikTok username<input disabled value="" placeholder="Chưa hỗ trợ kết nối TikTok" /></label>
+            <p className="connector-note">Kết nối TikTok chưa được duyệt — xem <code>docs/TIKTOK_CONNECTOR_SPIKE.md</code>.</p>
           </section>
 
           <section className="panel actions-panel">
@@ -340,7 +397,7 @@ function App() {
         <aside className="side-column">
           <section className="panel leaderboard-panel"><div className="panel-title"><div><span className="eyebrow">{leaderboardLabel(snapshot.public.state, snapshot.public.scene, snapshot.public.leaderboard?.kind)}</span><h2>Top 10</h2></div><span className="muted">{snapshot.public.leaderboard?.entries.length ?? 0} người</span></div>
             {snapshot.public.leaderboard?.entries.length ? <div className="dashboard-leaderboard">{snapshot.public.leaderboard.entries.slice(0, 10).map((entry) => <div className="dashboard-leaderboard-row" key={entry.playerId}><b>{entry.rank}{entry.tied && <small>ĐỒNG HẠNG</small>}</b><span>{entry.displayName}</span><strong>{entry.score.toLocaleString('vi-VN')}<small>{entry.correctCount} đúng</small></strong></div>)}</div> : <p className="empty-state">Bảng xếp hạng xuất hiện sau khi bắt đầu chơi.</p>}
-            <div className="overlay-links"><a href="http://127.0.0.1:5174/" target="_blank" rel="noreferrer">Mở overlay ↗</a><a href="http://127.0.0.1:5174/?guides=1" target="_blank" rel="noreferrer">Overlay + lưới ↗</a></div>
+            <div className="overlay-links"><a href={overlayUrl} target="_blank" rel="noreferrer">Mở overlay ↗</a><a href={`${overlayUrl}?guides=1`} target="_blank" rel="noreferrer">Overlay + lưới ↗</a></div>
           </section>
 
           <section className="panel diagnostics-panel"><div className="panel-title"><div><span className="eyebrow">GIÁM SÁT</span><h2>Chẩn đoán</h2></div></div>
@@ -351,7 +408,9 @@ function App() {
           </section>
           <section className="panel safe-zone-panel"><div className="panel-title"><div><span className="eyebrow">PREVIEW</span><h2>Vùng an toàn</h2></div></div><p>Preset thử nghiệm — không phải số chính thức TikTok.</p><div className="safe-values"><span>Trên <b>{snapshot.public.safeZone.top}px</b></span><span>Dưới <b>{snapshot.public.safeZone.bottom}px</b></span><span>Phải <b>{snapshot.public.safeZone.right}px</b></span></div></section>
         </aside>
-      </div>
+      </div> : page === 'checks'
+        ? <ConnectionChecksPage client={client} token={token.trim()} />
+        : <ObsGuidePage overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} />}
     </> : <section className="entry-layout">
       <div className="entry-card">
         <span className="eyebrow">TIKTOK LIVE QUIZ</span><h1>{needsSession ? 'Tạo phiên MOCK' : 'Kết nối điều khiển'}</h1>
@@ -378,6 +437,89 @@ function App() {
       <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setPendingDanger(null)}>Huỷ</button><button type="submit" className="danger-button" disabled={reason.trim().length < 3 || busy}>Xác nhận</button></div>
     </form></div>}
   </main>;
+}
+
+function ConnectionChecksPage({ client, token }: { client: DashboardClient; token: string }) {
+  const [data, setData] = useState<SystemChecksResponse | null>(null);
+  const [selfTest, setSelfTest] = useState<SelfTestResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState('');
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await client.getSystemChecks(token));
+      setError('');
+    } catch (cause) {
+      setData(null);
+      setError(errorText(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, [client, token]);
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  async function runSelfTest() {
+    setRunning(true);
+    setError('');
+    try {
+      setSelfTest(await client.runSystemSelfTest(token));
+      await refresh();
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return <section className="page-content checks-page" data-testid="connection-checks-page">
+    <div className="page-heading"><div><span className="eyebrow">V3.1 · SYSTEM CHECK</span><h2>Kiểm tra kết nối</h2><p>Chín bước theo trạng thái trả về từ server. Các bước chưa kiểm tra giữ nhãn NOT_TESTED.</p></div>
+      <div className="page-actions"><button className="secondary-button" type="button" disabled={loading} onClick={() => void refresh()}>Làm mới</button><button className="primary-button" type="button" disabled={running} onClick={() => void runSelfTest()}>{running ? 'Đang tự kiểm…' : 'Chạy tự kiểm'}</button></div>
+    </div>
+    {error && <div className="alert alert-error" role="alert">{error}</div>}
+    {selfTest && <div className={`selftest-result ${selfTest.ok ? 'tone-pass' : 'tone-fail'}`} role="status"><b>{selfTest.ok ? 'Tự kiểm hoàn tất' : 'Tự kiểm chưa đạt'}</b><span>{selfTest.detail} · {selfTest.durationMs} ms</span></div>}
+    {loading && !data ? <p className="checks-placeholder">Đang tải trạng thái kiểm tra…</p> : data ? <div className="check-list">
+      {data.checks.map((check, index) => <article className="check-card" data-testid={`system-check-${check.id}`} key={check.id}>
+        <span className="check-index">{String(index + 1).padStart(2, '0')}</span>
+        <div className="check-copy"><b>{check.label}</b><p>{check.detail}</p></div>
+        <span className={`check-status tone-${checkStatusTone(check.status)}`}>{check.status}</span>
+      </article>)}
+    </div> : <p className="checks-placeholder">Chưa có dữ liệu kiểm tra.</p>}
+  </section>;
+}
+
+function ObsGuidePage({ overlayClients, overlayUrl }: { overlayClients: number; overlayUrl: string }) {
+  const [copyMessage, setCopyMessage] = useState('');
+
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(overlayUrl);
+      setCopyMessage('Đã sao chép Overlay URL.');
+    } catch {
+      setCopyMessage('Không thể sao chép tự động. Hãy chọn và sao chép URL.');
+    }
+  }
+
+  return <div className="page-content obs-page" data-testid="obs-guide-page">
+    <section className="panel overlay-url-panel">
+      <div className="page-heading"><div><span className="eyebrow">V3.1 · PHÁT HÌNH</span><h2>Phát lên OBS / TikTok LIVE Studio</h2><p>Overlay chạy riêng để giữ hình ảnh trò chơi và trạng thái kết nối.</p></div></div>
+      <div className="overlay-url-row"><label>Overlay URL<code>{overlayUrl}</code></label><button className="secondary-button" type="button" onClick={() => void copyUrl()}>Copy</button><a className="primary-button preview-link" href={overlayUrl} target="_blank" rel="noreferrer">Xem trước ↗</a></div>
+      {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
+      <div className="overlay-client-count"><b>{overlayClients}</b><span>overlay đang kết nối</span><small>Chỉ cho biết overlay đang mở, không xác nhận phần mềm phát đang lên sóng.</small></div>
+    </section>
+    <section className="panel obs-steps">
+      <span className="eyebrow">HƯỚNG DẪN CÀI ĐẶT</span><h2>Thêm nguồn hình</h2>
+      <article><span>01</span><div><b>OBS Browser Source</b><p>Trong Sources chọn + → Browser. Dán Overlay URL ở trên và đặt kích thước <b>1080 × 1920</b>.</p><p>Nếu cần giữ kết nối khi source bị ẩn, bỏ chọn “Shutdown source when not visible”.</p></div></article>
+      <article><span>02</span><div><b>Window Capture dự phòng</b><p>Nếu Browser Source gặp trục trặc, dùng Window Capture để lấy cửa sổ overlay; giữ canvas ở tỉ lệ dọc 1080 × 1920.</p></div></article>
+      <article><span>03</span><div><b>TikTok LIVE Studio</b><p>Có thể thử thêm nguồn trình duyệt hoặc nguồn cửa sổ. Khả năng hỗ trợ và thao tác cần kiểm tra trên máy thật.</p></div></article>
+    </section>
+  </div>;
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) {

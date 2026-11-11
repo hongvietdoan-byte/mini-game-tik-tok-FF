@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { AdminSnapshot, CommandBody } from '@quiz/contracts';
-import { actionsFor, buildCommandEnvelope, commandErrorMessage, commandForAction, shouldAcceptSnapshotSeq } from './logic';
+import {
+  actionsFor,
+  buildCommandEnvelope,
+  checkStatusTone,
+  commandErrorMessage,
+  commandForAction,
+  connectionStatusLabel,
+  connectionStatusTone,
+  formatTimeAgo,
+  hasSilentAcceptingWarning,
+  overlayUrlFromLocation,
+  shouldAcceptSnapshotSeq,
+} from './logic';
 
 function snapshot(state: AdminSnapshot['public']['state'] = 'LOBBY'): AdminSnapshot {
   return {
@@ -35,6 +47,7 @@ describe('dashboard command logic', () => {
   it('maps game state to available normal controls and hides them during recovery', () => {
     expect(actionsFor(snapshot('IDLE')).map((action) => action.type)).toEqual(['OPEN_LOBBY']);
     expect(actionsFor(snapshot('LOBBY')).map((action) => action.type)).toContain('START_ROUND');
+    expect(actionsFor(snapshot('ACCEPTING')).map((action) => action.type)).toEqual(['PAUSE']);
     expect(actionsFor(snapshot('PAUSED')).map((action) => action.type)).toEqual(['RESUME']);
     expect(actionsFor({ ...snapshot('ACCEPTING'), recoveryPending: true })).toEqual([]);
   });
@@ -59,5 +72,28 @@ describe('dashboard command logic', () => {
     expect(shouldAcceptSnapshotSeq(14, 13)).toBe(false);
     expect(shouldAcceptSnapshotSeq(14, 14)).toBe(false);
     expect(shouldAcceptSnapshotSeq(14, 1, true)).toBe(true);
+  });
+
+  it('maps system and connection statuses to visible tones and labels', () => {
+    expect(checkStatusTone('PASS')).toBe('pass');
+    expect(checkStatusTone('FAIL')).toBe('fail');
+    expect(checkStatusTone('NOT_TESTED')).toBe('not-tested');
+    expect(connectionStatusLabel('RECONNECTING')).toBe('Đang kết nối lại');
+    expect(connectionStatusTone('CONNECTED')).toBe('pass');
+    expect(connectionStatusTone('BLOCKED')).toBe('fail');
+  });
+
+  it('formats comment age and warns only after 10 seconds while accepting', () => {
+    expect(formatTimeAgo(null, 20_000)).toBe('Chưa có bình luận');
+    expect(formatTimeAgo(19_500, 20_000)).toBe('Vừa xong');
+    expect(formatTimeAgo(18_500, 20_000)).toBe('1 giây trước');
+    expect(hasSilentAcceptingWarning('ACCEPTING', null, 10_000, 20_000)).toBe(false);
+    expect(hasSilentAcceptingWarning('ACCEPTING', null, 10_000, 20_001)).toBe(true);
+    expect(hasSilentAcceptingWarning('PREPARE', null, 0, 20_001)).toBe(false);
+  });
+
+  it('builds overlay URLs from the current app origin for dev and packaged routes', () => {
+    expect(overlayUrlFromLocation('http://127.0.0.1:5173/?mock=1')).toBe('http://127.0.0.1:5174/');
+    expect(overlayUrlFromLocation('http://127.0.0.1:8787/dashboard/?tab=obs')).toBe('http://127.0.0.1:8787/overlay/');
   });
 });

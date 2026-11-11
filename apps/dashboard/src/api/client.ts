@@ -3,12 +3,21 @@ import type {
   CommandEnvelope,
   CommandResult,
   CreateSessionRequest,
+  LiveSourceHealth,
   SimulatorRequest,
+  SystemCheck,
 } from '@quiz/contracts';
 import { shouldAcceptSnapshotSeq } from '../logic';
 
 export type CommandResponse = { status: number; result: CommandResult };
 export type SocketStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+export type SourceControlAction = 'CONNECT' | 'DISCONNECT' | 'RECONNECT';
+export type SystemChecksResponse = {
+  checks: SystemCheck[];
+  live: LiveSourceHealth | null;
+  overlay: { clients: number; lastAck: { stateVersion: number; atMs: number } | null };
+};
+export type SelfTestResponse = { ok: boolean; mockComment: boolean; engineRecorded: boolean; detail: string; durationMs: number };
 
 export interface DashboardClient {
   currentSession(): Promise<string | null>;
@@ -17,7 +26,10 @@ export interface DashboardClient {
   sendCommand(token: string, sessionId: string, envelope: CommandEnvelope): Promise<CommandResponse>;
   controlSimulator(token: string, sessionId: string, request: SimulatorRequest): Promise<{ ok: boolean; running: boolean; players: number }>;
   controlConnection(token: string, sessionId: string, action: 'LOSE' | 'RESTORE'): Promise<{ ok: boolean; status: string }>;
+  controlSource(token: string, sessionId: string, action: SourceControlAction): Promise<{ ok: boolean; health: LiveSourceHealth }>;
   sendComment(token: string, sessionId: string, comment: { userId: string; displayName: string; text: string }): Promise<{ ok: boolean }>;
+  getSystemChecks(token: string): Promise<SystemChecksResponse>;
+  runSystemSelfTest(token: string): Promise<SelfTestResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
 }
 
@@ -89,10 +101,24 @@ export const apiClient: DashboardClient = {
     });
   },
 
+  controlSource(token, sessionId, action) {
+    return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/source`, token, {
+      method: 'POST', body: JSON.stringify({ action }),
+    });
+  },
+
   sendComment(token, sessionId, comment) {
     return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/comments`, token, {
       method: 'POST', body: JSON.stringify(comment),
     });
+  },
+
+  getSystemChecks(token) {
+    return jsonRequest('/api/system/checks', token);
+  },
+
+  runSystemSelfTest(token) {
+    return jsonRequest('/api/system/selftest', token, { method: 'POST', body: '{}' });
   },
 
   subscribe(token, onSnapshot, onStatus) {
