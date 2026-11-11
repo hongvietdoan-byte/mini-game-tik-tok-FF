@@ -91,7 +91,7 @@ function optionSize(text: string | undefined) {
   return n > 52 ? 'is-xlong' : n > 30 ? 'is-long' : '';
 }
 
-function QuestionBoard({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
+function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnapshot; remainingMs: number; debug: boolean }) {
   const q = snapshot.question;
   const reveal = snapshot.reveal;
   const isLobby = snapshot.scene === 'LOBBY';
@@ -136,7 +136,7 @@ function QuestionBoard({ snapshot, remainingMs }: { snapshot: PublicSnapshot; re
           <b>{snapshot.answerCount.toLocaleString('vi-VN')}</b> câu trả lời
         </div>
       )}
-      {q?.isDemo && <div className="v3-demo" data-testid="demo-badge">DEMO</div>}
+      {q?.isDemo && debug && <div className="v3-demo" data-testid="demo-badge">DEMO</div>}
     </section>
   );
 }
@@ -247,7 +247,7 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   );
 }
 
-export function ArenaStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
+export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
   return (
     <div className="v3-stage" data-scene={snapshot.scene}>
       <div className="v3-bg" data-layer="background-storm" aria-hidden="true">
@@ -320,7 +320,7 @@ export function ArenaStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot
       </div>
       <BrandHeader snapshot={snapshot} />
       <Top10 entries={snapshot.leaderboard?.entries ?? []} />
-      <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} />
+      <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
       <McKelly snapshot={snapshot} />
       <Audience snapshot={snapshot} />
     </div>

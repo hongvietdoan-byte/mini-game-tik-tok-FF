@@ -137,6 +137,14 @@ test('prepare and question do not expose the correct answer', async ({ page }) =
   }
 });
 
+test('mock-only badge stays hidden unless debug is enabled', async ({ page }) => {
+  await openScene(page, 'question', 'QUESTION');
+  await expect(page.getByTestId('demo-badge')).toHaveCount(0);
+  await page.goto('/?mock=question&debug=1', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('[data-testid="stage"][data-scene="QUESTION"]')).toBeVisible();
+  await expect(page.getByTestId('demo-badge')).toBeVisible();
+});
+
 test('reveal marks exactly one correct option', async ({ page }) => {
   const { errors } = await openScene(page, 'reveal', 'REVEAL');
   const correctOptions = page.locator('[data-testid^="option-"].is-correct');
@@ -211,12 +219,43 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   const [top10Box, mcBox] = await Promise.all([top10.boundingBox(), mcFigure.boundingBox()]);
   expect(top10Box).not.toBeNull();
   expect(mcBox).not.toBeNull();
+  const boardBox = await page.locator('.v3-board').boundingBox();
+  expect(boardBox).not.toBeNull();
+  expect(top10Box!.x).toBeGreaterThanOrEqual(97);
+  expect(top10Box!.x + top10Box!.width).toBeLessThan(boardBox!.x);
+  expect(boardBox!.x + boardBox!.width).toBeLessThanOrEqual(983);
   expect(mcBox!.y).toBeGreaterThanOrEqual(top10Box!.y + top10Box!.height);
 
   const seatNames = page.locator('.v3-seat-name');
   await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
   await expect(page.locator('.v3-seat-back')).toHaveCount(35);
   await expect(seatNames).toHaveCount(35);
+
+  const leaderboardRows = top10.locator('[data-testid="leaderboard-row"]');
+  await expect(leaderboardRows).toHaveCount(10);
+  const [lastRowBox, firstNameBox] = await Promise.all([
+    leaderboardRows.last().boundingBox(),
+    leaderboardRows.first().locator('.v3-name-text').boundingBox(),
+  ]);
+  expect(lastRowBox).not.toBeNull();
+  expect(firstNameBox).not.toBeNull();
+  expect(lastRowBox!.y + lastRowBox!.height).toBeLessThanOrEqual(top10Box!.y + top10Box!.height - 10);
+  expect(firstNameBox!.width).toBeGreaterThanOrEqual(96);
+
+  const queue = page.locator('.v3-queue');
+  const queueBox = await queue.boundingBox();
+  expect(queueBox).not.toBeNull();
+  expect(queueBox!.x).toBeGreaterThanOrEqual(97);
+  expect(queueBox!.x + queueBox!.width).toBeLessThanOrEqual(983);
+  const audienceOverlapsQueue = await page.evaluate(() => {
+    const queue = document.querySelector<HTMLElement>('.v3-queue');
+    if (!queue) return ['queue badge is missing'];
+    const q = queue.getBoundingClientRect();
+    const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return Array.from(document.querySelectorAll<HTMLElement>('.v3-seat-name, .v3-seat-back'))
+      .flatMap((element, index) => intersects(q, element.getBoundingClientRect()) ? [`audience item ${index}`] : []);
+  });
+  expect(audienceOverlapsQueue, 'queue count stays clear of seats and name tags').toEqual([]);
 
   const overlaps = await page.evaluate(() => {
     const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="question-prompt"], [data-testid^="option-"]'));

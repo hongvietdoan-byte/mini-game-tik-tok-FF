@@ -199,6 +199,7 @@ function App() {
     return () => window.clearInterval(timer);
   }, [requestedMock]);
   const snapshot = networkSnapshot;
+  const debug = query.get('debug') === '1';
   const remainingMs = useTimer(snapshot ?? ({ timer: null } as PublicSnapshot), serverTimeMs, clockOffsetMs);
   const hud = query.get('hud') === '1';
   const guides = query.get('guides') === '1' || hud;
@@ -220,7 +221,7 @@ function App() {
       '--safe-right': `${safeZone!.right}px`,
       '--safe-right-from-y': `${safeZone!.rightFromY ?? 0}px`,
     } as React.CSSProperties}>
-      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
+      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
         <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
         {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
