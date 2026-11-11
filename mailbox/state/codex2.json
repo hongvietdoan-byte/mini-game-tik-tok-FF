@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 31,
-  "heartbeat": "2026-11-11T16:08:47+07:00",
-  "state": "working",
-  "task": "C-0032",
-  "note": "C-0038 đã chuyển C-0030 sang Codex 1; đang hoàn thiện Overlay V3 theo C-0032/C-0033.",
+  "heartbeat": "2026-11-11T16:54:08+07:00",
+  "state": "waiting",
+  "task": "C-0039",
+  "note": "Đã hoàn tất STEP 1–2; chờ người dùng duyệt Inventory/Contact Sheet/Gap Analysis trước khi rebase và bắt đầu C-0039.",
   "done": [
     38
   ]
