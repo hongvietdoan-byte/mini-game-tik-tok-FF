@@ -1,6 +1,6 @@
 # Tiến độ dự án — Storm Arena LIVE Quiz
 
-Cập nhật: **11/11/2026 14:20** · Coordinator (Claude) cập nhật file này mỗi lần gộp việc / đổi kế hoạch.
+Cập nhật: **11/11/2026 14:35** · Coordinator (Claude) cập nhật file này mỗi lần gộp việc / đổi kế hoạch.
 Ký hiệu: ✅ xong (đã gộp main, test xanh) · 🔄 đang làm · ⏳ chờ · ⛔ bị chặn (ghi lý do) · ETA = giờ dự kiến xong, **là ước lượng**, không phải cam kết.
 
 Mốc sự kiện (từ đặc tả): tổng duyệt 12/11, thi đấu 13–14/11.
@@ -19,8 +19,8 @@ Mốc sự kiện (từ đặc tả): tổng duyệt 12/11, thi đấu 13–14/1
 | M7 | Setup Wizard lần đầu 8 bước, cho bỏ qua TikTok (C-0021 codex2) | 🔄 codex2 | 11/11 17:00 | — |
 | M8 | Wireframe 1080×1920 bố cục V3 + HUD giả lập → người dùng duyệt | ⛔ | 12/11 sáng (sau khi có ảnh) | **thiếu ảnh mẫu `a_highly_detailed_neon_esports_quiz_livestream_pos.png` + Visual Guide** |
 | M9 | Overlay bố cục V3: Top 10 trái, MC Kelly tĩnh, 7×5 khán giả (ảnh tĩnh, không animation) | ⏳ codex2 | 12/11 18:00 | cần M8 duyệt + chibi/Kelly nền trong suốt |
-| M10 | Audience engine 35 ghế (C-0020 codex1: lõi thuần + test 500/35) → coordinator tích hợp DB/server/WS | 🔄 codex1 → coordinator | 12/11 12:00 | — |
-| M11 | Kết nối TikTok LIVE thật | ⛔ **đang hỏi kênh chính thức** — thư nháp `docs/TIKTOK_OFFICIAL_REQUEST.md` (người dùng gửi) | +0.5–1 ngày sau khi có API/văn bản cho phép | phản hồi của TikTok |
+| M10 | Audience engine 35 ghế: lõi thuần ✅ (C-0020, 158 test) → coordinator tích hợp DB/server/WS | 🔄 coordinator | 12/11 10:00 | — |
+| M11 | Kết nối TikTok LIVE | 🔄 **dùng tạm thư viện cộng đồng `tiktok-live-connector` (người dùng chốt 11/11)** — adapter + server + test ✅ (`4b79ba4`); thư viện chạy được từ máy này; giao diện tạo phiên TikTok + duyệt câu (C-0024 codex2) | thử LIVE thật: ngay khi người dùng phát LIVE | **người dùng phát LIVE để thử bình luận thật**; song song vẫn hỏi kênh chính thức |
 | M12 | Victory giữ cúp gốc + 3 chibi đứng sàn | ⛔ | +0.5 ngày sau khi có asset | cần cúp/sân khấu tách nền |
 | M13 | Tổng duyệt kỹ thuật bằng Mock: bộ cài + OBS + trọn trận + lưu kết quả + đóng an toàn | ⏳ | 12/11 sáng | cần M7; người dùng thử OBS/LIVE Studio thật |
 | M14 | Sẵn sàng LIVE thật (V3.1 mục G) | ⛔ | phụ thuộc M11 | — |
@@ -29,11 +29,12 @@ Mốc sự kiện (từ đặc tả): tổng duyệt 12/11, thi đấu 13–14/1
 
 | Làn | Đang làm | Hàng chờ |
 |---|---|---|
-| coordinator | rà/gộp; tích hợp M10 khi C-0020 xong | M11 khi TikTok trả lời |
-| codex1 | C-0020 audience-engine | C-0020B phát lại sự kiện comment (dự phòng offline) |
-| codex2 | C-0021 Setup Wizard | DP5 trang xem câu hỏi → M9 (khi có ảnh mẫu) |
+| coordinator | tích hợp M10 (35 ghế) | hỗ trợ buổi LIVE thử M11; rà/gộp |
+| codex1 | C-0020B phát lại bình luận | DP6 test duyệt câu hỏi |
+| codex2 | C-0021 Setup Wizard | C-0024 giao diện TikTok + duyệt câu hỏi → M9 (khi có ảnh mẫu) |
 
 ## Nhật ký
+- 11/11 14:35 — Người dùng chốt dùng tạm connector GitHub: TikTokLiveAdapter + phiên TIKTOK + API duyệt câu hỏi (146→158 test); thư viện chạy được qua mạng máy này; gộp C-0020 audience-engine.
 - 11/11 14:20 — Người dùng chọn hỏi kênh chính thức TikTok: thư nháp VI/EN ở `docs/TIKTOK_OFFICIAL_REQUEST.md`. Gộp 8 nhánh (C-0005, C-0018, C-0019, C-0008, DP1–DP4): 138/138 test, privacy-check PASS. Giao C-0020/C-0020B, C-0021.
 - 11/11 12:55 — M6: app Electron + bộ cài NSIS 112 MB chạy được (server trong app, dữ liệu %APPDATA%, thoát an toàn, log); gộp C-0016.
 - 11/11 13:05 — M6 bước 1: server phục vụ dashboard + overlay cùng một cổng (OBS dùng `http://127.0.0.1:8787/overlay/`); 126/126 test.
