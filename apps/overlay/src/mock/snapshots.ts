@@ -39,6 +39,7 @@ const leaderboard: LeaderboardEntry[] = Array.from({ length: 10 }, (_, index) =>
   displayName: index === 1 ? 'Chiến binh ⚡ DEMO dài dòng' : index === 2 ? '<script>window.__xss=1</script>' : index === 3 ? '<img src=x onerror="window.__xss=1">' : `Chiến binh DEMO ${String(index + 1).padStart(2, '0')}`,
   score: 1_500 - index * 100,
   correctCount: 15 - index,
+  ...(index === 0 ? { top1Streak: 3 } : {}),
   characterId: ['chibi-020-kairos', 'chibi-016-iris', 'chibi-013-hayato', 'chibi-007-caroline', 'chibi-012-ford', 'chibi-009-d-bee', 'chibi-010-dasha', 'chibi-002-a124', 'chibi-017-joseph', 'chibi-021-kapella'][index]!,
 }));
 

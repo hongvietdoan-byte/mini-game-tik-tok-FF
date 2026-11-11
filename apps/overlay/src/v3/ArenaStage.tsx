@@ -55,7 +55,14 @@ function Top10({ entries }: { entries: LeaderboardEntry[] }) {
         {entries.slice(0, 10).map((e) => (
           <li key={e.playerId} className={`v3-rank-${e.rank <= 3 ? e.rank : 'n'}`} data-testid="leaderboard-row">
             <span className="v3-rank">{e.rank}</span>
-            <span className="v3-name">{e.displayName}</span>
+            <span className="v3-name">
+              {e.displayName}
+              {(e.top1Streak ?? 0) >= 2 && (
+                <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${e.top1Streak} lần`}>
+                  x{e.top1Streak}
+                </b>
+              )}
+            </span>
             <span className="v3-score">{e.score.toLocaleString('vi-VN')}</span>
           </li>
         ))}

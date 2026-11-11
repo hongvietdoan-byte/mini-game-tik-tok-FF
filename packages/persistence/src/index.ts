@@ -541,6 +541,16 @@ export class Store {
       .run(s.roundId, s.questionInstanceId, s.kind, JSON.stringify(s.entries), s.participantCount, s.now);
   }
 
+  /** Bảng xếp hạng sau từng câu (theo thứ tự ghi) — để tính chuỗi Top 1. */
+  leaderboardHistory(roundId: string): { questionInstanceId: string | null; entries: LeaderboardEntry[] }[] {
+    const rows = this.raw
+      .prepare(
+        "SELECT question_instance_id AS q, entries_json AS e FROM leaderboard_snapshots WHERE round_id = ? AND kind IN ('AFTER_QUESTION', 'AFTER_VOID') ORDER BY id",
+      )
+      .all(roundId) as { q: string | null; e: string }[];
+    return rows.map((r) => ({ questionInstanceId: r.q, entries: JSON.parse(r.e) as LeaderboardEntry[] }));
+  }
+
   // --- Snapshot / kiểm toán / outbox ----------------------------------------
 
   saveGameSnapshot(engine: EngineState, scene: string, remainingMs: number | null, now: number) {

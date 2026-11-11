@@ -41,6 +41,7 @@ import {
   sceneFor,
   selectRound,
   topN,
+  top1Streaks,
   transition,
   type EngineEvent,
   type EngineInput,
@@ -122,6 +123,7 @@ export class SessionRuntime {
   private countsQid: string | null = null;
   private participants = 0;
   private ranked: LeaderboardEntry[] = [];
+  private top1 = new Map<string, number>();
   private seenEvents = new Set<string>();
   private rejections: { atMs: number; reason: RejectReason }[] = [];
   private simulator: MockSimulator | null = null;
@@ -250,6 +252,7 @@ export class SessionRuntime {
     this.audience.load(r.roundId);
     this.ranked = rankPlayers(this.store.standings(r.roundId));
     this.participants = this.store.participantCount(r.roundId);
+    this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
     const qid = currentQuestionInstanceId(this.engine);
     if (qid) {
       this.countsQid = qid;
@@ -365,6 +368,7 @@ export class SessionRuntime {
           this.loadRound(e.roundId);
           this.ranked = [];
           this.participants = 0;
+          this.top1 = new Map();
           this.audience.startRound(e.roundId, now);
           break;
         case 'QUESTION_OPENED':
@@ -449,6 +453,7 @@ export class SessionRuntime {
       participantCount: this.participants,
       now,
     });
+    this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
     return integrity;
   }
 
@@ -889,7 +894,8 @@ export class SessionRuntime {
     const withChar = (list: LeaderboardEntry[]) =>
       list.map((x) => {
         const characterId = this.audience.characterOf(x.playerId);
-        return characterId ? { ...x, characterId } : x;
+        const top1Streak = this.top1.get(x.playerId);
+        return { ...x, ...(characterId ? { characterId } : {}), ...(top1Streak ? { top1Streak } : {}) };
       });
     if (e.round && (bigBoard || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
       leaderboard = { kind: 'FULL', entries: withChar(topN(this.ranked, 10)) };

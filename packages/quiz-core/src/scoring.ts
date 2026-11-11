@@ -228,3 +228,23 @@ export function buildPodium(ranked: LeaderboardEntry[]): Podium {
   }
   return { slots, tieAcrossCutoff: taken > 3 };
 }
+
+/**
+ * Chuỗi đứng Top 1 liên tiếp (người dùng yêu cầu 11/11: huy hiệu vàng x2, x3…).
+ * `history` = bảng xếp hạng sau từng câu theo thứ tự thời gian (câu bị huỷ sau công bố: dùng bảng tính lại — bản sau cùng của câu đó).
+ * Kết quả: với người ĐANG hạng 1 ở bảng mới nhất → số lần liên tiếp gần nhất đứng hạng 1 (đồng hạng 1 cũng tính). Người khác không có mặt.
+ */
+export function top1Streaks(history: { questionInstanceId: string | null; entries: { playerId: string; rank: number }[] }[]): Map<string, number> {
+  const lastPerQuestion = new Map<string, { playerId: string; rank: number }[]>();
+  for (const h of history) if (h.questionInstanceId) lastPerQuestion.set(h.questionInstanceId, h.entries);
+  const boards = [...lastPerQuestion.values()].map((e) => new Set(e.filter((x) => x.rank === 1).map((x) => x.playerId)));
+  const out = new Map<string, number>();
+  const latest = boards.at(-1);
+  if (!latest) return out;
+  for (const pid of latest) {
+    let n = 0;
+    for (let i = boards.length - 1; i >= 0 && boards[i]!.has(pid); i--) n++;
+    out.set(pid, n);
+  }
+  return out;
+}

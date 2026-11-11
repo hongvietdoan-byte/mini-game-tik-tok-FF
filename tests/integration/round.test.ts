@@ -105,6 +105,11 @@ describe('Vòng MOCK 15 câu × 100 người chơi mô phỏng', () => {
     expect(r.metrics.rejected.NOT_ACCEPTING + r.metrics.rejected.LATE).toBeGreaterThan(0);
     expect(r.metrics.rejected.DUPLICATE_EVENT).toBeGreaterThan(0);
 
+    // Huy hiệu Top 1 liên tiếp: người đang hạng 1 có top1Streak ≥ 1 khớp lịch sử bảng xếp hạng; người khác không có
+    const top = r.publicSnapshot().leaderboard!.entries;
+    for (const e of top) if (e.rank === 1) expect(e.top1Streak).toBeGreaterThanOrEqual(1);
+    for (const e of top) if (e.rank !== 1) expect(e.top1Streak).toBeUndefined();
+
     // Leaderboard cuối: ≤ 10, hạng không giảm, podium có trong VICTORY.
     const pub = r.publicSnapshot();
     expect(pub.scene).toBe('VICTORY');
