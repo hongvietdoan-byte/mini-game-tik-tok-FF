@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 19,
-  "heartbeat": "2026-11-11T14:15:24+07:00",
+  "heartbeat": "2026-11-11T14:39:31+07:00",
   "state": "working",
   "task": "C-0021",
-  "note": "Đang xây First-Run Setup Wizard 8 bước trong apps/dashboard theo task và note C-0023.",
+  "note": "Tiếp tục walkthrough 8 bước Electron; C-0024 đã ack, chờ hoàn tất C-0021 theo phụ thuộc trước khi chuyển sang UI TikTok.",
   "done": []
 }
