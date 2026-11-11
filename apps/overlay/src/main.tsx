@@ -6,6 +6,7 @@ import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
 import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
 import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
+import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
 import './style.css';
 
 function useStageScale() {
@@ -148,6 +149,39 @@ function Timer({ ms }: { ms: number }) {
   return <div className="timer" data-testid="timer"><span className="timer-ring" /><strong>{formatTime(ms)}</strong><small>THỜI GIAN</small></div>;
 }
 
+function queryPixelOverride(query: URLSearchParams, key: string, fallback: number, max: number) {
+  const raw = query.get(key);
+  if (raw === null || !/^\d+$/.test(raw)) return fallback;
+  return Math.min(max, Number(raw));
+}
+
+function TikTokHudSimulator() {
+  return <div className="tiktok-hud" data-testid="tiktok-hud" aria-label="Mô phỏng giao diện TikTok LIVE">
+    <div className="tiktok-hud-live" data-testid="tiktok-live-info">
+      <span className="tiktok-hud-live-badge"><i />LIVE</span>
+      <span className="tiktok-hud-live-copy"><b>Storm Arena · DEMO</b><small>1,2K người xem</small></span>
+      <span className="tiktok-hud-follow">Theo dõi</span>
+    </div>
+    <aside className="tiktok-hud-actions" data-testid="tiktok-actions" aria-label="Nút tương tác mô phỏng">
+      <div><i className="hud-avatar">SA</i><small>LIVE</small></div>
+      <div><b>♡</b><small>8,6K</small></div>
+      <div><b>▢</b><small>1,2K</small></div>
+      <div><b>✦</b><small>Quà</small></div>
+      <div><b>↗</b><small>Chia sẻ</small></div>
+    </aside>
+    <section className="tiktok-hud-comments" data-testid="tiktok-comments" aria-label="Bình luận mẫu">
+      <p><b>Khán giả_01</b> Không khí quá cháy 🔥</p>
+      <p><b>Tân binh_02</b> Đáp án B!</p>
+      <p><b>StormFan_03</b> Câu tiếp theo đi MC ơi</p>
+      <p className="tiktok-hud-gift"><b>Người xem</b> đã gửi một món quà nhỏ</p>
+    </section>
+    <div className="tiktok-hud-comment-bar" data-testid="tiktok-comment-bar">
+      <span>Bình luận…</span><b>@</b><b>☺</b><b>◆</b>
+    </div>
+    <span className="tiktok-hud-demo-label">HUD mô phỏng · preset safe-zone thử nghiệm</span>
+  </div>;
+}
+
 function App() {
   const scale = useStageScale();
   const query = new URLSearchParams(location.search);
@@ -166,19 +200,27 @@ function App() {
   }, [requestedMock]);
   const snapshot = networkSnapshot;
   const remainingMs = useTimer(snapshot ?? ({ timer: null } as PublicSnapshot), serverTimeMs, clockOffsetMs);
-  const guides = query.get('guides') === '1';
-  const safeZone = snapshot?.safeZone;
+  const hud = query.get('hud') === '1';
+  const guides = query.get('guides') === '1' || hud;
+  const safeZone = snapshot ? {
+    ...snapshot.safeZone,
+    top: queryPixelOverride(query, 'safeTop', snapshot.safeZone.top, 1920),
+    right: queryPixelOverride(query, 'safeRight', snapshot.safeZone.right, 1080),
+    bottom: queryPixelOverride(query, 'safeBottom', snapshot.safeZone.bottom, 1920),
+    left: queryPixelOverride(query, 'safeLeft', snapshot.safeZone.left, 1080),
+    rightFromY: queryPixelOverride(query, 'safeRightFromY', snapshot.safeZone.rightFromY ?? 0, 1920),
+  } : undefined;
 
   return <main className="viewport">
     {snapshot ? <div id="stage" data-testid="stage" data-scene={snapshot.scene} style={{
       transform: `translate(-50%, -50%) scale(${scale})`,
-      '--safe-top': `${snapshot.safeZone.top}px`,
-      '--safe-bottom': `${snapshot.safeZone.bottom}px`,
-      '--safe-left': `${snapshot.safeZone.left}px`,
-      '--safe-right': `${snapshot.safeZone.right}px`,
-      '--safe-right-from-y': `${snapshot.safeZone.rightFromY ?? 0}px`,
+      '--safe-top': `${safeZone!.top}px`,
+      '--safe-bottom': `${safeZone!.bottom}px`,
+      '--safe-left': `${safeZone!.left}px`,
+      '--safe-right': `${safeZone!.right}px`,
+      '--safe-right-from-y': `${safeZone!.rightFromY ?? 0}px`,
     } as React.CSSProperties}>
-      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : <>
+      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
         <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
         {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
@@ -186,11 +228,10 @@ function App() {
         {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
       </>}
       {guides && safeZone && <>
-        <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px 0px ${safeZone.bottom}px ${safeZone.left}px` }}>
-          <span>Preset thử nghiệm — không phải số chính thức TikTok</span>
-        </div>
+        <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px 0px ${safeZone.bottom}px ${safeZone.left}px` }} />
         <div className="safe-zone-right-band" aria-hidden="true" style={{ top: `${Math.max(safeZone.top, safeZone.rightFromY ?? 0)}px`, bottom: `${safeZone.bottom}px`, width: `${safeZone.right}px` }} />
       </>}
+      {hud && <TikTokHudSimulator />}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
   </main>;
