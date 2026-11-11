@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PublicSnapshot } from '@quiz/contracts';
-import { selectNewestSnapshot } from '../overlayLogic';
+import { selectNewestSnapshot, shouldAcceptSnapshotSeq } from '../overlayLogic';
 import { makeMockSnapshot } from '../mock/snapshots';
 
 export type SnapshotConnection = 'connecting' | 'connected' | 'reconnecting';
@@ -11,11 +11,13 @@ export function useSnapshot(mockScene: string | null) {
   const [serverTimeMs, setServerTimeMs] = useState(Date.now());
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const latest = useRef<PublicSnapshot | null>(null);
+  const latestSeq = useRef<number | null>(null);
 
   useEffect(() => {
     if (mockScene) {
       const mock = makeMockSnapshot(mockScene);
       latest.current = mock;
+      latestSeq.current = null;
       setSnapshot(mock);
       setServerTimeMs(Date.now());
       setClockOffsetMs(0);
@@ -30,19 +32,25 @@ export function useSnapshot(mockScene: string | null) {
     const connect = () => {
       if (closed) return;
       const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      socket = new WebSocket(`${scheme}//${location.host}/ws`);
-      socket.onopen = () => {
+      const currentSocket = new WebSocket(`${scheme}//${location.host}/ws`);
+      let awaitingFreshSnapshot = true;
+      socket = currentSocket;
+      currentSocket.onopen = () => {
+        if (socket !== currentSocket) return;
         setConnection(delay > 500 ? 'reconnecting' : 'connected');
-        socket?.send(JSON.stringify({ type: 'HELLO', role: 'overlay', lastStateVersion: latest.current?.stateVersion }));
+        currentSocket.send(JSON.stringify({ type: 'HELLO', role: 'overlay', lastStateVersion: latest.current?.stateVersion }));
       };
-      socket.onmessage = (event) => {
+      currentSocket.onmessage = (event) => {
         try {
           const message = JSON.parse(String(event.data)) as {
-            type?: string; payload?: PublicSnapshot; stateVersion?: number; serverTimeMs?: number;
+            type?: string; seq?: number; payload?: PublicSnapshot; serverTimeMs?: number;
           };
-          if (message.type !== 'STATE_SNAPSHOT' || !message.payload) return;
+          if (socket !== currentSocket || message.type !== 'STATE_SNAPSHOT' || !message.payload || typeof message.seq !== 'number') return;
+          if (!shouldAcceptSnapshotSeq(latestSeq.current, message.seq, awaitingFreshSnapshot)) return;
           const incoming = message.payload;
-          const next = selectNewestSnapshot(latest.current, incoming);
+          const next = selectNewestSnapshot(latest.current, incoming, awaitingFreshSnapshot);
+          latestSeq.current = message.seq;
+          awaitingFreshSnapshot = false;
           latest.current = next;
           setSnapshot(next);
           const serverTime = typeof message.serverTimeMs === 'number' ? message.serverTimeMs : Date.now();
@@ -54,13 +62,14 @@ export function useSnapshot(mockScene: string | null) {
           // Ignore malformed or unrelated WebSocket messages.
         }
       };
-      socket.onclose = () => {
+      currentSocket.onclose = () => {
         if (closed) return;
+        if (socket !== currentSocket) return;
         setConnection('reconnecting');
         retryTimer = window.setTimeout(connect, delay);
         delay = Math.min(5_000, delay * 2);
       };
-      socket.onerror = () => socket?.close();
+      currentSocket.onerror = () => currentSocket.close();
     };
     connect();
     return () => {
