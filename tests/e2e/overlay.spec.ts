@@ -52,7 +52,9 @@ function watchPageErrors(page: Page) {
 
 async function openScene(page: Page, sceneName: string, expectedScene: string) {
   const errors = watchPageErrors(page);
-  await page.goto(`/?mock=${encodeURIComponent(sceneName)}`, { waitUntil: 'domcontentloaded' });
+  const query = new URLSearchParams({ mock: sceneName });
+  if (sceneName === 'victory' || sceneName === 'victory-tie') query.set('safeBottom', '544');
+  await page.goto(`/?${query.toString()}`, { waitUntil: 'domcontentloaded' });
   const stage = page.locator(`[data-testid="stage"][data-scene="${expectedScene}"]`);
   await expect(stage).toBeVisible();
   await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
@@ -122,6 +124,9 @@ for (const { name, scene } of scenes) {
     const { stage, errors } = await openScene(page, name, scene);
     await expect(stage.getByText('ĐẤU TRƯỜNG BÃO TỐ', { exact: true })).toHaveCount(0);
     await expectInsideSafeZone(page, stage, name);
+    if (name === 'victory' || name === 'victory-tie') {
+      await page.addStyleTag({ content: '.v3v-figure, .v3v-nameplate, .v3v-trophy { animation: none !important; opacity: 1 !important; transform: none !important; }' });
+    }
     if (name === 'question') console.log(`Ảnh nghiệm thu: ${join(screenshotDirectory, 'question.png')}`);
     await page.screenshot({ path: join(screenshotDirectory, `${name}.png`), animations: 'disabled' });
     // So ảnh chuẩn chỉ khi bật E2E_SCREENSHOTS=1 (bố cục V3 còn đổi, chưa commit ảnh chuẩn — BOARD #15)
@@ -301,7 +306,7 @@ test('question and Top 10 stay below the 14 percent TikTok top safe zone', async
   }
 });
 
-test('TikTok HUD overlays the same quiz layout without covering the event logo or critical quiz content', async ({ page }) => {
+test('TikTok HUD overlays the same quiz layout while critical quiz content stays readable', async ({ page }) => {
   await page.setViewportSize({ width: 921, height: 2000 });
   const selectors = ['.v3-header', '.v3-title', '.v3-top10', '.v3-board', '.v3-timer', '.v3-mc'];
   const captureLayout = async (hud: boolean) => {
@@ -318,24 +323,30 @@ test('TikTok HUD overlays the same quiz layout without covering the event logo o
   const withHud = await captureLayout(true);
   expect(withHud).toEqual(withoutHud);
 
+  const stageBox = await page.locator('[data-testid="stage"]').boundingBox();
+  const logoBox = await page.getByTestId('brand-logo').boundingBox();
+  expect(stageBox).not.toBeNull();
+  expect(logoBox).not.toBeNull();
+  expect(logoBox!.width / stageBox!.width).toBeGreaterThanOrEqual(0.22);
+  expect(logoBox!.width / stageBox!.width).toBeLessThanOrEqual(0.26);
+  expect(logoBox!.height / stageBox!.height).toBeGreaterThanOrEqual(0.1);
+  expect(logoBox!.height / stageBox!.height).toBeLessThanOrEqual(0.12);
+
   const overlap = await page.evaluate(() => {
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const box = (selector: string) => document.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
-    const title = box('.v3-title');
-    const host = box('.tiktok-hud-host');
-    const viewers = box('.tiktok-hud-viewers');
     const eventBanner = box('.tiktok-hud-event-banner');
     const timerText = box('.v3-timer b');
     const comments = box('.tiktok-hud-comments');
     const important = Array.from(document.querySelectorAll<HTMLElement>('.v3-top10, .v3-board, .v3-mc'))
       .map((element) => element.getBoundingClientRect());
     return {
-      logoOverlaysHud: !!title && !!host && intersects(title, host) || !!title && !!viewers && intersects(title, viewers),
       bannerCoversTimerText: !!eventBanner && !!timerText && intersects(eventBanner, timerText),
       commentsCoverQuiz: !!comments && important.some((target) => intersects(comments, target)),
     };
   });
-  expect(overlap).toEqual({ logoOverlaysHud: false, bannerCoversTimerText: false, commentsCoverQuiz: false });
+  // Theo quyết định người dùng C-0073, HUD host/viewers được phép phủ một phần logo BVĐC.
+  expect(overlap).toEqual({ bannerCoversTimerText: false, commentsCoverQuiz: false });
 });
 
 test('Storm Arena shows stadium layers, shield ranks and the three-line MC bubble', async ({ page }) => {
@@ -491,5 +502,69 @@ test('victory-tie labels the tie and orders podium slots by x coordinate', async
   }
   expect(xCoordinates[0]).toBeLessThan(xCoordinates[1]!);
   expect(xCoordinates[1]).toBeLessThan(xCoordinates[2]!);
+  expect(errors).toEqual([]);
+});
+
+test('Victory keeps full-body characters on the 66% podium and nameplates above TikTok comments', async ({ page }) => {
+  const errors = watchPageErrors(page);
+  await page.setViewportSize({ width: 921, height: 2000 });
+  await page.goto('/?mock=victory&hud=1', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('[data-testid="stage"][data-scene="VICTORY"]')).toBeVisible();
+  await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+  await page.addStyleTag({ content: '.v3v-figure, .v3v-nameplate, .v3v-trophy { animation: none !important; opacity: 1 !important; transform: none !important; }' });
+
+  const geometry = await page.evaluate(() => {
+    const stage = document.querySelector<HTMLElement>('[data-testid="stage"]')?.getBoundingClientRect();
+    const comments = document.querySelector<HTMLElement>('.tiktok-hud-comments')?.getBoundingClientRect();
+    const scale = stage ? stage.height / 1920 : 1;
+    const slots = [1, 2, 3].map((place) => {
+      const slot = document.querySelector<HTMLElement>(`[data-testid="podium-slot-${place}"]`);
+      const figure = slot?.querySelector<HTMLElement>('.v3v-figure')?.getBoundingClientRect();
+      const image = slot?.querySelector<HTMLImageElement>('.v3v-figure img')?.getBoundingClientRect();
+      const plate = slot?.querySelector<HTMLElement>('.v3v-nameplate')?.getBoundingClientRect();
+      return {
+        footY: stage && figure ? (figure.bottom - stage.top) / scale : 0,
+        figureHeight: figure ? figure.height / scale : 0,
+        imageHeight: image ? image.height / scale : 0,
+        plateTop: stage && plate ? (plate.top - stage.top) / scale : 0,
+        plateBottom: stage && plate ? (plate.bottom - stage.top) / scale : 0,
+        plateLeft: stage && plate ? (plate.left - stage.left) / scale : 0,
+        plateRight: stage && plate ? (plate.right - stage.left) / scale : 0,
+        plateText: slot?.querySelector<HTMLElement>('.v3v-nameplate')?.innerText ?? '',
+        plateIntersectsComments: !!plate && !!comments && plate.left < comments.right && plate.right > comments.left && plate.top < comments.bottom && plate.bottom > comments.top,
+      };
+    });
+    const platformTop = document.querySelector<HTMLElement>('[data-testid="victory-platform"]')?.getBoundingClientRect().top;
+    const platformTopUnits = stage && platformTop !== undefined ? (platformTop - stage.top) / scale : 0;
+    const trophy = document.querySelector<HTMLElement>('[data-layer="trophy"]')?.getBoundingClientRect();
+    const trophyTopUnits = stage && trophy ? (trophy.top - stage.top) / scale : 0;
+    const trophyBottomUnits = stage && trophy ? (trophy.bottom - stage.top) / scale : 0;
+    const logo = document.querySelector<HTMLElement>('.v3v-header .v3-brand-logo')?.getBoundingClientRect();
+    const logoWidthRatio = stage && logo ? logo.width / stage.width : 0;
+    const logoHeightRatio = stage && logo ? logo.height / stage.height : 0;
+    return { slots, platformTopUnits, trophyTopUnits, trophyBottomUnits, logoWidthRatio, logoHeightRatio };
+  });
+  expect(geometry.slots).toHaveLength(3);
+  for (const slot of geometry.slots) {
+    expect(slot.footY).toBeGreaterThanOrEqual(1276);
+    expect(slot.footY).toBeLessThanOrEqual(1284);
+    expect(slot.figureHeight).toBeGreaterThanOrEqual(470);
+    expect(slot.figureHeight).toBeLessThanOrEqual(500);
+    expect(slot.imageHeight).toBeCloseTo(slot.figureHeight, 0);
+    expect(slot.plateTop).toBeGreaterThan(slot.footY);
+    expect(slot.plateBottom).toBeLessThanOrEqual(1376);
+    expect(slot.plateLeft).toBeGreaterThanOrEqual(98);
+    expect(slot.plateRight).toBeLessThanOrEqual(950);
+    expect(slot.plateText).toContain('PTS');
+    expect(slot.plateIntersectsComments).toBe(false);
+  }
+  expect(geometry.platformTopUnits).toBeCloseTo(1278, 0);
+  expect(geometry.trophyTopUnits / 1920).toBeGreaterThanOrEqual(0.22);
+  expect(geometry.trophyTopUnits / 1920).toBeLessThanOrEqual(0.24);
+  expect(geometry.trophyBottomUnits / 1920).toBeLessThanOrEqual(0.58);
+  expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.27);
+  expect(geometry.logoHeightRatio).toBeGreaterThanOrEqual(0.13);
+  await expect(page.locator('.v3v-caption')).toContainText('VINH DANH TOP 3');
+  await expect(page.locator('.v3v-header')).not.toContainText('FREE FIRE');
   expect(errors).toEqual([]);
 });
