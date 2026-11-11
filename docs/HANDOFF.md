@@ -1,5 +1,9 @@
 # HANDOFF — phiên coordinator (cập nhật 11/11/2026 ~16:40)
 
+**PHIÊN KẾ (điều phối quiz TikTok sau nén) — ĐÃ NHẬN 11/11 (sau nén).**
+
+Vòng ngữ cảnh: `.claude/settings.json` (cục bộ) đặt `CLAUDE_CODE_AUTO_COMPACT_WINDOW=350000` + hook SessionStart `py -X utf8 tools/session_handoff.py` → tự nén ở ~70 % rồi nạp lại file này. Khi context ~70 %: cập nhật file này, đổi dòng in đậm trên thành `— ĐỌC ĐẦU TIÊN.`, commit + push. KHÔNG clear/archive/mở phiên mới cho phiên chính.
+
 Phiên trước đầy context. Phiên mới: **chỉ điều phối** (memory `coordinator-delegate-not-code`) — giao code cho Codex qua hòm thư, rà report, gộp nhánh.
 
 ## Bắt đầu phiên mới
