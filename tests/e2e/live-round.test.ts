@@ -110,72 +110,98 @@ async function startVite(
     configFile,
     server: { host: '127.0.0.1', port, strictPort: true, proxy },
   });
-  await vite.listen();
-  return vite;
+  try {
+    await vite.listen();
+    return vite;
+  } catch (error) {
+    await vite.close().catch(() => {});
+    throw error;
+  }
+}
+
+async function closeResources(closers: (() => Promise<void>)[]) {
+  const errors: unknown[] = [];
+  for (const close of [...closers].reverse()) {
+    try {
+      await close();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  return errors;
 }
 
 async function boot(): Promise<RunningQuiz> {
-  const resultsDirectory = resolve(process.cwd(), 'test-results/e2e');
-  mkdirSync(resultsDirectory, { recursive: true });
-  const scratchDirectory = mkdtempSync(join(resultsDirectory, 'c0062-'));
-  const dbPath = join(scratchDirectory, 'quiz.sqlite');
-  const [backendPort, dashboardPort, overlayPort] = await Promise.all([freePort(), freePort(), freePort()]);
-  const backendUrl = `http://127.0.0.1:${backendPort}`;
-  const dashboardOrigin = `http://127.0.0.1:${dashboardPort}`;
-  const overlayOrigin = `http://127.0.0.1:${overlayPort}`;
-  const dashboardRoot = resolve(process.cwd(), 'apps/dashboard');
-  const overlayRoot = resolve(process.cwd(), 'apps/overlay');
-  const dashboardVite = await startVite(dashboardRoot, resolve(dashboardRoot, 'vite.config.ts'), dashboardPort, backendUrl, false);
-  const overlayVite = await startVite(overlayRoot, resolve(overlayRoot, 'vite.config.ts'), overlayPort, backendUrl, true);
-  const scheduler = new ManualScheduler(Date.now());
-  const store = new Store(dbPath);
-  store.seedQuestions({ id: 'demo', name: 'C-0062 replay' }, makeQuestions(replay.questionsPerRound), scheduler.now());
-  for (const question of store.listQuestions('demo'))
-    store.reviewQuestion(question.id, 'APPROVE', 'c0062-e2e', scheduler.now());
+  const closers: (() => Promise<void>)[] = [];
+  try {
+    const resultsDirectory = resolve(process.cwd(), 'test-results/e2e');
+    mkdirSync(resultsDirectory, { recursive: true });
+    const scratchDirectory = mkdtempSync(join(resultsDirectory, 'c0062-'));
+    const dbPath = join(scratchDirectory, 'quiz.sqlite');
+    const [backendPort, dashboardPort, overlayPort] = await Promise.all([freePort(), freePort(), freePort()]);
+    const backendUrl = 'http://127.0.0.1:' + backendPort;
+    const dashboardOrigin = 'http://127.0.0.1:' + dashboardPort;
+    const overlayOrigin = 'http://127.0.0.1:' + overlayPort;
+    const dashboardRoot = resolve(process.cwd(), 'apps/dashboard');
+    const overlayRoot = resolve(process.cwd(), 'apps/overlay');
+    const dashboardVite = await startVite(dashboardRoot, resolve(dashboardRoot, 'vite.config.ts'), dashboardPort, backendUrl, false);
+    closers.push(() => dashboardVite.close());
+    const overlayVite = await startVite(overlayRoot, resolve(overlayRoot, 'vite.config.ts'), overlayPort, backendUrl, true);
+    closers.push(() => overlayVite.close());
+    const scheduler = new ManualScheduler(Date.now());
+    const store = new Store(dbPath);
+    closers.push(async () => { store.close(); });
+    store.seedQuestions({ id: 'demo', name: 'C-0062 replay' }, makeQuestions(replay.questionsPerRound), scheduler.now());
+    for (const question of store.listQuestions('demo'))
+      store.reviewQuestion(question.id, 'APPROVE', 'c0062-e2e', scheduler.now());
 
-  const connection = new ReplayConnection();
-  const characterManifestPath = join(assetDirectory, 'chibi', 'manifest.json');
-  const characterPool = existsSync(characterManifestPath)
-    ? (JSON.parse(readFileSync(characterManifestPath, 'utf8')) as { characters?: { id: string }[] }).characters?.map((item) => item.id)
-    : undefined;
-  const app = await buildApp({
-    store,
-    scheduler,
-    adminToken,
-    allowedOrigins: [dashboardOrigin, overlayOrigin],
-    webRoots: { assets: assetDirectory },
-    ...(characterPool?.length ? { characterPool } : {}),
-    adapterFactory: (_mode, config) => new TikTokLiveAdapter({
-      username: config.tiktokUsername ?? 'synthetic_live',
+    const connection = new ReplayConnection();
+    const characterManifestPath = join(assetDirectory, 'chibi', 'manifest.json');
+    const characterPool = existsSync(characterManifestPath)
+      ? (JSON.parse(readFileSync(characterManifestPath, 'utf8')) as { characters?: { id: string }[] }).characters?.map((item) => item.id)
+      : undefined;
+    const app = await buildApp({
+      store,
       scheduler,
-      createConnection: () => connection,
-      reconnect: { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
-    }),
-  });
-  await app.app.listen({ host: '127.0.0.1', port: backendPort });
+      adminToken,
+      allowedOrigins: [dashboardOrigin, overlayOrigin],
+      webRoots: { assets: assetDirectory },
+      ...(characterPool?.length ? { characterPool } : {}),
+      adapterFactory: (_mode, config) => new TikTokLiveAdapter({
+        username: config.tiktokUsername ?? 'synthetic_live',
+        scheduler,
+        createConnection: () => connection,
+        reconnect: { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
+      }),
+    });
+    closers.push(async () => { await app.close(); });
+    await app.app.listen({ host: '127.0.0.1', port: backendPort });
 
-  const running: RunningQuiz = {
-    app,
-    store,
-    scheduler,
-    connection,
-    backendUrl,
-    dashboardUrl: dashboardOrigin,
-    overlayUrl: `${overlayOrigin}/overlay/`,
-    dashboardVite,
-    overlayVite,
-    dbPath,
-  };
-  cleanup.push(async () => {
-    await app.close().catch(() => {});
-    store.close();
-    await Promise.all([dashboardVite.close(), overlayVite.close()]);
-  });
-  return running;
+    const running: RunningQuiz = {
+      app,
+      store,
+      scheduler,
+      connection,
+      backendUrl,
+      dashboardUrl: dashboardOrigin,
+      overlayUrl: overlayOrigin + '/overlay/',
+      dashboardVite,
+      overlayVite,
+      dbPath,
+    };
+    cleanup.push(async () => {
+      const errors = await closeResources(closers);
+      if (errors.length) throw new AggregateError(errors, 'Không đóng sạch được stack live-round.');
+    });
+    return running;
+  } catch (error) {
+    await closeResources(closers);
+    throw error;
+  }
 }
-
 test.afterEach(async () => {
-  for (const close of cleanup.splice(0)) await close();
+  const errors = await closeResources(cleanup.splice(0));
+  if (errors.length) throw new AggregateError(errors, 'Lỗi khi dọn E2E sau test.');
 });
 
 function watchPage(

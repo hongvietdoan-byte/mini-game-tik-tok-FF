@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error Dự án tắt allowJs nên TS không nạp JSDoc của .mjs; hàm pure được định kiểu tại đây.
-import { checkFiles as untypedCheckFiles } from './privacy-check.mjs';
+import { checkFiles as untypedCheckFiles, parseExtraPatterns as untypedParseExtraPatterns } from './privacy-check.mjs';
 
-const checkFiles: (files: { path: string; content?: string }[]) => string[] = untypedCheckFiles;
+const checkFiles: (files: { path: string; content?: string }[], extraPatterns?: string[]) => string[] = untypedCheckFiles;
+const parseExtraPatterns: (environmentValue?: string, localFileContent?: string) => string[] = untypedParseExtraPatterns;
 
 describe('checkFiles', () => {
   it('chặn bảng tính ở mọi nơi và ảnh ngoài các thư mục cho phép', () => {
@@ -78,5 +79,34 @@ describe('checkFiles', () => {
       { path: 'fixtures/safe.ts', content: 'seed=20261111 and short=12345678' },
       { path: 'apps/server/src/safe.ts', content: 'test-id=123456789' },
     ])).toEqual([]);
+  });
+  it('gộp pattern từ env và tệp cục bộ, bỏ dòng trống/comment và loại trùng', () => {
+    expect(parseExtraPatterns('api-one.invalid; api-two.invalid', '# ghi chú' + String.fromCharCode(10) + 'cdn-one.invalid' + String.fromCharCode(10) + 'api-one.invalid'))
+      .toEqual(['api-one.invalid', 'api-two.invalid', 'cdn-one.invalid']);
+  });
+
+  it('áp pattern riêng lên file text và không tiết lộ giá trị pattern', () => {
+    const pattern = 'fake-private-marker-0077';
+    const violations = checkFiles([
+      { path: 'docs/review/provider.md', content: 'nội dung có fake-private-marker-0077 để kiểm tra' },
+    ], [pattern]);
+
+    expect(violations).toEqual(['docs/review/provider.md: chứa mẫu cấm riêng']);
+    expect(violations.join(' ')).not.toContain(pattern);
+  });
+  it('gộp pattern từ env và tệp cục bộ, bỏ dòng trống/comment và loại trùng', () => {
+    const localPatterns = ['# ghi chú', 'cdn-one.invalid', 'api-one.invalid'].join(String.fromCharCode(10));
+    expect(parseExtraPatterns('api-one.invalid; api-two.invalid', localPatterns))
+      .toEqual(['api-one.invalid', 'api-two.invalid', 'cdn-one.invalid']);
+  });
+
+  it('áp pattern riêng lên file text và không tiết lộ giá trị pattern', () => {
+    const pattern = 'fake-private-marker-0077';
+    const violations = checkFiles([
+      { path: 'docs/review/provider.md', content: 'nội dung có fake-private-marker-0077 để kiểm tra' },
+    ], [pattern]);
+
+    expect(violations).toEqual(['docs/review/provider.md: chứa mẫu cấm riêng']);
+    expect(violations.join(' ')).not.toContain(pattern);
   });
 });
