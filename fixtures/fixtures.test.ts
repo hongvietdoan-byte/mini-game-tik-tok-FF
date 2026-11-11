@@ -49,7 +49,8 @@ describe('fixtures DEMO', () => {
     const players = [...EDGE_CASE_PLAYERS, ...makeSimPlayers(100, 3)];
     for (const { displayName } of players) {
       const sanitized = sanitizeDisplayName(displayName);
-      expect(sanitized).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/);
+      // ZWJ (U+200D) được phép khi nối emoji — xem X-0008
+      expect(sanitized).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u206f\ufeff]/);
       expect(Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(sanitized)).length).toBeLessThanOrEqual(24);
     }
   });

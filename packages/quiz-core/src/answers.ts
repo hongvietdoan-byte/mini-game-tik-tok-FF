@@ -49,8 +49,11 @@ export function decideComment(
 export function sanitizeDisplayName(raw: string, maxGraphemes = 24): string {
   const cleaned = String(raw ?? '')
     .normalize('NFC')
-    // ký tự điều khiển, bidi override, zero-width
-    .replace(/[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁠-⁩﻿]/g, '')
+    // ký tự điều khiển C0/C1, zero-width (trừ ZWJ), bidi embedding/override/isolate, BOM
+    // (viết bằng escape để không có ký tự ẩn trong mã nguồn)
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B\u200C\u200E\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, '')
+    // ZWJ chỉ giữ khi nối hai emoji (👨‍👩‍👧, 👩🏽‍💻, ❤️‍🔥); ZWJ đứng lẻ bị bỏ
+    .replace(/(?<![\p{Extended_Pictographic}\p{Emoji_Modifier}]\uFE0F?)\u200D|\u200D(?!\p{Extended_Pictographic})/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
   if (!cleaned) return 'Người chơi';

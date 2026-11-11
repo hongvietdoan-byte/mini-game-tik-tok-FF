@@ -49,8 +49,17 @@ describe('sanitizeDisplayName', () => {
     expect(sanitizeDisplayName('A'.repeat(30), 8)).toBe('AAAAAAA…');
   });
 
-  // LỖI: sanitizer hiện xóa U+200D, làm vỡ emoji gia đình trước khi cắt grapheme.
-  it.fails('giữ nguyên emoji gia đình ZWJ khi chuỗi bị cắt', () => {
+  it('bỏ ZWJ đứng lẻ nhưng giữ ZWJ nối emoji có tông da / VS16', () => {
+    expect(sanitizeDisplayName('a\u200Db')).toBe('ab');
+    expect(sanitizeDisplayName('\u200D\u200DAn')).toBe('An');
+    const coder = '\u{1F469}\u{1F3FD}\u200D\u{1F4BB}';
+    expect(sanitizeDisplayName(coder)).toBe(coder);
+    const heartFire = '\u2764\uFE0F\u200D\u{1F525}';
+    expect(sanitizeDisplayName(heartFire)).toBe(heartFire);
+  });
+
+  // Hồi quy X-0008: trước đây sanitizer xoá U+200D làm vỡ emoji gia đình (đã sửa).
+  it('giữ nguyên emoji gia đình ZWJ khi chuỗi bị cắt', () => {
     expect(sanitizeDisplayName('12345👨‍👩‍👧‍👦XYZ', 7)).toBe('12345👨‍👩‍👧‍👦…');
   });
 });
