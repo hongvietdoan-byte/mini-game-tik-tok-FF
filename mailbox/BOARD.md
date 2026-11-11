@@ -16,12 +16,13 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 | Thư | Làn | Việc | Phụ thuộc | Trạng thái |
 |---|---|---|---|---|
 | C-0001 | codex1 | Fixtures: ≥ 30 câu DEMO tiếng Việt + người chơi hư cấu | — | XONG, đã gộp (`aff786b`) |
-| C-0010 | codex1 | Sửa câu Sahara/Tokyo, rà 36 câu | C-0001 | CHỜ |
-| C-0002 | codex1 | Unit test `answers` / `scoring` / `selection` | — | CHỜ |
+| C-0010 | codex1 | Sửa câu Sahara/Tokyo, rà 36 câu | C-0001 | XONG, đã gộp |
+| C-0002 | codex1 | Unit test `answers` / `scoring` / `selection` | — | XONG, đã gộp (+ sửa ZWJ `797799a`) |
 | C-0003 | codex1 | Unit test reducer `engine.ts` (mọi nhánh) | — | CHỜ |
 | C-0004 | codex1 | Unit test `Store` (persistence) | C-0001 (dùng fixtures) | CHỜ |
 | C-0005 | codex1 | `scripts/privacy-check.mjs` + `.github/workflows/ci.yml` | — | CHỜ |
-| C-0006 | codex2 | `apps/overlay` 1080×1920, 8 cảnh, chế độ mock, client WS | — | CHỜ |
+| C-0006 | codex2 | `apps/overlay` 1080×1920, 8 cảnh, chế độ mock, client WS | — | XONG, đã gộp |
+| C-0012 | codex2 | Sửa cảnh ĐỒNG HẠNG (mock + chân bục theo rank) | C-0006 | CHỜ (sau C-0007) |
 | C-0007 | codex2 | `apps/dashboard` tối thiểu (Live Control) | C-0006 (dùng chung khung Vite) | CHỜ |
 | C-0008 | codex2 | Playwright smoke + ảnh chụp cảnh overlay (Edge) | C-0006 | CHỜ |
 | — | coordinator | `apps/server`: SessionRuntime, routes, WS, recovery (`04aa4a4`) | — | XONG — 14 test tích hợp + 1 test tải xanh |
