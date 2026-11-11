@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-const dashboardUrl = 'http://127.0.0.1:5175';
+let dashboardUrl = '';
 const adminToken = 'e2e-admin-token-must-not-appear-in-url';
 let dashboardServer: ViteDevServer | undefined;
 
@@ -11,9 +11,12 @@ test.beforeAll(async () => {
   dashboardServer = await createServer({
     root: dashboardRoot,
     configFile: resolve(dashboardRoot, 'vite.config.ts'),
-    server: { host: '127.0.0.1', port: 5175, strictPort: true },
+    server: { host: '127.0.0.1', port: 0, strictPort: true },
   });
   await dashboardServer.listen();
+  const address = dashboardServer.httpServer?.address();
+  if (!address || typeof address === 'string') throw new Error('Không lấy được cổng dashboard E2E.');
+  dashboardUrl = 'http://127.0.0.1:' + address.port;
 });
 
 test.afterAll(async () => {
