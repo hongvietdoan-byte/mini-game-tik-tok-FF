@@ -4,7 +4,7 @@ import { ManualScheduler } from './scheduler';
 import { MockSimulator } from './simulator';
 
 describe('MockSimulator sau khi khởi động lại', () => {
-  it.fails('không tái dùng eventId của simulator trước trong cùng nguồn comment', async () => {
+  it('không tái dùng eventId của simulator trước trong cùng nguồn comment', async () => {
     const scheduler = new ManualScheduler();
     const adapter = new MockAdapter();
     await adapter.connect();
@@ -30,6 +30,8 @@ describe('MockSimulator sau khi khởi động lại', () => {
     }
 
     const overlap = eventIds[0]!.find((eventId) => eventIds[1]!.includes(eventId));
+    expect(eventIds[0]!.length).toBeGreaterThan(0);
+    expect(eventIds[1]!.length).toBeGreaterThan(0);
     expect(overlap, 'eventId phải duy nhất qua các lần start trong cùng nguồn MOCK').toBeUndefined();
   });
 });
