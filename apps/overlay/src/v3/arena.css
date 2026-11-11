@@ -902,3 +902,147 @@
 .v3-stage .v3-mc-plate { left: 98px; width: 260px; }
 .v3-stage .v3-bubble { width: 593px; padding: 0 32px; }
 .v3-stage.has-tiktok-hud .v3-queue { top: 1160px; }
+
+/* ---------- C-0065: Storm Arena v2 ---------- */
+.v3-bg::before {
+  z-index: 1;
+  background:
+    radial-gradient(ellipse 50% 22% at 50% 8%, rgba(34, 97, 255, .42), transparent 78%),
+    radial-gradient(ellipse 37% 25% at 13% 13%, rgba(49, 103, 255, .3), transparent 75%),
+    radial-gradient(ellipse 37% 25% at 87% 13%, rgba(207, 48, 236, .3), transparent 75%),
+    linear-gradient(180deg, rgba(7, 10, 39, .08), rgba(14, 9, 51, .28) 39%, rgba(8, 10, 38, .48) 100%);
+}
+.v3-storm {
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 760px;
+  transform: none;
+  opacity: .72;
+  background:
+    repeating-conic-gradient(from 218deg at 50% 36%, rgba(60, 134, 255, .25) 0deg 1deg, transparent 1.2deg 9deg),
+    repeating-radial-gradient(ellipse at 50% 36%, rgba(199, 150, 255, .28) 0 3px, transparent 4px 27px),
+    radial-gradient(ellipse 48% 38% at 50% 35%, rgba(35, 56, 179, .34), transparent 78%);
+  mask-image: radial-gradient(ellipse 66% 68% at 50% 35%, #000 28%, transparent 100%);
+}
+.v3-env-arc { opacity: .72; filter: drop-shadow(0 0 7px rgba(80, 190, 255, .9)); }
+.v3-env-vortex { opacity: .52; stroke-width: 2.8; }
+.v3-env-lightning path:nth-child(odd) { stroke: #54dfff; stroke-width: 4; opacity: .72; filter: drop-shadow(0 0 8px #19bfff); }
+.v3-env-lightning path:nth-child(even) { stroke: #ec5bff; stroke-width: 3.5; opacity: .68; filter: drop-shadow(0 0 8px #d13cff); }
+.v3-env-truss { opacity: .36; }
+.v3-env-stands { opacity: .68; }
+.v3-env-floodlights { opacity: .84; }
+.v3-env-banner { opacity: .98; stroke-width: 4; }
+.v3-env-banner path:nth-child(2) { fill: none; stroke: #ff58e8; stroke-width: 5; filter: drop-shadow(0 0 8px #d13cff); }
+.v3-env-stage-edge { opacity: .55; }
+.v3-lights { top: 760px; height: 310px; opacity: .58; }
+
+.v3-top10 li { border: 0; border-bottom: 1px solid rgba(204, 193, 255, .12); border-radius: 0; background: transparent; }
+.v3-top10 li:nth-child(-n + 3) { border-bottom-color: rgba(255, 255, 255, .1); background: linear-gradient(90deg, rgba(121, 91, 227, .23), transparent 82%); }
+.v3-top10 li.v3-rank-1 { border-bottom-color: rgba(255, 204, 88, .28); }
+.v3-rank-1 .v3-rank, .v3-rank-2 .v3-rank, .v3-rank-3 .v3-rank {
+  clip-path: polygon(7% 0, 93% 0, 100% 13%, 100% 64%, 50% 100%, 0 64%, 0 13%);
+  border: 1px solid rgba(255, 255, 255, .44);
+  filter: drop-shadow(0 2px 2px rgba(5, 6, 26, .55));
+}
+.v3-rank-1 .v3-rank { background: linear-gradient(180deg, #fff1a3, #ffc535 72%, #d77a20); }
+.v3-rank-2 .v3-rank { background: linear-gradient(180deg, #fff, #cbd9ee 72%, #899bb9); }
+.v3-rank-3 .v3-rank { background: linear-gradient(180deg, #ffe0a2, #d99251 72%, #8b4b36); }
+
+.v3-board {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(160deg, rgba(17, 20, 91, .96), rgba(8, 12, 47, .98)) padding-box,
+    linear-gradient(130deg, #5ce7ff, #783dff 54%, #ff54dc) border-box;
+  box-shadow: inset 0 0 0 3px rgba(69, 145, 255, .78), inset 0 0 30px rgba(112, 73, 245, .52), 0 0 22px rgba(122, 62, 255, .4);
+}
+.v3-board::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(104, 207, 255, .34);
+  clip-path: polygon(3% 0, 100% 0, 100% 94%, 96% 100%, 0 100%, 0 7%);
+  pointer-events: none;
+}
+.v3-board::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  bottom: 13px;
+  width: 72px;
+  height: 3px;
+  background: linear-gradient(90deg, #40ddff, #ae69ff, transparent);
+  box-shadow: 0 0 8px rgba(82, 196, 255, .7);
+}
+.v3-board-tab::after { content: none; display: none; }
+.v3-board-tab { border: 1px solid rgba(255, 100, 239, .9); }
+.v3-question {
+  border: 2px solid rgba(95, 163, 255, .95);
+  box-shadow: inset 0 0 0 1px rgba(171, 118, 255, .5), inset 0 0 22px rgba(51, 108, 255, .3), 0 0 10px rgba(77, 76, 255, .3);
+}
+
+.v3-tiers {
+  background:
+    linear-gradient(90deg, rgba(5, 9, 36, .42), transparent 18% 82%, rgba(5, 9, 36, .42)),
+    linear-gradient(180deg, rgba(17, 12, 60, .03), rgba(5, 9, 34, .74));
+}
+.v3-tiers::before {
+  background: linear-gradient(180deg, rgba(23, 24, 100, .34), rgba(5, 9, 34, .83));
+  clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%);
+}
+.v3-tiers::after {
+  background:
+    linear-gradient(75deg, transparent 0 7%, rgba(68, 202, 255, .38) 7.15% 7.38%, transparent 7.5%),
+    linear-gradient(105deg, transparent 0 92.5%, rgba(242, 83, 255, .36) 92.65% 92.9%, transparent 93%),
+    radial-gradient(ellipse 72% 16% at 50% 0%, rgba(116, 76, 255, .28), transparent 78%);
+}
+.v3-step {
+  height: 92px;
+  border-top: 3px solid rgba(225, 191, 255, .92);
+  border-bottom: 2px solid rgba(70, 210, 255, .64);
+  clip-path: polygon(3% 0, 97% 0, 100% 92%, 0 92%);
+  background: linear-gradient(180deg, rgba(93, 59, 190, .76), rgba(30, 22, 93, .88) 34%, rgba(8, 13, 48, .96));
+  box-shadow: 0 -7px 15px rgba(137, 79, 255, .5), inset 0 2px rgba(255, 255, 255, .16);
+}
+.v3-step::after { top: 4px; height: 3px; opacity: .9; }
+.v3-seat-back {
+  border: 2px solid rgba(223, 189, 255, .96);
+  background: linear-gradient(180deg, #5140c2, #281d78 74%, #111843);
+  box-shadow: none;
+}
+.v3-seat-back svg { width: 38px; height: 20px; }
+.v3-seat-back path { stroke: #f4dcff; stroke-width: 6; filter: drop-shadow(0 0 5px #a844ff); }
+.v3-seat-name {
+  border: 1px solid rgba(255, 255, 255, .88);
+  border-radius: 50px;
+  background: linear-gradient(180deg, #fff, #ecebff);
+  color: #17133e;
+  box-shadow: none;
+}
+.v3-seat-name::after { display: none; }
+
+.v3-bubble {
+  clip-path: none;
+  overflow: visible;
+  contain: layout;
+  border: 3px solid rgba(113, 157, 255, .96);
+  border-radius: 22px 25px 28px 14px;
+}
+.v3-bubble::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: -34px;
+  bottom: 42px;
+  width: 48px;
+  height: 58px;
+  clip-path: polygon(100% 0, 100% 100%, 0 54%);
+  background: linear-gradient(145deg, #242280, #11143f);
+  filter: drop-shadow(0 0 7px rgba(185, 74, 255, .82));
+}
+.v3-bubble .v3-bolt, .v3-bubble p { position: relative; z-index: 1; }
+.v3-bubble p { max-width: 520px; margin: 0 auto; white-space: pre-line; font-size: 30px; line-height: 1.22; }
+
+.v3-stage.has-tiktok-hud .v3-env-floodlights,
+.v3-stage.has-tiktok-hud .v3-env-stands { opacity: .5; }

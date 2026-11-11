@@ -100,7 +100,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const totalAnswers = reveal ? Object.values(reveal.optionCounts).reduce((a, b) => a + b, 0) : 0;
   return (
     <section className="v3-board" data-layer="quiz-hud">
-      <div className="v3-board-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
+      <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
       {snapshot.timer && !isLobby && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
       <div className={`v3-question ${promptSize(q?.prompt)}`} data-testid="question-prompt">
         {isLobby ? (
@@ -142,6 +142,10 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
 }
 
 function McKelly({ snapshot }: { snapshot: PublicSnapshot }) {
+  const bubble = snapshot.mc.bubble.replace(
+    /^Bình luận A, B, C hoặc D để tham gia\.?$/,
+    'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
+  );
   return (
     <section className={`v3-mc v3-mc-${snapshot.mc.state}`} data-layer="kelly">
       <div className="v3-mc-figure">
@@ -156,7 +160,7 @@ function McKelly({ snapshot }: { snapshot: PublicSnapshot }) {
       <div className="v3-bubble" data-testid="mc-bubble">
         <i className="v3-bolt" aria-hidden="true" />
         <p>
-          {splitBubble(snapshot.mc.bubble).map((part, i) =>
+          {splitBubble(bubble).map((part, i) =>
             part.hl ? <em key={i}>{part.text}</em> : <React.Fragment key={i}>{part.text}</React.Fragment>,
           )}
         </p>
@@ -278,8 +282,26 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, hud = false }
               <feGaussianBlur stdDeviation="5" result="blur" />
               <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
+            <filter id="arena-lamp-glow" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="8" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+            <pattern id="arena-crowd" width="22" height="22" patternUnits="userSpaceOnUse">
+              <circle cx="5" cy="6" r="2" fill="#d8ccff" opacity=".62" />
+              <circle cx="15" cy="13" r="2.5" fill="#64dfff" opacity=".42" />
+              <circle cx="4" cy="19" r="1.5" fill="#ff68ec" opacity=".58" />
+            </pattern>
+            <pattern id="arena-lamp-grid" width="18" height="18" patternUnits="userSpaceOnUse">
+              <rect x="3" y="3" width="10" height="10" rx="2" fill="#e9fbff" />
+            </pattern>
+            <clipPath id="arena-left-stand-clip"><path d="M0 664 310 798v330H0z" /></clipPath>
+            <clipPath id="arena-right-stand-clip"><path d="m1080 664-310 134v330h310z" /></clipPath>
           </defs>
           <ellipse cx="540" cy="190" rx="650" ry="410" fill="url(#arena-core)" />
+          <g className="v3-env-arc" fill="none" stroke="url(#arena-neon)">
+            <path d="M18 274Q540 72 1062 274" strokeWidth="3" strokeDasharray="3 16" />
+            <path d="M30 293Q540 112 1050 293" strokeWidth="1.5" strokeDasharray="2 20" />
+          </g>
           <g className="v3-env-vortex" fill="none" stroke="url(#arena-neon)" filter="url(#arena-glow)">
             <path d="M-90 150C90-75 388-89 566 33s167 272-2 337S173 415 124 267 264 30 438 80s190 186 73 260" />
             <path d="M-26 260C104 26 390-2 562 108s142 216-10 278S256 388 227 265s119-193 250-142 120 116 75 166" />
@@ -305,10 +327,22 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, hud = false }
             <path d="M36 704 125 774 90 850M1044 704l-89 70 35 76" />
             <path d="M0 1004 196 932M1080 1004 884 932" />
           </g>
+          <g className="v3-env-stands">
+            <path d="M0 664 310 798v346H0zM1080 664 770 798v346h310z" fill="url(#arena-steel)" />
+            <rect x="0" y="714" width="320" height="402" fill="url(#arena-crowd)" clipPath="url(#arena-left-stand-clip)" />
+            <rect x="760" y="714" width="320" height="402" fill="url(#arena-crowd)" clipPath="url(#arena-right-stand-clip)" />
+            <path d="M0 755 286 862M0 844 286 950M0 933 286 1038M1080 755 794 862M1080 844 794 950M1080 933 794 1038" fill="none" stroke="url(#arena-neon)" strokeWidth="3" />
+          </g>
+          <g className="v3-env-floodlights" filter="url(#arena-lamp-glow)">
+            <rect x="104" y="794" width="76" height="126" rx="8" fill="#162253" stroke="#a8ecff" strokeWidth="4" />
+            <rect x="112" y="802" width="60" height="108" fill="url(#arena-lamp-grid)" />
+            <rect x="900" y="794" width="76" height="126" rx="8" fill="#162253" stroke="#a8ecff" strokeWidth="4" />
+            <rect x="908" y="802" width="60" height="108" fill="url(#arena-lamp-grid)" />
+          </g>
           <g className="v3-env-banner" stroke="url(#arena-neon)" strokeLinejoin="round">
             <path d="M18 807h82v27l-7 13v115l-34 28-34-28V847l-7-13z" fill="url(#arena-steel)" />
             <path d="M998 807h64v27l-7 13v115l-25 28-25-28V847l-7-13z" fill="url(#arena-steel)" />
-            <path d="m34 879 7-31 17 22 17-22 17 22 7-31 9 45H25zM30 888h66m979-9 6-27 10 17 7-22 8 22 10-17 6 27h-47zM1008 888h47" fill="#ff49ea" />
+            <path d="m35 892 7-23 13 14 5-32 7 32 13-14 7 23zM42 900h39m930-8 7-23 13 14 5-32 7 32 13-14 7 23zM1009 900h39" fill="none" stroke="#ff58e8" strokeWidth="5" />
             <path d="M40 910h34M1014 910h32" fill="none" stroke="#8cc8fb" />
           </g>
           <path className="v3-env-stage" d="m0 1032 183-72h714l183 72v84H0z" fill="url(#arena-steel)" />

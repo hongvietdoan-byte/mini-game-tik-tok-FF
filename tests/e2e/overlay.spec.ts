@@ -121,6 +121,7 @@ for (const { name, scene } of scenes) {
     const { stage, errors } = await openScene(page, name, scene);
     await expect(stage.getByText('ĐẤU TRƯỜNG BÃO TỐ', { exact: true })).toHaveCount(0);
     await expectInsideSafeZone(page, stage, name);
+    if (name === 'question') console.log(`Ảnh nghiệm thu: ${join(screenshotDirectory, 'question.png')}`);
     await page.screenshot({ path: join(screenshotDirectory, `${name}.png`), animations: 'disabled' });
     // So ảnh chuẩn chỉ khi bật E2E_SCREENSHOTS=1 (bố cục V3 còn đổi, chưa commit ảnh chuẩn — BOARD #15)
     if (process.env.E2E_SCREENSHOTS === '1') await expect(page).toHaveScreenshot(`${name}.png`, { maxDiffPixelRatio: 0.01 });
@@ -299,6 +300,30 @@ test('question and Top 10 stay below the 14 percent TikTok top safe zone', async
   }
 });
 
+test('Storm Arena shows stadium layers, shield ranks and the three-line MC bubble', async ({ page }) => {
+  await openScene(page, 'question', 'QUESTION');
+  await expect(page.locator('.v3-env-arc')).toBeVisible();
+  await expect(page.locator('.v3-env-stands')).toBeVisible();
+  await expect(page.locator('.v3-env-floodlights rect')).toHaveCount(4);
+  const steps = page.locator('.v3-step');
+  await expect(steps).toHaveCount(7);
+  const [backRow, frontRow] = await Promise.all([steps.first().boundingBox(), steps.last().boundingBox()]);
+  expect(backRow).not.toBeNull();
+  expect(frontRow).not.toBeNull();
+  expect(backRow!.height).toBeGreaterThanOrEqual(90);
+  expect(frontRow!.width).toBeGreaterThan(backRow!.width);
+  await expect(page.getByTestId('question-tab')).toHaveText(/^CÂU HỎI \d+$/);
+  const rankShield = page.locator('.v3-rank-1 .v3-rank');
+  await expect(rankShield).toBeVisible();
+  expect(await rankShield.evaluate((element) => getComputedStyle(element).clipPath)).toContain('polygon');
+  const bubble = page.getByTestId('mc-bubble');
+  await expect(bubble).toContainText('Trả lời bằng cách');
+  await expect(bubble).toContainText('comment A, B, C hoặc D');
+  await expect(bubble).toContainText('để tham gia ngay!');
+  expect(await bubble.evaluate((element) => getComputedStyle(element, '::before').content)).not.toBe('none');
+  expect(await bubble.locator('p').evaluate((element) => getComputedStyle(element).whiteSpace)).toBe('pre-line');
+});
+
 test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ page }) => {
   const errors = watchPageErrors(page);
   await page.setViewportSize({ width: 921, height: 2000 });
@@ -368,7 +393,7 @@ test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ 
   expect(errors).toEqual([]);
 });
 
-test('question with 35 seats sustains 30 FPS over 10 seconds', async ({ page }) => {
+test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) => {
   const { errors } = await openScene(page, 'question', 'QUESTION');
   await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
   const seatEffects = await page.locator('.v3-seat-back, .v3-seat-name, .v3-chibi-hair, .v3-chibi-img img').evaluateAll((elements) => elements.map((element) => {
@@ -403,8 +428,8 @@ test('question with 35 seats sustains 30 FPS over 10 seconds', async ({ page }) 
     requestAnimationFrame(sample);
   }));
   console.log(`FPS câu hỏi 10 giây / 35 ghế: trung bình ${renderStats.averageFps.toFixed(1)}, p5 ${renderStats.p5Fps.toFixed(1)}, ${renderStats.frames} khung hình.`);
-  expect(renderStats.averageFps).toBeGreaterThanOrEqual(30);
-  expect(renderStats.p5Fps).toBeGreaterThanOrEqual(30);
+  expect(renderStats.averageFps).toBeGreaterThanOrEqual(55);
+  expect(renderStats.p5Fps).toBeGreaterThanOrEqual(55);
   expect(errors).toEqual([]);
 });
 
