@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 54,
-  "heartbeat": "2026-11-11T20:18:14+07:00",
+  "heartbeat": "2026-11-11T20:19:20+07:00",
   "state": "working",
-  "task": "C-0063",
-  "note": "Đang bỏ dải dưới logo trên nhánh C-0060, kiểm tra live preview và mọi mock scene",
+  "task": "C-0056",
+  "note": "Đang triển khai simulator LIVE theo C-0058/C-0059 trên nền C-0060; giữ preview liên tục ở 5180",
   "done": [
     60,
     63
