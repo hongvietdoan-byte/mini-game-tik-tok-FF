@@ -70,6 +70,10 @@ class MockDashboardClient implements DashboardClient {
   private statusListeners = new Set<(status: SocketStatus) => void>();
   private commandResults = new Map<string, CommandResponse>();
 
+  async getHealth() {
+    return { ok: true, contractVersion: 1, sessionId: this.sessionId };
+  }
+
   async currentSession() {
     return this.sessionId && this.snapshot().sessionStatus === 'OPEN' ? this.sessionId : null;
   }

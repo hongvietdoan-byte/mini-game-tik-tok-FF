@@ -18,8 +18,10 @@ export type SystemChecksResponse = {
   overlay: { clients: number; lastAck: { stateVersion: number; atMs: number } | null };
 };
 export type SelfTestResponse = { ok: boolean; mockComment: boolean; engineRecorded: boolean; detail: string; durationMs: number };
+export type HealthResponse = { ok: boolean; contractVersion: number; sessionId: string | null };
 
 export interface DashboardClient {
+  getHealth(): Promise<HealthResponse>;
   currentSession(): Promise<string | null>;
   createSession(token: string, request: CreateSessionRequest): Promise<{ sessionId: string; snapshot: AdminSnapshot }>;
   getState(token: string, sessionId: string): Promise<AdminSnapshot>;
@@ -63,6 +65,10 @@ async function jsonRequest<T>(path: string, token: string | null, init: RequestI
 }
 
 export const apiClient: DashboardClient = {
+  getHealth() {
+    return jsonRequest('/health', null);
+  },
+
   async currentSession() {
     const result = await jsonRequest<{ sessionId: string | null }>('/api/sessions/current', null);
     return result.sessionId;

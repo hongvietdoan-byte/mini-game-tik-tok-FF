@@ -13,6 +13,8 @@ import {
 import { ApiError, apiClient, type DashboardClient, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './api/client';
 import { mockClient } from './api/mockClient';
 import { adminTokenForRuntime, overlayUrlForRuntime, shouldPersistAdminToken, type StormArenaInfo } from './desktopBridge';
+import { SetupWizard } from './SetupWizard';
+import { isSetupComplete, SETUP_DONE_KEY } from './setupWizardLogic';
 import {
   actionsFor,
   buildCommandEnvelope,
@@ -41,6 +43,10 @@ function App() {
   const isDesktop = desktopBridge !== undefined;
   const [overlayUrl, setOverlayUrl] = useState(() => overlayUrlFromLocation(location.href));
   const [desktopInfo, setDesktopInfo] = useState<StormArenaInfo | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(() => {
+    try { return !isSetupComplete(localStorage); } catch { return true; }
+  });
+  const [menuOpen, setMenuOpen] = useState(false);
   const [desktopAuthLoading, setDesktopAuthLoading] = useState(isDesktop);
   const [token, setToken] = useState(() => isDesktop ? '' : sessionStorage.getItem(TOKEN_KEY) ?? '');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -78,6 +84,7 @@ function App() {
 
   const connectWithToken = useCallback(async (auth: string, persistToken: boolean) => {
     const cleanToken = auth.trim();
+    setToken(cleanToken);
     if (!isMock && !cleanToken) {
       setError('Nhập mã quản trị để kết nối.');
       setDesktopAuthLoading(false);
@@ -154,6 +161,21 @@ function App() {
   async function connectToServer(event: React.FormEvent) {
     event.preventDefault();
     await connectWithToken(token, shouldPersistAdminToken(desktopBridge));
+  }
+
+  async function connectWizardToken(auth: string) {
+    setToken(auth.trim());
+    await connectWithToken(auth, shouldPersistAdminToken(desktopBridge));
+  }
+
+  function completeSetupWizard() {
+    try {
+      localStorage.setItem(SETUP_DONE_KEY, '1');
+      setWizardOpen(false);
+    } catch {
+      setError('Không lưu được trạng thái hoàn tất trên thiết bị. Wizard có thể xuất hiện lại lần sau.');
+      setWizardOpen(false);
+    }
   }
 
   async function createSession(event: React.FormEvent<HTMLFormElement>) {
@@ -331,17 +353,32 @@ function App() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark">BV</span><div><b>BÁ VƯƠNG</b><span>ĐẠI CHIẾN · LIVE CONTROL</span></div></div>
       <div className="topbar-right">
-        {snapshot && sessionId && <nav className="page-nav" aria-label="Các trang điều hành">
+        {!wizardOpen && snapshot && sessionId && <nav className="page-nav" aria-label="Các trang điều hành">
           <button className={page === 'live' ? 'is-active' : ''} type="button" aria-current={page === 'live' ? 'page' : undefined} onClick={() => setPage('live')}>Live Control</button>
           <button className={page === 'checks' ? 'is-active' : ''} type="button" aria-current={page === 'checks' ? 'page' : undefined} onClick={() => setPage('checks')}>Kiểm tra kết nối</button>
           <button className={page === 'obs' ? 'is-active' : ''} type="button" aria-current={page === 'obs' ? 'page' : undefined} onClick={() => setPage('obs')}>OBS / LIVE Studio</button>
         </nav>}
         <span className={`mode-pill ${isMock ? 'mode-mock' : ''}`}>{isMock ? 'MOCK · DEMO' : 'LOCAL SERVER'}</span>
         {sessionId && <span className={`socket-pill socket-${socketStatus}`}><i />{socketLabel(socketStatus)}</span>}
+        <div className="header-menu">
+          <button className="secondary-button" type="button" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>Menu</button>
+          {menuOpen && <div className="header-menu-popover" role="menu"><button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setWizardOpen(true); }}>Mở lại trình hướng dẫn</button></div>}
+        </div>
       </div>
     </header>
 
-    {snapshot && sessionId ? <>
+    {wizardOpen ? <SetupWizard
+      client={client}
+      token={token.trim()}
+      isDesktop={isDesktop}
+      isMock={isMock}
+      desktopInfo={desktopInfo}
+      overlayUrl={overlayUrl}
+      obsGuide={<ObsGuidePage overlayClients={snapshot?.overlay.clients ?? 0} overlayUrl={overlayUrl} desktopInfo={desktopInfo} />}
+      onConnectToken={connectWizardToken}
+      onFinish={completeSetupWizard}
+      onDismiss={() => setWizardOpen(false)}
+    /> : snapshot && sessionId ? <>
       <section className="session-heading">
         <div><span className="eyebrow">ĐIỀU KHIỂN PHIÊN</span><h1>{snapshot.config.mode === 'MOCK' ? 'Phiên MOCK' : 'Phiên LIVE'}</h1></div>
         <div className="session-meta"><span>ID <b>{sessionId}</b></span><span>Phiên bản <b>{snapshot.public.stateVersion}</b></span><span>Round <b>{snapshot.public.round?.roundNumber ?? '—'}</b></span></div>
