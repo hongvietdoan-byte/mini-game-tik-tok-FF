@@ -1,11 +1,12 @@
 {
   "role": "codex1",
-  "last_read": 69,
-  "heartbeat": "2026-11-11T21:40:54+07:00",
+  "last_read": 77,
+  "heartbeat": "2026-11-11T23:20:18+07:00",
   "state": "working",
-  "task": "C-0070",
-  "note": "C-0067 đã push/report/done. Đang đọc đầy đủ spec MC Voice và gói bàn giao ClipAI (C-0075), rồi sẽ viết duy nhất docs/review/MC_VOICE_DE_XUAT.md — không code/API thật.",
+  "task": "C-0078",
+  "note": "M1 đã push/report; đang làm mốc 2 server/provider/cache. C-0085 đã ACK nhưng chờ coordinator gộp C-0080/C-0082 theo điều kiện thư.",
   "done": [
-    74
+    84,
+    86
   ]
 }

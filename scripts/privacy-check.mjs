@@ -15,6 +15,7 @@ const SENSITIVE_SHEET_NAMES = [
   /List KOL/i,
 ];
 const ASSET_APPROVALS_PATH = 'assets/ASSET_APPROVALS.json';
+const LOCAL_EXTRA_PATTERNS_PATH = 'assets-local/privacy-patterns.txt';
 
 /** @typedef {{ path: string; content?: string }} PrivacyFile */
 
@@ -24,6 +25,27 @@ function normalizePath(path) {
 
 function lowerPath(path) {
   return normalizePath(path).toLowerCase();
+}
+
+/** Chấp nhận danh sách phân tách bằng dòng mới, dấu phẩy hoặc chấm phẩy; bỏ dòng trống và comment. */
+export function parseExtraPatterns(environmentValue = '', localFileContent = '') {
+  const values = [environmentValue, localFileContent];
+  return [...new Set(values
+    .flatMap((value) => String(value ?? '').split(/[\r\n;,]+/))
+    .map((pattern) => pattern.trim())
+    .filter((pattern) => pattern && !pattern.startsWith('#')))];
+}
+
+function readLocalExtraPatterns(repositoryRoot) {
+  const localPath = resolve(repositoryRoot, LOCAL_EXTRA_PATTERNS_PATH);
+  try {
+    const info = lstatSync(localPath);
+    if (info.isSymbolicLink() || !info.isFile()) throw new Error('Tệp pattern cục bộ không hợp lệ.');
+    return readFileSync(localPath, 'utf8');
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return '';
+    throw new Error('Không thể đọc tệp pattern quyền riêng tư cục bộ.');
+  }
 }
 
 function isTextFile(path) {
@@ -69,7 +91,7 @@ function approvedAssetPaths(files) {
  * @param {PrivacyFile[]} files
  * @returns {string[]}
  */
-export function checkFiles(files) {
+export function checkFiles(files, extraPatterns = []) {
   const normalizedFiles = files.map((file) => ({ ...file, path: normalizePath(file.path) }));
   const { paths: approvedAssets, error: manifestError } = approvedAssetPaths(normalizedFiles);
   const violations = [];
@@ -102,7 +124,11 @@ export function checkFiles(files) {
       }
     }
 
-    if (typeof file.content !== 'string' || !isTextScanPath(path)) continue;
+    if (typeof file.content !== 'string') continue;
+    const lowerContent = file.content.toLowerCase();
+    if (extraPatterns.some((pattern) => lowerContent.includes(String(pattern).toLowerCase())))
+      violations.push(path + ': chứa mẫu cấm riêng');
+    if (!isTextScanPath(path)) continue;
     if (/[\w.+-]+@[\w-]+\.[\w.]+/g.test(file.content)) violations.push(`${path}: chứa địa chỉ email`);
     if (/(?:\+84|0)(?:3|5|7|8|9)\d{8}/g.test(file.content)) violations.push(`${path}: chứa số điện thoại Việt Nam`);
     if (normalized.startsWith('fixtures/') && /\d{9,12}/g.test(file.content)) {
@@ -156,9 +182,15 @@ function runCli() {
   }
 
   const readErrors = [];
+  let extraPatterns = parseExtraPatterns(process.env.PRIVACY_EXTRA_PATTERNS ?? '');
+  try {
+    extraPatterns = parseExtraPatterns(process.env.PRIVACY_EXTRA_PATTERNS ?? '', readLocalExtraPatterns(repositoryRoot));
+  } catch {
+    readErrors.push(LOCAL_EXTRA_PATTERNS_PATH + ': không thể đọc tệp pattern cục bộ');
+  }
   const files = trackedPaths.map((path) => {
     const isApprovalManifest = lowerPath(path) === ASSET_APPROVALS_PATH.toLowerCase();
-    if (!isApprovalManifest && !isTextScanPath(path)) return { path };
+    if (!isApprovalManifest && !isTextFile(path)) return { path };
     try {
       return { path, content: readTrackedTextFile(repositoryRoot, path) };
     } catch {
@@ -166,7 +198,7 @@ function runCli() {
       return { path };
     }
   });
-  const violations = [...checkFiles(files), ...readErrors];
+  const violations = [...checkFiles(files, extraPatterns), ...readErrors];
   const uniqueViolations = [...new Set(violations)];
 
   if (json) {

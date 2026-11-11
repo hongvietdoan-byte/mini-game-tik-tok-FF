@@ -1,18 +1,12 @@
 {
   "role": "codex2",
-  "last_read": 54,
-  "heartbeat": "2026-11-11T21:54:29+07:00",
+  "last_read": 76,
+  "heartbeat": "2026-11-11T23:31:25+07:00",
   "state": "working",
-  "task": "C-0076",
-  "note": "đang rà sửa safe-zone trên nhánh Victory/logo",
+  "task": "C-0082",
+  "note": "đang thay Victory SVG bằng bg.jpg + trophy-stage.png trong nhánh C-0080",
   "done": [
-    56,
-    58,
-    59,
-    60,
-    63,
-    65,
-    66,
-    71
+    82,
+    87
   ]
 }

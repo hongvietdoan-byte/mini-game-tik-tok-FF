@@ -14,6 +14,7 @@ export const GameStateSchema = z.enum([
   'IDLE',
   'LOBBY',
   'PREPARE',
+  'READING',
   'ACCEPTING',
   'REVEAL',
   'LEADERBOARD',
@@ -25,6 +26,17 @@ export const GameStateSchema = z.enum([
   'ERROR',
 ]);
 export type GameState = z.infer<typeof GameStateSchema>;
+
+export const McReadingFallbackReasonSchema = z.enum([
+  'NO_AUDIO',
+  'PLAYBACK_ERROR',
+  'NO_OWNER',
+  'TIMEOUT',
+]);
+export type McReadingFallbackReason = z.infer<typeof McReadingFallbackReasonSchema>;
+
+/** Trần đọc câu hỏi và bốn đáp án trong một lần phát MC. */
+export const MAX_MC_READING_MS = 20_000;
 
 export const SceneSchema = z.enum([
   'LOBBY',
@@ -165,7 +177,7 @@ export type PublicQuestion = {
   questionInstanceId: string;
   index: number;
   prompt: string;
-  /** Rỗng ở PREPARE (người dùng chốt: chỉ hiện câu hỏi, mở nhận đáp án mới hiện 4 đáp án). */
+  /** Rỗng ở PREPARE; hiện đủ bốn đáp án từ READING nhưng không bao giờ kèm đáp án đúng. */
   options: { id: OptionId; text: string }[];
   optionsVisible: boolean;
   isDemo: boolean;
@@ -209,6 +221,8 @@ export const SessionConfigSchema = z
     /** KAHOOT (mặc định, người dùng chốt 11/11): 500–1000/câu đúng theo tốc độ + chuỗi tới +500. CLASSIC: 100 + speedBonusMax + mốc 3/5/10. */
     scoringMode: z.enum(['KAHOOT', 'CLASSIC']).default('KAHOOT'),
     timings: TimingsSchema.default({}),
+    /** Bật luồng MC Voice cho phiên; mặc định tắt để phiên cũ tiếp tục PREPARE → ACCEPTING. */
+    mcVoiceEnabled: z.boolean().optional(),
     /** Chỉ hợp lệ trong MOCK. */
     speedMultiplier: z.number().min(1).max(200).default(1),
     /** Cho phép câu hỏi DEMO/hư cấu — chỉ hợp lệ trong MOCK. */
