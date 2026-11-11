@@ -1,0 +1,74 @@
+{
+  "fixtureOnly": true,
+  "description": "Bình luận TikTok hư cấu để replay parse và ánh xạ connector; mọi ID/tên đều giả.",
+  "normalizationCases": [
+    {
+      "name": "a chữ thường",
+      "payload": { "common": { "msgId": "replay-norm-001", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-101", "nickname": "Mây Nâu" }, "content": "a" },
+      "expectedOption": "A"
+    },
+    {
+      "name": "A chữ hoa",
+      "payload": { "common": { "msgId": "replay-norm-002", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-102", "nickname": "Sao Biển" }, "content": "A" },
+      "expectedOption": "A"
+    },
+    {
+      "name": "b có khoảng trắng, dạng connector cũ và thời gian giây",
+      "payload": { "msgId": "replay-norm-003", "createTime": 1800000000, "user": { "userId": "demo-viewer-103", "uniqueId": "la_non" }, "comment": " b " },
+      "expectedOption": "B",
+      "expectedCreateTimeMs": 1800000000000
+    },
+    {
+      "name": "B có dấu chấm",
+      "payload": { "common": { "msgId": "replay-norm-004", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-104", "nickname": "Cánh Diều" }, "content": "B." },
+      "expectedOption": null
+    },
+    {
+      "name": "có cụm đáp án và chữ c",
+      "payload": { "common": { "msgId": "replay-norm-005", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-105", "nickname": "Mầm Xanh" }, "content": "đáp án c" },
+      "expectedOption": null
+    },
+    {
+      "name": "C kèm nha",
+      "payload": { "common": { "msgId": "replay-norm-006", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-106", "nickname": "Trăng Non" }, "content": "C nha" },
+      "expectedOption": null
+    },
+    {
+      "name": "d kèm dấu câu",
+      "payload": { "common": { "msgId": "replay-norm-007", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-107", "nickname": "Hạt Mưa" }, "content": "d!!!" },
+      "expectedOption": null
+    },
+    {
+      "name": "emoji",
+      "payload": { "common": { "msgId": "replay-norm-008", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-108", "nickname": "Đom Đóm" }, "content": "🔥" },
+      "expectedOption": null
+    },
+    {
+      "name": "chữ có dấu không phải lựa chọn",
+      "payload": { "common": { "msgId": "replay-norm-009", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-109", "nickname": "Bình Minh" }, "content": "Chào bạn" },
+      "expectedOption": null
+    },
+    {
+      "name": "bốn đáp án trong cùng một dòng",
+      "payload": { "common": { "msgId": "replay-norm-010", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-110", "nickname": "Lá Nhỏ" }, "content": "A B C D" },
+      "expectedOption": null
+    },
+    {
+      "name": "ký tự fullwidth được chuẩn hoá NFKC",
+      "payload": { "common": { "msgId": "replay-norm-011", "createTime": "1800000000000" }, "user": { "id": "demo-viewer-111", "nickname": "Mây Tím" }, "content": "Ｃ" },
+      "expectedOption": "C"
+    },
+    {
+      "name": "thiếu msgId vẫn ánh xạ bình luận",
+      "payload": { "common": { "createTime": "1800000000000" }, "user": { "id": "demo-viewer-112", "nickname": "Gió Nhẹ" }, "content": "D" },
+      "expectedOption": "D",
+      "expectedEventId": null
+    }
+  ],
+  "clockSkewReplay": {
+    "firstSourceLagMs": 4000,
+    "gapMs": 1000,
+    "laterSourceLagMs": 16000,
+    "expectedNormalizedLagMs": 12000
+  }
+}
