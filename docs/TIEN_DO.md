@@ -25,6 +25,8 @@ Mốc sự kiện (từ đặc tả): tổng duyệt 12/11, thi đấu 13–14/1
 | M13 | Tổng duyệt kỹ thuật bằng Mock: bộ cài + OBS + trọn trận + lưu kết quả + đóng an toàn | ⏳ | 12/11 sáng | cần M7; người dùng thử OBS/LIVE Studio thật |
 | M14 | Sẵn sàng LIVE thật (V3.1 mục G) | ⛔ | phụ thuộc M11 | — |
 
+| M15 | MC Kelly PNG Sequence | ⏳ trình phát (C-0030 codex2) chuẩn bị sẵn; **frame do người dùng làm sau** — đặc tả `docs/ASSET_SPEC_MC_SEQUENCE.md` | khi có frame | frame từ người dùng |
+
 ## Việc theo làn (chi tiết: `mailbox/BOARD.md`)
 
 | Làn | Đang làm | Hàng chờ |
