@@ -9,18 +9,18 @@ import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
 import './style.css';
 
-function useStageScale(cropToPhone = false) {
+function useStageScale() {
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const resize = () => {
       const widthScale = window.innerWidth / 1080;
       const heightScale = window.innerHeight / 1920;
-      setScale(cropToPhone ? Math.max(widthScale, heightScale) : Math.min(widthScale, heightScale));
+      setScale(Math.max(widthScale, heightScale));
     };
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
-  }, [cropToPhone]);
+  }, []);
   return scale;
 }
 
@@ -204,7 +204,7 @@ function TikTokHudSimulator({ debug }: { debug: boolean }) {
 function App() {
   const query = new URLSearchParams(location.search);
   const hud = query.get('hud') === '1';
-  const scale = useStageScale(hud);
+  const scale = useStageScale();
   const requestedMock = query.get('mock');
   const [cycleScene, setCycleScene] = useState('lobby');
   const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
@@ -240,7 +240,7 @@ function App() {
       '--safe-right': `${safeZone!.right}px`,
       '--safe-right-from-y': `${safeZone!.rightFromY ?? 0}px`,
     } as React.CSSProperties}>
-      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} hud={hud} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
+      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
         <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
         {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}

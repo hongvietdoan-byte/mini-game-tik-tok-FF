@@ -18,28 +18,21 @@ function formatTime(ms: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
-  const round = snapshot.round;
+export function BrandHeader() {
   return (
     <header className="v3-header" data-layer="brand-header">
-      <div className="v3-logo-storm" aria-label="Storm Arena">
-        <span>STORM</span>
-        <span>ARENA</span>
-      </div>
       <BrandMark />
-      <div className="v3-round-badge">
-        <b>{round ? `VÒNG ${round.roundNumber}` : 'SẮP BẮT ĐẦU'}</b>
-        <span>
-          <i className="v3-people" aria-hidden="true" /> {snapshot.participantCount.toLocaleString('vi-VN')} Đang chơi
-        </span>
-      </div>
     </header>
   );
 }
 
-function Top10({ entries }: { entries: LeaderboardEntry[] }) {
+function Top10({ entries, snapshot }: { entries: LeaderboardEntry[]; snapshot: PublicSnapshot }) {
   return (
     <section className="v3-top10" data-layer="leaderboard" data-testid="v3-top10">
+      <div className="v3-event-identity" aria-label="Thông tin sự kiện">
+        <b>STORM ARENA</b>
+        <span>{snapshot.round ? `VÒNG ${snapshot.round.roundNumber}` : 'SẮP BẮT ĐẦU'} · {snapshot.participantCount.toLocaleString('vi-VN')} đang chơi</span>
+      </div>
       <div className="v3-top10-title">
         <small>BXH TRỰC TIẾP</small>
         <b>TOP 10</b>
@@ -251,10 +244,10 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   );
 }
 
-export function ArenaStage({ snapshot, remainingMs, debug = false, hud = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; hud?: boolean }) {
+export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
   const [backgroundOk, setBackgroundOk] = useState(true);
   return (
-    <div className={`v3-stage${hud ? ' has-tiktok-hud' : ''}`} data-scene={snapshot.scene}>
+    <div className="v3-stage" data-scene={snapshot.scene}>
       <div className="v3-bg" data-layer="background-storm" aria-hidden="true">
         {backgroundOk && <img className="v3-arena-backdrop" src={`${ASSET_BASE}/victory/bg.jpg`} alt="" draggable={false} onError={() => setBackgroundOk(false)} />}
         <span className="v3-storm" />
@@ -354,8 +347,8 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, hud = false }
           </g>
         </svg>
       </div>
-      <BrandHeader snapshot={snapshot} />
-      <Top10 entries={snapshot.leaderboard?.entries ?? []} />
+      <BrandHeader />
+      <Top10 entries={snapshot.leaderboard?.entries ?? []} snapshot={snapshot} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
       <McKelly snapshot={snapshot} />
       <Audience snapshot={snapshot} />

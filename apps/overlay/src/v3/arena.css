@@ -69,26 +69,6 @@
 
 /* ---------- header ---------- */
 .v3-header { position: absolute; left: 0; right: 0; top: 60px; height: 180px; z-index: 5; }
-.v3-logo-storm {
-  position: absolute;
-  left: 34px;
-  top: 14px;
-  width: 280px;
-  height: 104px;
-  display: grid;
-  place-content: center;
-  line-height: 0.88;
-  font-style: italic;
-  font-weight: 900;
-  font-size: 46px;
-  letter-spacing: 1px;
-  text-shadow: 3px 3px 0 var(--violet), 0 0 18px rgba(176, 140, 255, 0.8);
-  clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
-  background: linear-gradient(180deg, rgba(46, 26, 120, 0.85), rgba(20, 12, 70, 0.85));
-  border: 3px solid var(--neon);
-  box-shadow: inset 0 0 22px rgba(176, 140, 255, 0.55);
-}
-.v3-logo-storm span:last-child { padding-left: 36px; }
 .v3-title { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); width: 380px; text-align: center; }
 .v3-brand-logo { display: block; width: auto; height: 184px; max-width: 100%; object-fit: contain; margin: 0 auto; }
 .v3-crown { width: 120px; height: 56px; display: block; margin: 0 auto -4px; }
@@ -120,24 +100,6 @@
   clip-path: polygon(6% 0, 94% 0, 100% 50%, 94% 100%, 6% 100%, 0 50%);
   box-shadow: 0 0 18px rgba(176, 140, 255, 0.7);
 }
-.v3-round-badge {
-  position: absolute;
-  right: 30px;
-  top: 16px;
-  width: 210px;
-  height: 92px;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  gap: 6px;
-  clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%);
-  background: linear-gradient(180deg, rgba(46, 26, 120, 0.85), rgba(20, 12, 70, 0.9));
-  border: 3px solid var(--neon);
-}
-.v3-round-badge b { font-size: 28px; font-weight: 800; }
-.v3-round-badge span { font-size: 19px; color: #e7e1ff; }
-.v3-people { display: inline-block; width: 20px; height: 14px; border-radius: 10px 10px 4px 4px; background: #e7e1ff; vertical-align: -1px; margin-right: 4px; }
-
 /* ---------- BXH Top 10 ---------- */
 .v3-top10 {
   position: absolute;
@@ -506,14 +468,10 @@
     radial-gradient(ellipse 38% 58% at 100% 35%, rgba(140,200,251,.2), transparent 75%);
 }
 .v3-header { top: 42px; height: 196px; contain: layout paint; }
-.v3-logo-storm { left: 30px; top: 24px; width: 254px; height: 90px; font-size: 42px; }
-.v3-title { top: -4px; width: 404px; }
-.v3-brand-logo { height: 202px; }
+.v3-title { top: -32px; width: 260px; }
+.v3-brand-logo { height: 100px; }
 .v3-title-main { font-size: 46px; }
 .v3-title-ribbon { margin-top: 0; padding: 5px 24px; font-size: 15px; }
-.v3-round-badge { right: 25px; top: 24px; width: 230px; height: 92px; }
-.v3-round-badge b { font-size: 26px; }
-.v3-round-badge span { font-size: 17px; }
 .v3-top10 {
   left: 98px;
   top: 270px;
@@ -525,6 +483,9 @@
   background: linear-gradient(180deg, rgba(32, 23, 102, .96), rgba(16, 12, 57, .97));
   contain: layout paint;
 }
+.v3-event-identity { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin: 0 2px 4px; line-height: 1; white-space: nowrap; }
+.v3-event-identity b { color: #fff; font-size: 11px; font-weight: 900; letter-spacing: .7px; text-shadow: 0 0 8px rgba(117, 94, 255, .9); }
+.v3-event-identity span { color: #d8d0ff; font-size: 9px; font-weight: 700; }
 .v3-top10-title { margin-bottom: 8px; }
 .v3-top10-title small { color: #d8d0ff; font-size: 15px; letter-spacing: 1px; }
 .v3-top10-title b { color: #fff; font-size: 27px; letter-spacing: 1px; }
@@ -887,21 +848,9 @@
 .v3-bolt-l, .v3-bolt-r { opacity: .08; }
 .v3-lights { opacity: .38; }
 .v3-header { height: 220px; }
-.v3-title { top: -40px; width: 440px; }
-.v3-brand-logo { height: 220px; }
+.v3-title { top: -32px; width: 260px; }
+.v3-brand-logo { height: 100px; }
 .v3-title-ribbon { padding: 4px 28px; font-size: 16px; }
-.v3-stage.has-tiktok-hud .v3-top10,
-.v3-stage.has-tiktok-hud .v3-board { top: 390px; }
-.v3-stage.has-tiktok-hud .v3-header { top: 260px; height: 110px; }
-.v3-stage.has-tiktok-hud .v3-logo-storm { left: 98px; top: 12px; width: 210px; height: 70px; font-size: 34px; }
-.v3-stage.has-tiktok-hud .v3-logo-storm span:last-child { padding-left: 26px; }
-.v3-stage.has-tiktok-hud .v3-title { top: 10px; width: 360px; }
-.v3-stage.has-tiktok-hud .v3-brand-logo { height: 84px; }
-.v3-stage.has-tiktok-hud .v3-round-badge { display: none; }
-.v3-stage.has-tiktok-hud .v3-mc { top: 900px; }
-.v3-stage .v3-mc-plate { left: 98px; width: 260px; }
-.v3-stage .v3-bubble { width: 593px; padding: 0 32px; }
-.v3-stage.has-tiktok-hud .v3-queue { top: 1160px; }
 
 /* ---------- C-0065: Storm Arena v2 ---------- */
 .v3-bg::before {
@@ -1043,6 +992,3 @@
 }
 .v3-bubble .v3-bolt, .v3-bubble p { position: relative; z-index: 1; }
 .v3-bubble p { max-width: 520px; margin: 0 auto; white-space: pre-line; font-size: 30px; line-height: 1.22; }
-
-.v3-stage.has-tiktok-hud .v3-env-floodlights,
-.v3-stage.has-tiktok-hud .v3-env-stands { opacity: .5; }

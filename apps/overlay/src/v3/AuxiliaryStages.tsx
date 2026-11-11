@@ -28,7 +28,7 @@ export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const entries = snapshot.leaderboard?.entries ?? [];
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
     <V3Backdrop />
-    <BrandHeader snapshot={snapshot} />
+    <BrandHeader />
     <section className="v3-leaderboard-full" data-layer="leaderboard-full" data-testid="v3-top10-large">
       <header className="v3-full-heading">
         <span className="eyebrow">BXH TRỰC TIẾP</span>
@@ -61,7 +61,7 @@ function FullTimer({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remain
 export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
     <V3Backdrop />
-    <BrandHeader snapshot={snapshot} />
+    <BrandHeader />
     <section className="v3-intermission" data-layer="intermission" data-testid="intermission-message">
       <span className="v3-scene-kicker">HẾT VÒNG {snapshot.round?.roundNumber ?? 1}</span>
       <div className="v3-intermission-emblem" aria-hidden="true"><svg viewBox="0 0 120 60"><path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" /></svg></div>
@@ -76,7 +76,7 @@ export function ConnectionLostStage({ snapshot }: { snapshot: PublicSnapshot }) 
   const failed = snapshot.state === 'ERROR';
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
     <V3Backdrop />
-    <BrandHeader snapshot={snapshot} />
+    <BrandHeader />
     <section className="v3-connection-lost" data-layer="connection-lost" data-testid="connection-lost-message">
       <div className="v3-connection-emblem" aria-hidden="true"><span /><i /></div>
       <span className="v3-scene-kicker">KẾT NỐI GIÁN ĐOẠN</span>

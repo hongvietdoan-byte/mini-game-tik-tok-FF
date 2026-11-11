@@ -62,7 +62,7 @@ async function openScene(page: Page, sceneName: string, expectedScene: string) {
 
 async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator']>, sceneName: string) {
   const viewport = page.viewportSize();
-  expect(viewport).toEqual({ width: 1080, height: 1920 });
+  expect(viewport, `${sceneName}: viewport has a measurable size`).not.toBeNull();
   const stageBox = await stage.boundingBox();
   expect(stageBox, `${sceneName}: stage has a bounding box`).not.toBeNull();
   if (!stageBox) return;
@@ -118,6 +118,7 @@ async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator'
 
 for (const { name, scene } of scenes) {
   test(`mock scene: ${name}`, async ({ page }) => {
+    if (name === 'question') await page.setViewportSize({ width: 921, height: 2000 });
     const { stage, errors } = await openScene(page, name, scene);
     await expect(stage.getByText('ĐẤU TRƯỜNG BÃO TỐ', { exact: true })).toHaveCount(0);
     await expectInsideSafeZone(page, stage, name);
@@ -298,6 +299,43 @@ test('question and Top 10 stay below the 14 percent TikTok top safe zone', async
     expect(box, `${selector} has a measurable position`).not.toBeNull();
     expect(box!.y).toBeGreaterThanOrEqual(268.8);
   }
+});
+
+test('TikTok HUD overlays the same quiz layout without covering the event logo or critical quiz content', async ({ page }) => {
+  await page.setViewportSize({ width: 921, height: 2000 });
+  const selectors = ['.v3-header', '.v3-title', '.v3-top10', '.v3-board', '.v3-timer', '.v3-mc'];
+  const captureLayout = async (hud: boolean) => {
+    await page.goto(`/?mock=question${hud ? '&hud=1' : ''}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('[data-testid="stage"][data-scene="QUESTION"]')).toBeVisible();
+    await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+    return Promise.all(selectors.map(async (selector) => {
+      const box = await page.locator(selector).boundingBox();
+      expect(box, `${selector} has a measurable position with hud=${hud}`).not.toBeNull();
+      return box && [box.x, box.y, box.width, box.height].map((value) => Math.round(value * 100) / 100);
+    }));
+  };
+  const withoutHud = await captureLayout(false);
+  const withHud = await captureLayout(true);
+  expect(withHud).toEqual(withoutHud);
+
+  const overlap = await page.evaluate(() => {
+    const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const box = (selector: string) => document.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
+    const title = box('.v3-title');
+    const host = box('.tiktok-hud-host');
+    const viewers = box('.tiktok-hud-viewers');
+    const eventBanner = box('.tiktok-hud-event-banner');
+    const timerText = box('.v3-timer b');
+    const comments = box('.tiktok-hud-comments');
+    const important = Array.from(document.querySelectorAll<HTMLElement>('.v3-top10, .v3-board, .v3-mc'))
+      .map((element) => element.getBoundingClientRect());
+    return {
+      logoOverlaysHud: !!title && !!host && intersects(title, host) || !!title && !!viewers && intersects(title, viewers),
+      bannerCoversTimerText: !!eventBanner && !!timerText && intersects(eventBanner, timerText),
+      commentsCoverQuiz: !!comments && important.some((target) => intersects(comments, target)),
+    };
+  });
+  expect(overlap).toEqual({ logoOverlaysHud: false, bannerCoversTimerText: false, commentsCoverQuiz: false });
 });
 
 test('Storm Arena shows stadium layers, shield ranks and the three-line MC bubble', async ({ page }) => {
