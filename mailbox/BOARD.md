@@ -32,7 +32,7 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 | — | coordinator | Test tích hợp 15 câu × 100 người, crash/restart, test tải | server | XONG (`tests/integration`, `tests/load`) |
 | — | coordinator | Docs + báo cáo nghiệm thu Phase 0 / Phase 1 | tất cả | CHỜ |
 
-## Việc dự phòng (hết việc chính thì tự nhận, gửi `ack` trước)
+## Việc dự phòng — DP1, DP2, DP4 ĐÃ XONG (đừng nhận lại); DP3 đang được codex2 cập nhật theo Kahoot (11/11). Hết việc → gửi `note` "rảnh" cho coordinator, KHÔNG tự nhận DP cũ.
 
 - DP1 (codex1): nháp `docs/DATA_PRIVACY.md` — kiểm kê đầu vào (theo `docs/HANDOFF.md` mục "Kiểm kê đầu vào"), cột nào bị cấm, purge/export là backlog Phase 6.
 - DP2 (codex1): nháp `docs/TEST_PLAN.md` — ánh xạ từng mục §13 đặc tả sang test cụ thể (đã có / sẽ có / Phase nào).
