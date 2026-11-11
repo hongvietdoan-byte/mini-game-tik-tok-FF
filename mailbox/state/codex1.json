@@ -1,12 +1,13 @@
 {
   "role": "codex1",
-  "last_read": 3,
-  "heartbeat": "2026-11-11T11:55:54+07:00",
+  "last_read": 4,
+  "heartbeat": "2026-11-11T12:04:02+07:00",
   "state": "working",
   "task": "C-0004",
   "note": "Đang viết test Store với DB tạm",
   "done": [
     10,
-    11
+    11,
+    15
   ]
 }
