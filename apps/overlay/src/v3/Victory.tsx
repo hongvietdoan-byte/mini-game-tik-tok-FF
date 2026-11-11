@@ -30,8 +30,8 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
         <span className={`v3v-medal v3v-medal-${slot.place}`}>{slot.rank}</span>
         <div className="v3v-names">
           {slot.entries.slice(0, 3).map((e) => (
-            <b key={e.playerId}>
-              {shortName(e.displayName, 14)}
+            <b className="v3v-player-row" key={e.playerId}>
+              <span className="v3v-player-name">{shortName(e.displayName, 22)}</span>
               {(e.top1Streak ?? 0) >= 2 && <span className="v3-top1-badge" data-testid="top1-badge">x{e.top1Streak}</span>}
             </b>
           ))}

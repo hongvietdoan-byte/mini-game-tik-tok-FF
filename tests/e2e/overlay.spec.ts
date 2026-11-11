@@ -41,6 +41,8 @@ async function openScene(page: Page, sceneName: string, expectedScene: string) {
   await page.goto(`/?mock=${encodeURIComponent(sceneName)}`, { waitUntil: 'domcontentloaded' });
   const stage = page.locator(`[data-testid="stage"][data-scene="${expectedScene}"]`);
   await expect(stage).toBeVisible();
+  await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   return { stage, errors };
 }
 
@@ -104,7 +106,7 @@ for (const { name, scene } of scenes) {
   test(`mock scene: ${name}`, async ({ page }) => {
     const { stage, errors } = await openScene(page, name, scene);
     await expectInsideSafeZone(page, stage, name);
-    await page.screenshot({ path: join(screenshotDirectory, `${name}.png`) });
+    await page.screenshot({ path: join(screenshotDirectory, `${name}.png`), animations: 'disabled' });
     // So ảnh chuẩn chỉ khi bật E2E_SCREENSHOTS=1 (bố cục V3 còn đổi, chưa commit ảnh chuẩn — BOARD #15)
     if (process.env.E2E_SCREENSHOTS === '1') await expect(page).toHaveScreenshot(`${name}.png`, { maxDiffPixelRatio: 0.01 });
     expect(errors, `${name}: no console or page errors`).toEqual([]);
@@ -135,6 +137,16 @@ test('XSS shaped names render as text', async ({ page }) => {
   await expect(page.locator('.player-name').filter({ hasText: '<img src=x onerror="window.__xss=1">' })).toHaveCount(1);
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
   expect(await page.evaluate(() => (window as Window & { __xss?: number }).__xss)).toBeUndefined();
+  const firstRow = page.locator('[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]').first();
+  const name = firstRow.locator('.v3-full-name-text');
+  const badge = firstRow.locator('[data-testid="top1-badge"]');
+  const score = firstRow.locator('.v3-full-score');
+  await expect(badge).toHaveText('x3');
+  await expect(badge).toBeVisible();
+  const boxes = await Promise.all([name.boundingBox(), badge.boundingBox(), score.boundingBox()]);
+  expect(boxes.every(Boolean)).toBe(true);
+  expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x);
+  expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[2]!.x);
   expect(errors).toEqual([]);
 });
 
@@ -148,9 +160,94 @@ test('top10-short shows only its three real entries', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('question crowd labels stay clear of the quiz and Top 1 badge fits its score column', async ({ page }) => {
+  const { errors } = await openScene(page, 'question', 'QUESTION');
+  const seatNames = page.locator('.v3-seat-name');
+  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
+  await expect(page.locator('.v3-seat-back')).toHaveCount(35);
+  await expect(seatNames).toHaveCount(35);
+
+  const overlaps = await page.evaluate(() => {
+    const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="question-prompt"], [data-testid^="option-"]'));
+    const names = Array.from(document.querySelectorAll<HTMLElement>('.v3-seat-name'));
+    const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return names.flatMap((name, nameIndex) => {
+      const nameBox = name.getBoundingClientRect();
+      return targets.flatMap((target, targetIndex) => intersects(nameBox, target.getBoundingClientRect()) ? [`name ${nameIndex} overlaps target ${targetIndex}`] : []);
+    });
+  });
+  expect(overlaps, 'all 35 audience nameplates stay clear of question and answer boxes').toEqual([]);
+
+  const firstRow = page.locator('[data-testid="v3-top10"] [data-testid="leaderboard-row"]').first();
+  const name = firstRow.locator('.v3-name-text');
+  const badge = firstRow.locator('[data-testid="top1-badge"]');
+  const score = firstRow.locator('.v3-score');
+  await expect(badge).toHaveText('x3');
+  await expect(badge).toBeVisible();
+  const boxes = await Promise.all([name.boundingBox(), badge.boundingBox(), score.boundingBox()]);
+  expect(boxes.every(Boolean)).toBe(true);
+  expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x);
+  expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[2]!.x);
+  expect(await name.evaluate((element) => ({
+    clipped: element.scrollWidth > element.clientWidth,
+    overflow: getComputedStyle(element).textOverflow,
+  }))).toEqual({ clipped: true, overflow: 'ellipsis' });
+  await expect(score).toHaveText('21.000');
+  expect(errors).toEqual([]);
+});
+
+test('question with 35 seats sustains 30 FPS over 10 seconds', async ({ page }) => {
+  const { errors } = await openScene(page, 'question', 'QUESTION');
+  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
+  const seatEffects = await page.locator('.v3-seat-back, .v3-seat-name, .v3-chibi-hair, .v3-chibi-img img').evaluateAll((elements) => elements.map((element) => {
+    const style = getComputedStyle(element);
+    return { boxShadow: style.boxShadow, filter: style.filter, animationCount: style.animationIterationCount };
+  }));
+  expect(seatEffects).toHaveLength(35 * 3);
+  expect(seatEffects.every((effect) => effect.boxShadow === 'none' && effect.filter === 'none' && effect.animationCount !== 'infinite')).toBe(true);
+  const top10Rows = await page.locator('[data-testid="v3-top10"] [data-testid="leaderboard-row"]').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).animationIterationCount));
+  expect(top10Rows.every((count) => count !== 'infinite')).toBe(true);
+  const renderStats = await page.evaluate(() => new Promise<{ averageFps: number; p5Fps: number; frames: number }>((resolve) => {
+    let start = 0;
+    let previous = 0;
+    const intervals: number[] = [];
+    const sample = (timestamp: number) => {
+      if (start === 0) {
+        start = timestamp;
+        previous = timestamp;
+      } else {
+        intervals.push(timestamp - previous);
+        previous = timestamp;
+      }
+      if (timestamp - start >= 10_000) {
+        const averageInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+        const sorted = [...intervals].sort((a, b) => a - b);
+        const p95Interval = sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] ?? averageInterval;
+        resolve({ averageFps: 1000 / averageInterval, p5Fps: 1000 / p95Interval, frames: intervals.length });
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }));
+  console.log(`FPS câu hỏi 10 giây / 35 ghế: trung bình ${renderStats.averageFps.toFixed(1)}, p5 ${renderStats.p5Fps.toFixed(1)}, ${renderStats.frames} khung hình.`);
+  expect(renderStats.averageFps).toBeGreaterThanOrEqual(30);
+  expect(renderStats.p5Fps).toBeGreaterThanOrEqual(30);
+  expect(errors).toEqual([]);
+});
+
 test('victory-tie labels the tie and orders podium slots by x coordinate', async ({ page }) => {
   const { errors } = await openScene(page, 'victory-tie', 'VICTORY');
   await expect(page.getByText('ĐỒNG HẠNG').first()).toBeVisible();
+  const champion = page.getByTestId('podium-slot-1');
+  const badge = champion.locator('[data-testid="top1-badge"]').first();
+  const name = champion.locator('.v3v-player-name').first();
+  await expect(badge).toHaveText('x3');
+  await expect(badge).toBeVisible();
+  const [nameBox, badgeBox] = await Promise.all([name.boundingBox(), badge.boundingBox()]);
+  expect(nameBox).not.toBeNull();
+  expect(badgeBox).not.toBeNull();
+  expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(badgeBox!.x);
   const xCoordinates: number[] = [];
   for (const place of [2, 1, 3]) {
     const box = await page.getByTestId(`podium-slot-${place}`).boundingBox();

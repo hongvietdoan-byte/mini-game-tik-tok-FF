@@ -16,7 +16,7 @@ function formatTime(ms: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function Header({ snapshot }: { snapshot: PublicSnapshot }) {
+export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
   const round = snapshot.round;
   return (
     <header className="v3-header" data-layer="brand-header">
@@ -56,7 +56,7 @@ function Top10({ entries }: { entries: LeaderboardEntry[] }) {
           <li key={e.playerId} className={`v3-rank-${e.rank <= 3 ? e.rank : 'n'}`} data-testid="leaderboard-row">
             <span className="v3-rank">{e.rank}</span>
             <span className="v3-name">
-              {e.displayName}
+              <span className="v3-name-text player-name" title={e.displayName}>{e.displayName}</span>
               {(e.top1Streak ?? 0) >= 2 && (
                 <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${e.top1Streak} lần`}>
                   x{e.top1Streak}
@@ -186,7 +186,7 @@ function SeatChibi({ characterId, hue }: { characterId: string; hue: number }) {
   const [ok, setOk] = useState(true);
   return ok ? (
     <div className="v3-chibi-img" aria-hidden="true">
-      <img src={`${ASSET_BASE}/chibi/${characterId}.png`} alt="" draggable={false} onError={() => setOk(false)} />
+      <img src={`${ASSET_BASE}/chibi/${characterId}.png`} alt="" width={92} height={104} loading="lazy" decoding="async" draggable={false} onError={() => setOk(false)} />
     </div>
   ) : (
     <div className="v3-chibi" aria-hidden="true" style={{ ['--hue' as string]: hue }}>
@@ -196,7 +196,22 @@ function SeatChibi({ characterId, hue }: { characterId: string; hue: number }) {
   );
 }
 
-function Seat({ seat }: { seat: AudienceSeatView }) {
+type SeatProps = { seat: AudienceSeatView };
+
+function sameSeat(previous: SeatProps, next: SeatProps) {
+  const a = previous.seat;
+  const b = next.seat;
+  const left = a.occupant;
+  const right = b.occupant;
+  const sameOccupant = left === right || (!!left && !!right &&
+    left.displayName === right.displayName &&
+    left.characterId === right.characterId &&
+    left.pinned === right.pinned &&
+    left.result === right.result);
+  return a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
+}
+
+const Seat = React.memo(function Seat({ seat }: SeatProps) {
   const o = seat.occupant;
   const hue = o ? characterHue(o.characterId) : 0;
   return (
@@ -219,7 +234,15 @@ function Seat({ seat }: { seat: AudienceSeatView }) {
       </div>
     </div>
   );
-}
+}, sameSeat);
+
+const SeatName = React.memo(function SeatName({ seat }: SeatProps) {
+  const occupant = seat.occupant;
+  if (!occupant) return null;
+  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''}`} style={{ left: seat.x, top: seatY(seat.y), ['--s' as string]: seat.scale }}>
+    {shortName(occupant.displayName, 13)}
+  </div>;
+}, sameSeat);
 
 function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   const a = snapshot.audience;
@@ -235,17 +258,7 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
       {a?.seats.map((s) => <Seat key={s.slotId} seat={s} />)}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) =>
-          s.occupant ? (
-            <div
-              key={s.slotId}
-              className={`v3-seat-name ${s.occupant.pinned ? 'is-pinned' : ''}`}
-              style={{ left: s.x, top: seatY(s.y), ['--s' as string]: s.scale }}
-            >
-              {shortName(s.occupant.displayName, 13)}
-            </div>
-          ) : null,
-        )}
+        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} />)}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
@@ -261,7 +274,7 @@ export function ArenaStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot
         <span className="v3-bolt-r" />
         <span className="v3-lights" />
       </div>
-      <Header snapshot={snapshot} />
+      <BrandHeader snapshot={snapshot} />
       <Top10 entries={snapshot.leaderboard?.entries ?? []} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} />
       <McKelly snapshot={snapshot} />
