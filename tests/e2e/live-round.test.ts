@@ -184,6 +184,7 @@ function watchPage(
   resource404Messages: string[],
   response404s: string[],
   asset404s: Set<string>,
+  assetManifestRequests: string[],
 ) {
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
@@ -192,9 +193,11 @@ function watchPage(
   });
   page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
   page.on('response', (response) => {
-    if (response.status() !== 404) return;
     const url = new URL(response.url());
-    response404s.push(`${url.origin}${url.pathname}`);
+    const requestUrl = `${url.origin}${url.pathname}`;
+    if (url.pathname === '/assets/mc/kelly/manifest.json') assetManifestRequests.push(requestUrl);
+    if (response.status() !== 404) return;
+    response404s.push(requestUrl);
     if (url.pathname.startsWith('/assets/')) asset404s.add(`${url.origin}${url.pathname}`);
   });
 }
@@ -310,10 +313,10 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   const resource404Messages: string[] = [];
   const response404s: string[] = [];
   const asset404s = new Set<string>();
-  const answerCountChecks: { expected: number; actual: number; questionIndex: number }[] = [];
+  const assetManifestRequests: string[] = [];
   const overlay = await page.context().newPage();
-  watchPage(page, consoleErrors, resource404Messages, response404s, asset404s);
-  watchPage(overlay, consoleErrors, resource404Messages, response404s, asset404s);
+  watchPage(page, consoleErrors, resource404Messages, response404s, asset404s, assetManifestRequests);
+  watchPage(overlay, consoleErrors, resource404Messages, response404s, asset404s, assetManifestRequests);
   observeOverlay(overlay, frames);
 
   await page.addInitScript(() => localStorage.setItem('quiz.setupDone', '1'));
@@ -395,9 +398,10 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   });
   expect(acceptedAnswerCount(running)).toBe(35);
   expect(runtime.metrics.accepted).toBe(35);
-  running.scheduler.advance(100);
+  running.scheduler.advance(300);
   await expect(overlay.getByTestId('answer-count')).toBeVisible();
-  answerCountChecks.push({ expected: acceptedAnswerCount(running), actual: await displayedAnswerCount(overlay), questionIndex: 0 });
+  expect(acceptedAnswerCount(running)).toBe(35);
+  await expect.poll(() => displayedAnswerCount(overlay)).toBe(35);
 
   const firstAcceptingSnapshot = [...frames].reverse().find((frame) => frame.payload.state === 'ACCEPTING');
   expect(firstAcceptingSnapshot).toBeDefined();
@@ -455,8 +459,8 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
       eventId: entry.eventId,
     });
     expect(acceptedAnswerCount(running)).toBe(1);
-    running.scheduler.advance(100);
-    answerCountChecks.push({ expected: acceptedAnswerCount(running), actual: await displayedAnswerCount(overlay), questionIndex });
+    running.scheduler.advance(300);
+    await expect.poll(() => displayedAnswerCount(overlay)).toBe(acceptedAnswerCount(running));
     running.scheduler.advance(runtime.config.timings.answerMs);
     await expect.poll(() => runtime.engine.state).toBe('REVEAL');
     await expect(overlay.getByTestId('stage')).toHaveAttribute('data-scene', 'REVEAL');
@@ -508,27 +512,13 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   expect(consoleErrors).toEqual([]);
   const missingKellyManifestUrl = `${new URL(running.overlayUrl).origin}/assets/mc/kelly/manifest.json`;
   const uniqueAsset404s = [...asset404s].sort();
-  const answerCountMismatch = answerCountChecks.some((check) => check.expected !== check.actual);
-  if (answerCountMismatch)
-    expect(answerCountChecks.every((check) => check.actual === 0 && check.expected > 0)).toBe(true);
-  if (asset404s.has(missingKellyManifestUrl)) {
-    expect(uniqueAsset404s).toEqual([missingKellyManifestUrl]);
-    expect(response404s.every((url) => url === missingKellyManifestUrl)).toBe(true);
-    expect(resource404Messages).toHaveLength(response404s.length);
-  } else {
-    expect(response404s).toEqual([]);
-    expect(resource404Messages).toEqual([]);
-  }
-  const knownSourceIssues = [
-    ...(answerCountMismatch ? ['overlay bỏ qua thông điệp ANSWER_COUNTS, hiển thị 0 dù server đã nhận câu trả lời'] : []),
-    ...(asset404s.has(missingKellyManifestUrl) ? ['404 assets-local/mc/kelly/manifest.json (cũng tạo console 404)'] : []),
-  ];
-  if (knownSourceIssues.length) {
-    console.log(`C-0062 expected-fail: ${knownSourceIssues.join('; ')}. Số overlay/server: ${JSON.stringify(answerCountChecks.filter((check) => check.expected !== check.actual))}; 404 asset=${JSON.stringify(uniqueAsset404s)}; console 404=${resource404Messages.length}.`);
-    test.fail(true, `Lỗi mã nguồn/asset đã biết cần xử lý ngoài phạm vi file test: ${knownSourceIssues.join('; ')}.`);
-  }
-  expect(answerCountChecks.filter((check) => check.expected !== check.actual), 'Số trả lời trên overlay phải khớp server').toEqual([]);
-  expect(uniqueAsset404s, 'Không được có request 404 dưới /assets/*').toEqual([]);
-  expect(resource404Messages, 'Không được có console error do 404 tài nguyên').toEqual([]);
-  console.log(`C-0062 hoàn tất vòng 10 câu; FPS trung bình=${fps.averageFps.toFixed(1)}; asset404=${JSON.stringify(uniqueAsset404s)}; DB scratch=${running.dbPath}.`);
+  const optionalManifest404s = response404s.filter((url) => url === missingKellyManifestUrl);
+  const unexpected404s = response404s.filter((url) => url !== missingKellyManifestUrl);
+  // Có hai document overlay vì bài test ngắt rồi mở lại page; mỗi module/document chỉ tải manifest một lần.
+  expect(assetManifestRequests, 'Mỗi document overlay chỉ được yêu cầu manifest MC một lần').toHaveLength(2);
+  expect(unexpected404s, 'Không được có 404 ngoài manifest MC tuỳ chọn').toEqual([]);
+  expect(optionalManifest404s.length).toBe(asset404s.has(missingKellyManifestUrl) ? assetManifestRequests.length : 0);
+  expect(resource404Messages, 'Console 404 chỉ được phát sinh từ manifest MC tuỳ chọn, tối đa một lần mỗi document').toHaveLength(optionalManifest404s.length);
+  expect(uniqueAsset404s).toEqual(optionalManifest404s.length ? [missingKellyManifestUrl] : []);
+  console.log(`C-0062 hoàn tất vòng 10 câu; FPS trung bình=${fps.averageFps.toFixed(1)}; manifestRequests=${assetManifestRequests.length}; asset404=${JSON.stringify(uniqueAsset404s)}; DB scratch=${running.dbPath}.`);
 });

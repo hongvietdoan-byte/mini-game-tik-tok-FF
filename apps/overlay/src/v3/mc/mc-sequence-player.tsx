@@ -15,6 +15,22 @@ import {
 const DEFAULT_ASSET_BASE = '/assets/mc/kelly';
 const DEFAULT_STATIC_FALLBACK = '/assets/mc/kelly.png';
 const imageLoads = new Map<string, Promise<boolean>>();
+const manifestLoads = new Map<string, Promise<McSequenceManifest | null>>();
+
+/** Cache cả manifest hợp lệ lẫn trạng thái thiếu/lỗi theo assetBaseUrl. */
+export function loadMcSequenceManifest(assetBaseUrl: string): Promise<McSequenceManifest | null> {
+  const baseUrl = assetBaseUrl.replace(/\/+$/, '');
+  const cached = manifestLoads.get(baseUrl);
+  if (cached) return cached;
+
+  const loading = Promise.resolve()
+    .then(() => fetch(`${baseUrl}/manifest.json`))
+    .then((response) => response.ok ? response.json() as Promise<unknown> : null)
+    .then((value) => parseMcSequenceManifest(value))
+    .catch(() => null);
+  manifestLoads.set(baseUrl, loading);
+  return loading;
+}
 
 function browserImageLoader(url: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -76,17 +92,9 @@ export function McSequence({
     let cancelled = false;
     setManifest(null);
     setPlayback(null);
-    fetch(`${assetBaseUrl}/manifest.json`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`Không tải được manifest MC (${response.status}).`);
-        return response.json() as Promise<unknown>;
-      })
-      .then((value) => {
-        if (!cancelled) setManifest(parseMcSequenceManifest(value));
-      })
-      .catch(() => {
-        if (!cancelled) setManifest(null);
-      });
+    void loadMcSequenceManifest(assetBaseUrl).then((value) => {
+      if (!cancelled) setManifest(value);
+    });
     return () => {
       cancelled = true;
     };
