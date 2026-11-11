@@ -1,7 +1,7 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T03:45:42+07:00",
+  "heartbeat": "2026-11-12T04:03:06+07:00",
   "state": "working",
   "task": "C-0097",
   "note": "Đang sửa event ID MockSimulator; tiếp đó P0-C privacy check trên nhánh riêng",
@@ -11,6 +11,7 @@
     90,
     92,
     95,
-    96
+    96,
+    97
   ]
 }
