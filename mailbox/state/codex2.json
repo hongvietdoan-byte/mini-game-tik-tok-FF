@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 50,
-  "heartbeat": "2026-11-11T18:49:56+07:00",
+  "heartbeat": "2026-11-11T19:13:25+07:00",
   "state": "working",
-  "task": "C-0032",
-  "note": "Rebase xong; đang chạy lại Playwright Edge và kiểm tra ảnh ref sau cập nhật nền sét",
+  "task": "C-0054",
+  "note": "Top10/bottom queue sửa trong worktree C-0054; đang xác minh bằng E2E và ảnh 9:16",
   "done": []
 }
