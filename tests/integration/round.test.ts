@@ -415,16 +415,29 @@ describe('WebSocket công khai', () => {
     ws.close();
 
     expect(msgs.length).toBeGreaterThan(20);
+    const seqs = msgs.map((m) => JSON.parse(m.raw).seq as number);
+    for (let i = 1; i < seqs.length; i++) expect(seqs[i]).toBeGreaterThan(seqs[i - 1]!);
     expect(msgs.some((m) => m.type === 'ANSWER_COUNTS')).toBe(true);
     expect(msgs.some((m) => m.type === 'ADMIN_SNAPSHOT')).toBe(false);
     for (const m of msgs) {
       expect(m.raw).not.toContain('originalOptionId');
+      // Đáp án chỉ được xuất hiện SAU khi chốt câu: REVEAL hoặc LEADERBOARD ngắn ngay sau đó.
       const isReveal =
-        (m.type === 'STATE_SNAPSHOT' && m.payload.state === 'REVEAL') || m.type === 'ANSWER_REVEALED';
+        (m.type === 'STATE_SNAPSHOT' && (m.payload.state === 'REVEAL' || m.payload.state === 'LEADERBOARD')) ||
+        m.type === 'ANSWER_REVEALED';
       if (!isReveal) expect(m.raw, `${m.type}`).not.toContain('correctOptionId');
       if (m.type === 'STATE_SNAPSHOT' && m.payload.state === 'ACCEPTING') {
         expect(m.payload.reveal).toBeNull();
-        expect(m.payload.question).not.toBeNull();
+        expect(m.payload.question.options).toHaveLength(4);
+        expect(m.payload.question.optionsVisible).toBe(true);
+        expect(m.payload.leaderboard.kind).toBe('COMPACT');
+        expect(m.payload.mc.state).toBe('ask');
+      }
+      // Người dùng chốt: PREPARE chỉ hiện câu hỏi, chưa có 4 đáp án.
+      if (m.type === 'STATE_SNAPSHOT' && m.payload.state === 'PREPARE') {
+        expect(m.payload.question.prompt.length).toBeGreaterThan(0);
+        expect(m.payload.question.options).toEqual([]);
+        expect(m.payload.question.optionsVisible).toBe(false);
       }
     }
 

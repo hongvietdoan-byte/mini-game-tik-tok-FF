@@ -32,6 +32,8 @@ import {
   decideComment,
   effectiveState,
   isEligible,
+  isInterimLeaderboard,
+  mcFor,
   rankPlayers,
   remainingMs,
   sanitizeDisplayName,
@@ -119,6 +121,7 @@ export class SessionRuntime {
   private poolCache: AdminSnapshot['pool'] | null = null;
   private unsubs: (() => void)[] = [];
   private disposed = false;
+  private seq = 0;
 
   private constructor(
     private readonly deps: RuntimeDeps,
@@ -778,12 +781,27 @@ export class SessionRuntime {
     const eff = effectiveState(e);
     const qid = currentQuestionInstanceId(e);
     const snap = qid ? this.snapshots.get(qid) : undefined;
-    const showQuestion = !!snap && (eff === 'ACCEPTING' || eff === 'REVEAL');
-    const showReveal = !!snap && eff === 'REVEAL';
+    // LEADERBOARD ngắn sau mỗi câu vẫn ở bố cục câu hỏi (đáp án đã công bố); chỉ mốc mới là BXH lớn.
+    const bigBoard = eff === 'LEADERBOARD' && isInterimLeaderboard(e);
+    const postReveal = eff === 'REVEAL' || (eff === 'LEADERBOARD' && !bigBoard);
+    const showQuestion = !!snap && (eff === 'PREPARE' || eff === 'ACCEPTING' || postReveal);
+    // PREPARE: chỉ câu hỏi, chưa có 4 đáp án (người dùng chốt 11/11).
+    const showOptions = showQuestion && eff !== 'PREPARE';
+    const showReveal = !!snap && postReveal;
     let leaderboard: PublicSnapshot['leaderboard'] = null;
-    if (e.round && (eff === 'LEADERBOARD' || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
+    if (e.round && (bigBoard || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
       leaderboard = { kind: 'FULL', entries: topN(this.ranked, 10) };
-    else if (e.round && eff === 'REVEAL') leaderboard = { kind: 'COMPACT', entries: topN(this.ranked, 3) };
+    // Top 10 gọn cạnh câu hỏi (V3 §10) — chỉ cập nhật khi chốt câu, không đổi trong lúc trả lời.
+    else if (e.round && (eff === 'PREPARE' || eff === 'ACCEPTING' || postReveal))
+      leaderboard = { kind: 'COMPACT', entries: topN(this.ranked, 10) };
+    const revealView = showReveal
+      ? {
+          questionInstanceId: snap!.questionInstanceId,
+          correctOptionId: snap!.correctOptionId,
+          optionCounts: { ...this.counts },
+          explanation: snap!.explanation,
+        }
+      : null;
     return {
       contractVersion: CONTRACT_VERSION,
       sessionId: this.id,
@@ -804,22 +822,17 @@ export class SessionRuntime {
             questionInstanceId: snap!.questionInstanceId,
             index: snap!.index,
             prompt: snap!.prompt,
-            options: snap!.options.map((o) => ({ id: o.id, text: o.text })),
+            options: showOptions ? snap!.options.map((o) => ({ id: o.id, text: o.text })) : [],
+            optionsVisible: showOptions,
             isDemo: snap!.isDemo,
           }
         : null,
-      answerCount: showQuestion ? this.answerCount() : 0,
+      answerCount: showOptions ? this.answerCount() : 0,
       participantCount: e.round ? this.participants : 0,
-      reveal: showReveal
-        ? {
-            questionInstanceId: snap!.questionInstanceId,
-            correctOptionId: snap!.correctOptionId,
-            optionCounts: { ...this.counts },
-            explanation: snap!.explanation,
-          }
-        : null,
+      reveal: revealView,
       leaderboard,
       podium: e.round && (eff === 'ROUND_END' || eff === 'VICTORY') ? buildPodium(this.ranked) : null,
+      mc: mcFor(e, revealView),
       connection: this.adapter.status(),
       safeZone: INITIAL_TEST_SAFE_ZONE,
     };
@@ -890,6 +903,7 @@ export class SessionRuntime {
       message: {
         v: CONTRACT_VERSION,
         type: r.type,
+        seq: ++this.seq,
         sessionId: this.id,
         stateVersion: r.stateVersion,
         serverTimeMs: now,
@@ -912,6 +926,7 @@ export class SessionRuntime {
     return {
       v: CONTRACT_VERSION,
       type,
+      seq: ++this.seq,
       sessionId: this.id,
       stateVersion: this.engine.stateVersion,
       serverTimeMs: this.scheduler.now(),

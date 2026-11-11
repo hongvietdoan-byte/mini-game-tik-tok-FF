@@ -56,9 +56,16 @@ Mã HTTP của `/commands`:
 4. `ANSWER_COUNTS` có thể đến nhiều lần trong cùng `stateVersion` (đếm số đáp án) — cập nhật `answerCount`/`participantCount`.
 5. Đồng hồ: dùng `timer.remainingMs` + `serverTimeMs` của thông điệp để nội suy; khi `timer.running=false` thì đứng yên.
 6. Mất kết nối: tự nối lại (backoff 0.5 s → tối đa 5 s), gửi lại HELLO với `lastStateVersion`; **không phát lại hiệu ứng cũ**.
-7. Ý nghĩa trường (server thật, đã có test tích hợp):
+7. Ý nghĩa trường (server thật, có test tích hợp) — cập nhật V3 (11/11):
    - `round.questionIndex` **bắt đầu từ 0** → hiển thị `questionIndex + 1` / `questionCount`.
-   - `question` chỉ khác null khi trạng thái hiệu lực là ACCEPTING hoặc REVEAL (kể cả khi đang PAUSED/CONNECTION_INTERRUPTED từ đó); ở PREPARE là null.
-   - `reveal` chỉ khác null ở REVEAL. `leaderboard`: REVEAL → `COMPACT` (Top 3); LEADERBOARD / ROUND_END / VICTORY / INTERMISSION → `FULL` (≤ 10); còn lại null.
-   - `podium` chỉ ở ROUND_END / VICTORY. `answerCount` = tổng đáp án được nhận của câu hiện tại.
+   - `question`: có ở PREPARE, ACCEPTING, REVEAL và LEADERBOARD ngắn (kể cả khi đang PAUSED/CONNECTION_INTERRUPTED từ đó).
+     **PREPARE: `options = []`, `optionsVisible = false`** — chỉ hiện câu hỏi; mở nhận đáp án (ACCEPTING) mới có 4 đáp án (người dùng chốt).
+   - Sau MỖI câu đã công bố có trạng thái `LEADERBOARD` ngắn (`leaderboardMs`, 4 s): `scene = 'REVEAL'` (giữ bố cục câu hỏi, đáp án đúng vẫn hiện, Top 10 gọn cập nhật).
+     Ở mốc (mỗi 5 câu + câu cuối): `scene = 'INTERIM_TOP10'`, BXH lớn (`bigLeaderboardMs`, mặc định 6 s). Câu bị huỷ trước công bố chỉ vào LEADERBOARD nếu là mốc.
+   - `reveal`: chỉ có ở REVEAL và LEADERBOARD ngắn ngay sau đó.
+   - `leaderboard`: `COMPACT` (≤ 10) trong mọi cảnh câu hỏi (PREPARE/ACCEPTING/REVEAL/LEADERBOARD ngắn) — chỉ đổi khi chốt câu;
+     `FULL` (≤ 10) ở BXH lớn / ROUND_END / VICTORY / INTERMISSION; còn lại null.
+   - `podium` chỉ ở ROUND_END / VICTORY. `answerCount` = tổng đáp án được nhận của câu hiện tại (0 ở PREPARE).
+   - `mc: { state: 'idle'|'welcome'|'ask'|'react'|'celebrate', bubble }` — MC Kelly, không phải người chơi; lời thoại do server quyết định.
+   - Mọi thông điệp có `seq` tăng đơn điệu trong một lần chạy server; client thấy `seq` hụt hoặc nhỏ hơn bản đang giữ (server khởi động lại) → dùng snapshot mới nhất.
 8. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).

@@ -83,7 +83,7 @@ function deepFreeze<T>(value: T): T {
 }
 
 describe('đường đi trọn vòng theo interval 5', () => {
-  it.each([10, 15, 20])('chạy đủ vòng %i câu, chỉ hiện leaderboard ở mốc 5', (count) => {
+  it.each([10, 15, 20])('chạy đủ vòng %i câu: LEADERBOARD sau mỗi câu, BXH lớn chỉ ở mốc 5 (V3)', (count) => {
     let state = initial();
     state = ok(transition(state, { kind: 'CONNECTION_CHANGED', ok: true }, 0));
     state = ok(cmd(state, { type: 'OPEN_LOBBY' }, 10));
@@ -117,9 +117,11 @@ describe('đường đi trọn vòng theo interval 5', () => {
       expect(state.state).toBe('REVEAL');
       timerStep();
       const isMilestone = question % 5 === 0 || question === count;
-      expect(state.state).toBe(isMilestone ? 'LEADERBOARD' : 'PREPARE');
-      if (state.state === 'LEADERBOARD') leaderboardQuestions.push(question);
-      if (state.state === 'LEADERBOARD' && question < count) {
+      expect(state.state).toBe('LEADERBOARD');
+      expect(sceneFor(state)).toBe(isMilestone ? 'INTERIM_TOP10' : 'REVEAL');
+      expect(state.timer!.durationMs).toBe(isMilestone ? 6_000 : TIMINGS.leaderboardMs);
+      if (isMilestone) leaderboardQuestions.push(question);
+      if (question < count) {
         timerStep();
         expect(state.state).toBe('PREPARE');
       }

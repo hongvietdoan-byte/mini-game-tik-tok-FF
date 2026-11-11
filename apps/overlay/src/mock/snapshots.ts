@@ -69,6 +69,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       index: 4,
       prompt: 'Trong chế độ thử nghiệm, lựa chọn nào đại diện cho đáp án mẫu?',
       options,
+      optionsVisible: true,
       isDemo: true,
     } : null,
     answerCount: 42,
@@ -84,6 +85,8 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       : null,
     podium: name === 'victory' || name === 'victory-tie' ? podium(name === 'victory-tie') : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
+    // TODO(codex2, C-0016): mock theo hợp đồng mới — PREPARE options rỗng, Top 10 COMPACT trong cảnh câu hỏi, lời thoại MC.
+    mc: { state: 'idle', bubble: 'Bình luận A/B/C/D để tham gia' },
     safeZone: INITIAL_TEST_SAFE_ZONE,
   };
 }

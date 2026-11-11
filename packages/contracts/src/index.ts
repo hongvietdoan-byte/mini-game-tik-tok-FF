@@ -165,9 +165,16 @@ export type PublicQuestion = {
   questionInstanceId: string;
   index: number;
   prompt: string;
+  /** Rỗng ở PREPARE (người dùng chốt: chỉ hiện câu hỏi, mở nhận đáp án mới hiện 4 đáp án). */
   options: { id: OptionId; text: string }[];
+  optionsVisible: boolean;
   isDemo: boolean;
 };
+
+/** MC Kelly — MC cố định, KHÔNG phải người chơi (V3 §7). */
+export const McStateSchema = z.enum(['idle', 'welcome', 'ask', 'react', 'celebrate']);
+export type McState = z.infer<typeof McStateSchema>;
+export type McView = { state: McState; bubble: string };
 
 // ---------------------------------------------------------------------------
 // Cấu hình
@@ -179,6 +186,8 @@ export const TimingsSchema = z.object({
   answerMs: z.number().int().min(3_000).max(120_000).default(15_000),
   revealMs: z.number().int().min(500).max(60_000).default(4_000),
   leaderboardMs: z.number().int().min(500).max(60_000).default(4_000),
+  /** BXH lớn ở mốc (mỗi leaderboardInterval câu + câu cuối) — V3: 5–8 s. Thiếu → 6 s. */
+  bigLeaderboardMs: z.number().int().min(500).max(60_000).optional(),
   roundEndMs: z.number().int().min(0).max(60_000).default(2_000),
   victoryMs: z.number().int().min(1_000).max(120_000).default(18_000),
   intermissionMs: z.number().int().min(1_000).max(600_000).default(25_000),
@@ -379,6 +388,7 @@ export type PublicSnapshot = {
   reveal: RevealView | null;
   leaderboard: { kind: 'COMPACT' | 'FULL'; entries: LeaderboardEntry[] } | null;
   podium: Podium | null;
+  mc: McView;
   connection: ConnectionStatus;
   safeZone: SafeZonePreset;
 };
@@ -437,6 +447,8 @@ export type WsMessage<T extends WsMessageType = WsMessageType> = {
   [K in T]: {
     v: number;
     type: K;
+    /** Tăng đơn điệu theo từng thông điệp trong một lần chạy server; client thấy hụt số → xin snapshot. */
+    seq: number;
     sessionId: string;
     stateVersion: number;
     serverTimeMs: number;

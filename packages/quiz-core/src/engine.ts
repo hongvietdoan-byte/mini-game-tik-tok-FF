@@ -3,6 +3,7 @@ import type {
   CommandErrorCode,
   GameState,
   LiveSource,
+  McState,
   Scene,
   Timings,
 } from '@quiz/contracts';
@@ -143,7 +144,9 @@ export function sceneFor(s: EngineState): Scene {
     case 'REVEAL':
       return 'REVEAL';
     case 'LEADERBOARD':
-      return 'INTERIM_TOP10';
+      // V3: sau mỗi câu có LEADERBOARD ngắn (bảng Top 10 gọn cạnh câu hỏi, vẫn ở bố cục câu hỏi);
+      // chỉ ở mốc (mỗi leaderboardInterval câu + câu cuối) mới là cảnh BXH lớn.
+      return !s.round || isInterimLeaderboard(s) ? 'INTERIM_TOP10' : 'REVEAL';
     case 'ROUND_END':
       return 'ROUND_WINNER';
     case 'VICTORY':
@@ -157,6 +160,33 @@ export function sceneFor(s: EngineState): Scene {
       return 'CONNECTION_LOST';
     default:
       return assertNever(st);
+  }
+}
+
+/** Trạng thái + lời thoại MC Kelly theo trạng thái trò chơi (hàm thuần, V3 §7). */
+export function mcFor(s: EngineState, reveal: { correctOptionId: string } | null): { state: McState; bubble: string } {
+  if (s.state === 'CONNECTION_INTERRUPTED' || s.state === 'ERROR')
+    return { state: 'idle', bubble: 'Tạm dừng một chút, chờ kết nối ổn định nhé!' };
+  if (s.state === 'PAUSED') return { state: 'idle', bubble: 'Tạm dừng một chút nhé!' };
+  switch (s.state) {
+    case 'IDLE':
+    case 'LOBBY':
+      return { state: 'welcome', bubble: 'Bình luận A/B/C/D để tham gia' };
+    case 'PREPARE':
+      return { state: 'ask', bubble: 'Câu hỏi tiếp theo, chuẩn bị nhé!' };
+    case 'ACCEPTING':
+      return { state: 'ask', bubble: 'Chọn đáp án ngay! Bình luận A, B, C hoặc D' };
+    case 'REVEAL':
+      return { state: 'react', bubble: reveal ? `Đáp án đúng là ${reveal.correctOptionId}!` : 'Cùng xem đáp án nào!' };
+    case 'LEADERBOARD':
+      return { state: 'idle', bubble: 'Cùng xem bảng xếp hạng!' };
+    case 'ROUND_END':
+    case 'VICTORY':
+      return { state: 'celebrate', bubble: 'Chúc mừng các nhà vô địch!' };
+    case 'INTERMISSION':
+      return { state: 'idle', bubble: 'Trận tiếp theo sắp bắt đầu' };
+    default:
+      return assertNever(s.state);
   }
 }
 
@@ -268,16 +298,23 @@ function enterAccepting(d: Draft, now: number) {
   if (!d.s.connectionOk) freeze(d, 'CONNECTION', now);
 }
 
-/** Sau khi một câu kết thúc (đã reveal hoặc bị void trước reveal). */
-function afterQuestion(d: Draft, now: number) {
-  if (isInterimLeaderboard(d.s)) {
-    go(d, 'LEADERBOARD');
-    d.s.acceptOpenAtMs = null;
-    setTimer(d, d.s.timings.leaderboardMs, now);
-  } else {
-    enterPrepare(d, d.s.round!.questionIndex + 1, now);
-  }
+function enterLeaderboard(d: Draft, now: number) {
+  go(d, 'LEADERBOARD');
+  d.s.acceptOpenAtMs = null;
+  const big = isInterimLeaderboard(d.s);
+  setTimer(d, big ? (d.s.timings.bigLeaderboardMs ?? DEFAULT_BIG_LEADERBOARD_MS) : d.s.timings.leaderboardMs, now);
 }
+
+/**
+ * Sau một câu. Đã REVEAL (điểm có thể đổi) → luôn LEADERBOARD (V3 §4 bước 8).
+ * Bị huỷ TRƯỚC reveal (điểm không đổi) → chỉ vào LEADERBOARD nếu là mốc BXH lớn, ngược lại sang câu kế.
+ */
+function afterQuestion(d: Draft, now: number, revealed: boolean) {
+  if (revealed || isInterimLeaderboard(d.s)) enterLeaderboard(d, now);
+  else enterPrepare(d, d.s.round!.questionIndex + 1, now);
+}
+
+const DEFAULT_BIG_LEADERBOARD_MS = 6_000;
 
 /** Tiến một bước theo đồng hồ (TIMER_ELAPSED) hoặc MANUAL_NEXT. */
 function advance(d: Draft, now: number): boolean {
@@ -300,7 +337,7 @@ function advance(d: Draft, now: number): boolean {
       return true;
     }
     case 'REVEAL':
-      afterQuestion(d, now);
+      afterQuestion(d, now, true);
       return true;
     case 'LEADERBOARD': {
       const r = d.s.round!;
@@ -343,7 +380,7 @@ function voidBeforeReveal(d: Draft, now: number) {
   if (!d.s.round!.voided.includes(qid)) d.s.round!.voided.push(qid);
   d.s.acceptOpenAtMs = null;
   d.events.push({ type: 'QUESTION_VOIDED', questionInstanceId: qid, afterReveal: false });
-  afterQuestion(d, now);
+  afterQuestion(d, now, false);
 }
 
 function startRound(d: Draft, prepared: PreparedRound, now: number) {
