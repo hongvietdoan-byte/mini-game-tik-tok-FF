@@ -55,7 +55,10 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 ## D-14 · Chỉ một phiên OPEN tại một thời điểm
 - Đơn giản hoá runtime + overlay (không cần chọn phiên). Tạo phiên mới khi đang có phiên mở → 409.
 
-## D-15 · TikTok connector bị chặn cho tới cổng khả thi (Phase 4)
+## D-15 · TikTok connector — cập nhật 11/11: dùng tạm `tiktok-live-connector` (người dùng chốt), song song hỏi kênh chính thức
+- Thư viện cộng đồng, ký request qua Euler Stream (bên thứ ba), giấy phép AGPL-3.0 có sửa đổi. Người dùng/đơn vị chấp nhận rủi ro điều khoản. Ràng buộc: xem BOARD #17.
+
+### (bản cũ) TikTok connector bị chặn cho tới cổng khả thi (Phase 4)
 - `TikTokAdapterBlocked` luôn báo `BLOCKED`; server từ chối tạo phiên mode TIKTOK (`LIVE_CONNECTOR_BLOCKED`). Không khẳng định có API chính thức khi chưa có bằng chứng.
 
 ## D-16 · Không thưởng tốc độ
