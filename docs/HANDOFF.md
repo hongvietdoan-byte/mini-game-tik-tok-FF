@@ -12,25 +12,18 @@ Phiên trước đầy context. Phiên mới: **chỉ điều phối** (memory `
 3. Gộp nhánh Codex trong worktree riêng hoặc gộp nhanh rồi push ngay (mb.py của Codex `pull --rebase` ở checkout chính). Build overlay trong Git Bash phải `MSYS_NO_PATHCONV=1`.
 4. Đặt `py tools/mb.py wait --for coordinator --timeout 3600 --interval 60` chạy nền để được đánh thức khi có thư.
 
-## Trạng thái main (`3efe50c`, 182 test + e2e 17 xanh)
-- Engine/server/persistence/khôi phục/WS, Connection Manager, kiểm tra hệ thống 9 bước, bộ cài Electron NSIS, 35 ghế khán giả (server), TikTok adapter `tiktok-live-connector` (dùng tạm, chỉ đọc), API duyệt câu hỏi.
-- **Tính điểm Kahoot mặc định** (500–1000/câu + chuỗi tới +500; `scoringMode` CLASSIC còn chọn được); **huy hiệu Top 1 liên tiếp** `top1Streak` (x2, x3…).
-- Overlay V3 (coordinator dựng nhanh): `apps/overlay/src/v3/` — đang được Codex 2 **thiết kế lại cho giống ảnh mẫu** (C-0032).
-- Asset cục bộ NGOÀI git ở `assets-local/` (phục vụ `/assets/`): Kelly, 66 chibi + manifest, cúp + phông vinh danh. Ảnh mẫu người dùng nên đặt `assets-local/ref/storm-arena-ref.png`.
-- Server xem thử có thể còn chạy ở `http://127.0.0.1:8790/` (dữ liệu tạm trong scratchpad) — tắt nếu cần cổng.
+## Trạng thái (11/11 ~19:10) — main ≈ `1cb2dbc`, 214 test + e2e 28 xanh
+- Đã gộp: Setup Wizard + phiên TikTok + duyệt câu (C-0021/24), test V3/tải (C-0027/36), dashboard e2e (C-0040), replay TikTok (C-0043), soak 60' (C-0051), McSequence (C-0037), cutout tool (C-0034/44), overlay V3 redesign (C-0032).
+- Coordinator tự sửa: lỗi "Failed to retrieve Room ID" → coi như chưa LIVE, không retry dồn (f485321).
+- Asset cục bộ (ngoài git): `assets-local/chibi/` = bộ ĐÃ tách nền (bộ cũ ở `_backup/chibi-old-chua-sach/`); `mc/kelly.png` (rembg 17:18, người dùng "tạm được"); `mc/kelly/{idle,welcome,ask,react,celebrate}/` chờ frame; `brand/logo.png` = logo chính thức BVĐC; `cards/the-chien-dau-ffvn-kelly.png` = chuẩn khung; `ref/victory-ref.png` = mẫu Victory. Server soát ảnh: `py -m http.server 8791 --directory assets-local`.
 
 ## Hàng chờ Codex
 | Làn | Thư | Việc |
 |---|---|---|
-| codex2 | C-0021 → C-0024 | Setup Wizard → giao diện phiên TikTok + duyệt câu (+ ô `speedBonusMax`, C-0031) |
-| codex2 | C-0032 (+C-0033) | Thiết kế lại overlay V3 giống mẫu + tối ưu fps + 3 cảnh còn lại + sửa Top 10 đè tên/điểm |
-| codex2 | C-0030 | Trình phát PNG Sequence cho MC (frame người dùng làm sau, đặc tả `docs/ASSET_SPEC_MC_SEQUENCE.md`) |
-| codex1 | DP6, C-0027 | Test duyệt câu hỏi; test tải 2000 người + kiểm thử V3 §17 |
-| codex1 | C-0034 | Tách nền sạch toàn bộ chibi + Kelly + cúp bằng rembg (venv `.claude/venv-rembg`), bảng soát cho người dùng duyệt |
+| codex2 | C-0056 → C-0054 → C-0055 | HUD mô phỏng phải là UI LIVE (không phải video) + safe zone; sửa Top10 cắt tên/hụt hàng 10, dòng "đang chờ chỗ" đè ghế; Victory: 3 chibi TOÀN THÂN đứng TRÊN bục như `ref/victory-ref.png`, bảng tên lục giác dưới chân |
+| codex1 | C-0053 | Sửa `tests/load/audience.test.ts` (2000 CORRECT, Kahoot) — Codex 1 có thể chưa đọc, người dùng nhắc |
+| — | — | Hết việc: Codex gửi note "rảnh"; DP1/2/4 đã xong (BOARD) |
 
 ## Đang chờ người dùng
-- Duyệt 36 câu Free Fire (`docs/review/DE_XUAT_CAU_HOI_FF.md`) — phiên TikTok chỉ dùng câu đã duyệt.
-- Phát LIVE thử (cho biết @username) để kiểm bình luận thật.
-- Luật chuỗi (CLASSIC) đạt lại mốc có thưởng lại không — nay mặc định Kahoot nên ít quan trọng.
-- Quyền dùng asset (Kelly, 66 chibi, cúp) trước khi đóng gói vào bộ cài; bộ chibi quay lưng nếu muốn y mẫu.
-- Gửi thư đề nghị kênh chính thức TikTok (`docs/TIKTOK_OFFICIAL_REQUEST.md`).
+- Ảnh chụp màn hình phòng LIVE TikTok thật (góc nhìn người xem) → `assets-local/ref/tiktok-live-*.png` để căn safe zone.
+- Duyệt 36 câu Free Fire (`docs/review/DE_XUAT_CAU_HOI_FF.md`); phát LIVE thử (@username); quyền asset; frame PNG Sequence MC; khung trống thẻ chiến đấu (nếu có).
