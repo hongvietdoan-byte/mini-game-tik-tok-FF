@@ -78,6 +78,48 @@ describe('Store: khởi tạo và câu hỏi', () => {
     expect(second.raw.pragma('foreign_keys', { simple: true })).toBe(1);
   });
 
+  it('reviewQuestion APPROVE/REJECT cập nhật trạng thái, lưu snapshot version và trả null nếu không tồn tại', () => {
+    const store = openStore();
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    const approveId = DEMO_QUESTIONS[0]!.id;
+    const rejectId = DEMO_QUESTIONS[1]!.id;
+
+    const approved = store.reviewQuestion(approveId, 'APPROVE', 'operator-a', 500);
+    expect(approved).toMatchObject({
+      id: approveId,
+      approvalStatus: 'APPROVED',
+      verificationStatus: 'OPERATOR_VERIFIED',
+    });
+    const rejected = store.reviewQuestion(rejectId, 'REJECT', 'operator-b', 600);
+    expect(rejected).toMatchObject({
+      id: rejectId,
+      approvalStatus: 'REJECTED',
+      verificationStatus: 'DEMO',
+    });
+    expect(store.reviewQuestion('missing-question', 'APPROVE', 'operator-a', 700)).toBeNull();
+
+    const versions = store.raw
+      .prepare('SELECT question_id AS questionId, version, snapshot_json AS snapshotJson, edited_by AS editedBy, created_at_ms AS createdAtMs FROM question_versions ORDER BY question_id')
+      .all() as { questionId: string; version: number; snapshotJson: string; editedBy: string; createdAtMs: number }[];
+    expect(versions).toHaveLength(2);
+    expect(versions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        questionId: approveId,
+        version: approved!.version,
+        snapshotJson: JSON.stringify(approved),
+        editedBy: 'APPROVE:operator-a',
+        createdAtMs: 500,
+      }),
+      expect.objectContaining({
+        questionId: rejectId,
+        version: rejected!.version,
+        snapshotJson: JSON.stringify(rejected),
+        editedBy: 'REJECT:operator-b',
+        createdAtMs: 600,
+      }),
+    ]));
+  });
+
   it('seedQuestions trả số câu mới, gọi lại trả 0 và listQuestions round-trip qua QuestionSchema', () => {
     const store = openStore();
     expect(store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 1234)).toBe(DEMO_QUESTIONS.length);

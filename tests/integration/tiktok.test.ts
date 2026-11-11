@@ -52,6 +52,56 @@ const chat = (userId: string, text: string, msgId: string, at: number) => ({
 });
 
 describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
+  it('route duyệt/từ chối câu lưu question_versions và trả 404 cho câu không tồn tại', async () => {
+    const h = await bootTikTok();
+    const questions = h.store.listQuestions('demo');
+    const approveQuestion = questions[0]!;
+    const rejectQuestion = questions[1]!;
+
+    const approved = await h.inject('POST', `/api/questions/${approveQuestion.id}/approve`, {
+      decision: 'APPROVE',
+      operatorId: 'reviewer-approve',
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json().question).toMatchObject({
+      id: approveQuestion.id,
+      approvalStatus: 'APPROVED',
+      verificationStatus: 'OPERATOR_VERIFIED',
+    });
+
+    const rejected = await h.inject('POST', `/api/questions/${rejectQuestion.id}/approve`, {
+      decision: 'REJECT',
+      operatorId: 'reviewer-reject',
+    });
+    expect(rejected.statusCode).toBe(200);
+    expect(rejected.json().question).toMatchObject({
+      id: rejectQuestion.id,
+      approvalStatus: 'REJECTED',
+      verificationStatus: 'DEMO',
+    });
+
+    expect((await h.inject('POST', '/api/questions/missing-question/approve', {
+      decision: 'APPROVE',
+    })).statusCode).toBe(404);
+
+    const versions = h.store.raw
+      .prepare('SELECT question_id AS questionId, snapshot_json AS snapshotJson, edited_by AS editedBy FROM question_versions')
+      .all() as { questionId: string; snapshotJson: string; editedBy: string }[];
+    expect(versions).toHaveLength(2);
+    expect(versions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        questionId: approveQuestion.id,
+        snapshotJson: JSON.stringify(approved.json().question),
+        editedBy: 'APPROVE:reviewer-approve',
+      }),
+      expect.objectContaining({
+        questionId: rejectQuestion.id,
+        snapshotJson: JSON.stringify(rejected.json().question),
+        editedBy: 'REJECT:reviewer-reject',
+      }),
+    ]));
+  });
+
   it('bắt buộc username; câu DEMO không vào LIVE; người dùng duyệt câu → vòng chạy, bình luận thật được chấm', async () => {
     const h = await bootTikTok();
     expect((await h.inject('POST', '/api/sessions', { config: { mode: 'TIKTOK' } })).statusCode).toBe(422);
