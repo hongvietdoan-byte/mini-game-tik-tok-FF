@@ -144,6 +144,8 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/audience-engine: {}
+
   packages/contracts:
     dependencies:
       zod:
