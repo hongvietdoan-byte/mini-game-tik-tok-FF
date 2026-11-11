@@ -4,15 +4,18 @@ import { sanitizeDisplayName } from '@quiz/quiz-core';
 import { DEMO_PACK, DEMO_QUESTIONS, EDGE_CASE_PLAYERS, INVALID_QUESTION_SAMPLES, makeSimPlayers } from './index';
 
 describe('fixtures DEMO', () => {
-  it('có ít nhất 36 câu hợp lệ, id và prompt duy nhất, đủ độ khó và chủ đề', () => {
-    expect(DEMO_PACK).toEqual({ id: 'demo', name: 'Gói DEMO — kiến thức chung' });
-    expect(DEMO_QUESTIONS.length).toBeGreaterThanOrEqual(36);
+  it('có đúng 36 câu hợp lệ, id và prompt duy nhất, đủ độ khó và chủ đề', () => {
+    expect(DEMO_PACK).toEqual({ id: 'demo', name: 'Gói DEMO — Free Fire (đề xuất, chờ người dùng duyệt)' });
+    expect(DEMO_QUESTIONS).toHaveLength(36);
     const parsed = DEMO_QUESTIONS.map((question) => QuestionSchema.parse(question));
+    expect(parsed.map((question) => question.id)).toEqual(Array.from({ length: 36 }, (_, index) => `demo-${String(index + 1).padStart(3, '0')}`));
     expect(new Set(parsed.map((question) => question.id)).size).toBe(parsed.length);
     expect(new Set(parsed.map((question) => question.prompt.toLocaleLowerCase('vi'))).size).toBe(parsed.length);
     expect(parsed.every((question) => question.verificationStatus === 'DEMO')).toBe(true);
     expect(parsed.every((question) => question.approvalStatus === 'APPROVED')).toBe(true);
     expect(parsed.every((question) => question.tags.includes('demo'))).toBe(true);
+    expect(parsed.every((question) => question.tags.includes('free-fire'))).toBe(true);
+    expect(parsed.every((question) => question.subtopicId.startsWith('ff-'))).toBe(true);
     expect(new Set(parsed.map((question) => question.subtopicId)).size).toBeGreaterThanOrEqual(4);
     expect(parsed.filter((question) => question.difficulty === 'EASY')).toHaveLength(16);
     expect(parsed.filter((question) => question.difficulty === 'MEDIUM')).toHaveLength(12);
@@ -25,17 +28,13 @@ describe('fixtures DEMO', () => {
     expect(DEMO_QUESTIONS.flatMap((question) => question.options).filter((option) => option.text.length >= 70 && option.text.length <= 90).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('giữ câu Tokyo và Sahara đúng loại đáp án, với prompt dài tự nhiên', () => {
-    const tokyo = DEMO_QUESTIONS.find((question) => question.id === 'demo-001')!;
-    const sahara = DEMO_QUESTIONS.find((question) => question.id === 'demo-008')!;
-    const correctText = (question: (typeof DEMO_QUESTIONS)[number]) => question.options.find((option) => option.id === question.correctOptionId)!.text;
-    expect(tokyo.prompt.length).toBeGreaterThanOrEqual(180);
-    expect(tokyo.prompt.length).toBeLessThanOrEqual(220);
-    expect(correctText(tokyo)).toBe('Tokyo');
-    expect(sahara.prompt.length).toBeGreaterThanOrEqual(180);
-    expect(sahara.prompt.length).toBeLessThanOrEqual(220);
-    expect(correctText(sahara)).toBe('Sahara');
-    expect(sahara.options.map((option) => option.text)).toEqual(['Gobi', 'Kalahari', 'Atacama', 'Sahara']);
+  it('giữ prompt và đáp án dài trong giới hạn để thử bố cục overlay', () => {
+    const longPromptIds = DEMO_QUESTIONS
+      .filter((question) => question.prompt.length >= 180 && question.prompt.length <= 220)
+      .map((question) => question.id);
+    expect(longPromptIds).toEqual(expect.arrayContaining(['demo-001', 'demo-023']));
+    const correctAnswers = DEMO_QUESTIONS.map((question) => question.options.find((option) => option.id === question.correctOptionId)!.text);
+    expect(correctAnswers.filter((answer) => answer.length >= 70 && answer.length <= 90).length).toBeGreaterThanOrEqual(2);
   });
 
   it('từ chối các mẫu câu hỏi không hợp lệ', () => {
@@ -72,8 +71,8 @@ describe('fixtures DEMO', () => {
   it('không chứa tên giải đấu hoặc đội được cấm trong fixtures', () => {
     const content = JSON.stringify({ DEMO_PACK, DEMO_QUESTIONS, EDGE_CASE_PLAYERS }).normalize('NFKC').toLocaleLowerCase('vi');
     const forbidden = [
-      ['free', 'fire'], ['bá', 'vương'], ['bv', 'đc'], ['gác', 'kiếm'], ['ngốc', 'nghếch'],
-      ['one', 'champ'], ['bạn', 'siêu', 'thân'], ['outlaw'], ['thỏ', 'bá', 'vương'], ['bắn', 'toàn', 'trượt'],
+      ['bá', 'vương'], ['bv', 'đc'], ['gác', 'kiếm'], ['ngốc', 'nghếch'],
+      ['one', 'champ'], ['bạn', 'siêu', 'thân'], ['outlaw'], ['thỏ', 'bá', 'vương'], ['hope'], ['bắn', 'toàn', 'trượt'],
     ].map((words) => words.join(' ').toLocaleLowerCase('vi'));
     for (const term of forbidden) expect(content).not.toContain(term);
   });
