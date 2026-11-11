@@ -21,6 +21,7 @@ function descriptor(overrides: Partial<McVoiceCacheDescriptor> = {}): McVoiceCac
     text: 'Câu hỏi thử nghiệm?',
     provider: 'clipai',
     model: 'runtime-model',
+    voiceKey: 'runtime-voice-key',
     voiceSettings: { runtimeVoice: 'private-value', rate: 1 },
     rate: 1,
     format: 'mp3',
@@ -40,6 +41,7 @@ describe('McVoiceCache', () => {
     expect(mcVoiceCacheKey(first)).toMatch(/^[a-f0-9]{64}$/);
     expect(mcVoiceCacheKey(first)).not.toContain('private-value');
     expect(mcVoiceCacheKey(first)).not.toBe(mcVoiceCacheKey(descriptor({ voiceSettings: { b: 2, a: 'y' } })));
+    expect(mcVoiceCacheKey(first)).not.toBe(mcVoiceCacheKey(descriptor({ voiceKey: 'another-runtime-voice' })));
   });
 
   it('ghi audio và metadata hạn chế quyền, kiểm checksum khi đọc; không lưu text/voice key', async () => {

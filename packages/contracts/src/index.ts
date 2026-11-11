@@ -33,7 +33,12 @@ export const McReadingFallbackReasonSchema = z.enum([
   'NO_OWNER',
   'TIMEOUT',
 ]);
+export const McReadingEarlyFallbackReasonSchema = z.enum(['NO_AUDIO', 'PLAYBACK_ERROR', 'NO_OWNER']);
 export type McReadingFallbackReason = z.infer<typeof McReadingFallbackReasonSchema>;
+export type McReadingEarlyFallbackReason = z.infer<typeof McReadingEarlyFallbackReasonSchema>;
+
+export const MAX_MC_READING_MS = 20_000;
+export const McVoiceOverlayInstanceIdSchema = z.string().uuid();
 
 export const McVoiceSettingsSchema = z.object({
   provider: z.literal('CLIPAI'),
@@ -41,14 +46,14 @@ export const McVoiceSettingsSchema = z.object({
   /** Chỉ biểu thị có token; API không trả lại token hay dạng đã che. */
   hasToken: z.boolean(),
   ready: z.boolean(),
-  primaryOverlayInstanceId: z.string().nullable(),
+  primaryOverlayInstanceId: McVoiceOverlayInstanceIdSchema.nullable(),
 });
 export type McVoiceSettings = z.infer<typeof McVoiceSettingsSchema>;
 
 export const McVoiceSettingsUpdateSchema = z.object({
   token: z.string().trim().min(1).max(4_096).optional(),
   clearToken: z.boolean().optional(),
-  primaryOverlayInstanceId: z.string().trim().min(1).max(128).nullable().optional(),
+  primaryOverlayInstanceId: McVoiceOverlayInstanceIdSchema.nullable().optional(),
   confirmPrimaryOverlayChange: z.boolean().optional(),
 }).superRefine((value, ctx) => {
   if (value.clearToken && value.token !== undefined)
@@ -81,9 +86,50 @@ export const McVoicePreGenerateProgressSchema = z.object({
 });
 export type McVoicePreGenerateProgress = z.infer<typeof McVoicePreGenerateProgressSchema>;
 
-/** Trần đọc câu hỏi và bốn đáp án trong một lần phát MC. */
-export const MAX_MC_READING_MS = 20_000;
+export const McVoiceOverlayListSchema = z.object({
+  primaryOverlayInstanceId: McVoiceOverlayInstanceIdSchema.nullable(),
+  activeOverlayInstanceIds: z.array(McVoiceOverlayInstanceIdSchema),
+});
+export type McVoiceOverlayList = z.infer<typeof McVoiceOverlayListSchema>;
 
+export const McVoiceLeasePayloadSchema = z.object({
+  status: z.enum(['GRANTED', 'WAITING', 'NOT_OWNER', 'REVOKED']),
+  overlayInstanceId: McVoiceOverlayInstanceIdSchema,
+  leaseToken: z.string().min(32).max(128).optional(),
+}).superRefine((value, ctx) => {
+  if ((value.status === 'GRANTED') !== (value.leaseToken !== undefined))
+    ctx.addIssue({ code: 'custom', path: ['leaseToken'], message: 'Chỉ lease GRANTED mới mang token.' });
+});
+export type McVoiceLeasePayload = z.infer<typeof McVoiceLeasePayloadSchema>;
+
+export const McVoicePlaybackLineSchema = z.object({
+  lineId: z.string().regex(/^(prompt|option-[A-D])$/),
+  assetId: z.string().regex(/^[a-f0-9]{64}$/),
+  text: z.string().min(1).max(1_000),
+  durationMs: z.number().int().min(1).max(MAX_MC_READING_MS),
+});
+export const McVoicePlayPayloadSchema = z.object({
+  questionInstanceId: z.string().min(1).max(128),
+  lines: z.array(McVoicePlaybackLineSchema).length(5),
+  totalDurationMs: z.number().int().min(1).max(MAX_MC_READING_MS),
+  deadlineAtMs: z.number().finite(),
+});
+export type McVoicePlayPayload = z.infer<typeof McVoicePlayPayloadSchema>;
+
+export const McVoicePlaybackCompletionSchema = z.object({
+  questionInstanceId: z.string().min(1).max(128),
+  expectedStateVersion: z.number().int().min(0),
+  result: z.enum(['FINISHED', 'FALLBACK']),
+  fallbackReason: McReadingEarlyFallbackReasonSchema.optional(),
+}).superRefine((value, ctx) => {
+  if (value.result === 'FALLBACK' && !value.fallbackReason)
+    ctx.addIssue({ code: 'custom', path: ['fallbackReason'], message: 'Cần lý do fallback.' });
+  if (value.result === 'FINISHED' && value.fallbackReason)
+    ctx.addIssue({ code: 'custom', path: ['fallbackReason'], message: 'Hoàn tất không nhận lý do fallback.' });
+});
+export type McVoicePlaybackCompletion = z.infer<typeof McVoicePlaybackCompletionSchema>;
+
+/** Trần đọc câu hỏi và bốn đáp án trong một lần phát MC. */
 export const SceneSchema = z.enum([
   'LOBBY',
   'QUESTION',
@@ -584,6 +630,8 @@ export const WS_MESSAGE_TYPES = [
   'CONNECTION_STATUS',
   'ERROR_PUBLIC',
   'AUDIENCE_UPDATED',
+  'MC_VOICE_LEASE',
+  'MC_VOICE_PLAY',
   // chỉ gửi tới kênh admin đã xác thực
   'ADMIN_SNAPSHOT',
 ] as const;
@@ -601,6 +649,8 @@ export type WsPayloads = {
   CONNECTION_STATUS: { status: ConnectionStatus };
   ERROR_PUBLIC: { code: string; message: string };
   AUDIENCE_UPDATED: AudienceView;
+  MC_VOICE_LEASE: McVoiceLeasePayload;
+  MC_VOICE_PLAY: McVoicePlayPayload;
   ADMIN_SNAPSHOT: AdminSnapshot;
 };
 
@@ -623,6 +673,8 @@ export const ClientHelloSchema = z.object({
   /** Chỉ admin; không bao giờ đặt token trong URL. */
   token: z.string().max(200).optional(),
   lastStateVersion: z.number().int().optional(),
+  /** Chỉ overlay voice module; ID per-tab, không phải credential. */
+  overlayInstanceId: McVoiceOverlayInstanceIdSchema.optional(),
 });
 export type ClientHello = z.infer<typeof ClientHelloSchema>;
 

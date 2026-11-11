@@ -27,6 +27,7 @@ function line(index: number): McVoiceReadingLine {
       text,
       provider: 'clipai',
       model: 'runtime-model',
+      voiceKey: 'runtime-only',
       voiceSettings: { voiceProfile: 'runtime-only', rate: 1 },
       rate: 1,
       format: 'mp3',

@@ -7,3 +7,4 @@ export * from './voice/pre-generate';
 export * from './voice/safe-storage';
 export * from './voice/service';
 export * from './voice/types';
+export * from './voice/lease';

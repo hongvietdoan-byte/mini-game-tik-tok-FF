@@ -11,10 +11,13 @@ import {
   ClientHelloSchema,
   CreateSessionRequestSchema,
   McVoicePreGenerateRequestSchema,
+  McVoicePlaybackCompletionSchema,
   McVoiceSettingsUpdateSchema,
   McVoiceTestRequestSchema,
+  MAX_MC_READING_MS,
   QuestionReviewSchema,
   SimulatorRequestSchema,
+  type WsPayloads,
 } from '@quiz/contracts';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
@@ -22,10 +25,11 @@ import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
 import { serveAssets, serveSpa } from './static';
-import { McVoiceCache } from './voice/cache';
+import { McVoiceCache, mcVoiceCacheKey } from './voice/cache';
 import { McVoicePreGenerateManager } from './voice/pre-generate';
 import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile, EnvironmentMcVoiceCredentialStore } from './voice/types';
 import { McVoiceService } from './voice/service';
+import { McVoiceLeaseManager } from './voice/lease';
 
 export const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
@@ -111,7 +115,6 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const voiceProfile = opts.mcVoice?.profile ?? null;
   const voiceCache = opts.mcVoice?.cache ?? new McVoiceCache(join(dirname(store.path), 'mc-voice-cache'));
   const voicePreGenerate = opts.mcVoice?.preGenerate ?? (voiceService ? new McVoicePreGenerateManager(voiceService, () => scheduler.now()) : null);
-  let primaryOverlayInstanceId: string | null = null;
 
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 256 * 1024 });
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
@@ -122,6 +125,142 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   let unsub: (() => void) | null = null;
   let lastAck: { stateVersion: number; atMs: number } | null = null;
   let lastSelfTest: SelfTestResult | null = null;
+  let voiceWsSeq = 0;
+  const voiceSockets = new Map<WebSocket, string>();
+  const handledVoiceReadings = new Set<string>();
+  const voiceLeases = new McVoiceLeaseManager(scheduler, {
+    onExpired: (overlayInstanceId) => {
+      const current = rt;
+      const snapshot = current?.publicSnapshot();
+      const questionInstanceId = snapshot?.state === 'READING' ? snapshot.question?.questionInstanceId : null;
+      if (current && questionInstanceId && voiceLeases.primaryOverlayInstanceId === overlayInstanceId)
+        current.completeMcReading(current.engine.stateVersion, questionInstanceId, 'NO_OWNER');
+    },
+  });
+
+  function sendVoiceMessage<T extends 'MC_VOICE_LEASE' | 'MC_VOICE_PLAY'>(
+    socket: WebSocket,
+    type: T,
+    payload: WsPayloads[T],
+  ) {
+    if (socket.readyState !== 1) return;
+    const message = rt?.wrap(type, payload) ?? {
+      v: CONTRACT_VERSION,
+      type,
+      seq: ++voiceWsSeq,
+      sessionId: '',
+      stateVersion: 0,
+      serverTimeMs: scheduler.now(),
+      payload,
+    };
+    socket.send(JSON.stringify(message));
+  }
+
+  function sendLeaseState(socket: WebSocket, overlayInstanceId: string, revoked = false) {
+    const leaseToken = revoked ? null : voiceLeases.leaseTokenFor(overlayInstanceId);
+    const status = revoked ? 'REVOKED' : voiceLeases.statusFor(overlayInstanceId);
+    sendVoiceMessage(socket, 'MC_VOICE_LEASE', {
+      status,
+      overlayInstanceId,
+      ...(leaseToken ? { leaseToken } : {}),
+    });
+  }
+
+  function notifyLeaseFor(overlayInstanceId: string, revoked = false) {
+    for (const [socket, id] of voiceSockets) if (id === overlayInstanceId) sendLeaseState(socket, id, revoked);
+  }
+
+  function voiceReadingKey(snapshot: ReturnType<SessionRuntime['publicSnapshot']>) {
+    const questionInstanceId = snapshot.question?.questionInstanceId;
+    return questionInstanceId ? `${snapshot.sessionId}:${snapshot.stateVersion}:${questionInstanceId}` : null;
+  }
+
+  async function publishVoiceReading(current: SessionRuntime, snapshot = current.publicSnapshot(), reconnect = false) {
+    if (snapshot.state !== 'READING' || !snapshot.question) return;
+    const key = voiceReadingKey(snapshot);
+    const questionInstanceId = snapshot.question.questionInstanceId;
+    if (!key || (handledVoiceReadings.has(key) && !reconnect)) return;
+
+    const fallback = (reason: 'NO_AUDIO' | 'NO_OWNER') => {
+      handledVoiceReadings.add(key);
+      current.completeMcReading(snapshot.stateVersion, questionInstanceId, reason);
+    };
+
+    const ownerId = voiceLeases.primaryOverlayInstanceId;
+    if (!ownerId) {
+      fallback('NO_OWNER');
+      return;
+    }
+    if (!voiceLeases.isConnected(ownerId)) {
+      if (voiceLeases.isReconnectPending(ownerId)) return;
+      fallback('NO_OWNER');
+      return;
+    }
+    if (!voiceService || !voiceProfile || !snapshot.timer?.running) {
+      fallback('NO_AUDIO');
+      return;
+    }
+
+    const deadlineAtMs = scheduler.now() + snapshot.timer.remainingMs;
+    const lines = [
+      { lineId: 'prompt' as const, text: snapshot.question.prompt },
+      ...snapshot.question.options.map((option) => ({ lineId: `option-${option.id}` as const, text: option.text })),
+    ];
+    let assets;
+    try {
+      assets = await Promise.all(lines.map(({ text }) => {
+        const descriptor = {
+          text,
+          provider: 'clipai' as const,
+          model: voiceProfile.model,
+          voiceKey: voiceProfile.voiceKey,
+          voiceSettings: voiceProfile.voiceSettings,
+          rate: voiceProfile.rate,
+          format: 'mp3' as const,
+        };
+        return voiceCache.get(mcVoiceCacheKey(descriptor));
+      }));
+    } catch {
+      fallback('NO_AUDIO');
+      return;
+    }
+
+    const latest = current.publicSnapshot();
+    if (latest.state !== 'READING' || latest.stateVersion !== snapshot.stateVersion ||
+      latest.question?.questionInstanceId !== questionInstanceId) return;
+    if (!assets.every((asset) => asset !== null)) {
+      fallback('NO_AUDIO');
+      return;
+    }
+    const totalDurationMs = assets.reduce((total, asset) => total + asset!.durationMs, 0);
+    if (totalDurationMs <= 0 || totalDurationMs > MAX_MC_READING_MS) {
+      fallback('NO_AUDIO');
+      return;
+    }
+    if (!voiceLeases.isConnected(ownerId)) {
+      if (voiceLeases.isReconnectPending(ownerId)) return;
+      fallback('NO_OWNER');
+      return;
+    }
+    const targets = [...voiceSockets].filter(([socket, id]) => id === ownerId && socket.readyState === 1);
+    if (targets.length === 0) {
+      fallback('NO_OWNER');
+      return;
+    }
+    handledVoiceReadings.add(key);
+    const payload = {
+      questionInstanceId,
+      lines: lines.map((line, index) => ({
+        ...line,
+        assetId: assets[index]!.assetId,
+        durationMs: assets[index]!.durationMs,
+      })),
+      totalDurationMs,
+      deadlineAtMs,
+    };
+    for (const [socket] of targets) sendVoiceMessage(socket, 'MC_VOICE_PLAY', payload);
+  }
+
   const pushOverlayInfo = () =>
     rt?.setOverlayInfo({
       clients: overlayClients.size,
@@ -137,6 +276,8 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     pushOverlayInfo();
     unsub = next.subscribe((batch: Outgoing[]) => {
       for (const o of batch) {
+        if (o.audience === 'public' && o.message.type === 'STATE_SNAPSHOT' && o.message.payload.state === 'READING')
+          void publishVoiceReading(next, o.message.payload);
         const data = JSON.stringify(o.message);
         for (const ws of o.audience === 'public' ? overlayClients : adminClients) if (ws.readyState === 1) ws.send(data);
       }
@@ -188,7 +329,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       voiceName: 'Kelly' as const,
       hasToken: token !== null,
       ready: token !== null && voiceService !== null && voiceProfile !== null,
-      primaryOverlayInstanceId,
+      primaryOverlayInstanceId: voiceLeases.primaryOverlayInstanceId,
     };
   }
 
@@ -232,13 +373,22 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     }
   });
 
+  app.get('/api/mc-voice/overlays', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return {
+      primaryOverlayInstanceId: voiceLeases.primaryOverlayInstanceId,
+      activeOverlayInstanceIds: voiceLeases.activeOverlayInstanceIds,
+    };
+  });
+
   app.put('/api/mc-voice/settings', async (req, reply) => {
     if (!guard(req, reply, true)) return reply;
     const parsed = McVoiceSettingsUpdateSchema.safeParse(req.body ?? {});
     if (!parsed.success) return badRequest(reply, parsed.error);
     const update = parsed.data;
     const hasPrimary = Object.prototype.hasOwnProperty.call(update, 'primaryOverlayInstanceId');
-    if (hasPrimary && primaryOverlayInstanceId !== null && update.primaryOverlayInstanceId !== primaryOverlayInstanceId &&
+    const previousPrimary = voiceLeases.primaryOverlayInstanceId;
+    if (hasPrimary && previousPrimary !== null && update.primaryOverlayInstanceId !== previousPrimary &&
       update.confirmPrimaryOverlayChange !== true) {
       return reply.code(409).send({ ok: false, code: 'MC_VOICE_PRIMARY_CONFIRMATION_REQUIRED', message: 'Xác nhận đổi overlay phát tiếng trước khi tiếp tục.' });
     }
@@ -250,7 +400,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         return reply.code(503).send({ ok: false, code: 'MC_VOICE_CREDENTIAL_STORE_UNAVAILABLE', message: 'Kho bảo mật MC Voice chưa sẵn sàng.' });
       }
     }
-    if (hasPrimary) primaryOverlayInstanceId = update.primaryOverlayInstanceId ?? null;
+    if (hasPrimary) {
+      const changed = voiceLeases.setPrimary(update.primaryOverlayInstanceId ?? null, update.confirmPrimaryOverlayChange === true);
+      if (changed.previous) notifyLeaseFor(changed.previous, true);
+      if (changed.current) notifyLeaseFor(changed.current);
+      if (rt && changed.current && rt.publicSnapshot().state === 'READING')
+        void publishVoiceReading(rt, rt.publicSnapshot(), true);
+    }
     try {
       return await voiceSettingsSnapshot();
     } catch {
@@ -271,6 +427,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
           text,
           provider: 'clipai',
           model: voiceProfile.model,
+          voiceKey: voiceProfile.voiceKey,
           voiceSettings: voiceProfile.voiceSettings,
           rate: voiceProfile.rate,
           format: 'mp3',
@@ -311,6 +468,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         text,
         provider: 'clipai' as const,
         model: voiceProfile.model,
+        voiceKey: voiceProfile.voiceKey,
         voiceSettings: voiceProfile.voiceSettings,
         rate: voiceProfile.rate,
         format: 'mp3' as const,
@@ -333,8 +491,30 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     return progress;
   });
 
+  function hasVoiceLease(req: FastifyRequest) {
+    const leaseToken = req.headers['x-mc-voice-lease'];
+    return originOk(req) && typeof leaseToken === 'string' && voiceLeases.authorize(leaseToken);
+  }
+
+  app.post('/api/mc-voice/playback/complete', async (req, reply) => {
+    if (!hasVoiceLease(req)) return reply.code(401).send({ ok: false, code: 'MC_VOICE_LEASE_REQUIRED', message: 'Overlay không giữ lease phát MC Voice.' });
+    const parsed = McVoicePlaybackCompletionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    if (!rt) return reply.code(404).send({ ok: false, code: 'MC_VOICE_SESSION_NOT_FOUND', message: 'Không có phiên MC Voice đang mở.' });
+    const completion = parsed.data;
+    const result = rt.completeMcReading(
+      completion.expectedStateVersion,
+      completion.questionInstanceId,
+      completion.result === 'FALLBACK' ? completion.fallbackReason : undefined,
+    );
+    if (!result.ok)
+      return reply.code(409).send({ ok: false, code: result.code, stateVersion: result.stateVersion, message: result.message });
+    return { ok: true, state: result.state, stateVersion: result.stateVersion };
+  });
+
   app.get<{ Params: { assetId: string } }>('/api/mc-voice/assets/:assetId', async (req, reply) => {
-    if (!guard(req, reply, false)) return reply;
+    if (!isAdmin(req) && !hasVoiceLease(req))
+      return reply.code(401).send({ ok: false, code: 'UNAUTHORIZED', message: 'Cần admin hoặc lease MC Voice hợp lệ.' });
     const asset = await voiceCache.get(req.params.assetId);
     if (!asset) return reply.code(404).send({ ok: false, code: 'MC_VOICE_ASSET_NOT_FOUND', message: 'Không tìm thấy audio MC Voice.' });
     return reply.type('audio/mpeg').header('cache-control', 'private, no-store').send(asset.bytes);
@@ -536,6 +716,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
 
   app.get('/ws', { websocket: true }, (socket, req) => {
     let role: 'overlay' | 'admin' | null = null;
+    let overlayInstanceId: string | null = null;
     // Không HELLO trong 5 s → đóng
     const helloTimer = setTimeout(() => {
       if (!role) socket.close(4400, 'HELLO timeout');
@@ -574,14 +755,29 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       } else {
         role = 'overlay';
         overlayClients.add(socket);
+        if (hello.data.overlayInstanceId) {
+          overlayInstanceId = hello.data.overlayInstanceId;
+          voiceSockets.set(socket, overlayInstanceId);
+          voiceLeases.connect(overlayInstanceId);
+        }
         pushOverlayInfo();
         if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', rt.publicSnapshot())));
+        if (overlayInstanceId) {
+          sendLeaseState(socket, overlayInstanceId);
+          if (rt && overlayInstanceId === voiceLeases.primaryOverlayInstanceId)
+            void publishVoiceReading(rt, rt.publicSnapshot(), true);
+        }
       }
     });
     socket.on('close', () => {
       clearTimeout(helloTimer);
       overlayClients.delete(socket);
       adminClients.delete(socket);
+      if (overlayInstanceId) {
+        voiceSockets.delete(socket);
+        voiceLeases.disconnect(overlayInstanceId);
+        notifyLeaseFor(overlayInstanceId);
+      }
       pushOverlayInfo();
     });
   });
@@ -603,6 +799,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       unsub?.();
       rt?.dispose();
       rt = null;
+      voiceLeases.dispose();
       for (const ws of [...overlayClients, ...adminClients]) ws.terminate();
       await app.close();
     },

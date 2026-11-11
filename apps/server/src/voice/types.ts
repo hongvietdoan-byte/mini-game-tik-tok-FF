@@ -43,6 +43,8 @@ export type McVoiceCacheDescriptor = {
   text: string;
   provider: 'clipai';
   model: string;
+  /** Runtime-only; tham gia cache key nhưng không xuất hiện trong API công khai. */
+  voiceKey: string;
   voiceSettings: Readonly<Record<string, string | number | boolean>>;
   rate: number;
   format: McVoiceAudioFormat;

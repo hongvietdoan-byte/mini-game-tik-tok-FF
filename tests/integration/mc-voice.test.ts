@@ -9,6 +9,8 @@ import { AUTH, makeQuestions, tempDbPath, TOKEN } from './helpers';
 
 type Harness = { quiz: Awaited<ReturnType<typeof buildApp>>; store: Store; voiceCacheDirectory: string; secret: { value: string | null }; provider: McVoiceProvider };
 const opened: Harness[] = [];
+const OVERLAY_1 = 'c7b7a3bc-5d67-4e85-a4bf-2d46b747c01a';
+const OVERLAY_2 = '4f541bc0-1f98-4b18-bc42-9e193f719a8b';
 
 afterEach(async () => {
   for (const harness of opened.splice(0)) {
@@ -87,20 +89,20 @@ describe('MC Voice server API', () => {
 
     const first = await h.quiz.app.inject({
       method: 'PUT', url: '/api/mc-voice/settings', headers: AUTH,
-      payload: { primaryOverlayInstanceId: 'overlay-1' },
+      payload: { primaryOverlayInstanceId: OVERLAY_1 },
     });
     expect(first.statusCode).toBe(200);
     const unconfirmed = await h.quiz.app.inject({
       method: 'PUT', url: '/api/mc-voice/settings', headers: AUTH,
-      payload: { primaryOverlayInstanceId: 'overlay-2' },
+      payload: { primaryOverlayInstanceId: OVERLAY_2 },
     });
     expect(unconfirmed.statusCode).toBe(409);
     const confirmed = await h.quiz.app.inject({
       method: 'PUT', url: '/api/mc-voice/settings', headers: AUTH,
-      payload: { primaryOverlayInstanceId: 'overlay-2', confirmPrimaryOverlayChange: true },
+      payload: { primaryOverlayInstanceId: OVERLAY_2, confirmPrimaryOverlayChange: true },
     });
     expect(confirmed.statusCode).toBe(200);
-    expect(confirmed.json()).toMatchObject({ primaryOverlayInstanceId: 'overlay-2' });
+    expect(confirmed.json()).toMatchObject({ primaryOverlayInstanceId: OVERLAY_2 });
   });
 
   it('chỉ test khi có xác nhận tường minh; response chỉ có asset id, không có provider URL/token', async () => {

@@ -12,6 +12,7 @@ import {
   type CreateSessionRequest,
   type IngestMetrics,
   type LiveSourceHealth,
+  type McReadingEarlyFallbackReason,
   type LeaderboardEntry,
   type OptionId,
   type PublicSnapshot,
@@ -571,6 +572,16 @@ export class SessionRuntime {
   // -------------------------------------------------------------------------
   // Lệnh operator
   // -------------------------------------------------------------------------
+
+  /** Owner lease của MC Voice hoàn tất hoặc chuyển sang lời dẫn chữ qua chính reducer/persistence/outbox. */
+  completeMcReading(expectedStateVersion: number, questionInstanceId: string, fallbackReason?: McReadingEarlyFallbackReason) {
+    const result = fallbackReason
+      ? this.apply({ kind: 'MC_READING_FALLBACK', expectedStateVersion, questionInstanceId, reason: fallbackReason })
+      : this.apply({ kind: 'MC_READING_FINISHED', expectedStateVersion, questionInstanceId });
+    if (!result.ok)
+      return { ok: false as const, code: result.code, message: result.message, stateVersion: this.engine.stateVersion };
+    return { ok: true as const, state: result.state.state, stateVersion: result.state.stateVersion };
+  }
 
   dispatch(raw: unknown): DispatchOutcome {
     const parsed = CommandEnvelopeSchema.safeParse(raw);

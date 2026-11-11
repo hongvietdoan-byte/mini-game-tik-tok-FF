@@ -31,6 +31,7 @@ export function mcVoiceCacheKey(input: McVoiceCacheDescriptor): string {
     text: input.text.normalize('NFC').trim().replace(/\s+/g, ' '),
     provider: input.provider,
     model: input.model,
+    voiceKey: input.voiceKey,
     voiceSettings: stableValue(input.voiceSettings),
     rate: input.rate,
     format: input.format,
