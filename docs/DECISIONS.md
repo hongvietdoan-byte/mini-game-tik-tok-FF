@@ -66,6 +66,7 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 - Sửa câu đã duyệt → `version + 1`, lưu `question_versions`, quay về `PENDING_REVIEW`. Vòng đang chạy dùng snapshot bất biến nên không bị ảnh hưởng.
 - Màn Question Bank (Phase 2) phải có form sửa đầy đủ + nút duyệt/từ chối; `MANUAL_PLAYLIST` để người dùng tự chọn bộ câu cho vòng.
 - `fixtures/questions.ts` chỉ là dữ liệu DEMO để kiểm thử engine ở chế độ MOCK.
+- **Toàn bộ câu hỏi phải thuộc chủ đề Free Fire** (người dùng chốt 11/11), kể cả bộ DEMO. Dữ kiện giải BVĐC chỉ dùng khi người dùng duyệt nguồn.
 
 ## Hoãn (backlog)
 SMART_RANDOM theo quota 7/5/3 (Phase 2) · auto mode nhiều vòng có preflight đầy đủ (Phase 6) · purge/export dữ liệu người chơi (Phase 6) ·
