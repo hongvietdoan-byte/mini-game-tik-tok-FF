@@ -62,7 +62,7 @@ async function openScene(page: Page, sceneName: string, expectedScene: string) {
 
 async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator']>, sceneName: string) {
   const viewport = page.viewportSize();
-  expect(viewport).toEqual({ width: 1080, height: 1920 });
+  expect(viewport, `${sceneName}: viewport has a measurable size`).not.toBeNull();
   const stageBox = await stage.boundingBox();
   expect(stageBox, `${sceneName}: stage has a bounding box`).not.toBeNull();
   if (!stageBox) return;
@@ -118,9 +118,11 @@ async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator'
 
 for (const { name, scene } of scenes) {
   test(`mock scene: ${name}`, async ({ page }) => {
+    if (name === 'question') await page.setViewportSize({ width: 921, height: 2000 });
     const { stage, errors } = await openScene(page, name, scene);
     await expect(stage.getByText('ĐẤU TRƯỜNG BÃO TỐ', { exact: true })).toHaveCount(0);
     await expectInsideSafeZone(page, stage, name);
+    if (name === 'question') console.log(`Ảnh nghiệm thu: ${join(screenshotDirectory, 'question.png')}`);
     await page.screenshot({ path: join(screenshotDirectory, `${name}.png`), animations: 'disabled' });
     // So ảnh chuẩn chỉ khi bật E2E_SCREENSHOTS=1 (bố cục V3 còn đổi, chưa commit ảnh chuẩn — BOARD #15)
     if (process.env.E2E_SCREENSHOTS === '1') await expect(page).toHaveScreenshot(`${name}.png`, { maxDiffPixelRatio: 0.01 });
@@ -299,7 +301,68 @@ test('question and Top 10 stay below the 14 percent TikTok top safe zone', async
   }
 });
 
-test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', async ({ page }) => {
+test('TikTok HUD overlays the same quiz layout without covering the event logo or critical quiz content', async ({ page }) => {
+  await page.setViewportSize({ width: 921, height: 2000 });
+  const selectors = ['.v3-header', '.v3-title', '.v3-top10', '.v3-board', '.v3-timer', '.v3-mc'];
+  const captureLayout = async (hud: boolean) => {
+    await page.goto(`/?mock=question${hud ? '&hud=1' : ''}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('[data-testid="stage"][data-scene="QUESTION"]')).toBeVisible();
+    await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+    return Promise.all(selectors.map(async (selector) => {
+      const box = await page.locator(selector).boundingBox();
+      expect(box, `${selector} has a measurable position with hud=${hud}`).not.toBeNull();
+      return box && [box.x, box.y, box.width, box.height].map((value) => Math.round(value * 100) / 100);
+    }));
+  };
+  const withoutHud = await captureLayout(false);
+  const withHud = await captureLayout(true);
+  expect(withHud).toEqual(withoutHud);
+
+  const overlap = await page.evaluate(() => {
+    const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const box = (selector: string) => document.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
+    const title = box('.v3-title');
+    const host = box('.tiktok-hud-host');
+    const viewers = box('.tiktok-hud-viewers');
+    const eventBanner = box('.tiktok-hud-event-banner');
+    const timerText = box('.v3-timer b');
+    const comments = box('.tiktok-hud-comments');
+    const important = Array.from(document.querySelectorAll<HTMLElement>('.v3-top10, .v3-board, .v3-mc'))
+      .map((element) => element.getBoundingClientRect());
+    return {
+      logoOverlaysHud: !!title && !!host && intersects(title, host) || !!title && !!viewers && intersects(title, viewers),
+      bannerCoversTimerText: !!eventBanner && !!timerText && intersects(eventBanner, timerText),
+      commentsCoverQuiz: !!comments && important.some((target) => intersects(comments, target)),
+    };
+  });
+  expect(overlap).toEqual({ logoOverlaysHud: false, bannerCoversTimerText: false, commentsCoverQuiz: false });
+});
+
+test('Storm Arena shows stadium layers, shield ranks and the three-line MC bubble', async ({ page }) => {
+  await openScene(page, 'question', 'QUESTION');
+  await expect(page.locator('.v3-env-arc')).toBeVisible();
+  await expect(page.locator('.v3-env-stands')).toBeVisible();
+  await expect(page.locator('.v3-env-floodlights rect')).toHaveCount(4);
+  const steps = page.locator('.v3-step');
+  await expect(steps).toHaveCount(7);
+  const [backRow, frontRow] = await Promise.all([steps.first().boundingBox(), steps.last().boundingBox()]);
+  expect(backRow).not.toBeNull();
+  expect(frontRow).not.toBeNull();
+  expect(backRow!.height).toBeGreaterThanOrEqual(90);
+  expect(frontRow!.width).toBeGreaterThan(backRow!.width);
+  await expect(page.getByTestId('question-tab')).toHaveText(/^CÂU HỎI \d+$/);
+  const rankShield = page.locator('.v3-rank-1 .v3-rank');
+  await expect(rankShield).toBeVisible();
+  expect(await rankShield.evaluate((element) => getComputedStyle(element).clipPath)).toContain('polygon');
+  const bubble = page.getByTestId('mc-bubble');
+  await expect(bubble).toContainText('Trả lời bằng cách');
+  await expect(bubble).toContainText('comment A, B, C hoặc D');
+  await expect(bubble).toContainText('để tham gia ngay!');
+  expect(await bubble.evaluate((element) => getComputedStyle(element, '::before').content)).not.toBe('none');
+  expect(await bubble.locator('p').evaluate((element) => getComputedStyle(element).whiteSpace)).toBe('pre-line');
+});
+
+test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ page }) => {
   const errors = watchPageErrors(page);
   await page.setViewportSize({ width: 921, height: 2000 });
   await page.goto('/?mock=question&hud=1&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
@@ -317,11 +380,44 @@ test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', 
     expect(box!.x).toBeGreaterThanOrEqual(-2);
     expect(box!.x + box!.width).toBeLessThanOrEqual(923);
   }
-  await expect(page.getByTestId('tiktok-live-info')).toContainText('LIVE');
-  await expect(page.getByTestId('tiktok-actions').locator('> div')).toHaveCount(5);
-  await expect(page.getByTestId('tiktok-comments').locator('p')).toHaveCount(4);
-  await expect(page.getByTestId('tiktok-comment-bar')).toContainText('Bình luận');
-  await expect(page.getByTestId('safe-zone-guides')).toBeVisible();
+  await expect(page.getByTestId('tiktok-status-bar')).toBeVisible();
+  await expect(page.getByTestId('tiktok-live-info')).toContainText('FFVN.Kelly');
+  await expect(page.getByTestId('tiktok-viewers')).toContainText('6,5K');
+  await expect(page.getByTestId('tiktok-live-chips')).toContainText('Bảng xếp hạng chơi game');
+  await expect(page.getByTestId('tiktok-event-banner')).toContainText('LIVE FEST 2026');
+  await expect(page.getByTestId('tiktok-actions')).toHaveCount(0);
+  await expect(page.getByTestId('tiktok-comments').locator('p')).toHaveCount(5);
+  await expect(page.getByTestId('tiktok-comments')).toContainText('đã tham gia');
+  await expect(page.getByTestId('tiktok-gift-toast')).toBeVisible();
+  await expect(page.getByTestId('tiktok-share-float')).toBeVisible();
+  await expect(page.getByTestId('tiktok-comment-bar')).toContainText('Nhập…');
+  await expect(page.getByTestId('safe-zone-guides')).toHaveCount(0);
+  await expect(page.getByTestId('tiktok-hud-demo-label')).toHaveCount(0);
+  for (const selector of ['.tiktok-hud-host', '.tiktok-hud-viewers', '.tiktok-hud-event-banner', '.tiktok-hud-comments', '.tiktok-hud-comment-bar']) {
+    const box = await page.locator(selector).boundingBox();
+    expect(box, `${selector} stays on the phone screen`).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(-2);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(923);
+  }
+  const [hostBox, chipsBox, eventBox, commentsBox, giftBox, inputBox] = await Promise.all([
+    page.getByTestId('tiktok-live-info').boundingBox(),
+    page.getByTestId('tiktok-live-chips').boundingBox(),
+    page.getByTestId('tiktok-event-banner').boundingBox(),
+    page.getByTestId('tiktok-comments').boundingBox(),
+    page.getByTestId('tiktok-gift-toast').boundingBox(),
+    page.getByTestId('tiktok-comment-bar').boundingBox(),
+  ]);
+  expect(hostBox!.y).toBeGreaterThanOrEqual(120);
+  expect(hostBox!.y + hostBox!.height).toBeLessThanOrEqual(205);
+  expect(chipsBox!.y).toBeGreaterThanOrEqual(200);
+  expect(chipsBox!.y + chipsBox!.height).toBeLessThanOrEqual(275);
+  expect(eventBox!.y + eventBox!.height).toBeLessThanOrEqual(370);
+  expect(commentsBox!.y).toBeGreaterThanOrEqual(1380);
+  expect(commentsBox!.y + commentsBox!.height).toBeLessThanOrEqual(1855);
+  expect(giftBox!.y).toBeGreaterThanOrEqual(1230);
+  expect(giftBox!.y).toBeLessThanOrEqual(1370);
+  expect(inputBox!.y).toBeGreaterThanOrEqual(1830);
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(1945);
   const values = await stage.evaluate((element) => {
     const style = getComputedStyle(element);
     return ['--safe-top', '--safe-right', '--safe-bottom', '--safe-left', '--safe-right-from-y']
@@ -329,10 +425,13 @@ test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', 
   });
   expect(values).toEqual(['180px', '140px', '120px', '20px', '700px']);
   await page.screenshot({ path: join(screenshotDirectory, 'question-hud.png'), fullPage: true });
+  await page.goto('/?mock=question&hud=1&debug=1', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('safe-zone-guides')).toBeVisible();
+  await expect(page.getByTestId('tiktok-hud-demo-label')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('question with 35 seats sustains 30 FPS over 10 seconds', async ({ page }) => {
+test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) => {
   const { errors } = await openScene(page, 'question', 'QUESTION');
   await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
   const seatEffects = await page.locator('.v3-seat-back, .v3-seat-name, .v3-chibi-hair, .v3-chibi-img img').evaluateAll((elements) => elements.map((element) => {
@@ -367,8 +466,8 @@ test('question with 35 seats sustains 30 FPS over 10 seconds', async ({ page }) 
     requestAnimationFrame(sample);
   }));
   console.log(`FPS câu hỏi 10 giây / 35 ghế: trung bình ${renderStats.averageFps.toFixed(1)}, p5 ${renderStats.p5Fps.toFixed(1)}, ${renderStats.frames} khung hình.`);
-  expect(renderStats.averageFps).toBeGreaterThanOrEqual(30);
-  expect(renderStats.p5Fps).toBeGreaterThanOrEqual(30);
+  expect(renderStats.averageFps).toBeGreaterThanOrEqual(55);
+  expect(renderStats.p5Fps).toBeGreaterThanOrEqual(55);
   expect(errors).toEqual([]);
 });
 

@@ -133,23 +133,48 @@ h1 span, h2 span { color: var(--gold); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; } }
 .safe-zone-right-band { position: absolute; right: 0; z-index: 60; pointer-events: none; background: repeating-linear-gradient(45deg, rgba(210, 68, 112, 0.28) 0 10px, transparent 10px 20px); border-left: 2px dashed rgba(210, 68, 112, 0.9); }
 .tiktok-hud { position: absolute; inset: 0; z-index: 70; color: #fff; font-family: Arial, sans-serif; pointer-events: none; text-shadow: 0 1px 3px #000; }
-.tiktok-hud-live { position: absolute; left: 26px; top: 28px; display: flex; align-items: center; gap: 12px; min-width: 350px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.18); border-radius: 14px; background: rgba(12,12,18,.72); backdrop-filter: blur(8px); }
-.tiktok-hud-live-badge { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: 6px; background: #e53962; font-size: 15px; font-weight: 900; letter-spacing: .8px; }
-.tiktok-hud-live-badge i { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
-.tiktok-hud-live-copy { display: grid; gap: 3px; min-width: 0; }
-.tiktok-hud-live-copy b { font-size: 18px; }
-.tiktok-hud-live-copy small { color: rgba(255,255,255,.78); font-size: 14px; }
-.tiktok-hud-follow { padding: 6px 11px; border-radius: 7px; background: #fe2c55; font-size: 14px; font-weight: 800; }
-.tiktok-hud-actions { position: absolute; right: 22px; top: 760px; display: grid; justify-items: center; gap: 22px; width: 78px; }
-.tiktok-hud-actions > div { display: grid; justify-items: center; gap: 4px; }
-.tiktok-hud-actions b,.hud-avatar { width: 56px; height: 56px; display: grid; place-items: center; margin: 0; border: 2px solid rgba(255,255,255,.78); border-radius: 50%; background: rgba(10,10,16,.7); font-size: 34px; font-weight: 700; font-style: normal; line-height: 1; }
-.tiktok-hud-actions small { font-size: 14px; font-weight: 700; }
-.tiktok-hud-actions .hud-avatar { border-color: #fe2c55; font-size: 18px; font-weight: 900; }
-.tiktok-hud-comments { position: absolute; left: 28px; bottom: 126px; display: grid; gap: 7px; max-width: 620px; }
-.tiktok-hud-comments p { width: max-content; max-width: 620px; margin: 0; padding: 7px 12px; border-radius: 13px; background: rgba(10,10,16,.58); font-size: 18px; line-height: 1.22; }
-.tiktok-hud-comments p b { margin-right: 7px; color: rgba(255,255,255,.68); font-weight: 700; }
-.tiktok-hud-comments .tiktok-hud-gift { color: #ffd978; }
-.tiktok-hud-comment-bar { position: absolute; left: 24px; right: 24px; bottom: 26px; height: 66px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border: 1px solid rgba(255,255,255,.22); border-radius: 34px; background: rgba(12,12,18,.86); color: rgba(255,255,255,.72); font-size: 18px; }
-.tiktok-hud-comment-bar span { flex: 1; }
-.tiktok-hud-comment-bar b { color: #fff; font-size: 24px; }
-.tiktok-hud-demo-label { position: absolute; right: 25px; top: 185px; padding: 5px 9px; border-radius: 6px; background: rgba(10,10,16,.62); color: rgba(255,255,255,.76); font-size: 12px; letter-spacing: .3px; }
+.tiktok-hud-status { position: absolute; left: 100px; right: 100px; top: 18px; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #fff; font-size: 24px; font-weight: 800; }
+.tiktok-hud-status span { font-size: 19px; letter-spacing: 1px; }
+.tiktok-hud-host { position: absolute; left: 100px; top: 124px; width: 420px; height: 68px; display: flex; align-items: center; gap: 11px; padding: 6px 9px; border: 1px solid rgba(255,255,255,.18); border-radius: 34px; background: rgba(16,16,23,.74); backdrop-filter: blur(8px); }
+.tiktok-hud-host-avatar { flex: 0 0 50px; width: 50px; height: 50px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 50%; background: linear-gradient(145deg,#fb3982,#7147ef); font-size: 23px; font-weight: 900; font-style: normal; }
+.tiktok-hud-host-copy { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.tiktok-hud-host-copy b { overflow: hidden; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.tiktok-hud-host-copy small { color: rgba(255,255,255,.82); font-size: 13px; }
+.tiktok-hud-follow { flex: 0 0 auto; padding: 8px 11px; border-radius: 9px; background: #fe2c55; font-size: 14px; font-weight: 800; }
+.tiktok-hud-viewers { position: absolute; top: 124px; right: 100px; height: 68px; display: flex; align-items: center; gap: 9px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.16); border-radius: 34px; background: rgba(16,16,23,.7); font-size: 15px; }
+.tiktok-hud-viewer-avatars { display: flex; padding-left: 4px; }
+.tiktok-hud-viewer-avatars i { width: 34px; height: 34px; display: grid; place-items: center; margin-left: -5px; border: 2px solid #f5f1ff; border-radius: 50%; background: linear-gradient(145deg,#51d5e9,#4b42bc); font-size: 12px; font-style: normal; font-weight: 900; }
+.tiktok-hud-viewer-avatars i:nth-child(2) { background: linear-gradient(145deg,#ffb35a,#ec4a7a); }
+.tiktok-hud-viewer-avatars i:nth-child(3) { background: linear-gradient(145deg,#c584ff,#6136b8); }
+.tiktok-hud-viewers > b { white-space: nowrap; font-size: 15px; }
+.tiktok-hud-collapse,.tiktok-hud-close { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50%; background: rgba(255,255,255,.12); font-size: 19px; }
+.tiktok-hud-close { font-size: 23px; }
+.tiktok-hud-chips { position: absolute; left: 100px; top: 211px; display: flex; gap: 10px; height: 46px; align-items: center; }
+.tiktok-hud-chips span { padding: 0 13px; border: 1px solid rgba(255,255,255,.24); border-radius: 24px; background: rgba(21,18,52,.78); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.tiktok-hud-chips span:first-child { height: 44px; display: flex; align-items: center; color: #fff; }
+.tiktok-hud-event-banner { position: absolute; top: 211px; right: 100px; width: 220px; height: 76px; display: grid; align-content: center; gap: 4px; padding: 6px 12px; border: 1px solid rgba(255,255,255,.5); border-radius: 14px; background: linear-gradient(145deg,rgba(246,42,119,.94),rgba(100,43,175,.94)); box-shadow: 0 6px 18px rgba(17,7,52,.4); text-align: center; }
+.tiktok-hud-event-banner small { font-size: 11px; font-weight: 900; letter-spacing: 1.4px; }
+.tiktok-hud-event-banner b { font-size: 16px; }
+.tiktok-hud-event-banner span { font-size: 12px; }
+.tiktok-hud-comments { position: absolute; left: 100px; bottom: 174px; display: grid; gap: 8px; width: 650px; max-height: 370px; overflow: hidden; }
+.tiktok-hud-comments p { display: flex; align-items: center; gap: 10px; max-width: 650px; min-height: 50px; margin: 0; padding: 4px 10px 4px 5px; border-radius: 18px; background: rgba(9,9,20,.43); font-size: 15px; line-height: 1.2; }
+.tiktok-hud-comments p > i { flex: 0 0 36px; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background: linear-gradient(145deg,#fa59ac,#613dc7); font-size: 13px; font-style: normal; font-weight: 900; }
+.tiktok-hud-comments p > span { min-width: 0; display: grid; gap: 3px; }
+.tiktok-hud-comments p small { display: flex; align-items: center; gap: 7px; color: rgba(255,255,255,.66); font-size: 12px; }
+.tiktok-hud-comments p small em { padding: 1px 5px; border-radius: 6px; background: #7456dc; color: #fff; font-size: 10px; font-style: normal; font-weight: 800; }
+.tiktok-hud-comments p strong { color: #fff; font-size: 15px; }
+.tiktok-hud-comments .tiktok-hud-join { min-height: 27px; padding-left: 50px; background: transparent; color: rgba(255,255,255,.78); font-size: 13px; }
+.tiktok-hud-gift-toast { position: absolute; left: 100px; top: 1230px; height: 58px; display: flex; align-items: center; gap: 9px; padding: 0 14px; border-radius: 29px; background: rgba(20,15,42,.78); color: #fff; font-size: 14px; }
+.tiktok-hud-gift-toast > b { font-size: 22px; }
+.tiktok-hud-gift-toast strong { color: #ffd54f; }
+.tiktok-hud-share-float { position: absolute; left: 790px; top: 1390px; width: 65px; height: 65px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.68); border-radius: 50%; background: rgba(22,18,42,.62); font-size: 29px; }
+.tiktok-hud-hearts { position: absolute; right: 122px; top: 1440px; display: grid; justify-items: center; gap: 17px; color: #fe4c9a; font-size: 25px; text-shadow: 0 0 12px rgba(255,65,142,.7); }
+.tiktok-hud-hearts i { font-style: normal; }
+.tiktok-hud-hearts i:nth-child(2) { font-size: 31px; }
+.tiktok-hud-comment-bar { position: absolute; left: 100px; right: 100px; bottom: 65px; height: 80px; display: flex; align-items: center; gap: 10px; padding: 0 13px; border-radius: 42px; background: rgba(22,22,31,.92); color: rgba(255,255,255,.9); }
+.tiktok-hud-game-icon,.tiktok-hud-guest,.tiktok-hud-rose,.tiktok-hud-gift,.tiktok-hud-share { flex: 0 0 46px; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.12); font-size: 22px; }
+.tiktok-hud-input { flex: 1; min-width: 0; height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; border-radius: 28px; background: rgba(255,255,255,.13); color: rgba(255,255,255,.72); font-size: 16px; }
+.tiktok-hud-input b { color: #fff; font-size: 21px; }
+.tiktok-hud-share { position: relative; font-size: 21px; }
+.tiktok-hud-share small { position: absolute; right: -2px; bottom: -4px; padding: 1px 4px; border-radius: 8px; background: #fe2c55; font-size: 9px; }
+.tiktok-hud-demo-label { position: absolute; right: 100px; top: 360px; padding: 6px 10px; border-radius: 6px; background: rgba(10,10,16,.72); color: rgba(255,255,255,.8); font-size: 12px; }

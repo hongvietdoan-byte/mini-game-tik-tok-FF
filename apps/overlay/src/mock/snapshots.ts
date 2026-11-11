@@ -124,7 +124,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
       state: name === 'prepare' ? 'ask' : isReveal ? 'react' : 'idle',
-      bubble: name === 'prepare' ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.' : 'Bình luận A, B, C hoặc D để tham gia.',
+      bubble: name === 'prepare' ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.' : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
     audience: ['lobby', 'prepare', 'question', 'reveal', 'paused'].includes(name) ? mockAudience(name === 'reveal') : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
