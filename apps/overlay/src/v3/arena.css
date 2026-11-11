@@ -1074,8 +1074,8 @@
 .v3-options.has-long-option { grid-template-columns: minmax(0, 1fr); grid-auto-rows: 42px; gap: 4px; }
 .v3-options.has-long-option .v3-option { height: 42px; min-height: 42px; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; padding: 0 20px; clip-path: polygon(3% 0, 97% 0, 100% 50%, 97% 100%, 3% 100%, 0 50%); }
 .v3-options.has-long-option .v3-letter { font-size: 25px; }
-.v3-options.has-long-option .v3-option-text { font-size: 18px; line-height: 1.1; }
-.v3-options.has-long-option .v3-option-text.is-xlong { font-size: 17px; }
+.v3-options.has-long-option .v3-option-text { font-size: 17px; line-height: 1.08; }
+.v3-options.has-long-option .v3-option-text.is-xlong { font-size: 16px; }
 .v3-mc-figure { transform-origin: 50% 100%; }
 .v3-mc-idle .v3-mc-figure { animation: v3-mc-breathe 3.2s ease-in-out infinite; }
 .v3-mc-welcome .v3-mc-figure { animation: v3-mc-welcome 1.45s ease-in-out infinite; }
@@ -1095,6 +1095,7 @@
 .v3v-header .v3-title { width: 420px; margin-left: 0; }
 .v3v-header .v3-brand-logo { width: 420px; height: 350px; }
 .v3v-header .v3-title-ribbon { display: none; }
+.v3-board .v3-reading-status { position: absolute; z-index: 4; top: 22px; right: 22px; padding: 11px 16px; border: 1px solid rgba(140, 200, 251, .72); border-radius: 14px; background: rgba(13, 11, 46, .88); color: var(--sky); font-size: 14px; font-weight: 900; letter-spacing: 1px; white-space: nowrap; box-shadow: 0 0 14px rgba(112, 73, 245, .38); }
 @media (prefers-reduced-motion: reduce) {
   .v3-mc-idle .v3-mc-figure,
   .v3-mc-welcome .v3-mc-figure,

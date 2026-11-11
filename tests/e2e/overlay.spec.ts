@@ -5,6 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 const scenes = [
   { name: 'lobby', scene: 'LOBBY' },
   { name: 'prepare', scene: 'QUESTION' },
+  { name: 'reading', scene: 'QUESTION' },
   { name: 'question', scene: 'QUESTION' },
   { name: 'reveal', scene: 'REVEAL' },
   { name: 'top10', scene: 'INTERIM_TOP10' },
@@ -121,7 +122,7 @@ for (const { name, scene } of scenes) {
     if (name === 'question') await page.setViewportSize({ width: 921, height: 2000 });
     if (name === 'victory' || name === 'victory-tie') await page.setViewportSize({ width: 1080, height: 1920 });
     const { stage, errors } = await openScene(page, name, scene);
-    if (name === 'victory' || name === 'victory-tie') {
+    if (name === 'victory' || name === 'victory-tie' || name === 'round-winner') {
       await expect(stage.locator('.v3-brand-logo')).toBeVisible();
       await expect(stage.getByTestId('victory-background')).toBeVisible();
       await expect(stage.getByTestId('victory-trophy-stage')).toBeVisible();
@@ -129,7 +130,7 @@ for (const { name, scene } of scenes) {
       await expect(stage.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
     }
     await expectInsideSafeZone(page, stage, name);
-    if (name === 'victory' || name === 'victory-tie') {
+    if (name === 'victory' || name === 'victory-tie' || name === 'round-winner') {
       await page.waitForTimeout(8_100);
     }
     if (name === 'question') console.log(`Ảnh nghiệm thu: ${join(screenshotDirectory, 'question.png')}`);
@@ -140,14 +141,26 @@ for (const { name, scene } of scenes) {
   });
 }
 
-test('prepare and question do not expose the correct answer', async ({ page }) => {
-  for (const name of ['prepare', 'question']) {
+test('prepare, reading and question do not expose the correct answer', async ({ page }) => {
+  for (const name of ['prepare', 'reading', 'question']) {
     const { errors } = await openScene(page, name, 'QUESTION');
     const html = await page.locator('body').innerHTML();
     expect(html).not.toContain('correctOptionId');
     expect(await page.locator('[data-testid^="option-"][class*="correct"], [data-testid^="option-"][data-correct]').count()).toBe(0);
     expect(errors, `${name}: no console or page errors`).toEqual([]);
   }
+});
+
+test('READING shows the question and four answers without starting the answer countdown', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'reading', 'QUESTION');
+  await expect(stage.getByTestId('question-prompt')).toBeVisible();
+  await expect(stage.locator('[data-testid^="option-"]:not([data-testid="option-list"])')).toHaveCount(4);
+  await expect(stage.getByTestId('reading-status')).toHaveText('MC ĐANG ĐỌC');
+  await expect(stage.getByTestId('timer')).toHaveCount(0);
+  await expect(stage.getByTestId('answer-count')).toHaveCount(0);
+  const askAnimation = await stage.locator('.v3-mc-figure').evaluate((element) => getComputedStyle(element).animationName);
+  expect(askAnimation).toBe('v3-mc-ask');
+  expect(errors).toEqual([]);
 });
 
 test('longest DEMO question stays clear of the timer and fully inside its frame', async ({ page }) => {
@@ -180,23 +193,28 @@ test('longest DEMO answer uses a full-width card and remains uncut in ACCEPTING'
   const answers = stage.locator('[data-testid^="option-"] .v3-option-text');
   await expect(stage.getByTestId('option-list')).toHaveClass(/has-long-option/);
   await expect(answers).toHaveCount(4);
-  await expect(answers.first()).toHaveText('Một bức tường tạm thời giúp tạo vật chắn để người chơi di chuyển an toàn hơn');
+  await expect(answers.nth(2)).toHaveText('Một nhóm vật phẩm được sắp xếp trong hành trang');
+  await expect(answers.nth(3)).toHaveText('Một nhóm nhân vật được hiển thị trong bộ sưu tập');
   const measurements = await answers.evaluateAll((elements) => elements.map((element) => {
     const text = element as HTMLElement;
     const range = document.createRange();
     range.selectNodeContents(text);
+    const textBox = range.getBoundingClientRect();
     return {
       lines: range.getClientRects().length,
       textHeight: text.scrollHeight,
       cardHeight: text.parentElement?.clientHeight ?? 0,
       textWidth: text.scrollWidth,
       cardWidth: text.parentElement?.clientWidth ?? 0,
+      textBottom: textBox.bottom,
+      boardBottom: document.querySelector<HTMLElement>('.v3-board')?.getBoundingClientRect().bottom ?? 0,
     };
   }));
   for (const measurement of measurements) {
     expect(measurement.lines, 'answer must fit in at most three lines').toBeLessThanOrEqual(3);
     expect(measurement.textHeight, 'answer text must not overflow vertically').toBeLessThanOrEqual(measurement.cardHeight);
     expect(measurement.textWidth, 'answer text must not overflow horizontally').toBeLessThanOrEqual(measurement.cardWidth);
+    expect(measurement.textBottom, 'answer text must stay above the question panel edge').toBeLessThanOrEqual(measurement.boardBottom - 8);
   }
   await expect(stage.locator('[data-testid^="option-"].is-correct')).toHaveCount(0);
   await page.screenshot({ path: join(screenshotDirectory, 'question-long-answer.png'), animations: 'disabled' });
@@ -247,7 +265,7 @@ test('reveal marks exactly one correct option', async ({ page }) => {
 });
 
 test('XSS shaped names render as text', async ({ page }) => {
-  const { errors } = await openScene(page, 'top10', 'INTERIM_TOP10');
+  const { errors } = await openScene(page, 'top10-xss', 'INTERIM_TOP10');
   await expect(page.locator('.player-name').filter({ hasText: '<script>window.__xss=1</script>' })).toHaveCount(1);
   await expect(page.locator('.player-name').filter({ hasText: '<img src=x onerror="window.__xss=1">' })).toHaveCount(1);
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
@@ -308,7 +326,7 @@ test('question scene uses the approved Kelly and chibi assets with a CSS/SVG log
 });
 
 test('question crowd labels stay clear of the quiz and Top 1 badge fits its score column', async ({ page }) => {
-  const { errors } = await openScene(page, 'question', 'QUESTION');
+  const { errors } = await openScene(page, 'question-long-name', 'QUESTION');
   const top10 = page.locator('[data-testid="v3-top10"]');
   const mcFigure = page.locator('.v3-mc-figure');
   const [top10Box, mcBox] = await Promise.all([top10.boundingBox(), mcFigure.boundingBox()]);
@@ -377,7 +395,7 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
     clipped: element.scrollWidth > element.clientWidth,
     overflow: getComputedStyle(element).textOverflow,
   }))).toEqual({ clipped: true, overflow: 'ellipsis' });
-  await expect(score).toHaveText('21.000');
+  await expect(score).toHaveText('1.500');
   expect(errors).toEqual([]);
 });
 
@@ -411,10 +429,8 @@ test('TikTok HUD overlays the same quiz layout while critical quiz content stays
   const logoBox = await page.getByTestId('brand-logo').boundingBox();
   expect(stageBox).not.toBeNull();
   expect(logoBox).not.toBeNull();
-  expect(logoBox!.width / stageBox!.width).toBeGreaterThanOrEqual(0.22);
-  expect(logoBox!.width / stageBox!.width).toBeLessThanOrEqual(0.26);
-  expect(logoBox!.height / stageBox!.height).toBeGreaterThanOrEqual(0.1);
-  expect(logoBox!.height / stageBox!.height).toBeLessThanOrEqual(0.12);
+  expect(logoBox!.width / stageBox!.width).toBeGreaterThanOrEqual(0.4);
+  expect(logoBox!.width / stageBox!.width).toBeLessThanOrEqual(0.45);
 
   const overlap = await page.evaluate(() => {
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;

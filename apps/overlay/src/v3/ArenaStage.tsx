@@ -96,13 +96,15 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const reveal = snapshot.reveal;
   const isLobby = snapshot.scene === 'LOBBY';
   const isPrepare = snapshot.state === 'PREPARE';
+  const isReading = snapshot.state === 'READING';
   const optionsVisible = !!q?.optionsVisible && !isPrepare;
-  const hasLongOption = !!q?.options.some((option) => option.text.length > 52);
+  const hasLongOption = !!q?.options.some((option) => option.text.length > 45);
   const totalAnswers = reveal ? Object.values(reveal.optionCounts).reduce((a, b) => a + b, 0) : 0;
   return (
     <section className="v3-board" data-layer="quiz-hud">
       <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
-      {snapshot.timer && !isLobby && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
+      {snapshot.timer && !isLobby && !isReading && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
+      {isReading && <div className="v3-reading-status" data-testid="reading-status">MC ĐANG ĐỌC</div>}
       <div className={`v3-question ${promptSize(q?.prompt)}`} data-testid="question-prompt">
         {isLobby ? (
           <>Bình luận <em>A, B, C</em> hoặc <em>D</em> để trả lời câu hỏi về Free Fire!</>
@@ -132,7 +134,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
           })}
         </div>
       )}
-      {!isLobby && !reveal && optionsVisible && (
+      {!isLobby && !isReading && !reveal && optionsVisible && (
         <div className="v3-answer-count" data-testid="answer-count">
           <b>{snapshot.answerCount.toLocaleString('vi-VN')}</b> câu trả lời
         </div>

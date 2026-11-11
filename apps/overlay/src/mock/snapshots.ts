@@ -32,12 +32,14 @@ function mockAudience(withResults: boolean): AudienceView {
   };
 }
 
+const mockTopNames = ['FFVN.Kelly', 'StormKing', 'BVD.Champion', 'Choco.M', 'Hami', 'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy'];
+const mockTopScores = [1_500, 1_350, 1_300, 1_220, 1_180, 1_160, 1_120, 1_100, 1_080, 1_060];
 const leaderboard: LeaderboardEntry[] = Array.from({ length: 10 }, (_, index) => ({
   rank: index + 1,
   tied: false,
   playerId: `demo-player-${index + 1}`,
-  displayName: index === 0 ? 'Chiến binh DEMO tên siêu dài để thử ellipsis' : index === 1 ? 'Chiến binh ⚡ DEMO dài dòng' : index === 2 ? '<script>window.__xss=1</script>' : index === 3 ? '<img src=x onerror="window.__xss=1">' : `Chiến binh DEMO ${String(index + 1).padStart(2, '0')}`,
-  score: 21_000 - index * 1_000,
+  displayName: mockTopNames[index]!,
+  score: mockTopScores[index]!,
   correctCount: 15 - index,
   ...(index === 0 ? { top1Streak: 3 } : {}),
   characterId: ['chibi-020-kairos', 'chibi-016-iris', 'chibi-013-hayato', 'chibi-007-caroline', 'chibi-012-ford', 'chibi-009-d-bee', 'chibi-010-dasha', 'chibi-002-a124', 'chibi-017-joseph', 'chibi-021-kapella'][index]!,
@@ -53,13 +55,16 @@ const options = [
 const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   lobby: { scene: 'LOBBY', state: 'LOBBY' },
   prepare: { scene: 'QUESTION', state: 'PREPARE' },
+  reading: { scene: 'QUESTION', state: 'READING' },
   question: { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-long-name': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-longest': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-long-answer': { scene: 'QUESTION', state: 'ACCEPTING' },
   // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
   reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-short': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
+  'top10-xss': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'round-winner': { scene: 'ROUND_WINNER', state: 'ROUND_END' },
   victory: { scene: 'VICTORY', state: 'VICTORY' },
   'victory-tie': { scene: 'VICTORY', state: 'VICTORY' },
@@ -86,17 +91,29 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
   const short = name === 'top10-short';
-  const question = ['prepare', 'question', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name);
+  const question = ['prepare', 'reading', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name);
   const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
-  const longestAnswer = 'Một bức tường tạm thời giúp tạo vật chắn để người chơi di chuyển an toàn hơn';
+  const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
+  const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
   const longestAnswerOptions = [
-    { id: 'A' as const, text: longestAnswer },
-    { id: 'B' as const, text: 'Một khẩu súng dùng để ngắm bắn mục tiêu ở khoảng cách rất xa' },
-    { id: 'C' as const, text: 'Một bộ giáp làm tăng lượng vật phẩm có thể mang trong ba lô' },
-    { id: 'D' as const, text: 'Một thiết bị chỉ dùng để xem kết quả sau khi trận đấu kết thúc' },
+    { id: 'A' as const, text: 'Một nhóm đồng đội phối hợp trong trận' },
+    { id: 'B' as const, text: 'Một nhóm khán giả cùng theo dõi trận đấu' },
+    { id: 'C' as const, text: longestAnswer },
+    { id: 'D' as const, text: 'Một nhóm nhân vật được hiển thị trong bộ sưu tập' },
   ];
   const optionsVisible = name !== 'prepare';
   const isReveal = name === 'reveal';
+  const visibleLeaderboard = name === 'question-long-name'
+    ? leaderboard.map((entry, index) => index === 0
+      ? { ...entry, displayName: 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
+      : entry)
+    : name === 'top10-xss'
+      ? leaderboard.map((entry, index) => index === 2
+        ? { ...entry, displayName: '<script>window.__xss=1</script>' }
+        : index === 3
+          ? { ...entry, displayName: '<img src=x onerror="window.__xss=1">' }
+          : entry)
+      : leaderboard;
   return {
     contractVersion: 1,
     sessionId: 'demo-session',
@@ -105,7 +122,11 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     scene: mapped.scene,
     paused: name === 'paused',
     mode: 'MOCK',
-    timer: { durationMs: 15_000, remainingMs: name === 'prepare' ? 3_000 : 12_000, running: name !== 'paused' },
+    timer: {
+      durationMs: name === 'reading' ? 20_000 : 15_000,
+      remainingMs: name === 'prepare' ? 3_000 : name === 'reading' ? 19_000 : 12_000,
+      running: name !== 'paused',
+    },
     round: { roundNumber: 1, questionIndex: 4, questionCount: 15 },
     question: question ? {
       questionInstanceId: 'demo-question-5',
@@ -113,13 +134,13 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       prompt: name === 'question-longest'
         ? longestPrompt
         : name === 'question-long-answer'
-          ? 'Cách mô tả nào đúng về công dụng của Gloo Wall trong Free Fire?'
+          ? squadPrompt
           : 'Free Fire · Trong chế độ Clash Squad, mỗi đội có bao nhiêu người?',
       options: optionsVisible ? (name === 'question-long-answer' ? longestAnswerOptions : options) : [],
       optionsVisible,
       isDemo: true,
     } : null,
-    answerCount: name === 'prepare' ? 0 : 42,
+    answerCount: name === 'prepare' || name === 'reading' ? 0 : 42,
     participantCount: short ? 3 : 57,
     reveal: isReveal ? {
       questionInstanceId: 'demo-question-5',
@@ -128,17 +149,21 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       explanation: 'DEMO Free Fire: chế độ Clash Squad có 4 người trong mỗi đội.',
     } : null,
     leaderboard: question
-      ? { kind: 'COMPACT', entries: leaderboard.slice(0, 10) }
-      : ['top10', 'top10-short', 'round-winner', 'victory', 'victory-tie'].includes(name)
-        ? { kind: name === 'top10' || name === 'top10-short' ? 'FULL' : 'COMPACT', entries: short ? leaderboard.slice(0, 3) : leaderboard.slice(0, name === 'round-winner' ? 3 : 10) }
+      ? { kind: 'COMPACT', entries: visibleLeaderboard.slice(0, 10) }
+      : ['top10', 'top10-short', 'top10-xss', 'round-winner', 'victory', 'victory-tie'].includes(name)
+        ? { kind: name === 'top10' || name === 'top10-short' || name === 'top10-xss' ? 'FULL' : 'COMPACT', entries: short ? visibleLeaderboard.slice(0, 3) : visibleLeaderboard.slice(0, name === 'round-winner' ? 3 : 10) }
         : null,
     podium: name === 'victory' || name === 'victory-tie' ? podium(name === 'victory-tie') : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
-      state: name === 'prepare' ? 'ask' : isReveal ? 'react' : 'idle',
-      bubble: name === 'prepare' ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.' : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
+      state: name === 'prepare' || name === 'reading' ? 'ask' : isReveal ? 'react' : 'idle',
+      bubble: name === 'reading'
+        ? 'Cùng nghe câu hỏi và bốn đáp án nhé!'
+        : name === 'prepare'
+          ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
+          : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
-    audience: ['lobby', 'prepare', 'question', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name) ? mockAudience(name === 'reveal') : null,
+    audience: ['lobby', 'prepare', 'reading', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name) ? mockAudience(name === 'reveal') : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   };
 }

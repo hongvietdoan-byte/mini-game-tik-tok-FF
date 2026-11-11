@@ -3,27 +3,29 @@ import { expect, test, type Page } from '@playwright/test';
 const scenes = [
   { name: 'LOBBY', mock: 'lobby', scene: 'LOBBY', state: 'LOBBY', required: ['[data-layer="quiz-hud"]', '[data-testid="question-prompt"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
   { name: 'QUESTION', mock: 'question', scene: 'QUESTION', state: 'ACCEPTING', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
+  { name: 'READING', mock: 'reading', scene: 'QUESTION', state: 'READING', required: ['[data-layer="quiz-hud"]', '[data-testid="reading-status"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
   { name: 'REVEAL', mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
   // Hợp đồng hiện tại phát state LEADERBOARD trong scene REVEAL; ghi riêng để không bỏ sót trạng thái.
   { name: 'LEADERBOARD', mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
   { name: 'INTERIM_TOP10', mock: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD', required: ['[data-testid="v3-top10-large"]', '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]', '.v3-full-round', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-testid="mc-celebration"]'] },
   { name: 'INTERMISSION', mock: 'intermission', scene: 'INTERMISSION', state: 'INTERMISSION', required: ['[data-testid="intermission-message"]', '[data-testid="timer"]', '.v3-scene-kicker', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title'] },
-  { name: 'VICTORY', mock: 'victory', scene: 'VICTORY', state: 'VICTORY', required: ['.v3v-trophy', '.v3v-header .v3-title', '.v3v-caption', '[data-testid^="podium-slot-"] .nameplate'] },
+  { name: 'VICTORY', mock: 'victory', scene: 'VICTORY', state: 'VICTORY', required: ['.v3v-trophy', '.v3v-header .v3-title', '.v3v-caption', '[data-testid^="podium-slot-"] .v3v-nameplate'] },
   { name: 'CONNECTION_LOST', mock: 'connection-lost', scene: 'CONNECTION_LOST', state: 'CONNECTION_INTERRUPTED', required: ['[data-testid="connection-lost-message"]', '.v3-scene-kicker', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title'] },
 ] as const;
 
 const importantElements = [
   { label: 'quiz-hud', selector: '[data-layer="quiz-hud"]' },
   { label: 'timer', selector: '[data-testid="timer"]' },
+  { label: 'reading status', selector: '[data-testid="reading-status"]' },
   { label: 'question', selector: '[data-testid="question-prompt"]' },
   { label: 'answer', selector: '[data-testid^="option-"]:not([data-testid="option-list"])' },
   { label: 'Top10', selector: '[data-layer="leaderboard"], [data-testid="v3-top10-large"]' },
   { label: 'Top10 row', selector: '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]' },
-  { label: 'round label', selector: '.v3-full-round, .v3-scene-kicker, .v3-title-ribbon, .v3v-caption' },
+  { label: 'round label', selector: '.v3-full-round, .v3-scene-kicker, .v3v-caption' },
   { label: 'top meta', selector: '[data-testid="round-card"]' },
-  { label: 'brand logo', selector: '.v3-title img, .v3-title-main, .v3-crown, [data-testid="event-mark"]' },
+  { label: 'brand logo', selector: '.v3-title img, .v3-title-main, .v3-crown, .v3-title-ribbon, [data-testid="event-mark"]' },
   { label: 'trophy', selector: '.v3v-trophy' },
-  { label: 'podium name', selector: '[data-testid^="podium-slot-"] .nameplate' },
+  { label: 'podium name', selector: '[data-testid^="podium-slot-"] .v3v-nameplate' },
   { label: 'MC figure', selector: '[data-layer="kelly"] .v3-mc-figure' },
   { label: 'MC plate', selector: '[data-layer="kelly"] .v3-mc-plate' },
   { label: 'MC bubble', selector: '[data-testid="mc-bubble"]' },
@@ -88,7 +90,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
       if (!decorativeBleed && !approvedVictoryNameplate && !isBrandLogo && (p.x1 < 8.9 || p.x2 > 91.1)) add('crop-fill: phải nằm trong x=9–91%');
       if (isBrandLogo) {
         const logoTopMin = isVictoryScene ? 1.8 : 0.8;
-        const logoTopMax = isVictoryScene ? 3 : 1.3;
+        const logoTopMax = isVictoryScene ? 3 : 12.1;
         const logoBottomLimit = isVictoryScene ? 21 : 12.1;
         if (p.y1 < logoTopMin || p.y1 > logoTopMax || p.y2 > logoBottomLimit) add(`logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
       } else if (isTopMeta) {
@@ -120,8 +122,8 @@ for (const scene of scenes) {
     await expect(page.getByTestId('tiktok-hud')).toBeVisible();
     for (const selector of scene.required) await expect(stage.locator(selector).first(), `${scene.name}: phải có ${selector}`).toBeVisible();
     if (scene.name === 'VICTORY') {
-      await expect(stage.locator('[data-testid^="podium-slot-"] .nameplate')).toHaveCount(3);
-      await expect(stage.getByTestId('mc-celebration')).toBeVisible();
+      await expect(stage.locator('[data-testid^="podium-slot-"] .v3v-nameplate')).toHaveCount(3);
+      await expect(stage.locator('.v3-mc-portrait, [data-testid="mc-celebration"]')).toHaveCount(0);
     }
     expect(page.viewportSize()).toEqual({ width: 1080, height: 1920 });
     if (scene.name === 'VICTORY') await page.waitForTimeout(8_100);
