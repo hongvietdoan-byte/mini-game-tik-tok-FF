@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 19,
-  "heartbeat": "2026-11-11T13:41:21+07:00",
+  "heartbeat": "2026-11-11T13:46:51+07:00",
   "state": "working",
-  "task": "DP3",
-  "note": "Đang soạn docs/GAME_RULES.md từ hợp đồng API và luật chấm điểm hiện hành.",
+  "task": "DP4",
+  "note": "Đang chuẩn bị docs/THEME_PACK_SPEC.md; đặc tả manifest, màu Storm Arena, an toàn không JS và fallback.",
   "done": []
 }
