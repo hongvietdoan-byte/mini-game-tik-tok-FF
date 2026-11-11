@@ -163,6 +163,20 @@ const seatY = (y: number) => AUDIENCE_TOP_Y + ((y - 1105) * (AUDIENCE_FRONT_Y - 
 const AUDIENCE_TOP_Y = 1190;
 const AUDIENCE_FRONT_Y = 1880;
 
+function SeatChibi({ characterId, hue }: { characterId: string; hue: number }) {
+  const [ok, setOk] = useState(true);
+  return ok ? (
+    <div className="v3-chibi-img" aria-hidden="true">
+      <img src={`${ASSET_BASE}/chibi/${characterId}.png`} alt="" draggable={false} onError={() => setOk(false)} />
+    </div>
+  ) : (
+    <div className="v3-chibi" aria-hidden="true" style={{ ['--hue' as string]: hue }}>
+      <span className="v3-chibi-hair" />
+      <span className="v3-chibi-body" />
+    </div>
+  );
+}
+
 function Seat({ seat }: { seat: AudienceSeatView }) {
   const o = seat.occupant;
   const hue = o ? characterHue(o.characterId) : 0;
@@ -178,13 +192,7 @@ function Seat({ seat }: { seat: AudienceSeatView }) {
       }}
       data-testid="audience-seat"
     >
-      {o && <div className="v3-seat-name">{shortName(o.displayName, 13)}</div>}
-      {o && (
-        <div className="v3-chibi" aria-hidden="true">
-          <span className="v3-chibi-hair" />
-          <span className="v3-chibi-body" />
-        </div>
-      )}
+      {o && <SeatChibi characterId={o.characterId} hue={hue} />}
       <div className="v3-seat-back" aria-hidden="true">
         <svg viewBox="0 0 120 60">
           <path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" />
@@ -206,6 +214,20 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
       {a?.seats.map((s) => <Seat key={s.slotId} seat={s} />)}
+      {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
+      <div className="v3-nametags" data-layer="audience-nametags">
+        {a?.seats.map((s) =>
+          s.occupant ? (
+            <div
+              key={s.slotId}
+              className={`v3-seat-name ${s.occupant.pinned ? 'is-pinned' : ''}`}
+              style={{ left: s.x, top: seatY(s.y), ['--s' as string]: s.scale }}
+            >
+              {shortName(s.occupant.displayName, 13)}
+            </div>
+          ) : null,
+        )}
+      </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
   );

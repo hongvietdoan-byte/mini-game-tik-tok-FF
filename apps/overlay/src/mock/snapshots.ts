@@ -2,6 +2,11 @@ import type { GameState, LeaderboardEntry, Podium, PublicSnapshot, Scene } from 
 import { INITIAL_TEST_SAFE_ZONE, type AudienceView } from '@quiz/contracts';
 import { createSlots } from '@quiz/audience-engine';
 
+/** Mã chibi theo kho tách nền (assets-local/chibi). Không có ảnh → overlay tự dùng hình giữ chỗ. */
+const MOCK_CHIBI = ['chibi-002-a124', 'chibi-004-alvaro', 'chibi-005-andrew', 'chibi-006-antonio', 'chibi-007-caroline', 'chibi-008-clu',
+  'chibi-009-d-bee', 'chibi-010-dasha', 'chibi-011-dimitri', 'chibi-012-ford', 'chibi-013-hayato', 'chibi-014-homer', 'chibi-015-ignis',
+  'chibi-016-iris', 'chibi-017-joseph', 'chibi-018-jota', 'chibi-019-k', 'chibi-020-kairos', 'chibi-021-kapella', 'chibi-022-kassie'];
+
 /** 35 ghế mock (tên hư cấu, gồm tên dài / emoji / chuỗi giống HTML) — toạ độ lấy từ cùng audience-engine như server. */
 const MOCK_NAMES = [
   'StormKing', 'Rồng Lửa', 'BoomBoom', 'Choco.M', 'Hami', 'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy',
@@ -19,7 +24,7 @@ function mockAudience(withResults: boolean): AudienceView {
       ...slot,
       occupant: {
         displayName: MOCK_NAMES[i % MOCK_NAMES.length]!,
-        characterId: `chibi-${String((i * 7) % 12 + 1).padStart(2, '0')}`,
+        characterId: MOCK_CHIBI[(i * 7) % MOCK_CHIBI.length]!,
         pinned: i < 3,
         result: withResults ? (i % 3 === 0 ? 'wrong' : i % 5 === 0 ? 'none' : 'correct') : null,
       },
@@ -34,6 +39,7 @@ const leaderboard: LeaderboardEntry[] = Array.from({ length: 10 }, (_, index) =>
   displayName: index === 1 ? 'Chiến binh ⚡ DEMO dài dòng' : index === 2 ? '<script>window.__xss=1</script>' : index === 3 ? '<img src=x onerror="window.__xss=1">' : `Chiến binh DEMO ${String(index + 1).padStart(2, '0')}`,
   score: 1_500 - index * 100,
   correctCount: 15 - index,
+  characterId: ['chibi-020-kairos', 'chibi-016-iris', 'chibi-013-hayato', 'chibi-007-caroline', 'chibi-012-ford', 'chibi-009-d-bee', 'chibi-010-dasha', 'chibi-002-a124', 'chibi-017-joseph', 'chibi-021-kapella'][index]!,
 }));
 
 const options = [

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { RealScheduler } from '@quiz/live-adapters';
@@ -38,7 +39,16 @@ const webRoots = {
   // asset cục bộ chưa xác nhận quyền phân phối (MC Kelly, chibi tách nền) — ngoài git
   assets: process.env.QUIZ_ASSETS_DIR ?? join(ROOT, 'assets-local'),
 };
-const quiz = await buildApp({ store, scheduler, adminToken, webRoots, logger: process.env.QUIZ_LOG === '1' });
+// Kho chibi đã tách nền (tools/prep_chibi_bank.py) → mỗi người chơi được gán 1 nhân vật trong kho
+let characterPool: string[] | undefined;
+try {
+  const manifest = JSON.parse(readFileSync(join(webRoots.assets, 'chibi', 'manifest.json'), 'utf8')) as { characters: { id: string }[] };
+  characterPool = manifest.characters.map((c) => c.id);
+  console.log(`[quiz] kho nhân vật: ${characterPool.length} chibi`);
+} catch {
+  console.log('[quiz] chưa có kho chibi (assets-local/chibi/manifest.json) — dùng hình giữ chỗ');
+}
+const quiz = await buildApp({ store, scheduler, adminToken, webRoots, characterPool, logger: process.env.QUIZ_LOG === '1' });
 const recovered = await quiz.recover();
 if (recovered)
   console.log(`[quiz] khôi phục phiên ${recovered.id} → ${recovered.engine.state} (chờ operator chọn Tiếp tục / Huỷ câu / Dừng)`);

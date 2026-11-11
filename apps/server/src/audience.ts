@@ -65,6 +65,10 @@ export class AudienceManager {
     this.answersCache = null;
   }
 
+  characterOf(playerId: string): string | undefined {
+    return this.chars.get(playerId);
+  }
+
   endRound() {
     this.state = null;
     this.roundId = null;

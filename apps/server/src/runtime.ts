@@ -101,7 +101,13 @@ export function simPlayers(n: number): SimPlayer[] {
   }));
 }
 
-export type RuntimeDeps = { store: Store; scheduler: Scheduler; adapter: LiveAdapter };
+export type RuntimeDeps = {
+  store: Store;
+  scheduler: Scheduler;
+  adapter: LiveAdapter;
+  /** Kho nhân vật mặc định (vd đọc từ assets-local/chibi/manifest.json); phiên có characterPool riêng thì dùng của phiên. */
+  characterPool?: readonly string[];
+};
 
 export class SessionRuntime {
   engine: EngineState;
@@ -153,7 +159,7 @@ export class SessionRuntime {
     const cfg = session.config;
     this.audience = new AudienceManager(
       deps.store,
-      cfg.characterPool ?? DEFAULT_CHARACTER_POOL,
+      cfg.characterPool ?? (deps.characterPool?.length ? deps.characterPool : DEFAULT_CHARACTER_POOL),
       cfg.seed !== undefined ? cfg.seed >>> 0 : hashSeed(session.id),
     );
   }
@@ -874,11 +880,16 @@ export class SessionRuntime {
     const showOptions = showQuestion && eff !== 'PREPARE';
     const showReveal = !!snap && postReveal;
     let leaderboard: PublicSnapshot['leaderboard'] = null;
+    const withChar = (list: LeaderboardEntry[]) =>
+      list.map((x) => {
+        const characterId = this.audience.characterOf(x.playerId);
+        return characterId ? { ...x, characterId } : x;
+      });
     if (e.round && (bigBoard || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
-      leaderboard = { kind: 'FULL', entries: topN(this.ranked, 10) };
+      leaderboard = { kind: 'FULL', entries: withChar(topN(this.ranked, 10)) };
     // Top 10 gọn cạnh câu hỏi (V3 §10) — chỉ cập nhật khi chốt câu, không đổi trong lúc trả lời.
     else if (e.round && (eff === 'PREPARE' || eff === 'ACCEPTING' || postReveal))
-      leaderboard = { kind: 'COMPACT', entries: topN(this.ranked, 10) };
+      leaderboard = { kind: 'COMPACT', entries: withChar(topN(this.ranked, 10)) };
     const revealView = showReveal
       ? {
           questionInstanceId: snap!.questionInstanceId,
@@ -916,7 +927,13 @@ export class SessionRuntime {
       participantCount: e.round ? this.participants : 0,
       reveal: revealView,
       leaderboard,
-      podium: e.round && (eff === 'ROUND_END' || eff === 'VICTORY') ? buildPodium(this.ranked) : null,
+      podium:
+        e.round && (eff === 'ROUND_END' || eff === 'VICTORY')
+          ? (() => {
+              const p = buildPodium(this.ranked);
+              return { ...p, slots: p.slots.map((s) => ({ ...s, entries: withChar(s.entries) })) };
+            })()
+          : null,
       mc: mcFor(e, revealView),
       audience: e.round && this.audience.active
         ? this.audience.view(revealView ? { qid: revealView.questionInstanceId, correctOptionId: revealView.correctOptionId } : null)

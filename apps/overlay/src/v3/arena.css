@@ -359,8 +359,11 @@
   border-radius: 40px 40px 8px 8px;
   background: linear-gradient(180deg, #2b2f55, #171a35);
 }
+.v3-nametags { position: absolute; inset: 0; z-index: 60; }
 .v3-seat-name {
-  bottom: 118px;
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 118px * var(--s) / 0.72)) scale(calc(var(--s) / 0.72));
+  transform-origin: 50% 100%;
   max-width: 170px;
   padding: 3px 14px;
   border-radius: 20px;
@@ -373,7 +376,7 @@
   text-overflow: ellipsis;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
-.v3-seat.is-pinned .v3-seat-name { box-shadow: 0 0 0 2px var(--gold), 0 2px 6px rgba(0, 0, 0, 0.35); }
+.v3-seat-name.is-pinned { box-shadow: 0 0 0 2px var(--gold), 0 2px 6px rgba(0, 0, 0, 0.35); }
 .v3-seat.is-correct .v3-chibi-hair { animation: v3-correct 0.5s ease-out 1; }
 @keyframes v3-correct { 0% { box-shadow: 0 0 0 0 rgba(140, 255, 170, 0.9); } 100% { box-shadow: 0 0 0 16px rgba(140, 255, 170, 0); } }
 .v3-queue { position: absolute; right: 24px; bottom: 16px; padding: 4px 12px; border-radius: 14px; background: rgba(14, 10, 48, 0.75); font-size: 16px; color: #d9d0ff; }
@@ -383,3 +386,62 @@
   .v3-stage *::before,
   .v3-stage *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- chibi thật trong ghế (kho đã tách nền) ---------- */
+.v3-chibi-img { bottom: 26px; width: 92px; height: 104px; overflow: hidden; }
+.v3-chibi-img img { width: 92px; height: auto; display: block; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); }
+.v3-seat.is-correct .v3-chibi-img img { animation: v3-correct-img 0.6s ease-out 1; }
+@keyframes v3-correct-img { 0% { filter: drop-shadow(0 0 0 rgba(140, 255, 170, 0)); } 40% { filter: drop-shadow(0 0 14px rgba(140, 255, 170, 1)); } 100% { filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45)); } }
+
+/* ---------- Popup vinh danh Top 3 (V3 §11) ---------- */
+.v3v-bg { position: absolute; inset: 0; width: 1080px; height: 1920px; object-fit: cover; animation: v3v-fade 1.5s ease-out both; }
+.v3v-dim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10, 6, 40, 0.15), rgba(10, 6, 40, 0) 40%, rgba(10, 6, 40, 0.55) 100%); }
+.v3v-header { position: absolute; left: 0; right: 0; top: 70px; height: 220px; z-index: 5; animation: v3v-fade 1.5s ease-out both; }
+.v3v-header .v3-title { width: 640px; }
+.v3v-header .v3-title-main { font-size: 64px; }
+.v3v-header .v3-title-ribbon { font-size: 26px; }
+.v3v-trophy { position: absolute; left: 40px; top: 470px; width: 1000px; z-index: 3; animation: v3v-trophy 3s ease-out both; }
+.v3v-trophy img { width: 1000px; display: block; filter: drop-shadow(0 20px 30px rgba(0, 0, 0, 0.5)); }
+.v3v-trophy-placeholder { height: 640px; display: grid; place-items: center; border: 3px dashed rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.6); font-size: 28px; }
+@keyframes v3v-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes v3v-trophy { 0%, 50% { opacity: 0; filter: brightness(0.4); } 75% { opacity: 1; filter: brightness(1.35) drop-shadow(0 0 40px rgba(200, 160, 255, 0.9)); } 100% { opacity: 1; filter: none; } }
+/* 3 nhân vật đứng sàn PHÍA TRƯỚC sân khấu, không che thân cúp (cúp ~ y 480–760) */
+.v3v-podium { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 4; pointer-events: none; }
+.v3v-slot { position: absolute; width: 260px; display: flex; flex-direction: column; align-items: center; }
+.v3v-place-1 { left: 395px; top: 850px; z-index: 3; }
+.v3v-place-1 { width: 290px; left: 395px; }
+.v3v-place-2 { left: 70px; top: 870px; z-index: 2; }
+.v3v-place-3 { left: 690px; top: 870px; z-index: 2; }
+.v3v-figure { position: relative; width: 240px; height: 470px; display: grid; justify-items: center; align-items: end; animation: v3v-enter 5s ease-out both; }
+.v3v-place-1 .v3v-figure { width: 270px; height: 520px; }
+.v3v-figure img { height: 100%; width: auto; display: block; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.55)); }
+.v3v-shadow { position: absolute; bottom: -8px; left: 20%; right: 20%; height: 22px; border-radius: 50%; background: radial-gradient(rgba(0, 0, 0, 0.6), transparent 70%); z-index: -1; }
+.v3v-chibi-placeholder { width: 160px; height: 380px; border-radius: 80px 80px 30px 30px; background: rgba(255, 255, 255, 0.14); border: 2px dashed rgba(255, 255, 255, 0.45); }
+@keyframes v3v-enter { 0%, 60% { opacity: 0; transform: translateY(40px) scale(0.92); } 100% { opacity: 1; transform: none; } }
+.v3v-nameplate {
+  order: -1;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 220px;
+  max-width: 260px;
+  padding: 10px 16px 10px 10px;
+  clip-path: polygon(6% 0, 100% 0, 94% 100%, 0 100%);
+  background: linear-gradient(180deg, rgba(46, 26, 120, 0.94), rgba(20, 12, 70, 0.96));
+  box-shadow: inset 0 0 0 3px var(--neon);
+  animation: v3v-plate 7s ease-out both;
+}
+@keyframes v3v-plate { 0%, 72% { opacity: 0; transform: translateY(-12px); } 100% { opacity: 1; transform: none; } }
+.v3v-medal { flex: none; width: 54px; height: 54px; display: grid; place-items: center; font-size: 30px; font-weight: 900; color: #2a1a00; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+.v3v-medal-1 { background: linear-gradient(180deg, #ffe58a, var(--gold)); }
+.v3v-medal-2 { background: linear-gradient(180deg, #f4f6ff, #b9c3dd); }
+.v3v-medal-3 { background: linear-gradient(180deg, #ffc58a, var(--coral)); }
+.v3v-names { display: grid; min-width: 0; line-height: 1.15; }
+.v3v-names b { font-size: 26px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v3v-names i { font-style: normal; font-size: 20px; font-weight: 800; color: var(--gold); }
+.v3v-names small { font-size: 16px; color: #d9d0ff; }
+.v3v-names .tie-label { font-size: 15px; letter-spacing: 2px; color: var(--pink); }
+.v3v-place-1 .v3v-nameplate { box-shadow: inset 0 0 0 3px var(--gold), 0 0 22px rgba(255, 204, 88, 0.6); }
+.v3v-empty { position: absolute; left: 0; right: 0; top: 1000px; text-align: center; font-size: 30px; font-weight: 800; }
+.v3v-tie-note { position: absolute; left: 0; right: 0; top: 820px; text-align: center; font-size: 22px; font-weight: 800; color: var(--pink); z-index: 6; }

@@ -371,6 +371,8 @@ export type LeaderboardEntry = {
   displayName: string;
   score: number;
   correctCount: number;
+  /** Nhân vật chibi đã gán cho người chơi trong vòng (V3 §11: Victory dùng đúng nhân vật, không random lại). */
+  characterId?: string;
 };
 
 export type PodiumSlot = { place: 1 | 2 | 3; rank: number; tied: boolean; entries: LeaderboardEntry[] };

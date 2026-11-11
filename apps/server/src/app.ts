@@ -38,6 +38,8 @@ export type AppOptions = {
   startedAtMs?: number;
   /** Thư mục bản build (vite build) để phục vụ cùng origin: /dashboard/ và /overlay/ (bộ cài Windows, OBS). */
   webRoots?: { dashboard?: string; overlay?: string; assets?: string };
+  /** Kho nhân vật mặc định cho mọi phiên (từ manifest asset cục bộ). */
+  characterPool?: readonly string[];
 };
 
 export type QuizApp = {
@@ -205,7 +207,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         sessionId: rt.id,
       });
     const runtime = await SessionRuntime.create(
-      { store, scheduler, adapter: adapterFactory(parsed.data.config.mode, parsed.data.config) },
+      { store, scheduler, characterPool: opts.characterPool, adapter: adapterFactory(parsed.data.config.mode, parsed.data.config) },
       parsed.data,
     );
     attachRuntime(runtime);
@@ -442,7 +444,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const row = store.latestOpenSession();
       if (!row) return null;
       const r = await SessionRuntime.recover(
-        { store, scheduler, adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config) },
+        { store, scheduler, characterPool: opts.characterPool, adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config) },
         row,
       );
       attachRuntime(r);

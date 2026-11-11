@@ -5,6 +5,7 @@ import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './o
 import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
 import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
+import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import './style.css';
 
 function useStageScale() {
@@ -177,7 +178,7 @@ function App() {
       '--safe-right': `${snapshot.safeZone.right}px`,
       '--safe-right-from-y': `${snapshot.safeZone.rightFromY ?? 0}px`,
     } as React.CSSProperties}>
-      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} /> : <>
+      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
         <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
         {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
