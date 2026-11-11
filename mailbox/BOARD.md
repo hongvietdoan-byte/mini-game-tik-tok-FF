@@ -8,7 +8,7 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 | Làn | Sở hữu file | Không được sửa |
 |---|---|---|
 | coordinator | `packages/contracts`, `packages/quiz-core/src/*.ts` (trừ `*.test.ts`), `packages/persistence/src` + migrations, `packages/live-adapters`, `apps/server`, `tests/integration`, `tests/load`, `scripts/simulate-round.ts`, `docs/API_CONTRACT.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/IMPLEMENTATION_BACKLOG.md`, `docs/reports/*`, `README.md`, file cấu hình gốc | — |
-| codex1 | `fixtures/**`, `packages/*/src/**/*.test.ts`, `scripts/privacy-check.mjs` (+ test), `.github/workflows/**`, nháp `docs/DATA_PRIVACY.md`, `docs/TEST_PLAN.md` | mọi file không phải test trong `packages/`, `apps/` |
+| codex1 | `fixtures/**`, `docs/review/**`, `packages/*/src/**/*.test.ts`, `scripts/privacy-check.mjs` (+ test), `.github/workflows/**`, nháp `docs/DATA_PRIVACY.md`, `docs/TEST_PLAN.md` | mọi file không phải test trong `packages/`, `apps/` |
 | codex2 | `apps/overlay/**`, `apps/dashboard/**`, `playwright.config.ts`, `tests/e2e/**`, nháp `docs/GAME_RULES.md`, `docs/THEME_PACK_SPEC.md` | `packages/**`, `apps/server/**` |
 
 ## Đang làm / hàng chờ
