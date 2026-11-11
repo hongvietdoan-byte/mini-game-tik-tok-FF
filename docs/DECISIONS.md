@@ -60,6 +60,13 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 ## D-16 · Không thưởng tốc độ
 - Độ trễ giao comment của TikTok không dự đoán được; chấm theo thời điểm server nhận, cửa sổ end-exclusive.
 
+## D-17 · Người dùng làm chủ bộ câu hỏi (người dùng chốt 11/11)
+- Tool (AI Question Studio, Phase 3) chỉ **đề xuất** bản nháp (`DRAFT`/`PENDING_REVIEW`). Người dùng **sửa** (câu hỏi, 4 đáp án, đáp án đúng, giải thích, độ khó),
+  **chọn** câu nào dùng và **duyệt** (`APPROVED` + `OPERATOR_VERIFIED`). Không có đường nào tự đặt `APPROVED`.
+- Sửa câu đã duyệt → `version + 1`, lưu `question_versions`, quay về `PENDING_REVIEW`. Vòng đang chạy dùng snapshot bất biến nên không bị ảnh hưởng.
+- Màn Question Bank (Phase 2) phải có form sửa đầy đủ + nút duyệt/từ chối; `MANUAL_PLAYLIST` để người dùng tự chọn bộ câu cho vòng.
+- `fixtures/questions.ts` chỉ là dữ liệu DEMO để kiểm thử engine ở chế độ MOCK.
+
 ## Hoãn (backlog)
 SMART_RANDOM theo quota 7/5/3 (Phase 2) · auto mode nhiều vòng có preflight đầy đủ (Phase 6) · purge/export dữ liệu người chơi (Phase 6) ·
 backup định kỳ (Phase 6) · void hồi tố câu cũ · tie-break công bố trước vòng.

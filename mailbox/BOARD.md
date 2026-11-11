@@ -49,3 +49,4 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 10. Vùng an toàn 230/690/130 px chỉ là **preset thử nghiệm**, không phải số chính thức của TikTok; phải chỉnh được, có lớp hướng dẫn chỉ hiện khi xem trước.
 11. Phase 1 overlay chỉ dùng **token màu** (`#2D387F #7049F5 #FFCC58 #E47E5F #D24470 #8CC8FB`) + font hệ thống hỗ trợ tiếng Việt. **Chưa dùng asset/ảnh đầu vào nào** (cúp, chibi, logo — Phase 5, cần xác nhận quyền).
 12. Token admin không bao giờ nằm trong URL; server chỉ bind `127.0.0.1`.
+13. **Câu hỏi: tool chỉ ĐỀ XUẤT; người dùng sửa, chọn, duyệt** (người dùng chốt 11/11). Người dùng sửa được cả câu hỏi, 4 đáp án và đáp án đúng. Không câu nào vào vòng công khai nếu người dùng chưa duyệt; sửa câu đã duyệt → phiên bản mới, quay về chờ duyệt. AI/fixtures không bao giờ tự đặt `APPROVED`. `fixtures/` chỉ là dữ liệu DEMO kiểm thử engine.
