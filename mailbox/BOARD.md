@@ -19,7 +19,7 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 | C-0010 | codex1 | Sửa câu Sahara/Tokyo, rà 36 câu | C-0001 | XONG, đã gộp |
 | C-0002 | codex1 | Unit test `answers` / `scoring` / `selection` | — | XONG, đã gộp (+ sửa ZWJ `797799a`) |
 | C-0003 | codex1 | Unit test reducer `engine.ts` (mọi nhánh) | — | XONG, đã gộp (36 test) |
-| C-0004 | codex1 | Unit test `Store` (persistence) | C-0001 (dùng fixtures) | CHỜ |
+| C-0004 | codex1 | Unit test `Store` (persistence) | C-0001 (dùng fixtures) | XONG, đã gộp (14 test) |
 | C-0005 | codex1 | `scripts/privacy-check.mjs` + `.github/workflows/ci.yml` | — | CHỜ |
 | C-0006 | codex2 | `apps/overlay` 1080×1920, 8 cảnh, chế độ mock, client WS | — | XONG, đã gộp |
 | C-0013 | codex1 | Viết lại 36 câu DEMO chủ đề Free Fire + bảng đề xuất `docs/review/` | C-0003 | CHỜ |
