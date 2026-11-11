@@ -18,7 +18,7 @@ import type { Store } from '@quiz/persistence';
 import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
-import { serveSpa } from './static';
+import { serveAssets, serveSpa } from './static';
 
 export const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
@@ -37,7 +37,7 @@ export type AppOptions = {
   logger?: boolean;
   startedAtMs?: number;
   /** Thư mục bản build (vite build) để phục vụ cùng origin: /dashboard/ và /overlay/ (bộ cài Windows, OBS). */
-  webRoots?: { dashboard?: string; overlay?: string };
+  webRoots?: { dashboard?: string; overlay?: string; assets?: string };
 };
 
 export type QuizApp = {
@@ -180,6 +180,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const servedDashboard = opts.webRoots?.dashboard ? serveSpa(app, '/dashboard', opts.webRoots.dashboard) : false;
   const servedOverlay = opts.webRoots?.overlay ? serveSpa(app, '/overlay', opts.webRoots.overlay) : false;
   if (servedDashboard) app.get('/', async (_req, reply) => reply.redirect('/dashboard/'));
+  if (opts.webRoots?.assets) serveAssets(app, '/assets', opts.webRoots.assets);
 
   app.get('/health', async () => ({
     ok: true,

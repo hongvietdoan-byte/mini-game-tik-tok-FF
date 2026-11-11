@@ -91,6 +91,9 @@ importers:
 
   apps/overlay:
     dependencies:
+      '@quiz/audience-engine':
+        specifier: workspace:*
+        version: link:../../packages/audience-engine
       '@quiz/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

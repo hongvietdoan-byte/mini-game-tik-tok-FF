@@ -4,6 +4,7 @@ import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contrac
 import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './overlayLogic';
 import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
+import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
 import './style.css';
 
 function useStageScale() {
@@ -174,15 +175,21 @@ function App() {
       '--safe-bottom': `${snapshot.safeZone.bottom}px`,
       '--safe-left': `${snapshot.safeZone.left}px`,
       '--safe-right': `${snapshot.safeZone.right}px`,
+      '--safe-right-from-y': `${snapshot.safeZone.rightFromY ?? 0}px`,
     } as React.CSSProperties}>
-      <div className="arena-glow" aria-hidden="true" />
-      <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
-      {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
-      <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} /></div>
-      {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
-      {guides && safeZone && <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px ${safeZone.right}px ${safeZone.bottom}px ${safeZone.left}px` }}>
-        <span>Preset thử nghiệm — không phải số chính thức TikTok</span>
-      </div>}
+      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} /> : <>
+        <div className="arena-glow" aria-hidden="true" />
+        <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
+        {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
+        <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} /></div>
+        {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
+      </>}
+      {guides && safeZone && <>
+        <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px 0px ${safeZone.bottom}px ${safeZone.left}px` }}>
+          <span>Preset thử nghiệm — không phải số chính thức TikTok</span>
+        </div>
+        <div className="safe-zone-right-band" aria-hidden="true" style={{ top: `${Math.max(safeZone.top, safeZone.rightFromY ?? 0)}px`, bottom: `${safeZone.bottom}px`, width: `${safeZone.right}px` }} />
+      </>}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
   </main>;

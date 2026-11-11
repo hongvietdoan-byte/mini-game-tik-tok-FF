@@ -50,3 +50,19 @@ export function serveSpa(app: FastifyInstance, prefix: '/dashboard' | '/overlay'
   });
   return true;
 }
+
+/** Phục vụ thư mục asset cục bộ (vd /assets/mc/kelly.png) — KHÔNG fallback, chỉ file có thật, chặn path traversal. */
+export function serveAssets(app: FastifyInstance, prefix: '/assets', root: string) {
+  const base = resolve(root);
+  if (!existsSync(base)) return false;
+  app.get(`${prefix}/*`, async (req, reply) => {
+    const rel = decodeURIComponent((req.params as { '*': string })['*'] ?? '');
+    const target = normalize(join(base, rel));
+    if (!target.startsWith(base + sep)) return reply.code(403).send('Forbidden');
+    if (!existsSync(target) || statSync(target).isDirectory()) return reply.code(404).send('Not found');
+    const type = TYPES[extname(target).toLowerCase()];
+    if (!type || !/^(image|font)\//.test(type)) return reply.code(415).send('Unsupported');
+    return reply.header('content-type', type).header('cache-control', 'public, max-age=300').header('x-content-type-options', 'nosniff').send(readFileSync(target));
+  });
+  return true;
+}

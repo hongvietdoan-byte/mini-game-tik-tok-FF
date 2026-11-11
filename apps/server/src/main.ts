@@ -35,6 +35,8 @@ try {
 const webRoots = {
   dashboard: process.env.QUIZ_DASHBOARD_DIR ?? join(ROOT, 'apps', 'dashboard', 'dist'),
   overlay: process.env.QUIZ_OVERLAY_DIR ?? join(ROOT, 'apps', 'overlay', 'dist'),
+  // asset cục bộ chưa xác nhận quyền phân phối (MC Kelly, chibi tách nền) — ngoài git
+  assets: process.env.QUIZ_ASSETS_DIR ?? join(ROOT, 'assets-local'),
 };
 const quiz = await buildApp({ store, scheduler, adminToken, webRoots, logger: process.env.QUIZ_LOG === '1' });
 const recovered = await quiz.recover();

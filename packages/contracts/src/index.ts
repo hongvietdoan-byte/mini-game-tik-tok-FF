@@ -254,6 +254,11 @@ export const SafeZonePresetSchema = z.object({
   bottom: z.number().int().min(0).max(1920),
   left: z.number().int().min(0).max(1080),
   right: z.number().int().min(0).max(1080),
+  /**
+   * Dải cấm bên phải chỉ áp dụng từ toạ độ y này trở xuống (thanh nút bên phải của TikTok LIVE nằm ở nửa dưới).
+   * 0 = áp dụng toàn chiều cao. Là GIẢ ĐỊNH — phải đo trên điện thoại thật.
+   */
+  rightFromY: z.number().int().min(0).max(1920).default(0),
   commentRegion: z
     .object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
     .nullable()
@@ -268,6 +273,7 @@ export const INITIAL_TEST_SAFE_ZONE: SafeZonePreset = {
   bottom: 690,
   left: 0,
   right: 130,
+  rightFromY: 1000,
   commentRegion: null,
   official: false,
 };

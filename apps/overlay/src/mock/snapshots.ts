@@ -1,5 +1,31 @@
 import type { GameState, LeaderboardEntry, Podium, PublicSnapshot, Scene } from '@quiz/contracts';
-import { INITIAL_TEST_SAFE_ZONE } from '@quiz/contracts';
+import { INITIAL_TEST_SAFE_ZONE, type AudienceView } from '@quiz/contracts';
+import { createSlots } from '@quiz/audience-engine';
+
+/** 35 ghế mock (tên hư cấu, gồm tên dài / emoji / chuỗi giống HTML) — toạ độ lấy từ cùng audience-engine như server. */
+const MOCK_NAMES = [
+  'StormKing', 'Rồng Lửa', 'BoomBoom', 'Choco.M', 'Hami', 'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy',
+  'ThuyTrang', 'Hồ Anh Tuấn', 'Mai Linh', 'kho kho', 'TEENHAYQUAYCUOP', 'Nhân cách', 'Tú Toàn', 'Huy Vũ', 'thảo cute', 'Bé cua 2k',
+  'Phươngg', 'Xunx', 'Trần Khoa', 'sóng chó điên 99', '34a.', 'LMHxr76', 'Muốn học giỏi', 'Lananh', 'nguyenhuyen', 'Mai Trí Đức',
+  'Hoài Thương', 'Choco Mutt', '<b>bó đái</b>', 'LNH 👨‍👩‍👧', 'Misu',
+];
+function mockAudience(withResults: boolean): AudienceView {
+  const slots = createSlots();
+  return {
+    rotationId: 3,
+    queued: 1213,
+    total: 1248,
+    seats: slots.map((slot, i) => ({
+      ...slot,
+      occupant: {
+        displayName: MOCK_NAMES[i % MOCK_NAMES.length]!,
+        characterId: `chibi-${String((i * 7) % 12 + 1).padStart(2, '0')}`,
+        pinned: i < 3,
+        result: withResults ? (i % 3 === 0 ? 'wrong' : i % 5 === 0 ? 'none' : 'correct') : null,
+      },
+    })),
+  };
+}
 
 const leaderboard: LeaderboardEntry[] = Array.from({ length: 10 }, (_, index) => ({
   rank: index + 1,
@@ -93,7 +119,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       state: name === 'prepare' ? 'ask' : isReveal ? 'react' : 'idle',
       bubble: name === 'prepare' ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.' : 'Bình luận A, B, C hoặc D để tham gia.',
     },
-    audience: null, // TODO(codex2): mock 35 ghế (AudienceView) khi làm lớp khán giả
+    audience: ['lobby', 'prepare', 'question', 'reveal', 'paused'].includes(name) ? mockAudience(name === 'reveal') : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   };
 }
