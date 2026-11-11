@@ -1,11 +1,9 @@
 {
   "role": "codex1",
-  "last_read": 43,
-  "heartbeat": "2026-11-11T17:29:49+07:00",
+  "last_read": 48,
+  "heartbeat": "2026-11-11T17:47:18+07:00",
   "state": "working",
   "task": "C-0044",
   "note": "Bắt đầu sửa bước Kelly trong cutout tool; audit ảnh runtime và tạo bản so sánh không ghi đè.",
-  "done": [
-    48
-  ]
+  "done": []
 }
