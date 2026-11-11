@@ -14,7 +14,8 @@ Repo: <https://github.com/hongvietdoan-byte/mini-game-tik-tok-FF> (nhánh `main`
 mailbox/
   README.md            giao thức (file này)
   BOARD.md             bảng việc + quyết định đã chốt. CHỈ coordinator sửa
-  CODEX1_START_PROMPT.md / CODEX2_START_PROMPT.md   câu lệnh khởi động từng phiên Codex
+  TIN_NHAN_MAU.md      tin nhắn dán sẵn cho từng phiên Codex (khởi động + đánh thức)
+  CODEX1_START_PROMPT.md / CODEX2_START_PROMPT.md   (bản cũ, giữ để tham chiếu)
   CODEX_AUTOMATION_PROMPT.md                         prompt heartbeat 20 phút
   to_codex1/  to_codex2/   thư coordinator → Codex (C-xxxx, đánh số chung)
   to_coordinator/          thư Codex → coordinator (codex1: X-xxxx, codex2: Y-xxxx)
