@@ -8,6 +8,7 @@ test-results/
 playwright-report/
 .env
 .env.*
+!.env.example
 
 # --- INPUT NỘI BỘ: KHÔNG BAO GIỜ COMMIT / ĐÓNG GÓI (xem docs/DATA_PRIVACY.md) ---
 *.xlsx

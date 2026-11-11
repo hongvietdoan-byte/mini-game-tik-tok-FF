@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
@@ -10,6 +10,9 @@ import {
   ClientAckSchema,
   ClientHelloSchema,
   CreateSessionRequestSchema,
+  McVoicePreGenerateRequestSchema,
+  McVoiceSettingsUpdateSchema,
+  McVoiceTestRequestSchema,
   QuestionReviewSchema,
   SimulatorRequestSchema,
 } from '@quiz/contracts';
@@ -19,6 +22,10 @@ import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
 import { serveAssets, serveSpa } from './static';
+import { McVoiceCache } from './voice/cache';
+import { McVoicePreGenerateManager } from './voice/pre-generate';
+import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile, EnvironmentMcVoiceCredentialStore } from './voice/types';
+import { McVoiceService } from './voice/service';
 
 export const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
@@ -40,6 +47,14 @@ export type AppOptions = {
   webRoots?: { dashboard?: string; overlay?: string; assets?: string };
   /** Kho nhân vật mặc định cho mọi phiên (từ manifest asset cục bộ). */
   characterPool?: readonly string[];
+  /** Cấu hình voice runtime được cấp ngoài repo; khi bỏ trống không gọi provider. */
+  mcVoice?: {
+    credentials?: McVoiceCredentialStore;
+    service?: McVoiceService;
+    profile?: McVoiceProfile;
+    cache?: McVoiceCache;
+    preGenerate?: McVoicePreGenerateManager;
+  };
 };
 
 export type QuizApp = {
@@ -91,6 +106,12 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
             ...(process.env.EULER_API_KEY ? { signApiKey: process.env.EULER_API_KEY } : {}),
           }));
   const startedAtMs = opts.startedAtMs ?? scheduler.now();
+  const voiceCredentials = opts.mcVoice?.credentials ?? new EnvironmentMcVoiceCredentialStore();
+  const voiceService = opts.mcVoice?.service ?? null;
+  const voiceProfile = opts.mcVoice?.profile ?? null;
+  const voiceCache = opts.mcVoice?.cache ?? new McVoiceCache(join(dirname(store.path), 'mc-voice-cache'));
+  const voicePreGenerate = opts.mcVoice?.preGenerate ?? (voiceService ? new McVoicePreGenerateManager(voiceService, () => scheduler.now()) : null);
+  let primaryOverlayInstanceId: string | null = null;
 
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 256 * 1024 });
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
@@ -160,6 +181,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     return rt;
   }
 
+  async function voiceSettingsSnapshot() {
+    const token = await voiceCredentials.get();
+    return {
+      provider: 'CLIPAI' as const,
+      voiceName: 'Kelly' as const,
+      hasToken: token !== null,
+      ready: token !== null && voiceService !== null && voiceProfile !== null,
+      primaryOverlayInstanceId,
+    };
+  }
+
   function badRequest(reply: FastifyReply, err: z.ZodError) {
     return reply.code(422).send({
       ok: false,
@@ -190,6 +222,123 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     sessionId: rt?.id ?? null,
     web: { dashboard: servedDashboard, overlay: servedOverlay },
   }));
+
+  app.get('/api/mc-voice/settings', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    try {
+      return await voiceSettingsSnapshot();
+    } catch {
+      return reply.code(503).send({ ok: false, code: 'MC_VOICE_SETTINGS_UNAVAILABLE', message: 'Không đọc được cài đặt MC Voice.' });
+    }
+  });
+
+  app.put('/api/mc-voice/settings', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = McVoiceSettingsUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const update = parsed.data;
+    const hasPrimary = Object.prototype.hasOwnProperty.call(update, 'primaryOverlayInstanceId');
+    if (hasPrimary && primaryOverlayInstanceId !== null && update.primaryOverlayInstanceId !== primaryOverlayInstanceId &&
+      update.confirmPrimaryOverlayChange !== true) {
+      return reply.code(409).send({ ok: false, code: 'MC_VOICE_PRIMARY_CONFIRMATION_REQUIRED', message: 'Xác nhận đổi overlay phát tiếng trước khi tiếp tục.' });
+    }
+    if (update.token !== undefined || update.clearToken === true) {
+      try {
+        if (update.clearToken) await voiceCredentials.clear();
+        else await voiceCredentials.set(update.token!);
+      } catch {
+        return reply.code(503).send({ ok: false, code: 'MC_VOICE_CREDENTIAL_STORE_UNAVAILABLE', message: 'Kho bảo mật MC Voice chưa sẵn sàng.' });
+      }
+    }
+    if (hasPrimary) primaryOverlayInstanceId = update.primaryOverlayInstanceId ?? null;
+    try {
+      return await voiceSettingsSnapshot();
+    } catch {
+      return reply.code(503).send({ ok: false, code: 'MC_VOICE_SETTINGS_UNAVAILABLE', message: 'Không đọc được cài đặt MC Voice.' });
+    }
+  });
+
+  app.post('/api/mc-voice/test', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = McVoiceTestRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    if (!voiceService || !voiceProfile)
+      return reply.code(503).send({ ok: false, code: 'MC_VOICE_NOT_READY', message: 'MC Voice chưa được cấu hình ở server.' });
+    const text = parsed.data.text;
+    try {
+      const result = await voiceService.getOrCreate(
+        {
+          text,
+          provider: 'clipai',
+          model: voiceProfile.model,
+          voiceSettings: voiceProfile.voiceSettings,
+          rate: voiceProfile.rate,
+          format: 'mp3',
+        },
+        { text, voiceKey: voiceProfile.voiceKey, rate: voiceProfile.rate, format: 'mp3' },
+      );
+      return {
+        ok: true,
+        assetId: result.asset.assetId,
+        durationMs: result.asset.durationMs,
+        cacheHit: result.cacheHit,
+      };
+    } catch (error) {
+      const safe = error instanceof McVoiceProviderError ? error : new McVoiceProviderError('FAILED', 'MC Voice không hoàn tất.');
+      return reply.code(safe.code === 'TOO_LONG' ? 422 : 503).send({
+        ok: false,
+        code: `MC_VOICE_${safe.code}`,
+        message: safe.message,
+      });
+    }
+  });
+
+  app.post('/api/mc-voice/pre-generate', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = McVoicePreGenerateRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    if (!voiceService || !voiceProfile || !voicePreGenerate)
+      return reply.code(503).send({ ok: false, code: 'MC_VOICE_NOT_READY', message: 'MC Voice chưa được cấu hình ở server.' });
+    const packId = rt?.config.packId ?? 'demo';
+    const requested = new Set(parsed.data.questionIds);
+    const questions = store.listQuestions(packId).filter((question) => requested.has(question.id));
+    if (questions.length !== requested.size || questions.some((question) => question.approvalStatus !== 'APPROVED'))
+      return reply.code(400).send({ ok: false, code: 'MC_VOICE_QUESTION_NOT_APPROVED', message: 'Chỉ có thể tạo audio cho câu đã được duyệt trong bộ câu hiện hành.' });
+
+    const makeLine = (lineId: string, text: string) => ({
+      lineId,
+      descriptor: {
+        text,
+        provider: 'clipai' as const,
+        model: voiceProfile.model,
+        voiceSettings: voiceProfile.voiceSettings,
+        rate: voiceProfile.rate,
+        format: 'mp3' as const,
+      },
+      request: { text, voiceKey: voiceProfile.voiceKey, rate: voiceProfile.rate, format: 'mp3' as const },
+    });
+    const items = questions.map((question) => ({
+      lines: [
+        makeLine('prompt', question.prompt),
+        ...question.options.map((option, index) => makeLine(`option-${index + 1}`, option.text)),
+      ],
+    }));
+    return reply.code(202).send(voicePreGenerate.start(items));
+  });
+
+  app.get<{ Params: { jobId: string } }>('/api/mc-voice/pre-generate/:jobId', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const progress = voicePreGenerate?.get(req.params.jobId);
+    if (!progress) return reply.code(404).send({ ok: false, code: 'MC_VOICE_JOB_NOT_FOUND', message: 'Không tìm thấy tiến độ tạo audio.' });
+    return progress;
+  });
+
+  app.get<{ Params: { assetId: string } }>('/api/mc-voice/assets/:assetId', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const asset = await voiceCache.get(req.params.assetId);
+    if (!asset) return reply.code(404).send({ ok: false, code: 'MC_VOICE_ASSET_NOT_FOUND', message: 'Không tìm thấy audio MC Voice.' });
+    return reply.type('audio/mpeg').header('cache-control', 'private, no-store').send(asset.bytes);
+  });
 
   app.get('/api/sessions/current', async () => ({
     sessionId: rt && rt.engine.sessionStatus === 'OPEN' ? rt.id : null,
