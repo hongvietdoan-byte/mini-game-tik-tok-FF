@@ -62,6 +62,8 @@ const rt = await SessionRuntime.create(
       allowDemoQuestions: true,
       seed,
       maxSourceLagMs: 5_000,
+      audienceRotateEvery: 2,
+      audiencePinTop: 3,
     },
   },
 );

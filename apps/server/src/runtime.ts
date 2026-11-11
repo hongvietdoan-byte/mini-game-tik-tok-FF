@@ -49,6 +49,7 @@ import {
 } from '@quiz/quiz-core';
 import { MockAdapter, MockSimulator, type LiveAdapter, type Scheduler, type SimPlayer } from '@quiz/live-adapters';
 import type { SessionRow, Store } from '@quiz/persistence';
+import { AudienceManager, DEFAULT_CHARACTER_POOL } from './audience';
 
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
@@ -125,6 +126,9 @@ export class SessionRuntime {
   private seq = 0;
   private health: LiveSourceHealth;
   private overlayInfo: AdminSnapshot['overlay'] = { clients: 0, lastAckStateVersion: null, lastAckAtMs: null };
+  /** 35 ghế khán giả (V3 §6). */
+  private readonly audience: AudienceManager;
+  private audienceChanged = false;
 
   private constructor(
     private readonly deps: RuntimeDeps,
@@ -146,6 +150,12 @@ export class SessionRuntime {
       reconnects: 0,
       detail: null,
     };
+    const cfg = session.config;
+    this.audience = new AudienceManager(
+      deps.store,
+      cfg.characterPool ?? DEFAULT_CHARACTER_POOL,
+      cfg.seed !== undefined ? cfg.seed >>> 0 : hashSeed(session.id),
+    );
   }
 
   get id() {
@@ -231,6 +241,7 @@ export class SessionRuntime {
     const r = this.engine.round;
     if (!r) return;
     this.loadRound(r.roundId);
+    this.audience.load(r.roundId);
     this.ranked = rankPlayers(this.store.standings(r.roundId));
     this.participants = this.store.participantCount(r.roundId);
     const qid = currentQuestionInstanceId(this.engine);
@@ -303,6 +314,7 @@ export class SessionRuntime {
         }
         this.engine = res.state;
         integrityError = this.applyEffects(res.events, now);
+        this.audience.flush(now);
         this.store.saveGameSnapshot(
           res.state,
           sceneFor(res.state),
@@ -347,6 +359,7 @@ export class SessionRuntime {
           this.loadRound(e.roundId);
           this.ranked = [];
           this.participants = 0;
+          this.audience.startRound(e.roundId, now);
           break;
         case 'QUESTION_OPENED':
           this.store.markQuestion(e.questionInstanceId, 'OPEN', now);
@@ -382,7 +395,15 @@ export class SessionRuntime {
         case 'SESSION_STOPPED':
           this.store.closeSession(this.id, now);
           break;
-        case 'STATE_CHANGED':
+        case 'STATE_CHANGED': {
+          const every = this.config.audienceRotateEvery ?? 2;
+          const qi = this.engine.round?.questionIndex ?? 0;
+          if (e.to === 'PREPARE' && (e.from === 'REVEAL' || e.from === 'LEADERBOARD') && every > 0 && qi > 0 && qi % every === 0) {
+            const top = this.ranked.slice(0, this.config.audiencePinTop ?? 3).map((x) => x.playerId);
+            this.audience.rotateBetweenQuestions(now, top);
+          }
+          break;
+        }
         case 'VICTORY_STARTED':
         case 'AUTO_START_REQUESTED':
         case 'RECOVERY_REQUIRED':
@@ -511,6 +532,7 @@ export class SessionRuntime {
   private beat() {
     if (this.disposed || this.engine.sessionStatus === 'CLOSED') return;
     this.store.heartbeat(this.id, this.scheduler.now());
+    this.audience.flush(this.scheduler.now());
     this.heartbeatHandle = this.scheduler.setTimeout(() => this.beat(), HEARTBEAT_MS);
   }
 
@@ -703,7 +725,7 @@ export class SessionRuntime {
       if (ev.eventId && !this.store.markEventProcessed(ev.source, ev.eventId, qid, now)) return 'DUP_EVENT' as const;
       const playerId = this.store.resolvePlayer(ev.source, ev.userId, name, now);
       this.store.touchPlayer(playerId, name, now);
-      return this.store.insertAnswer({
+      const ok = this.store.insertAnswer({
         questionInstanceId: qid,
         roundId,
         playerId,
@@ -711,9 +733,11 @@ export class SessionRuntime {
         receivedAtMs: now,
         sourceEventId: ev.eventId ?? null,
       });
+      return ok ? playerId : false;
     });
     if (inserted === 'DUP_EVENT') return this.reject('DUPLICATE_EVENT', now);
     if (!inserted) return this.reject('DUPLICATE_ANSWER', now);
+    if (this.audience.onAccepted(inserted, name, now)) this.audienceChanged = true;
 
     this.metrics.accepted += 1;
     if (this.countsQid === qid) this.counts[decision.option] += 1;
@@ -744,8 +768,12 @@ export class SessionRuntime {
             participantCount: this.participants,
           }),
         },
+        ...(this.audienceChanged && this.publicSnapshot().audience
+          ? [{ audience: 'public' as const, message: this.wrap('AUDIENCE_UPDATED', this.publicSnapshot().audience!) }]
+          : []),
         { audience: 'admin', message: this.wrap('ADMIN_SNAPSHOT', this.adminSnapshot()) },
       ]);
+      this.audienceChanged = false;
     }, COUNTS_THROTTLE_MS);
   }
 
@@ -890,6 +918,9 @@ export class SessionRuntime {
       leaderboard,
       podium: e.round && (eff === 'ROUND_END' || eff === 'VICTORY') ? buildPodium(this.ranked) : null,
       mc: mcFor(e, revealView),
+      audience: e.round && this.audience.active
+        ? this.audience.view(revealView ? { qid: revealView.questionInstanceId, correctOptionId: revealView.correctOptionId } : null)
+        : null,
       connection: this.adapter.status(),
       safeZone: INITIAL_TEST_SAFE_ZONE,
     };
@@ -1005,3 +1036,10 @@ export class SessionRuntime {
 }
 
 export class ModeError extends Error {}
+
+/** Seed ổn định (≥ 0) từ chuỗi — dùng khi phiên không đặt seed. */
+function hashSeed(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}

@@ -210,6 +210,61 @@ export class Store {
     });
   }
 
+  // --- Khán giả (V3 §6) ------------------------------------------------------
+
+  saveAudienceState(roundId: string, rotationId: number, state: unknown, now: number) {
+    this.raw
+      .prepare(
+        `INSERT INTO audience_states (round_id, rotation_id, state_json, updated_at_ms) VALUES (?, ?, ?, ?)
+         ON CONFLICT (round_id) DO UPDATE SET rotation_id = excluded.rotation_id, state_json = excluded.state_json, updated_at_ms = excluded.updated_at_ms`,
+      )
+      .run(roundId, rotationId, JSON.stringify(state), Math.floor(now));
+  }
+
+  loadAudienceState<T>(roundId: string): T | null {
+    const r = this.raw.prepare('SELECT state_json AS s FROM audience_states WHERE round_id = ?').get(roundId) as { s: string } | undefined;
+    return r ? (JSON.parse(r.s) as T) : null;
+  }
+
+  /** Gán nhân vật (lần đầu thắng — không đổi nhân vật sau đó). @returns nhân vật đang được gán. */
+  assignCharacter(roundId: string, playerId: string, characterId: string, now: number): string {
+    this.raw
+      .prepare(
+        `INSERT INTO character_assignments (round_id, player_id, character_id, assigned_at_ms) VALUES (?, ?, ?, ?)
+         ON CONFLICT (round_id, player_id) DO NOTHING`,
+      )
+      .run(roundId, playerId, characterId, Math.floor(now));
+    return (this.raw.prepare('SELECT character_id AS c FROM character_assignments WHERE round_id = ? AND player_id = ?').get(roundId, playerId) as {
+      c: string;
+    }).c;
+  }
+
+  characterAssignments(roundId: string): Map<string, string> {
+    const rows = this.raw.prepare('SELECT player_id AS p, character_id AS c FROM character_assignments WHERE round_id = ?').all(roundId) as {
+      p: string;
+      c: string;
+    }[];
+    return new Map(rows.map((r) => [r.p, r.c]));
+  }
+
+  displayNames(playerIds: string[]): Map<string, string> {
+    if (playerIds.length === 0) return new Map();
+    const out = new Map<string, string>();
+    const st = this.raw.prepare('SELECT display_name AS n FROM players WHERE id = ?');
+    for (const id of playerIds) {
+      const r = st.get(id) as { n: string } | undefined;
+      if (r) out.set(id, r.n);
+    }
+    return out;
+  }
+
+  answersForQuestion(questionInstanceId: string): Map<string, OptionId> {
+    const rows = this.raw
+      .prepare('SELECT player_id AS p, option_id AS o FROM answers WHERE question_instance_id = ?')
+      .all(questionInstanceId) as { p: string; o: OptionId }[];
+    return new Map(rows.map((r) => [r.p, r.o]));
+  }
+
   // --- Phiên ----------------------------------------------------------------
 
   createSession(s: { id: string; name: string; mode: string; packId: string; config: SessionConfig; now: number }) {

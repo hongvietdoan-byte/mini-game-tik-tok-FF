@@ -15,6 +15,13 @@
       "when": 1794373936261,
       "tag": "0001_cooing_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794382917106,
+      "tag": "0002_ordinary_xorn",
+      "breakpoints": true
     }
   ]
 }

@@ -213,6 +213,12 @@ export const SessionConfigSchema = z
     /** Bỏ comment có sourceTimestamp cũ hơn ngưỡng này so với lúc nhận (cách ly sự kiện trễ). */
     maxSourceLagMs: z.number().int().min(0).max(60_000).default(5_000),
     /** @username tài khoản TikTok đang phát LIVE — bắt buộc khi mode = TIKTOK. */
+    /** Bộ mã nhân vật chibi để gán cho khán giả (Theme Pack sẽ cung cấp; mặc định chibi-01..12). */
+    characterPool: z.array(z.string().min(1).max(64)).min(1).max(200).optional(),
+    /** Xoay ghế mỗi N câu (0 = tắt). */
+    audienceRotateEvery: z.number().int().min(0).max(20).default(2),
+    /** Giữ cố định ghế của Top N (0–5). */
+    audiencePinTop: z.number().int().min(0).max(5).default(3),
     tiktokUsername: z
       .string()
       .trim()
@@ -388,6 +394,32 @@ export type RevealView = {
 
 export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'BLOCKED';
 
+/** Một ghế khán giả trên overlay (V3 §6). KHÔNG chứa playerId/userId — chỉ dữ liệu hiển thị. */
+export type AudienceSeatView = {
+  slotId: string;
+  rowIndex: number;
+  seatIndex: number;
+  /** Toạ độ chân nhân vật trên khung 1080×1920. */
+  x: number;
+  y: number;
+  scale: number;
+  depth: number;
+  occupant: {
+    displayName: string;
+    characterId: string;
+    pinned: boolean;
+    /** Chỉ có sau khi công bố đáp án: người ngồi ghế trả lời đúng / sai / không trả lời câu này. */
+    result: 'correct' | 'wrong' | 'none' | null;
+  } | null;
+};
+export type AudienceView = {
+  rotationId: number;
+  seats: AudienceSeatView[];
+  /** Người đã tham gia nhưng chưa có ghế (vẫn được chấm điểm bình thường). */
+  queued: number;
+  total: number;
+};
+
 export type PublicSnapshot = {
   contractVersion: number;
   sessionId: string;
@@ -405,6 +437,8 @@ export type PublicSnapshot = {
   leaderboard: { kind: 'COMPACT' | 'FULL'; entries: LeaderboardEntry[] } | null;
   podium: Podium | null;
   mc: McView;
+  /** null khi chưa có vòng. */
+  audience: AudienceView | null;
   connection: ConnectionStatus;
   safeZone: SafeZonePreset;
 };
@@ -475,6 +509,7 @@ export const WS_MESSAGE_TYPES = [
   'VICTORY_STARTED',
   'CONNECTION_STATUS',
   'ERROR_PUBLIC',
+  'AUDIENCE_UPDATED',
   // chỉ gửi tới kênh admin đã xác thực
   'ADMIN_SNAPSHOT',
 ] as const;
@@ -491,6 +526,7 @@ export type WsPayloads = {
   VICTORY_STARTED: { podium: Podium };
   CONNECTION_STATUS: { status: ConnectionStatus };
   ERROR_PUBLIC: { code: string; message: string };
+  AUDIENCE_UPDATED: AudienceView;
   ADMIN_SNAPSHOT: AdminSnapshot;
 };
 

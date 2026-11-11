@@ -93,6 +93,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       state: name === 'prepare' ? 'ask' : isReveal ? 'react' : 'idle',
       bubble: name === 'prepare' ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.' : 'Bình luận A, B, C hoặc D để tham gia.',
     },
+    audience: null, // TODO(codex2): mock 35 ghế (AudienceView) khi làm lớp khán giả
     safeZone: INITIAL_TEST_SAFE_ZONE,
   };
 }

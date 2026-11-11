@@ -62,6 +62,8 @@ export async function runPipelineSelfTest(): Promise<SelfTestResult> {
           allowDemoQuestions: true,
           seed: 1,
           maxSourceLagMs: 5_000,
+          audienceRotateEvery: 2,
+          audiencePinTop: 3,
         },
       },
     );

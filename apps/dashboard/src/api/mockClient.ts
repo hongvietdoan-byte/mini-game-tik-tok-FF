@@ -349,6 +349,7 @@ class MockDashboardClient implements DashboardClient {
             : 'Bình luận A, B, C hoặc D để tham gia câu hỏi Free Fire.',
       },
       connection: this.connection,
+      audience: null,
       safeZone: INITIAL_TEST_SAFE_ZONE,
     };
     return {

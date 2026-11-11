@@ -119,6 +119,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.0.1
         version: 11.3.7
+      '@quiz/audience-engine':
+        specifier: workspace:*
+        version: link:../../packages/audience-engine
       '@quiz/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

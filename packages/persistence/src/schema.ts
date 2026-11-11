@@ -364,3 +364,29 @@ export const processedEvents = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.source, t.eventId] }), index('processed_events_received_idx').on(t.receivedAtMs)],
 );
+
+/** Trạng thái 35 ghế khán giả của một vòng (V3 §6) — khôi phục đúng bố cục sau khi khởi động lại. */
+export const audienceStates = sqliteTable('audience_states', {
+  roundId: text('round_id')
+    .primaryKey()
+    .references(() => rounds.id),
+  rotationId: integer('rotation_id').notNull(),
+  stateJson: text('state_json').notNull(),
+  updatedAtMs: integer('updated_at_ms').notNull(),
+});
+
+/** Nhân vật chibi gán cho người chơi trong vòng — cố định suốt vòng, không random lại khi render/reload. */
+export const characterAssignments = sqliteTable(
+  'character_assignments',
+  {
+    roundId: text('round_id')
+      .notNull()
+      .references(() => rounds.id),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id),
+    characterId: text('character_id').notNull(),
+    assignedAtMs: integer('assigned_at_ms').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.roundId, t.playerId] })],
+);
