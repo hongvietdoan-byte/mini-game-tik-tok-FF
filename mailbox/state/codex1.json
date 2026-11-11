@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 17,
-  "heartbeat": "2026-11-11T12:49:09+07:00",
+  "heartbeat": "2026-11-11T12:55:50+07:00",
   "state": "working",
-  "task": "DP1",
-  "note": "Tạo nháp docs/DATA_PRIVACY.md theo HANDOFF; không đọc spreadsheet/ảnh.",
+  "task": "DP2",
+  "note": "Đang lập TEST_PLAN.md đối chiếu từng yêu cầu §13.",
   "done": []
 }
