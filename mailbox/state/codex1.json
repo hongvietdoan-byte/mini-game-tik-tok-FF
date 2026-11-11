@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 69,
-  "heartbeat": "2026-11-11T21:40:12+07:00",
+  "heartbeat": "2026-11-11T21:40:54+07:00",
   "state": "working",
-  "task": "C-0067",
-  "note": "Đang tạo E2E safe-zone trong worktree riêng; sau đó tiếp tục C-0070 bước khảo sát theo spec và C-0072.",
+  "task": "C-0070",
+  "note": "C-0067 đã push/report/done. Đang đọc đầy đủ spec MC Voice và gói bàn giao ClipAI (C-0075), rồi sẽ viết duy nhất docs/review/MC_VOICE_DE_XUAT.md — không code/API thật.",
   "done": [
     74
   ]
