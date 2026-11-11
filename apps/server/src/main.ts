@@ -32,13 +32,21 @@ try {
   console.warn(`[quiz] chưa nạp được fixtures DEMO: ${(err as Error).message}`);
 }
 
-const quiz = await buildApp({ store, scheduler, adminToken, logger: process.env.QUIZ_LOG === '1' });
+const webRoots = {
+  dashboard: process.env.QUIZ_DASHBOARD_DIR ?? join(ROOT, 'apps', 'dashboard', 'dist'),
+  overlay: process.env.QUIZ_OVERLAY_DIR ?? join(ROOT, 'apps', 'overlay', 'dist'),
+};
+const quiz = await buildApp({ store, scheduler, adminToken, webRoots, logger: process.env.QUIZ_LOG === '1' });
 const recovered = await quiz.recover();
 if (recovered)
   console.log(`[quiz] khôi phục phiên ${recovered.id} → ${recovered.engine.state} (chờ operator chọn Tiếp tục / Huỷ câu / Dừng)`);
 
 await quiz.app.listen({ host: HOST, port: PORT });
 console.log(`[quiz] server http://${HOST}:${PORT}  — mã quản trị lưu tại ${tokenPath}`);
+const health = (await quiz.app.inject({ method: 'GET', url: '/health' })).json() as { web: { dashboard: boolean; overlay: boolean } };
+if (health.web.dashboard) console.log(`[quiz] Dashboard: http://${HOST}:${PORT}/dashboard/`);
+if (health.web.overlay) console.log(`[quiz] Overlay (OBS Browser Source 1080x1920): http://${HOST}:${PORT}/overlay/`);
+if (!health.web.dashboard || !health.web.overlay) console.log('[quiz] chưa có bản build web — chạy: corepack pnpm build:web');
 
 let closing = false;
 for (const sig of ['SIGINT', 'SIGTERM'] as const)

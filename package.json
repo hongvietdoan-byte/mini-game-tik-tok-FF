@@ -4,20 +4,24 @@
   "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@10.12.1",
-  "engines": { "node": ">=22.5" },
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
-    "dev": "concurrently -k -n server,overlay,dashboard \"pnpm --filter @quiz/server dev\" \"pnpm --filter @quiz/overlay dev\" \"pnpm --filter @quiz/dashboard dev\"",
-    "server": "pnpm --filter @quiz/server start",
+    "dev": "concurrently -k -n server,overlay,dashboard \"corepack pnpm --filter @quiz/server dev\" \"corepack pnpm --filter @quiz/overlay dev\" \"corepack pnpm --filter @quiz/dashboard dev\"",
+    "server": "corepack pnpm --filter @quiz/server start",
+    "build:web": "vite build apps/dashboard --base /dashboard/ && vite build apps/overlay --base /overlay/",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --project unit --project integration",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:load": "vitest run --project load",
     "test:e2e": "playwright test",
-    "db:generate": "pnpm --filter @quiz/persistence generate",
+    "db:generate": "corepack pnpm --filter @quiz/persistence generate",
     "simulate": "tsx scripts/simulate-round.ts",
     "privacy:check": "node scripts/privacy-check.mjs",
-    "ci": "pnpm privacy:check && pnpm typecheck && pnpm test"
+    "ci": "node scripts/privacy-check.mjs && tsc --noEmit -p tsconfig.json && vitest run --project unit --project integration",
+    "start": "corepack pnpm build:web && corepack pnpm server"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

@@ -17,6 +17,7 @@ import type { Store } from '@quiz/persistence';
 import type { SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
+import { serveSpa } from './static';
 
 export const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
@@ -34,6 +35,8 @@ export type AppOptions = {
   adapterFactory?: (mode: 'MOCK' | 'TIKTOK') => LiveAdapter;
   logger?: boolean;
   startedAtMs?: number;
+  /** Thư mục bản build (vite build) để phục vụ cùng origin: /dashboard/ và /overlay/ (bộ cài Windows, OBS). */
+  webRoots?: { dashboard?: string; overlay?: string };
 };
 
 export type QuizApp = {
@@ -111,9 +114,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     const h = req.headers.authorization;
     return typeof h === 'string' && h.startsWith('Bearer ') && safeEqual(h.slice(7).trim(), opts.adminToken);
   };
+  /**
+   * Origin hợp lệ: không có Origin, nằm trong danh sách dev, hoặc CÙNG ORIGIN với chính server
+   * khi Host là loopback (bản đóng gói phục vụ dashboard/overlay từ server). Kiểm Host chống DNS rebinding.
+   */
   const originOk = (req: FastifyRequest) => {
     const o = req.headers.origin;
-    return o === undefined || allowed.has(o);
+    if (o === undefined || allowed.has(o)) return true;
+    const host = req.headers.host ?? '';
+    const hostname = host.replace(/:\d+$/, '');
+    const loopback = hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]';
+    return loopback && (o === `http://${host}`);
   };
 
   /** Bảo vệ admin: Origin hợp lệ (chống CSRF từ trang khác) + Bearer token. */
@@ -156,7 +167,16 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
 
   // --- HTTP -------------------------------------------------------------------
 
-  app.get('/health', async () => ({ ok: true, contractVersion: CONTRACT_VERSION, sessionId: rt?.id ?? null }));
+  const servedDashboard = opts.webRoots?.dashboard ? serveSpa(app, '/dashboard', opts.webRoots.dashboard) : false;
+  const servedOverlay = opts.webRoots?.overlay ? serveSpa(app, '/overlay', opts.webRoots.overlay) : false;
+  if (servedDashboard) app.get('/', async (_req, reply) => reply.redirect('/dashboard/'));
+
+  app.get('/health', async () => ({
+    ok: true,
+    contractVersion: CONTRACT_VERSION,
+    sessionId: rt?.id ?? null,
+    web: { dashboard: servedDashboard, overlay: servedOverlay },
+  }));
 
   app.get('/api/sessions/current', async () => ({
     sessionId: rt && rt.engine.sessionStatus === 'OPEN' ? rt.id : null,
