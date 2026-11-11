@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 37,
-  "heartbeat": "2026-11-11T16:37:19+07:00",
+  "heartbeat": "2026-11-11T16:40:16+07:00",
   "state": "working",
   "task": "C-0040",
-  "note": "đã ack; cần mở phạm vi tests/e2e/dashboard.spec.ts",
+  "note": "C-0041 xác nhận dashboard.test.ts trong phạm vi; bắt đầu e2e",
   "done": []
 }
