@@ -1,9 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PublicSnapshot } from '@quiz/contracts';
+import type { PublicSnapshot, WsMessage } from '@quiz/contracts';
 import { selectNewestSnapshot, shouldAcceptSnapshotSeq } from '../overlayLogic';
 import { makeMockSnapshot } from '../mock/snapshots';
 
 export type SnapshotConnection = 'connecting' | 'connected' | 'reconnecting';
+
+export function applyAnswerCounts(
+  current: PublicSnapshot | null,
+  currentSeq: number | null,
+  awaitingFreshSnapshot: boolean,
+  message: WsMessage<'ANSWER_COUNTS'>,
+): { snapshot: PublicSnapshot | null; seq: number | null } {
+  if (awaitingFreshSnapshot || !current || !shouldAcceptSnapshotSeq(currentSeq, message.seq))
+    return { snapshot: current, seq: currentSeq };
+
+  if (message.sessionId !== current.sessionId) return { snapshot: current, seq: currentSeq };
+
+  // Nhận seq mới ngay cả khi qid đã cũ để frame snapshot đến trễ hơn không thể ghi lùi dữ liệu.
+  const seq = message.seq;
+  if (
+    current.state !== 'ACCEPTING' ||
+    current.stateVersion !== message.stateVersion ||
+    current.question?.questionInstanceId !== message.payload.questionInstanceId
+  ) return { snapshot: current, seq };
+
+  // ANSWER_COUNTS chỉ mang tổng số người trả lời; phân bố A/B/C/D vẫn lấy từ snapshot REVEAL.
+  return {
+    snapshot: {
+      ...current,
+      answerCount: message.payload.answerCount,
+      participantCount: message.payload.participantCount,
+    },
+    seq,
+  };
+}
 
 export function useSnapshot(mockScene: string | null) {
   const [snapshot, setSnapshot] = useState<PublicSnapshot | null>(null);
@@ -45,10 +75,28 @@ export function useSnapshot(mockScene: string | null) {
       };
       currentSocket.onmessage = (event) => {
         try {
-          const message = JSON.parse(String(event.data)) as {
-            type?: string; seq?: number; payload?: PublicSnapshot; serverTimeMs?: number;
-          };
-          if (socket !== currentSocket || message.type !== 'STATE_SNAPSHOT' || !message.payload || typeof message.seq !== 'number') return;
+          const message = JSON.parse(String(event.data)) as WsMessage;
+          if (socket !== currentSocket || !Number.isSafeInteger(message.seq)) return;
+
+          if (message.type === 'ANSWER_COUNTS') {
+            const payload = message.payload;
+            if (
+              typeof message.sessionId !== 'string' ||
+              !Number.isSafeInteger(message.stateVersion) ||
+              typeof payload?.questionInstanceId !== 'string' ||
+              !Number.isSafeInteger(payload.answerCount) || payload.answerCount < 0 ||
+              !Number.isSafeInteger(payload.participantCount) || payload.participantCount < 0
+            ) return;
+            const next = applyAnswerCounts(latest.current, latestSeq.current, awaitingFreshSnapshot, message);
+            if (next.seq !== latestSeq.current) latestSeq.current = next.seq;
+            if (next.snapshot !== latest.current && next.snapshot) {
+              latest.current = next.snapshot;
+              setSnapshot(next.snapshot);
+            }
+            return;
+          }
+
+          if (message.type !== 'STATE_SNAPSHOT' || !message.payload || typeof message.seq !== 'number') return;
           if (!shouldAcceptSnapshotSeq(latestSeq.current, message.seq, awaitingFreshSnapshot)) return;
           const incoming = message.payload;
           const next = selectNewestSnapshot(latest.current, incoming, awaitingFreshSnapshot);

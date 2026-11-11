@@ -1,6 +1,6 @@
 # Tiến độ dự án — Storm Arena LIVE Quiz
 
-Cập nhật: **11/11/2026 15:55** · Coordinator (Claude) cập nhật file này mỗi lần gộp việc / đổi kế hoạch.
+Cập nhật: **11/11/2026 21:35** · Coordinator (Claude) cập nhật file này mỗi lần gộp việc / đổi kế hoạch.
 Ký hiệu: ✅ xong (đã gộp main, test xanh) · 🔄 đang làm · ⏳ chờ · ⛔ bị chặn (ghi lý do) · ETA = giờ dự kiến xong, **là ước lượng**, không phải cam kết.
 
 Mốc sự kiện (từ đặc tả): tổng duyệt 12/11, thi đấu 13–14/11.
@@ -16,26 +16,28 @@ Mốc sự kiện (từ đặc tả): tổng duyệt 12/11, thi đấu 13–14/1
 | M4 | Trang Kiểm tra kết nối 9 bước + Connection Manager + hướng dẫn OBS (C-0018) | ✅ 11/11 14:10 | — | — |
 | M5 | 36 câu Free Fire (chờ người dùng duyệt `docs/review/DE_XUAT_CAU_HOI_FF.md`) + privacy-check + CI Windows (C-0005) | ✅ 11/11 14:10 (CI ✅); duyệt câu: **người dùng** | — | — |
 | M6 | Bộ cài Windows (Electron 42 + NSIS): một cổng, app, bộ cài, dashboard tự lấy token (C-0019) | ✅ 11/11 14:10 — còn thử trên máy không có Node | — | máy sạch: **người dùng** |
-| M7 | Setup Wizard lần đầu 8 bước, cho bỏ qua TikTok (C-0021 codex2) | 🔄 codex2 | 11/11 17:00 | — |
-| M8 | Bố cục V3 theo ảnh mẫu người dùng gửi | ✅ 11/11 15:30 (dựng thẳng theo ảnh mẫu, xem bằng `/overlay/?mock=question`) | — | — |
+| M7 | Setup Wizard lần đầu 8 bước, cho bỏ qua TikTok (C-0021) + phiên TikTok + duyệt câu (C-0024) | ✅ 11/11 17:30 | — | — |
+| M8 | Bố cục V3 theo ảnh mẫu `ref/storm-arena-ref.png`: nền bão, sân vận động, khán đài bậc, HUD neon (C-0060/63/65) | 🔄 gần đạt — đã gộp vòng 2; logo to như mẫu (C-0073 codex2) | 12/11 sáng | chibi quay lưng: cần asset người dùng |
 | M9 | Overlay V3: header, Top 10 trái, câu hỏi + đồng hồ + 4 đáp án, MC Kelly (ảnh thật tách nền), 7×5 khán giả dùng **66 chibi thật** (mỗi người 1 nhân vật) | ✅ 11/11 15:50 — chạy vòng thật 100 người | — | chibi đang nhìn thẳng (mẫu là quay lưng) — cần bộ chibi quay lưng nếu muốn y mẫu |
-| M10 | 35 ghế khán giả: lõi (C-0020) + tích hợp server/DB/WS ✅ (`338f5b1`, 167 test); lớp hiển thị trên overlay (C-0026 codex2) | 🔄 overlay | 12/11 12:00 | ảnh chibi nền trong suốt: tạm dùng hình giữ chỗ |
+| M10 | 35 ghế khán giả: lõi + server + overlay; đếm đáp án realtime (C-0064); tải 2.000 người p99 ~9 ms, soak 60' không rò bộ nhớ | ✅ 11/11 20:45 | — | — |
 | M11 | Kết nối TikTok LIVE | 🔄 **dùng tạm thư viện cộng đồng `tiktok-live-connector` (người dùng chốt 11/11)** — adapter + server + test ✅ (`4b79ba4`); thư viện chạy được từ máy này; giao diện tạo phiên TikTok + duyệt câu (C-0024 codex2) | thử LIVE thật: ngay khi người dùng phát LIVE | **người dùng phát LIVE để thử bình luận thật**; song song vẫn hỏi kênh chính thức |
-| M12 | Popup vinh danh Top 3: cúp + sân khấu gốc, 3 chibi đứng sàn (2-1-3), bảng tên | ✅ 11/11 15:45 | — | — |
-| M13 | Tổng duyệt kỹ thuật bằng Mock: bộ cài + OBS + trọn trận + lưu kết quả + đóng an toàn | ⏳ | 12/11 sáng | cần M7; người dùng thử OBS/LIVE Studio thật |
+| M12 | Popup vinh danh Top 3 theo `ref/victory-ref-2.webp`: chibi toàn thân ĐỨNG TRÊN bục, bảng tên lục giác dưới chân | 🔄 làm lại (C-0055/C-0068 codex2) — người dùng chê bản cũ | 12/11 sáng | — |
+| M13 | Tổng duyệt kỹ thuật bằng Mock: bộ cài + OBS + trọn trận + lưu kết quả + đóng an toàn | 🔄 e2e trọn vòng 10 câu với server thật ✅ (C-0062); còn thử OBS/LIVE Studio thật | 12/11 | người dùng thử OBS/LIVE Studio |
 | M14 | Sẵn sàng LIVE thật (V3.1 mục G) | ⛔ | phụ thuộc M11 | — |
-
-| M15 | MC Kelly PNG Sequence | ⏳ trình phát (C-0030 codex2) chuẩn bị sẵn; **frame do người dùng làm sau** — đặc tả `docs/ASSET_SPEC_MC_SEQUENCE.md` | khi có frame | frame từ người dùng |
+| M15 | MC Kelly PNG Sequence (idle/talking/excited/victory) | ⏳ trình phát sẵn, chưa có frame (dùng ảnh tĩnh) | khi có frame | frame từ người dùng |
+| M16 | Giọng MC Kelly (MCVoiceSystem, ClipAI) — spec `docs/specs/MC_VOICE_SPEC.md` | 🔄 bước 0 khảo sát + đề xuất (C-0070/C-0075 codex1) → người dùng duyệt → code (mock) → coordinator chạy thật | 12/11 | duyệt đề xuất; token ClipAI do người dùng nhập |
+| M17 | Mô phỏng UI TikTok LIVE + safe zone theo 3 ảnh iPhone thật (C-0056/58/66) | ✅ 11/11 21:20 — bố cục phát = bố cục xem thử; e2e safe-zone mọi scene (C-0067 codex1) 🔄 | — | — |
 
 ## Việc theo làn (chi tiết: `mailbox/BOARD.md`)
 
 | Làn | Đang làm | Hàng chờ |
 |---|---|---|
-| coordinator | rà/gộp; chờ buổi LIVE thử (M11) | M8 wireframe khi có ảnh mẫu |
-| codex1 | DP6 test duyệt câu hỏi | C-0027 tải khán giả 2000 người + kiểm thử V3 §17 |
-| codex2 | C-0021 Setup Wizard | C-0024 giao diện TikTok + duyệt câu → C-0026 lớp khán giả |
+| coordinator | rà/gộp; chờ buổi LIVE thử (M11) | chạy thật ClipAI khi được duyệt |
+| codex1 | C-0067 e2e safe-zone | C-0070/75 đề xuất giọng MC |
+| codex2 | C-0068 Victory theo ref | C-0073 logo to như mẫu |
 
 ## Nhật ký
+- 11/11 21:35 — Main: 227 test + 33 e2e xanh. Gộp HUD LIVE mô phỏng + safe zone, arena vòng 2, đếm đáp án realtime, e2e trọn vòng. Đang: Victory làm lại, logo to, đề xuất giọng MC ClipAI.
 - 11/11 15:55 — Overlay V3 theo ảnh mẫu + popup Top 3 + khán giả chibi thật (asset tách nền ở assets-local/, ngoài git); 170 test, e2e 17/17.
 - 11/11 15:10 — M10 server xong: 35 ghế, gán nhân vật, xoay ghế giữ Top 3, khôi phục sau restart, overlay không lộ ID (167 test); gộp C-0020B phát lại bình luận.
 - 11/11 14:35 — Người dùng chốt dùng tạm connector GitHub: TikTokLiveAdapter + phiên TIKTOK + API duyệt câu hỏi (146→158 test); thư viện chạy được qua mạng máy này; gộp C-0020 audience-engine.

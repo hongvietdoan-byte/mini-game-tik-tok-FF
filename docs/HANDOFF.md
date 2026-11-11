@@ -1,4 +1,4 @@
-# HANDOFF — phiên coordinator (cập nhật 11/11/2026 ~16:40)
+# HANDOFF — phiên coordinator (cập nhật 11/11/2026 ~19:50)
 
 **PHIÊN KẾ (điều phối quiz TikTok sau nén) — ĐÃ NHẬN 11/11 (sau nén).**
 
@@ -12,18 +12,18 @@ Phiên trước đầy context. Phiên mới: **chỉ điều phối** (memory `
 3. Gộp nhánh Codex trong worktree riêng hoặc gộp nhanh rồi push ngay (mb.py của Codex `pull --rebase` ở checkout chính). Build overlay trong Git Bash phải `MSYS_NO_PATHCONV=1`.
 4. Đặt `py tools/mb.py wait --for coordinator --timeout 3600 --interval 60` chạy nền để được đánh thức khi có thư.
 
-## Trạng thái (11/11 ~19:10) — main ≈ `1cb2dbc`, 214 test + e2e 28 xanh
-- Đã gộp: Setup Wizard + phiên TikTok + duyệt câu (C-0021/24), test V3/tải (C-0027/36), dashboard e2e (C-0040), replay TikTok (C-0043), soak 60' (C-0051), McSequence (C-0037), cutout tool (C-0034/44), overlay V3 redesign (C-0032).
+## Trạng thái (11/11 ~19:50) — main ≈ `87a6861`, 220 test + e2e 29 xanh
+- Đã gộp: Setup Wizard + phiên TikTok + duyệt câu (C-0021/24), test V3/tải (C-0027/36/53), dashboard e2e (C-0040), replay TikTok (C-0043), soak 60' (C-0051), McSequence (C-0037), cutout tool (C-0034/44), overlay V3 redesign (C-0032), HUD LIVE mô phỏng + safe zone (C-0056/57/58), Top10 đủ 10 hàng + crop an toàn x 9–91 % (C-0054).
 - Coordinator tự sửa: lỗi "Failed to retrieve Room ID" → coi như chưa LIVE, không retry dồn (f485321).
-- Asset cục bộ (ngoài git): `assets-local/chibi/` = bộ ĐÃ tách nền (bộ cũ ở `_backup/chibi-old-chua-sach/`); `mc/kelly.png` (rembg 17:18, người dùng "tạm được"); `mc/kelly/{idle,welcome,ask,react,celebrate}/` chờ frame; `brand/logo.png` = logo chính thức BVĐC; `cards/the-chien-dau-ffvn-kelly.png` = chuẩn khung; `ref/victory-ref.png` = mẫu Victory. Server soát ảnh: `py -m http.server 8791 --directory assets-local`.
+- Asset cục bộ (ngoài git): `assets-local/chibi/` = bộ ĐÃ tách nền (bộ cũ ở `_backup/chibi-old-chua-sach/`); `mc/kelly.png` (rembg, "tạm được"); `mc/kelly/{idle,...}/` chờ frame; `brand/logo.png` = logo chính thức; `cards/the-chien-dau-ffvn-kelly.png`; `ref/victory-ref.png` (Victory: chibi đứng TRÊN bục); `ref/storm-arena-ref.png` = MẪU TOÀN CẢNH người dùng đòi giống (HUD, phong cách, background); `ref/tiktok-live-1..3.png` = UI LIVE thật (safe zone: trên 14 %, comment trái 73–92 %, crop ngang 9 %). Server soát ảnh: `py -m http.server 8791 --directory assets-local`.
 
 ## Hàng chờ Codex
 | Làn | Thư | Việc |
 |---|---|---|
-| codex2 | C-0056 → C-0054 → C-0055 | HUD mô phỏng phải là UI LIVE (không phải video) + safe zone; sửa Top10 cắt tên/hụt hàng 10, dòng "đang chờ chỗ" đè ghế; Victory: 3 chibi TOÀN THÂN đứng TRÊN bục như `ref/victory-ref.png`, bảng tên lục giác dưới chân |
-| codex1 | C-0053 | Sửa `tests/load/audience.test.ts` (2000 CORRECT, Kahoot) — Codex 1 có thể chưa đọc, người dùng nhắc |
+| codex2 | C-0060 (ƯU TIÊN) → C-0055 | C-0060: overlay giống `ref/storm-arena-ref.png` (nền sân bão, khán đài bậc, HUD neon, header, Top10, MC). Khi report: gộp sau khi test xanh rồi cho người dùng xem ảnh cạnh ref. C-0055: Victory 3 chibi toàn thân đứng trên bục, bảng tên lục giác |
+| codex1 | C-0062 | `tests/e2e/live-round.test.ts` full vòng overlay/dashboard + replay TikTok + FPS |
 | — | — | Hết việc: Codex gửi note "rảnh"; DP1/2/4 đã xong (BOARD) |
 
 ## Đang chờ người dùng
-- Ảnh chụp màn hình phòng LIVE TikTok thật (góc nhìn người xem) → `assets-local/ref/tiktok-live-*.png` để căn safe zone.
+- Có làm được nền sạch 1080×1920 không UI và/hoặc chibi nhìn từ sau lưng (để giống ref hơn) không.
 - Duyệt 36 câu Free Fire (`docs/review/DE_XUAT_CAU_HOI_FF.md`); phát LIVE thử (@username); quyền asset; frame PNG Sequence MC; khung trống thẻ chiến đấu (nếu có).
