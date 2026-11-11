@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 76,
-  "heartbeat": "2026-11-11T22:21:36+07:00",
+  "heartbeat": "2026-11-11T22:54:09+07:00",
   "state": "working",
-  "task": "C-0080",
-  "note": "đang audit overlay trong worktree; gộp sửa logo, timer, đáp án, MC và Victory theo ref",
+  "task": "C-0082",
+  "note": "đang thay Victory SVG bằng bg.jpg + trophy-stage.png trong nhánh C-0080",
   "done": []
 }
