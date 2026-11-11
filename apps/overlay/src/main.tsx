@@ -159,30 +159,45 @@ function queryPixelOverride(query: URLSearchParams, key: string, fallback: numbe
   return Math.min(max, Number(raw));
 }
 
-function TikTokHudSimulator() {
+function TikTokHudSimulator({ debug }: { debug: boolean }) {
   return <div className="tiktok-hud" data-testid="tiktok-hud" aria-label="Mô phỏng giao diện TikTok LIVE">
-    <div className="tiktok-hud-live" data-testid="tiktok-live-info">
-      <span className="tiktok-hud-live-badge"><i />LIVE</span>
-      <span className="tiktok-hud-live-copy"><b>Storm Arena · DEMO</b><small>1,2K người xem</small></span>
-      <span className="tiktok-hud-follow">Theo dõi</span>
+    <div className="tiktok-hud-status" data-testid="tiktok-status-bar" aria-label="Thanh trạng thái điện thoại">
+      <b>9:41</b><span>▮▮▮　◉　▰</span>
     </div>
-    <aside className="tiktok-hud-actions" data-testid="tiktok-actions" aria-label="Nút tương tác mô phỏng">
-      <div><i className="hud-avatar">SA</i><small>LIVE</small></div>
-      <div><b>♡</b><small>8,6K</small></div>
-      <div><b>▢</b><small>1,2K</small></div>
-      <div><b>✦</b><small>Quà</small></div>
-      <div><b>↗</b><small>Chia sẻ</small></div>
-    </aside>
+    <div className="tiktok-hud-host" data-testid="tiktok-live-info">
+      <i className="tiktok-hud-host-avatar" aria-hidden="true">K</i>
+      <span className="tiktok-hud-host-copy"><b>FFVN.Kelly</b><small>♥ 1,2M lượt thích</small></span>
+      <span className="tiktok-hud-follow">+ Follow</span>
+    </div>
+    <div className="tiktok-hud-viewers" data-testid="tiktok-viewers" aria-label="Người xem và quà tặng hàng đầu">
+      <span className="tiktok-hud-viewer-avatars"><i>K</i><i>H</i><i>S</i></span>
+      <b>6,5K</b><span className="tiktok-hud-collapse">⌄</span><span className="tiktok-hud-close">×</span>
+    </div>
+    <div className="tiktok-hud-chips" data-testid="tiktok-live-chips">
+      <span>♛ Bảng xếp hạng chơi game</span><span>Khám phá</span>
+    </div>
+    <div className="tiktok-hud-event-banner" data-testid="tiktok-event-banner">
+      <small>LIVE EVENT</small><b>LIVE FEST 2026</b><span>Đấu trường bão tố</span>
+    </div>
     <section className="tiktok-hud-comments" data-testid="tiktok-comments" aria-label="Bình luận mẫu">
-      <p><b>Khán giả_01</b> Không khí quá cháy 🔥</p>
-      <p><b>Tân binh_02</b> Đáp án B!</p>
-      <p><b>StormFan_03</b> Câu tiếp theo đi MC ơi</p>
-      <p className="tiktok-hud-gift"><b>Người xem</b> đã gửi một món quà nhỏ</p>
+      <p><i>H</i><span><small><b>Hồ Anh Tuấn</b><em>▲9</em></small><strong>Bão tố hôm nay đẹp quá 💜</strong></span></p>
+      <p><i>M</i><span><small><b>Mai Linh</b><em>▲12</em></small><strong>Đang chờ vòng tiếp theo!</strong></span></p>
+      <p className="tiktok-hud-join"><b>StormKing đã tham gia</b></p>
+      <p><i>C</i><span><small><b>Choco.M</b><em>▲7</em></small><strong>Kelly ơi mình mới vào nè</strong></span></p>
+      <p className="tiktok-hud-join"><b>thảo cute đã tham gia</b></p>
     </section>
+    <div className="tiktok-hud-gift-toast" data-testid="tiktok-gift-toast"><b>🌹</b> FFVN.Kelly đã gửi Hoa hồng <strong>x1</strong></div>
+    <div className="tiktok-hud-share-float" data-testid="tiktok-share-float" aria-hidden="true">↗</div>
+    <div className="tiktok-hud-hearts" aria-hidden="true"><i>♥</i><i>♥</i><i>♥</i></div>
     <div className="tiktok-hud-comment-bar" data-testid="tiktok-comment-bar">
-      <span>Bình luận…</span><b>@</b><b>☺</b><b>◆</b>
+      <span className="tiktok-hud-game-icon" aria-hidden="true">♟</span>
+      <span className="tiktok-hud-input">Nhập… <b>☺</b></span>
+      <span className="tiktok-hud-guest" aria-hidden="true">▣</span>
+      <span className="tiktok-hud-rose" aria-hidden="true">🌹</span>
+      <span className="tiktok-hud-gift" aria-hidden="true">🎁</span>
+      <span className="tiktok-hud-share" aria-hidden="true">↗<small>12</small></span>
     </div>
-    <span className="tiktok-hud-demo-label">HUD mô phỏng · preset safe-zone thử nghiệm</span>
+    {debug && <span className="tiktok-hud-demo-label" data-testid="tiktok-hud-demo-label">HUD mô phỏng</span>}
   </div>;
 }
 
@@ -206,7 +221,7 @@ function App() {
   const snapshot = networkSnapshot;
   const debug = query.get('debug') === '1';
   const remainingMs = useTimer(snapshot ?? ({ timer: null } as PublicSnapshot), serverTimeMs, clockOffsetMs);
-  const guides = query.get('guides') === '1' || hud;
+  const guides = debug && (query.get('guides') === '1' || hud);
   const safeZone = snapshot ? {
     ...snapshot.safeZone,
     top: queryPixelOverride(query, 'safeTop', snapshot.safeZone.top, 1920),
@@ -236,7 +251,7 @@ function App() {
         <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px 0px ${safeZone.bottom}px ${safeZone.left}px` }} />
         <div className="safe-zone-right-band" aria-hidden="true" style={{ top: `${Math.max(safeZone.top, safeZone.rightFromY ?? 0)}px`, bottom: `${safeZone.bottom}px`, width: `${safeZone.right}px` }} />
       </>}
-      {hud && <TikTokHudSimulator />}
+      {hud && <TikTokHudSimulator debug={debug} />}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
   </main>;

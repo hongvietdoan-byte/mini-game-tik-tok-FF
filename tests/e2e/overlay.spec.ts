@@ -299,7 +299,7 @@ test('question and Top 10 stay below the 14 percent TikTok top safe zone', async
   }
 });
 
-test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', async ({ page }) => {
+test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ page }) => {
   const errors = watchPageErrors(page);
   await page.setViewportSize({ width: 921, height: 2000 });
   await page.goto('/?mock=question&hud=1&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
@@ -317,11 +317,44 @@ test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', 
     expect(box!.x).toBeGreaterThanOrEqual(-2);
     expect(box!.x + box!.width).toBeLessThanOrEqual(923);
   }
-  await expect(page.getByTestId('tiktok-live-info')).toContainText('LIVE');
-  await expect(page.getByTestId('tiktok-actions').locator('> div')).toHaveCount(5);
-  await expect(page.getByTestId('tiktok-comments').locator('p')).toHaveCount(4);
-  await expect(page.getByTestId('tiktok-comment-bar')).toContainText('Bình luận');
-  await expect(page.getByTestId('safe-zone-guides')).toBeVisible();
+  await expect(page.getByTestId('tiktok-status-bar')).toBeVisible();
+  await expect(page.getByTestId('tiktok-live-info')).toContainText('FFVN.Kelly');
+  await expect(page.getByTestId('tiktok-viewers')).toContainText('6,5K');
+  await expect(page.getByTestId('tiktok-live-chips')).toContainText('Bảng xếp hạng chơi game');
+  await expect(page.getByTestId('tiktok-event-banner')).toContainText('LIVE FEST 2026');
+  await expect(page.getByTestId('tiktok-actions')).toHaveCount(0);
+  await expect(page.getByTestId('tiktok-comments').locator('p')).toHaveCount(5);
+  await expect(page.getByTestId('tiktok-comments')).toContainText('đã tham gia');
+  await expect(page.getByTestId('tiktok-gift-toast')).toBeVisible();
+  await expect(page.getByTestId('tiktok-share-float')).toBeVisible();
+  await expect(page.getByTestId('tiktok-comment-bar')).toContainText('Nhập…');
+  await expect(page.getByTestId('safe-zone-guides')).toHaveCount(0);
+  await expect(page.getByTestId('tiktok-hud-demo-label')).toHaveCount(0);
+  for (const selector of ['.tiktok-hud-host', '.tiktok-hud-viewers', '.tiktok-hud-event-banner', '.tiktok-hud-comments', '.tiktok-hud-comment-bar']) {
+    const box = await page.locator(selector).boundingBox();
+    expect(box, `${selector} stays on the phone screen`).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(-2);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(923);
+  }
+  const [hostBox, chipsBox, eventBox, commentsBox, giftBox, inputBox] = await Promise.all([
+    page.getByTestId('tiktok-live-info').boundingBox(),
+    page.getByTestId('tiktok-live-chips').boundingBox(),
+    page.getByTestId('tiktok-event-banner').boundingBox(),
+    page.getByTestId('tiktok-comments').boundingBox(),
+    page.getByTestId('tiktok-gift-toast').boundingBox(),
+    page.getByTestId('tiktok-comment-bar').boundingBox(),
+  ]);
+  expect(hostBox!.y).toBeGreaterThanOrEqual(120);
+  expect(hostBox!.y + hostBox!.height).toBeLessThanOrEqual(205);
+  expect(chipsBox!.y).toBeGreaterThanOrEqual(200);
+  expect(chipsBox!.y + chipsBox!.height).toBeLessThanOrEqual(275);
+  expect(eventBox!.y + eventBox!.height).toBeLessThanOrEqual(370);
+  expect(commentsBox!.y).toBeGreaterThanOrEqual(1380);
+  expect(commentsBox!.y + commentsBox!.height).toBeLessThanOrEqual(1855);
+  expect(giftBox!.y).toBeGreaterThanOrEqual(1230);
+  expect(giftBox!.y).toBeLessThanOrEqual(1370);
+  expect(inputBox!.y).toBeGreaterThanOrEqual(1830);
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(1945);
   const values = await stage.evaluate((element) => {
     const style = getComputedStyle(element);
     return ['--safe-top', '--safe-right', '--safe-bottom', '--safe-left', '--safe-right-from-y']
@@ -329,6 +362,9 @@ test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', 
   });
   expect(values).toEqual(['180px', '140px', '120px', '20px', '700px']);
   await page.screenshot({ path: join(screenshotDirectory, 'question-hud.png'), fullPage: true });
+  await page.goto('/?mock=question&hud=1&debug=1', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('safe-zone-guides')).toBeVisible();
+  await expect(page.getByTestId('tiktok-hud-demo-label')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
