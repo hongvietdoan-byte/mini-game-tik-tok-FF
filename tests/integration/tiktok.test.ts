@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import WebSocket from 'ws';
 import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
@@ -29,20 +34,65 @@ async function bootTikTok() {
   const store = new Store(tempDbPath());
   store.seedQuestions({ id: 'demo', name: 'Demo' }, makeQuestions(20), scheduler.now());
   const conn = new FakeConn();
+  const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-tiktok-preflight-'));
+  const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
+  for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
+  for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
+    const path = join(webRoots.assets, relative);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, 'test asset placeholder');
+  }
   const quiz: QuizApp = await buildApp({
     store,
     scheduler,
     adminToken: TOKEN,
+    repositoryRoot: process.cwd(),
+    webRoots,
     adapterFactory: (mode, config) =>
       new TikTokLiveAdapter({ username: config.tiktokUsername!, scheduler, createConnection: () => conn }),
   });
+  await quiz.app.listen({ host: '127.0.0.1', port: 0 });
+  const port = (quiz.app.server.address() as AddressInfo).port;
+  const sockets: WebSocket[] = [];
   cleanup.push(async () => {
+    for (const socket of sockets) {
+      if (socket.readyState === WebSocket.CLOSED) continue;
+      await new Promise<void>((resolve) => { socket.once('close', () => resolve()); socket.close(); });
+    }
     await quiz.close();
     store.close();
+    rmSync(tempRoot, { recursive: true, force: true });
   });
   const inject = (method: 'GET' | 'POST', url: string, payload?: unknown) =>
     quiz.app.inject({ method, url, headers: AUTH, ...(payload ? { payload } : {}) });
-  return { scheduler, store, conn, quiz, inject };
+  return { scheduler, store, conn, quiz, port, sockets, inject };
+}
+
+async function connectOverlay(h: Awaited<ReturnType<typeof bootTikTok>>) {
+  const socket = new WebSocket(`ws://127.0.0.1:${h.port}/ws`);
+  h.sockets.push(socket);
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Timeout ACK overlay trong test TikTok.')), 5_000);
+    socket.on('error', reject);
+    socket.on('open', () => socket.send(JSON.stringify({ type: 'HELLO', role: 'overlay' })));
+    socket.on('message', (data) => {
+      let message: { type?: string; stateVersion?: number };
+      try { message = JSON.parse(String(data)) as typeof message; } catch { return; }
+      if (message.type !== 'STATE_SNAPSHOT' || typeof message.stateVersion !== 'number') return;
+      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion }));
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
+async function waitForOverlayAck(h: Awaited<ReturnType<typeof bootTikTok>>) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const response = await h.inject('GET', '/api/preflight');
+    if (response.json().checks.find((item: { id: string }) => item.id === 'overlayAck')?.status === 'PASS') return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('Overlay chưa ACK trạng thái phiên.');
 }
 
 const chat = (userId: string, text: string, msgId: string, at: number) => ({
@@ -113,6 +163,7 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
     await new Promise((r) => setTimeout(r, 0));
     const rt = h.quiz.runtime()!;
     expect(rt.adminSnapshot().live).toMatchObject({ source: 'TIKTOK', status: 'CONNECTED' });
+    await connectOverlay(h);
 
     const cmd = async (command: object) => {
       const res = await h.inject('POST', `/api/sessions/${sid}/commands`, {
@@ -125,9 +176,10 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
       return { status: res.statusCode, body: res.json() };
     };
     expect((await cmd({ type: 'OPEN_LOBBY' })).status).toBe(200);
+    await waitForOverlayAck(h);
     // Toàn bộ câu đang là DEMO (chưa duyệt) → không được vào LIVE thật
     const blocked = await cmd({ type: 'START_ROUND' });
-    expect(blocked.body.code).toBe('INSUFFICIENT_QUESTIONS');
+    expect(blocked.body.code).toBe('PREFLIGHT_FAILED');
 
     // Người dùng duyệt 10 câu
     const qs = (await h.inject('GET', '/api/questions')).json() as { id: string }[];
@@ -139,6 +191,7 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
     const versions = h.store.raw.prepare('SELECT COUNT(*) AS n FROM question_versions').get() as { n: number };
     expect(versions.n).toBe(10);
 
+    await waitForOverlayAck(h);
     expect((await cmd({ type: 'START_ROUND' })).status).toBe(200);
     for (let i = 0; i < 40 && rt.engine.state !== 'ACCEPTING'; i++) h.scheduler.advance(250);
     expect(rt.engine.state).toBe('ACCEPTING');
@@ -171,6 +224,7 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
       .sessionId as string;
     await new Promise((r) => setTimeout(r, 0));
     const rt = h.quiz.runtime()!;
+    await connectOverlay(h);
     const cmd = (command: object) =>
       h.inject('POST', `/api/sessions/${sid}/commands`, {
         commandId: randomUUID(),
@@ -180,6 +234,7 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
         command,
       });
     await cmd({ type: 'OPEN_LOBBY' });
+    await waitForOverlayAck(h);
     await cmd({ type: 'START_ROUND' });
     for (let i = 0; i < 40 && rt.engine.state !== 'ACCEPTING'; i++) h.scheduler.advance(250);
 
