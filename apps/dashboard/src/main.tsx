@@ -12,6 +12,7 @@ import {
 } from '@quiz/contracts';
 import { ApiError, apiClient, type DashboardClient, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './api/client';
 import { mockClient } from './api/mockClient';
+import { adminTokenForRuntime, overlayUrlForRuntime, shouldPersistAdminToken, type StormArenaInfo } from './desktopBridge';
 import {
   actionsFor,
   buildCommandEnvelope,
@@ -36,8 +37,12 @@ type RecoveryDecision = 'RESUME' | 'VOID' | 'STOP';
 type PendingDanger = { action: DashboardAction; decision?: RecoveryDecision };
 
 function App() {
-  const overlayUrl = useMemo(() => overlayUrlFromLocation(location.href), []);
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) ?? '');
+  const desktopBridge = window.stormArena;
+  const isDesktop = desktopBridge !== undefined;
+  const [overlayUrl, setOverlayUrl] = useState(() => overlayUrlFromLocation(location.href));
+  const [desktopInfo, setDesktopInfo] = useState<StormArenaInfo | null>(null);
+  const [desktopAuthLoading, setDesktopAuthLoading] = useState(isDesktop);
+  const [token, setToken] = useState(() => isDesktop ? '' : sessionStorage.getItem(TOKEN_KEY) ?? '');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AdminSnapshot | null>(null);
   const [timerAnchor, setTimerAnchor] = useState({ serverTimeMs: Date.now(), offsetMs: 0 });
@@ -71,6 +76,59 @@ function App() {
     }, setSocketStatus);
   }, []);
 
+  const connectWithToken = useCallback(async (auth: string, persistToken: boolean) => {
+    const cleanToken = auth.trim();
+    if (!isMock && !cleanToken) {
+      setError('Nhập mã quản trị để kết nối.');
+      setDesktopAuthLoading(false);
+      return;
+    }
+    setBusy(true);
+    setError('');
+    if (!isMock && persistToken && shouldPersistAdminToken(desktopBridge)) {
+      sessionStorage.setItem(TOKEN_KEY, cleanToken);
+    }
+    try {
+      const openSession = await client.currentSession();
+      if (openSession) {
+        const next = await client.getState(cleanToken, openSession);
+        connectSession(openSession, next, cleanToken);
+      } else {
+        setNeedsSession(true);
+      }
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setBusy(false);
+      setDesktopAuthLoading(false);
+    }
+  }, [connectSession, desktopBridge]);
+
+  useEffect(() => {
+    if (!desktopBridge) return;
+    let active = true;
+    void Promise.all([
+      adminTokenForRuntime(desktopBridge, ''),
+      desktopBridge.getInfo().catch(() => null),
+    ]).then(([auth, info]) => {
+      if (!active) return;
+      setDesktopInfo(info);
+      setOverlayUrl(overlayUrlForRuntime(info, location.href));
+      setToken(auth);
+      if (!auth) {
+        setError('Ứng dụng desktop chưa cung cấp mã quản trị. Khởi động lại ứng dụng rồi thử lại.');
+        setDesktopAuthLoading(false);
+        return;
+      }
+      void connectWithToken(auth, false);
+    }).catch((cause: unknown) => {
+      if (!active) return;
+      setError(`Không thể khởi động dashboard desktop: ${errorText(cause)}`);
+      setDesktopAuthLoading(false);
+    });
+    return () => { active = false; };
+  }, [connectWithToken, desktopBridge]);
+
   useEffect(() => {
     if (!snapshot?.public.timer?.running) return;
     const interval = window.setInterval(() => setNow(Date.now()), 200);
@@ -95,27 +153,7 @@ function App() {
 
   async function connectToServer(event: React.FormEvent) {
     event.preventDefault();
-    const cleanToken = token.trim();
-    if (!isMock && !cleanToken) {
-      setError('Nhập mã quản trị để kết nối.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    if (!isMock) sessionStorage.setItem(TOKEN_KEY, cleanToken);
-    try {
-      const openSession = await client.currentSession();
-      if (openSession) {
-        const next = await client.getState(cleanToken, openSession);
-        connectSession(openSession, next, cleanToken);
-      } else {
-        setNeedsSession(true);
-      }
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setBusy(false);
-    }
+    await connectWithToken(token, shouldPersistAdminToken(desktopBridge));
   }
 
   async function createSession(event: React.FormEvent<HTMLFormElement>) {
@@ -410,12 +448,13 @@ function App() {
         </aside>
       </div> : page === 'checks'
         ? <ConnectionChecksPage client={client} token={token.trim()} />
-        : <ObsGuidePage overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} />}
+        : <ObsGuidePage overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} desktopInfo={desktopInfo} />}
     </> : <section className="entry-layout">
       <div className="entry-card">
         <span className="eyebrow">TIKTOK LIVE QUIZ</span><h1>{needsSession ? 'Tạo phiên MOCK' : 'Kết nối điều khiển'}</h1>
         <p>{isMock ? 'Môi trường thử nghiệm trong trình duyệt. Không cần server.' : 'Kết nối tới server cục bộ để điều khiển phiên quiz.'}</p>
-        {!isMock && <form className="entry-form" onSubmit={(event) => void connectToServer(event)}>
+        {isDesktop && desktopAuthLoading && <p className="desktop-auth-status" role="status">Đang kết nối ứng dụng desktop…</p>}
+        {!isMock && !isDesktop && <form className="entry-form" onSubmit={(event) => void connectToServer(event)}>
           <label>Mã quản trị<input type="password" autoComplete="current-password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Dán mã từ data/admin-token.txt" /></label>
           <button className="primary-button" disabled={busy}>{busy ? 'Đang kết nối…' : 'Kết nối'}</button>
         </form>}
@@ -494,7 +533,7 @@ function ConnectionChecksPage({ client, token }: { client: DashboardClient; toke
   </section>;
 }
 
-function ObsGuidePage({ overlayClients, overlayUrl }: { overlayClients: number; overlayUrl: string }) {
+function ObsGuidePage({ overlayClients, overlayUrl, desktopInfo }: { overlayClients: number; overlayUrl: string; desktopInfo: StormArenaInfo | null }) {
   const [copyMessage, setCopyMessage] = useState('');
 
   async function copyUrl() {
@@ -511,6 +550,11 @@ function ObsGuidePage({ overlayClients, overlayUrl }: { overlayClients: number; 
       <div className="page-heading"><div><span className="eyebrow">V3.1 · PHÁT HÌNH</span><h2>Phát lên OBS / TikTok LIVE Studio</h2><p>Overlay chạy riêng để giữ hình ảnh trò chơi và trạng thái kết nối.</p></div></div>
       <div className="overlay-url-row"><label>Overlay URL<code>{overlayUrl}</code></label><button className="secondary-button" type="button" onClick={() => void copyUrl()}>Copy</button><a className="primary-button preview-link" href={overlayUrl} target="_blank" rel="noreferrer">Xem trước ↗</a></div>
       {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
+      {desktopInfo && <div className="desktop-app-info" data-testid="desktop-app-info">
+        <span>Phiên bản ứng dụng <b>{desktopInfo.version}</b></span>
+        <span>Thư mục dữ liệu <code>{desktopInfo.dataDir}</code></span>
+        <button className="secondary-button" type="button" disabled title="Chức năng mở thư mục sẽ được bổ sung sau.">Mở thư mục dữ liệu</button>
+      </div>}
       <div className="overlay-client-count"><b>{overlayClients}</b><span>overlay đang kết nối</span><small>Chỉ cho biết overlay đang mở, không xác nhận phần mềm phát đang lên sóng.</small></div>
     </section>
     <section className="panel obs-steps">
