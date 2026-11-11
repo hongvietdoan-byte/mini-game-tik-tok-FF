@@ -39,6 +39,15 @@ export function actionsFor(snapshot: AdminSnapshot): DashboardAction[] {
   return [...(normalActions[snapshot.public.state] ?? [])];
 }
 
+export function shouldAcceptSnapshotSeq(
+  currentSeq: number | null,
+  incomingSeq: number,
+  awaitingFreshSnapshot = false,
+): boolean {
+  if (!Number.isSafeInteger(incomingSeq) || incomingSeq < 0) return false;
+  return awaitingFreshSnapshot || currentSeq === null || incomingSeq > currentSeq;
+}
+
 export const dangerousActions: DashboardAction[] = [
   { type: 'SKIP_QUESTION', label: 'Bỏ qua câu', danger: true },
   { type: 'VOID_QUESTION', label: 'Huỷ câu', danger: true },

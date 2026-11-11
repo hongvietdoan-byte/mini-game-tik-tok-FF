@@ -287,13 +287,14 @@ function App() {
       <div className="dashboard-grid">
         <div className="main-column">
           <section className="panel state-panel">
-            <div className="panel-title"><div><span className="eyebrow">TRẠNG THÁI HIỆN TẠI</span><h2>{stateName(snapshot.public.state)}</h2></div><span className={`state-chip state-${snapshot.public.state.toLowerCase()}`}>{snapshot.public.scene}</span></div>
+            <div className="panel-title"><div><span className="eyebrow">TRẠNG THÁI HIỆN TẠI</span><h2>{stateName(snapshot.public.state)}</h2></div><span className={`state-chip state-${snapshot.public.state.toLowerCase()}`}>{sceneName(snapshot.public.state, snapshot.public.scene)}</span></div>
             <div className="state-metrics">
               <Metric label="CÂU HỎI" value={`${(snapshot.public.round?.questionIndex ?? 0) + 1} / ${snapshot.public.round?.questionCount ?? snapshot.config.questionsPerRound}`} />
               <Metric label="THỜI GIAN" value={timerRemainingMs === null ? '—' : `${Math.ceil(timerRemainingMs / 1000)}s`} />
               <Metric label="ĐÃ TRẢ LỜI" value={snapshot.public.answerCount} />
               <Metric label="NGƯỜI THAM GIA" value={snapshot.public.participantCount} />
             </div>
+            <div className="mc-status" data-testid="mc-bubble"><span className="mc-mark">MC</span><div><small>MC KELLY · {snapshot.public.mc.state.toUpperCase()}</small><p>{snapshot.public.mc.bubble}</p></div></div>
             <div className="connection-line"><span className={`connection-dot connection-${snapshot.public.connection.toLowerCase()}`} />Nguồn bình luận <b>{connectionName(snapshot.public.connection)}</b><span className="connection-spacer" />WebSocket <b>{socketLabel(socketStatus)}</b></div>
             <div className="operator-answer"><div><small>ĐÁP ÁN ĐÚNG · CHỈ HIỂN THỊ CHO OPERATOR</small><strong>{snapshot.current?.correctOptionId ?? '—'}</strong></div><span>{snapshot.public.question?.options.find((option) => option.id === snapshot.current?.correctOptionId)?.text ?? 'Chưa có câu hỏi đang mở'}</span></div>
             <div className="answer-distribution"><b>Phân bố A / B / C / D</b><div>{(['A', 'B', 'C', 'D'] as const).map((option) => <span key={option}><i>{option}</i><strong>{snapshot.current?.optionCounts[option] ?? 0}</strong></span>)}</div></div>
@@ -337,7 +338,7 @@ function App() {
         </div>
 
         <aside className="side-column">
-          <section className="panel leaderboard-panel"><div className="panel-title"><div><span className="eyebrow">BẢNG ĐIỂM</span><h2>Top 10</h2></div><span className="muted">{snapshot.public.leaderboard?.entries.length ?? 0} người</span></div>
+          <section className="panel leaderboard-panel"><div className="panel-title"><div><span className="eyebrow">{leaderboardLabel(snapshot.public.state, snapshot.public.scene, snapshot.public.leaderboard?.kind)}</span><h2>Top 10</h2></div><span className="muted">{snapshot.public.leaderboard?.entries.length ?? 0} người</span></div>
             {snapshot.public.leaderboard?.entries.length ? <div className="dashboard-leaderboard">{snapshot.public.leaderboard.entries.slice(0, 10).map((entry) => <div className="dashboard-leaderboard-row" key={entry.playerId}><b>{entry.rank}{entry.tied && <small>ĐỒNG HẠNG</small>}</b><span>{entry.displayName}</span><strong>{entry.score.toLocaleString('vi-VN')}<small>{entry.correctCount} đúng</small></strong></div>)}</div> : <p className="empty-state">Bảng xếp hạng xuất hiện sau khi bắt đầu chơi.</p>}
             <div className="overlay-links"><a href="http://127.0.0.1:5174/" target="_blank" rel="noreferrer">Mở overlay ↗</a><a href="http://127.0.0.1:5174/?guides=1" target="_blank" rel="noreferrer">Overlay + lưới ↗</a></div>
           </section>
@@ -400,6 +401,19 @@ function socketLabel(status: SocketStatus) {
 function stateName(state: string) {
   const names: Record<string, string> = { IDLE: 'Chưa bắt đầu', LOBBY: 'Phòng chờ', PREPARE: 'Chuẩn bị', ACCEPTING: 'Đang nhận đáp án', REVEAL: 'Công bố đáp án', LEADERBOARD: 'Bảng xếp hạng', ROUND_END: 'Kết thúc vòng', VICTORY: 'Vinh danh', INTERMISSION: 'Nghỉ giữa vòng', PAUSED: 'Tạm dừng', CONNECTION_INTERRUPTED: 'Mất kết nối', ERROR: 'Lỗi kỹ thuật' };
   return names[state] ?? state;
+}
+
+function sceneName(state: string, scene: string) {
+  if (state === 'LEADERBOARD' && scene === 'REVEAL') return 'BXH NGẮN · 4 GIÂY';
+  if (state === 'LEADERBOARD' && scene === 'INTERIM_TOP10') return 'BXH LỚN · MỐC CÂU';
+  return scene;
+}
+
+function leaderboardLabel(state: string, scene: string, kind?: string) {
+  if (state === 'LEADERBOARD' && scene === 'REVEAL') return 'LEADERBOARD NGẮN · SAU CÂU';
+  if (scene === 'INTERIM_TOP10' || kind === 'FULL') return 'BXH ĐẦY ĐỦ · TOP 10';
+  if (kind === 'COMPACT') return 'BXH GỌN · TOP 10';
+  return 'BẢNG ĐIỂM';
 }
 
 function connectionName(status: string) {

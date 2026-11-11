@@ -47,6 +47,7 @@ class MockDashboardClient implements DashboardClient {
   private suspendedFrom: GameState | null = null;
   private stateVersion = 0;
   private questionIndex = 0;
+  private voidedCurrent = false;
   private roundNumber = 1;
   private autoMode = false;
   private simulator: { running: boolean; players: number } | null = null;
@@ -71,6 +72,7 @@ class MockDashboardClient implements DashboardClient {
       this.suspendedFrom = null;
       this.stateVersion = 0;
       this.questionIndex = 0;
+      this.voidedCurrent = false;
       this.roundNumber = 1;
       this.answerCount = 0;
       this.participantCount = 34;
@@ -174,15 +176,15 @@ class MockDashboardClient implements DashboardClient {
   private applyCommand(command: CommandBody) {
     switch (command.type) {
       case 'OPEN_LOBBY': this.state = 'LOBBY'; break;
-      case 'START_ROUND': this.questionIndex = 0; this.state = 'PREPARE'; break;
+      case 'START_ROUND': this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
       case 'PAUSE': this.suspendedFrom = this.state; this.state = 'PAUSED'; break;
       case 'RESUME': this.state = this.suspendedFrom ?? 'PREPARE'; this.suspendedFrom = null; break;
       case 'MANUAL_NEXT': this.advance(); break;
-      case 'NEXT_ROUND': this.roundNumber += 1; this.questionIndex = 0; this.state = 'PREPARE'; break;
+      case 'NEXT_ROUND': this.roundNumber += 1; this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
       case 'SET_AUTO_MODE': this.autoMode = command.enabled; break;
       case 'SKIP_QUESTION': this.advanceQuestion(); break;
-      case 'VOID_QUESTION': this.state = 'LEADERBOARD'; break;
-      case 'RESTART_ROUND': this.questionIndex = 0; this.state = 'PREPARE'; break;
+      case 'VOID_QUESTION': this.voidedCurrent = true; this.state = 'LEADERBOARD'; break;
+      case 'RESTART_ROUND': this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
       case 'STOP': this.state = 'IDLE'; this.suspendedFrom = null; this.simulator = null; break;
       case 'RESOLVE_RECOVERY': this.applyRecovery(command.decision); break;
     }
@@ -190,20 +192,24 @@ class MockDashboardClient implements DashboardClient {
 
   private applyRecovery(decision: 'RESUME' | 'VOID' | 'STOP') {
     if (decision === 'RESUME') this.state = this.suspendedFrom ?? 'PREPARE';
-    else if (decision === 'VOID') this.state = 'LEADERBOARD';
+    else if (decision === 'VOID') { this.voidedCurrent = true; this.state = 'LEADERBOARD'; }
     else this.state = 'IDLE';
     this.suspendedFrom = null;
   }
 
   private advance() {
     if (this.state === 'PREPARE') this.state = 'ACCEPTING';
-    else if (this.state === 'ACCEPTING') this.state = 'REVEAL';
-    else if (this.state === 'REVEAL') this.state = this.questionIndex + 1 >= this.config.questionsPerRound ? 'ROUND_END' : 'LEADERBOARD';
+    else if (this.state === 'ACCEPTING' || this.state === 'REVEAL') this.state = 'LEADERBOARD';
     else if (this.state === 'LEADERBOARD') this.advanceQuestion();
   }
 
   private advanceQuestion() {
-    this.questionIndex = Math.min(this.config.questionsPerRound - 1, this.questionIndex + 1);
+    if (this.questionIndex + 1 >= this.config.questionsPerRound) {
+      this.state = 'ROUND_END';
+      return;
+    }
+    this.questionIndex += 1;
+    this.voidedCurrent = false;
     this.answerCount = 0;
     this.optionCounts = { A: 0, B: 0, C: 0, D: 0 };
     this.state = 'PREPARE';
@@ -214,7 +220,9 @@ class MockDashboardClient implements DashboardClient {
       ? this.suspendedFrom ?? this.state
       : this.state;
     const scene = this.state === 'CONNECTION_INTERRUPTED' ? 'CONNECTION_LOST' : this.sceneFor(effectiveState);
-    const questionVisible = effectiveState === 'ACCEPTING' || effectiveState === 'REVEAL';
+    const shortLeaderboard = effectiveState === 'LEADERBOARD' && !this.isFullLeaderboard();
+    const fullLeaderboard = effectiveState === 'LEADERBOARD' && this.isFullLeaderboard();
+    const questionVisible = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING' || shortLeaderboard;
     const leaderboardEntries = makeLeaderboard();
     const questionState = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING';
     const publicSnapshot: PublicSnapshot = {
@@ -225,21 +233,29 @@ class MockDashboardClient implements DashboardClient {
       scene,
       paused: this.state === 'PAUSED',
       mode: 'MOCK',
-      timer: questionState || effectiveState === 'INTERMISSION'
+      timer: questionState
         ? { durationMs: effectiveState === 'PREPARE' ? 3_000 : 15_000, remainingMs: effectiveState === 'PREPARE' ? 3_000 : 11_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
-        : null,
+        : shortLeaderboard || fullLeaderboard
+          ? { durationMs: fullLeaderboard ? 6_000 : 4_000, remainingMs: fullLeaderboard ? 6_000 : 4_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+          : effectiveState === 'INTERMISSION'
+            ? { durationMs: 25_000, remainingMs: 25_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+            : null,
       round: { roundNumber: this.roundNumber, questionIndex: this.questionIndex, questionCount: this.config.questionsPerRound },
-      question: questionVisible ? demoQuestion : null,
+      question: questionVisible ? {
+        ...demoQuestion,
+        options: effectiveState === 'PREPARE' ? [] : demoQuestion.options,
+        optionsVisible: effectiveState !== 'PREPARE',
+      } : null,
       answerCount: this.answerCount,
       participantCount: this.participantCount,
-      reveal: effectiveState === 'REVEAL' ? {
+      reveal: shortLeaderboard && !this.voidedCurrent ? {
         questionInstanceId: demoQuestion.questionInstanceId,
         correctOptionId: 'B',
         optionCounts: { ...this.optionCounts },
-        explanation: 'Đây là câu hỏi DEMO; mỗi đội Clash Squad gồm 4 người.',
+        explanation: 'DEMO Free Fire: chế độ Clash Squad có 4 người trong mỗi đội.',
       } : null,
-      leaderboard: effectiveState === 'REVEAL'
-        ? { kind: 'COMPACT', entries: leaderboardEntries.slice(0, 3) }
+      leaderboard: questionVisible
+        ? { kind: 'COMPACT', entries: leaderboardEntries.slice(0, 10) }
         : ['LEADERBOARD', 'ROUND_END', 'VICTORY', 'INTERMISSION'].includes(effectiveState)
           ? { kind: 'FULL', entries: leaderboardEntries }
           : null,
@@ -251,8 +267,14 @@ class MockDashboardClient implements DashboardClient {
         ],
         tieAcrossCutoff: false,
       } : null,
-      // TODO(codex2, C-0016): mock theo hợp đồng V3 (PREPARE ẩn đáp án, Top 10 COMPACT, MC bubble theo state).
-      mc: { state: 'idle', bubble: 'Bình luận A/B/C/D để tham gia' },
+      mc: {
+        state: effectiveState === 'PREPARE' ? 'ask' : shortLeaderboard ? 'react' : effectiveState === 'ACCEPTING' ? 'welcome' : 'idle',
+        bubble: effectiveState === 'PREPARE'
+          ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
+          : shortLeaderboard
+            ? 'Đã khóa đáp án. Cùng xem kết quả câu hỏi Free Fire nhé.'
+            : 'Bình luận A, B, C hoặc D để tham gia câu hỏi Free Fire.',
+      },
       connection: this.connection,
       safeZone: INITIAL_TEST_SAFE_ZONE,
     };
@@ -273,11 +295,11 @@ class MockDashboardClient implements DashboardClient {
       },
       overlay: { clients: 0, lastAckStateVersion: null, lastAckAtMs: null },
       config: this.config,
-      current: questionVisible || effectiveState === 'PREPARE' ? {
+      current: questionVisible ? {
         questionInstanceId: demoQuestion.questionInstanceId,
         correctOptionId: 'B',
         optionCounts: { ...this.optionCounts },
-        voided: false,
+        voided: this.voidedCurrent,
       } : null,
       metrics: {
         received: this.answerCount,
@@ -298,7 +320,7 @@ class MockDashboardClient implements DashboardClient {
       case 'PREPARE':
       case 'ACCEPTING': return 'QUESTION';
       case 'REVEAL': return 'REVEAL';
-      case 'LEADERBOARD': return 'INTERIM_TOP10';
+      case 'LEADERBOARD': return this.isFullLeaderboard() ? 'INTERIM_TOP10' : 'REVEAL';
       case 'ROUND_END': return 'ROUND_WINNER';
       case 'VICTORY': return 'VICTORY';
       case 'INTERMISSION': return 'INTERMISSION';
@@ -306,6 +328,11 @@ class MockDashboardClient implements DashboardClient {
       case 'ERROR': return 'CONNECTION_LOST';
       case 'PAUSED': return 'QUESTION';
     }
+  }
+
+  private isFullLeaderboard() {
+    const questionNumber = this.questionIndex + 1;
+    return questionNumber % this.config.leaderboardInterval === 0 || questionNumber === this.config.questionsPerRound;
   }
 
   private emit() {
