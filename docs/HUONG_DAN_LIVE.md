@@ -1,46 +1,72 @@
-# Hướng dẫn chạy LIVE — Bá Vương Đại Chiến
+# Hướng dẫn chạy thử TikTok LIVE Quiz — Bá Vương Đại Chiến
 
-Ba bước: **bật game → đưa overlay vào LIVE Studio → điều khiển trên Dashboard**.
+## Đường chạy dùng ngày 12–14/11
 
-## 1. Bật tool game (mỗi lần LIVE)
+Trong các buổi chạy thử 12–14/11, chỉ dùng source-run bằng `CHAY_GAME.cmd` ở checkout repo. Bộ cài Electron/NSIS đang **DEFERRED**, không dùng cho các buổi này.
+
+`CHAY_GAME.cmd` cố định cơ sở dữ liệu tại `<checkout>/data/quiz.db`, in commit và đường dẫn DB, build lại Dashboard/Overlay nếu `dist/` thiếu hoặc cũ hơn commit `HEAD`, rồi tạo backup trước khi mở server. Dữ liệu ứng dụng Electron trong thư mục người dùng/AppData là một kho riêng; không dùng hoặc trộn kho đó trong các buổi này.
+
+Backup mặc định nằm ở `backups/<yyyymmdd-hhmmss>/` và không được commit. Có thể xác minh hoặc khôi phục thủ công từ thư mục repo:
+
+```powershell
+py tools/backup.py verify --from "backups/<ten-thu-muc-backup>"
+py tools/backup.py restore --from "backups/<ten-thu-muc-backup>"
+```
+
+Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đóng `CHAY_GAME.cmd`/server. Khôi phục ghi đè `data/quiz.db` và các asset trong backup. Nếu cần xác nhận tự động, chỉ thêm `--yes` khi đã kiểm tra đúng thư mục backup và đích.
+
+## 1. Bật tool game
+
 1. Nhấp đúp `CHAY_GAME.cmd` ở thư mục dự án.
-2. Một cửa sổ đen hiện ra. **Không tắt cửa sổ này trong lúc LIVE**: tắt cửa sổ là tắt game.
+2. Không tắt cửa sổ đen khi server đang dùng; tắt cửa sổ sẽ dừng game.
 3. Trình duyệt tự mở Dashboard `http://127.0.0.1:8787/dashboard/`.
-4. Ở ô "Mã quản trị", bấm **Ctrl+V** rồi đăng nhập. Mã đã được chép sẵn vào clipboard; file gốc nằm ở `data/admin-token.txt`.
-5. Lần đầu sẽ có trình hướng dẫn (Setup Wizard): bấm kiểm tra System → Database → Mock. Bước TikTok điền **@username** kênh LIVE.
+4. Ở ô “Mã quản trị”, bấm **Ctrl+V** rồi đăng nhập. Mã được chép vào clipboard; file gốc nằm ở `data/admin-token.txt`.
+5. Trình hướng dẫn kiểm tra Backend, Database và Mock. TikTok cần username của kênh đang LIVE.
 
-## 2. Đưa overlay vào TikTok LIVE Studio (làm 1 lần, LIVE Studio nhớ cảnh)
-1. Mở LIVE Studio và chọn bố cục **dọc (Portrait 9:16)**.
-2. Thêm nguồn **Link / Web (Browser)** như sau:
-   - Vào **Sources → + (Add source) → Link**.
-   - URL: `http://127.0.0.1:8787/overlay/`
-   - Kích thước: **1080 × 1920**.
-3. Kéo nguồn cho phủ kín khung hình và đặt nó trên cùng.
-4. Nếu bản LIVE Studio không có nguồn Link, dùng cách thay thế:
-   - Mở `http://127.0.0.1:8787/overlay/` bằng Edge hoặc Chrome, cửa sổ dọc.
-   - Trong LIVE Studio, thêm nguồn **Window capture** và chọn cửa sổ đó.
-5. Âm thanh (giọng MC, hiệu ứng) phát từ overlay. Bật "phát âm thanh / audio" của nguồn đó nếu LIVE Studio có tuỳ chọn này.
+## 2. Đưa overlay vào TikTok LIVE Studio
 
-## 3. Chạy một vòng trên Dashboard
-1. **Tạo phiên**:
-   - Nguồn **TikTok** dùng cho LIVE thật, cần @username và kênh phải đang LIVE.
-   - Nguồn **Mô phỏng** dùng để tập dượt.
-2. Chọn bộ câu: chỉ câu **đã duyệt**. Câu DEMO chỉ dùng để thử.
-3. Bấm **Mở sảnh**. Khán giả comment để tham gia.
-4. Bấm **Bắt đầu vòng**. Game tự chạy các bước: đọc câu → nhận đáp án A/B/C/D → công bố → bảng xếp hạng Top 10 → Victory.
-5. Có thể bấm **Tạm dừng / Dừng phiên** bất cứ lúc nào.
+1. Chọn bố cục dọc (Portrait 9:16).
+2. Thêm nguồn Link / Web (Browser) với URL `http://127.0.0.1:8787/overlay/`, kích thước 1080 × 1920.
+3. Kéo nguồn phủ kín khung hình và đặt ở lớp trên cùng.
+4. Nếu LIVE Studio không có nguồn Link, mở URL bằng Edge/Chrome rồi dùng Window capture.
 
-## Trước giờ LIVE — checklist
-- [ ] `CHAY_GAME.cmd` đang chạy, Dashboard đăng nhập được.
-- [ ] Overlay trong LIVE Studio thấy nền sân đấu + logo.
-- [ ] Đã tập 1 vòng bằng **Mô phỏng**.
-- [ ] Tài khoản TikTok có **quyền LIVE**. Nếu LIVE Studio báo "No access", tài khoản chưa đủ điều kiện LIVE trên máy tính và phải xin quyền với TikTok. Tool game không xử lý được việc này.
-- [ ] Bấm **Go LIVE** trong LIVE Studio, **sau đó** mới tạo phiên nguồn TikTok trên Dashboard. Kênh chưa LIVE thì không đọc được comment.
+## 3. Chạy một vòng
+
+1. Tạo phiên **TikTok** cho LIVE thật hoặc **Mô phỏng (MOCK)** để tập dượt.
+2. Với TikTok, chỉ dùng đủ câu đã APPROVED và không phải DEMO. Chờ kết nối TikTok và overlay đã ACK trạng thái mới nhất.
+3. Bấm **Mở sảnh**, sau đó **Bắt đầu vòng**. Nếu server trả `PREFLIGHT_FAILED`, xử lý các mục FAIL rồi kiểm tra lại trước khi bắt đầu.
+   Nếu cần xem đủ kết quả, gọi API preflight có admin token trong PowerShell (token chỉ nằm trong header, không đặt trong URL):
+
+   ```powershell
+   $adminToken = (Get-Content data/admin-token.txt -Raw).Trim()
+   Invoke-RestMethod -Uri http://127.0.0.1:8787/api/preflight -Headers @{ Authorization = "Bearer $adminToken" }
+   Remove-Variable adminToken
+   ```
+4. MOCK có thể chạy để diễn tập khi preflight còn FAIL; hãy nói rõ với người xem đây là mô phỏng.
+5. Trong các buổi 12–14/11, không bật hoặc dựa vào giọng MC; dùng nội dung hiển thị trên overlay.
+
+## 4. Khi TikTok connector lỗi giữa buổi
+
+1. Bấm **Tạm dừng** ngay khi nhận ra connector mất kết nối; không để câu tiếp tục chạy.
+2. Nếu câu hiện tại bị gián đoạn, dùng thao tác **Huỷ câu/VOID** và ghi lý do. Không tự tiếp tục câu cũ khi connector vừa reconnect.
+3. Chỉ **Tiếp tục** phiên TikTok sau khi trạng thái kết nối ổn định và operator đã xác nhận.
+4. Nếu connector không phục hồi, dừng phiên TikTok. Tạo phiên mới ở chế độ MOCK để tiếp tục diễn tập và thông báo rõ cho khán giả rằng nguồn đã chuyển sang mô phỏng; không mô tả đó là LIVE TikTok.
+
+## Checklist trước buổi chạy
+
+- [ ] `CHAY_GAME.cmd` đang chạy; dòng khởi động cho thấy commit và DB `<checkout>/data/quiz.db`.
+- [ ] Backup trước khi server mở đã hoàn tất; backup mới nhất verify được.
+- [ ] Dashboard đăng nhập được và overlay hiển thị đúng.
+- [ ] Đã tập trọn một vòng MOCK.
+- [ ] Với TikTok: tài khoản có quyền LIVE; bấm Go LIVE trước khi tạo phiên TikTok.
+- [ ] Câu hỏi cho TikTok đã APPROVED, không DEMO; preflight không còn FAIL.
 
 ## Sự cố thường gặp
+
 | Hiện tượng | Cách xử lý |
 |---|---|
-| Dashboard trắng / 404 | Xoá `apps/dashboard/dist` và `apps/overlay/dist`, chạy lại `CHAY_GAME.cmd` (nó sẽ build lại) |
-| "Failed to retrieve Room ID" | Kênh chưa LIVE: Go LIVE trước rồi kết nối lại |
-| Overlay đứng hình | Trong LIVE Studio, bấm chuột phải vào nguồn → Refresh/Reload |
-| Quên mã quản trị | Mở `data/admin-token.txt` |
+| Dashboard trắng / 404 | `CHAY_GAME.cmd` tự build nếu dist thiếu/cũ. Nếu vẫn lỗi, kiểm tra output build rồi chạy lại launcher. |
+| `PREFLIGHT_FAILED` | Mở GET `/api/preflight` bằng admin để xem lý do từng mục; xử lý pool câu hỏi, DB, asset, overlay ACK, nguồn hoặc dist. |
+| “Failed to retrieve Room ID” | Kênh chưa LIVE hoặc connector lỗi: tạm dừng và làm theo mục 4. |
+| Overlay đứng hình | Trong LIVE Studio, bấm chuột phải vào nguồn rồi Refresh/Reload; chờ overlay ACK trước khi bắt đầu. |
+| Quên mã quản trị | Mở `data/admin-token.txt` trên máy chạy source-run. |
