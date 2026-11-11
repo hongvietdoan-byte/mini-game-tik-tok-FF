@@ -1,8 +1,9 @@
 {
   "role": "codex2",
-  "last_read": 0,
-  "heartbeat": "2026-11-11T11:13:04+07:00",
+  "last_read": 6,
+  "heartbeat": "2026-11-11T11:37:25+07:00",
   "state": "working",
   "task": "C-0006",
-  "note": "Đang dựng overlay 8 cảnh, mock và client WS."
+  "note": "Đang dựng overlay 8 cảnh, mock và client WS.",
+  "done": []
 }
