@@ -1,0 +1,34 @@
+# Bộ cài Windows (V3.1 mục A). Chạy: corepack pnpm --filter @quiz/desktop dist
+appId: vn.stormarena.livequiz
+productName: Storm Arena LIVE Quiz
+copyright: "Storm Arena LIVE Quiz"
+electronVersion: 42.11.18
+directories:
+  app: build/app          # do scripts/bundle.mjs dựng sẵn
+  output: dist-installer
+  buildResources: resources
+# better-sqlite3 đã là bản dựng sẵn đúng ABI Electron trong build/app — KHÔNG biên dịch lại
+npmRebuild: false
+buildDependenciesFromSource: false
+nodeGypRebuild: false
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+files:
+  - "**/*"
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Chưa có chứng thư ký số: không ký, Windows SmartScreen có thể cảnh báo lần đầu
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Storm Arena LIVE Quiz
+  # Gỡ cài đặt KHÔNG xoá dữ liệu người dùng (%APPDATA%\Storm Arena LIVE Quiz: DB, kết quả, token)
+  deleteAppDataOnUninstall: false
+  artifactName: "StormArena-LiveQuiz-Setup-${version}.${ext}"

@@ -23,3 +23,9 @@ playwright-report/
 
 # Kho chibi người dùng cung cấp (11/11) — tài liệu đầu vào, chưa xác nhận quyền phân phối
 /2026-11-11_chibi_kho/
+# Bản đóng gói Electron
+apps/desktop/build/
+apps/desktop/dist-installer/
+# Bộ cài / file chạy tải về (vd TikTok LIVE Studio) — không commit
+*.exe
+*.msi
