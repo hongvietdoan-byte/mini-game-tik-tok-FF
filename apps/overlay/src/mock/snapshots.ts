@@ -54,6 +54,8 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   lobby: { scene: 'LOBBY', state: 'LOBBY' },
   prepare: { scene: 'QUESTION', state: 'PREPARE' },
   question: { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-longest': { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-long-answer': { scene: 'QUESTION', state: 'ACCEPTING' },
   // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
   reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
@@ -67,17 +69,15 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
 };
 
 function podium(tied: boolean): Podium {
-  const tiedEntries: LeaderboardEntry[] = [
-    { ...leaderboard[0]!, rank: 1, tied: true },
-    { ...leaderboard[1]!, rank: 1, tied: true, score: leaderboard[0]!.score, correctCount: leaderboard[0]!.correctCount },
-  ];
-  const entries = tied ? tiedEntries : [leaderboard[0]!];
+  const first = { ...leaderboard[0]!, displayName: 'FFVN.Kelly', score: 1_500 };
+  const second = { ...leaderboard[1]!, displayName: 'StormKing', score: tied ? 1_500 : 1_350 };
+  const third = { ...leaderboard[2]!, displayName: 'BVD.Champion', score: 1_300 };
   return {
     tieAcrossCutoff: tied,
     slots: [
-      { place: 2, rank: tied ? 1 : 2, tied, entries: tied ? tiedEntries : [leaderboard[1]!] },
-      { place: 1, rank: 1, tied, entries },
-      { place: 3, rank: 3, tied: false, entries: [leaderboard[2]!] },
+      { place: 2, rank: tied ? 1 : 2, tied, entries: [{ ...second, rank: tied ? 1 : 2, tied, correctCount: tied ? first.correctCount : second.correctCount }] },
+      { place: 1, rank: 1, tied, entries: [{ ...first, rank: 1, tied }] },
+      { place: 3, rank: 3, tied: false, entries: [third] },
     ],
   };
 }
@@ -86,7 +86,15 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
   const short = name === 'top10-short';
-  const question = name === 'prepare' || name === 'question' || name === 'reveal' || name === 'paused';
+  const question = ['prepare', 'question', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name);
+  const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
+  const longestAnswer = 'Một bức tường tạm thời giúp tạo vật chắn để người chơi di chuyển an toàn hơn';
+  const longestAnswerOptions = [
+    { id: 'A' as const, text: longestAnswer },
+    { id: 'B' as const, text: 'Một khẩu súng dùng để ngắm bắn mục tiêu ở khoảng cách rất xa' },
+    { id: 'C' as const, text: 'Một bộ giáp làm tăng lượng vật phẩm có thể mang trong ba lô' },
+    { id: 'D' as const, text: 'Một thiết bị chỉ dùng để xem kết quả sau khi trận đấu kết thúc' },
+  ];
   const optionsVisible = name !== 'prepare';
   const isReveal = name === 'reveal';
   return {
@@ -102,8 +110,12 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     question: question ? {
       questionInstanceId: 'demo-question-5',
       index: 4,
-      prompt: 'Free Fire · Trong chế độ Clash Squad, mỗi đội có bao nhiêu người?',
-      options: optionsVisible ? options : [],
+      prompt: name === 'question-longest'
+        ? longestPrompt
+        : name === 'question-long-answer'
+          ? 'Cách mô tả nào đúng về công dụng của Gloo Wall trong Free Fire?'
+          : 'Free Fire · Trong chế độ Clash Squad, mỗi đội có bao nhiêu người?',
+      options: optionsVisible ? (name === 'question-long-answer' ? longestAnswerOptions : options) : [],
       optionsVisible,
       isDemo: true,
     } : null,
@@ -126,7 +138,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       state: name === 'prepare' ? 'ask' : isReveal ? 'react' : 'idle',
       bubble: name === 'prepare' ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.' : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
-    audience: ['lobby', 'prepare', 'question', 'reveal', 'paused'].includes(name) ? mockAudience(name === 'reveal') : null,
+    audience: ['lobby', 'prepare', 'question', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name) ? mockAudience(name === 'reveal') : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   };
 }
