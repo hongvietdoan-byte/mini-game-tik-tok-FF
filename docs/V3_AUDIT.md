@@ -118,3 +118,103 @@ Ký hiệu: ✅ đã có, giữ nguyên · 🟡 có nhưng cần sửa · ❌ ch
 | F | Victory giữ cúp gốc (V3 P4) | sau khi có asset tách nền | §17-11 |
 
 Không thay đổi: logic chấm điểm, nhận comment, khôi phục, idempotency, schema hiện có (chỉ thêm bảng), AI Studio/Theme Pack (vẫn là phase sau).
+
+---
+
+# Phụ lục V3.1 — Cài đặt & kết nối LIVE (audit, CHƯA sửa code)
+
+Ký hiệu: ✅ có + đã kiểm thử tự động · 🧪 có nhưng **chưa kiểm thử** trong điều kiện thật · 🟡 có một phần · ❌ chưa có.
+
+## A. Bộ cài Windows
+| Hạng mục | TT | Hiện trạng |
+|---|---|---|
+| Bộ cài, không cần Node/terminal | ❌ | Chỉ chạy dev bằng `corepack pnpm dev` (3 tiến trình, 3 cổng) |
+| Tự quản lý backend/frontend/DB | 🟡 | Server tự tạo DB + migrate + token khi khởi động; frontend vẫn là Vite dev server |
+| Phục vụ overlay/dashboard bản build từ server | ❌ | Chưa có — cần cho cả bộ cài lẫn OBS |
+| Thư mục dữ liệu người dùng (%APPDATA%) | ❌ | Đang dùng `data/` cạnh source |
+| Native module `better-sqlite3` trong bản đóng gói | ❌ | Rủi ro chính khi đóng gói (ABI) |
+
+## B. First-Run Setup Wizard — ❌ chưa có (các bước con dưới đây đều chưa có UI)
+| Bước | Có gì để dựa vào |
+|---|---|
+| 1 Kiểm tra hệ thống | — |
+| 2 Khởi tạo DB | ✅ migrate tự động lúc khởi động |
+| 3 Kiểm tra Theme Pack | ❌ theme-core còn stub |
+| 4 Cấu hình TikTok Connector | ❌ |
+| 5 Kiểm tra Mock Mode | ✅ MockAdapter + simulator (qua API, chưa có UI wizard) |
+| 6 Hướng dẫn OBS/LIVE Studio | ❌ |
+| 7 Kiểm tra Overlay | 🟡 overlay chạy được, chưa có bước xác nhận |
+| 8 Hoàn tất / bỏ qua TikTok để chạy offline | ❌ |
+
+## C. TikTok Connection Manager
+| Hạng mục | TT | Hiện trạng |
+|---|---|---|
+| Interface adapter (connect/disconnect/status/onComment/onStatus/healthCheck) | ✅ | `LiveAdapter` |
+| Adapter TikTok thật | ❌ | `TikTokAdapterBlocked` — **chưa có connector được xác minh là hợp lệ**; chưa spike khả thi |
+| Nhập username, Connect/Disconnect, Reconnect | ❌ | Chỉ có giả lập rớt/có mạng cho MOCK (`/connection LOSE|RESTORE`) |
+| Trạng thái kết nối | 🟡 | `ConnectionStatus` có trong snapshot; chưa tách "LIVE status" và "đang nhận comment" |
+| Comment gần nhất, đếm sự kiện | 🟡 | `metrics` (received/accepted/rejected) có; chưa có `lastCommentAt` |
+| Health monitoring, chẩn đoán lỗi | 🟡 | `/api/diagnostics` cơ bản; `connection_events` được ghi; chưa có UI/cảnh báo im lặng lâu |
+
+## D. OBS / TikTok LIVE Studio
+| Hạng mục | TT | Hiện trạng |
+|---|---|---|
+| Overlay URL nội bộ | 🟡 | `http://127.0.0.1:5174/` — chỉ khi chạy dev |
+| 1080×1920 | ✅ | sân khấu cố định, scale theo cửa sổ |
+| Preview overlay, HUD Simulator | 🟡 | `?mock=…`, `?guides=1`; HUD giả lập chưa có |
+| Copy URL, hướng dẫn Browser Source / Window Capture | ❌ | Dashboard (C-0007) chỉ có nút mở overlay |
+| Xác minh OBS đã nhận nguồn | ❌ | Có thể làm gián tiếp: server đếm số client overlay đang kết nối WS (không khẳng định OBS/LIVE Studio đang phát) |
+
+## E. Trang Connection Test — ❌ chưa có
+| Bước | Có cơ sở để kiểm tự động? |
+|---|---|
+| 1 Backend | ✅ `/health` |
+| 2 Database | 🟡 `/api/diagnostics` (path, WAL) — cần thêm ghi/đọc thử |
+| 3 Theme Pack | ❌ |
+| 4 Overlay hiển thị | 🟡 đếm client overlay WS (cần thêm) |
+| 5 Mock comment | ✅ `/comments` + ingest |
+| 6 TikTok kết nối | ❌ (BLOCKED) |
+| 7 Nhận comment thử | ❌ với TikTok; ✅ với MOCK |
+| 8 Engine ghi nhận đáp án | ✅ (test tích hợp) — cần chế độ "phiên kiểm thử" tách khỏi phiên LIVE |
+| 9 Overlay cập nhật đúng | 🟡 overlay báo lại `stateVersion` đã render (cần thêm ACK) |
+
+## F. Runtime Recovery
+| Hạng mục | TT | Ghi chú |
+|---|---|---|
+| Không tự tiếp tục khi khởi động lại (PAUSED/RECOVERY, chờ operator) | ✅ | test crash giữa câu / sau reveal / huỷ câu |
+| Không mất / không cộng trùng điểm | ✅ | sổ cái idempotent, đối chiếu toàn vẹn khi khôi phục |
+| Mất kết nối giữa câu → treo, có mạng lại không tự chạy | ✅ (MOCK) / 🧪 (thật) | |
+| Reconnect thủ công | 🟡 | chỉ MOCK |
+| Không xử lý trùng comment cũ | 🟡 | Trùng `eventId` chỉ chặn trong bộ nhớ (mất khi restart); đáp án trùng người/câu luôn bị chặn bởi DB; comment cũ phát lại sau khi resume vẫn có thể được tính như đáp án MỚI nếu nguồn không gửi `sourceTimestamp` → **cần lưu eventId vào DB + chính sách cách ly khi connector thật** |
+| Hiển thị lỗi rõ ràng | 🟡 | lỗi có trong AdminSnapshot; UI đang làm (C-0007) |
+| Đóng ứng dụng an toàn | 🟡 | SIGINT/SIGTERM đóng server + DB; chưa có nút trong UI |
+
+## G. Tiêu chí sẵn sàng LIVE — hiện **KHÔNG đạt**
+| Tiêu chí | TT |
+|---|---|
+| Bộ cài Windows hoạt động | ❌ |
+| Mở Dashboard không cần terminal | ❌ |
+| Phát Overlay qua phần mềm LIVE | 🧪 chưa thử OBS/LIVE Studio |
+| Kết nối nguồn comment thật được hỗ trợ | ❌ BLOCKED |
+| Nhận và xử lý comment thật | ❌ |
+| Chạy trọn một trận | ✅ MOCK (test + `simulate`); 🧪 qua UI |
+| Lưu kết quả | ✅ |
+| Ngắt kết nối + đóng an toàn | 🟡 |
+
+## Đề xuất kiến trúc đóng gói (cần xác nhận — Q7)
+- **Electron** (V2 đã dự kiến "Electron packaging later"): tiến trình chính chạy Fastify **trong cùng process**, phục vụ bản build dashboard (`/dashboard`) và overlay (`/overlay`, `/preview`) cùng một origin `http://127.0.0.1:<port>`; cửa sổ Electron mở dashboard; dữ liệu ở `%APPDATA%\StormArena`; bộ cài NSIS (electron-builder), `better-sqlite3` rebuild theo ABI Electron.
+- Lý do: người dùng không cần Node; một cổng duy nhất cho OBS Browser Source; tray icon + thoát an toàn.
+- Phương án khác: Node runtime nhúng + launcher — nhẹ hơn nhưng phải tự viết launcher/tray/updater.
+
+## Đề xuất TikTok Connector (cần xác nhận — Q8)
+- Chưa có bằng chứng về API chính thức cho phép đọc comment LIVE theo thời gian thực. Các thư viện cộng đồng đọc webcast không chính thức có thể dựa vào dịch vụ ký request/cơ chế không được nền tảng công bố → **có thể trái điều khoản / "vượt cơ chế bảo vệ"**; không dùng khi chưa được người dùng và bên pháp lý chấp thuận.
+- Việc cần làm: spike khả thi có tài liệu nguồn (TikTok for Developers / chương trình đối tác LIVE / công cụ do Garena/TikTok cung cấp cho giải đấu), kết luận PASS/BLOCKED. UI Connection Manager vẫn xây được trên `LiveAdapter` + MOCK ngay bây giờ.
+
+## Kế hoạch bổ sung (gộp với V3, sau khi được xác nhận)
+| GĐ | Nội dung | Ai |
+|---|---|---|
+| G1 | Server phục vụ bản build overlay/dashboard một origin; `QUIZ_DATA_DIR` = %APPDATA%; đếm client overlay; `lastCommentAt`; lưu `eventId` đã xử lý vào DB | coordinator |
+| G2 | Trang Connection Test (9 bước PASS/FAIL/NOT TESTED) + Connection Manager UI (MOCK, TikTok hiển thị BLOCKED) + trang hướng dẫn OBS (copy URL, Browser Source/Window Capture) | codex2 |
+| G3 | First-Run Wizard (8 bước, cho bỏ qua TikTok) | codex2 |
+| G4 | Đóng gói Electron + NSIS, kiểm trên máy sạch không có Node | coordinator + codex1 (script/CI build) |
+| G5 | Spike TikTok connector → báo cáo PASS/BLOCKED (không code connector trước khi được duyệt) | coordinator |
