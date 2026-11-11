@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 7,
-  "heartbeat": "2026-11-11T12:34:44+07:00",
+  "heartbeat": "2026-11-11T12:35:29+07:00",
   "state": "working",
-  "task": "C-0016",
-  "note": "Đang đồng bộ origin/main, sau đó cập nhật overlay/dashboard theo hợp đồng V3.",
+  "task": "C-0018",
+  "note": "Đang chuẩn bị worktree trên main đã cập nhật; C-0018 nối tiếp UI V3 của C-0016.",
   "done": [
     9,
     12,
