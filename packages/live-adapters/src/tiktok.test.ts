@@ -112,6 +112,16 @@ describe('TikTokLiveAdapter (không chính thức, chỉ đọc)', () => {
     expect(c.connects).toBe(1);
   });
 
+  it('không lấy được Room ID → coi như chưa LIVE: DISCONNECTED, không tự thử lại', async () => {
+    const c = new FakeConn();
+    c.failWith = new Error('Failed to retrieve Room ID from all sources.');
+    const { adapter, scheduler } = setup([c]);
+    await expect(adapter.connect()).rejects.toThrow(/chưa phát LIVE/);
+    expect(adapter.status()).toBe('DISCONNECTED');
+    scheduler.advance(120_000);
+    expect(c.connects).toBe(1);
+  });
+
   it('hết lượt thử lại → DISCONNECTED; ngắt tay hoặc LIVE kết thúc thì không tự nối lại', async () => {
     const conns = Array.from({ length: 6 }, () => new FakeConn());
     for (const c of conns.slice(1)) c.failWith = new Error('ECONNRESET');

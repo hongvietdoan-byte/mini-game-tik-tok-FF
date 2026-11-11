@@ -116,7 +116,7 @@ export class TikTokLiveAdapter implements LiveAdapter {
       this.lastError = describeError(err, this.username);
       await this.dropConnection();
       if (isOffline(err)) {
-        // Tài khoản chưa LIVE: không spam thử lại — operator bấm Kết nối lại khi đã lên sóng.
+        // Tài khoản chưa LIVE / không lấy được Room ID: không spam thử lại — operator bấm Kết nối lại khi đã lên sóng.
         this.setStatus('DISCONNECTED');
       } else this.scheduleRetry();
       throw new Error(this.lastError);
@@ -216,10 +216,16 @@ export class TikTokLiveAdapter implements LiveAdapter {
 
 function isOffline(err: unknown) {
   const name = (err as { name?: string; constructor?: { name?: string } })?.constructor?.name ?? (err as { name?: string })?.name;
-  return name === 'UserOfflineError' || /offline|not live|isn't online/i.test(String((err as Error)?.message ?? err));
+  return name === 'UserOfflineError' || /offline|not live|isn't online/i.test(String((err as Error)?.message ?? err)) || isRoomIdFailure(err);
+}
+
+/** "Failed to retrieve Room ID…": thường là chưa LIVE (đôi khi TikTok chặn tạm) — coi như chưa LIVE, không tự thử lại dồn dập. */
+function isRoomIdFailure(err: unknown) {
+  return /room\s*id/i.test(String((err as Error)?.message ?? err));
 }
 
 function describeError(err: unknown, username: string) {
+  if (isRoomIdFailure(err)) return `Không lấy được phòng LIVE của @${username} — thường do chưa phát LIVE (hoặc TikTok tạm chặn). Bắt đầu LIVE rồi bấm Kết nối lại`;
   if (isOffline(err)) return `@${username} hiện chưa phát LIVE — bắt đầu LIVE rồi bấm Kết nối lại`;
   const msg = err instanceof Error ? err.message : String(err ?? 'lỗi không rõ');
   if (/rate.?limit|429/i.test(msg)) return `Bị giới hạn tần suất (sign server/TikTok) — chờ vài phút rồi thử lại. ${msg}`;
