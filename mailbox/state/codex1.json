@@ -1,13 +1,15 @@
 {
   "role": "codex1",
   "last_read": 4,
-  "heartbeat": "2026-11-11T12:04:53+07:00",
+  "heartbeat": "2026-11-11T12:29:25+07:00",
   "state": "working",
-  "task": "C-0013",
-  "note": "C-0004 đã push; tiếp tục cập nhật bộ câu Free Fire và bảng duyệt.",
+  "task": "C-0005",
+  "note": "C-0013 đã push; triển khai privacy-check và CI, có thêm chặn /2026-11-11_chibi_kho/ theo C-0017.",
   "done": [
     10,
     11,
-    15
+    13,
+    15,
+    17
   ]
 }

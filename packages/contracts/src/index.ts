@@ -411,7 +411,42 @@ export type AdminSnapshot = {
   pool: { eligible: number; unusedInSession: number; requiredNextRound: number; lowPoolWarning: boolean };
   simulator: { running: boolean; players: number } | null;
   error: { code: string; message: string } | null;
+  /** Tình trạng nguồn comment (V3.1 mục C). */
+  live: LiveSourceHealth;
+  /** Overlay đang kết nối WS và phiên bản trạng thái overlay đã báo hiển thị (không khẳng định OBS/LIVE Studio đang phát). */
+  overlay: { clients: number; lastAckStateVersion: number | null; lastAckAtMs: number | null };
 };
+
+export type LiveSourceHealth = {
+  source: LiveSource;
+  status: ConnectionStatus;
+  connectedSinceMs: number | null;
+  /** Comment gần nhất nhận được từ nguồn (mọi nội dung, không chỉ đáp án). */
+  lastCommentAtMs: number | null;
+  commentsReceived: number;
+  reconnects: number;
+  detail: string | null;
+};
+
+// ---------------------------------------------------------------------------
+// Kiểm tra hệ thống (V3.1 mục E)
+// ---------------------------------------------------------------------------
+
+export const CheckStatusSchema = z.enum(['PASS', 'FAIL', 'NOT_TESTED']);
+export type CheckStatus = z.infer<typeof CheckStatusSchema>;
+export const SYSTEM_CHECK_IDS = [
+  'backend',
+  'database',
+  'theme',
+  'overlay',
+  'mockComment',
+  'tiktokConnector',
+  'testComment',
+  'engineRecorded',
+  'overlayUpdated',
+] as const;
+export type SystemCheckId = (typeof SYSTEM_CHECK_IDS)[number];
+export type SystemCheck = { id: SystemCheckId; label: string; status: CheckStatus; detail: string; checkedAtMs: number };
 
 export const WS_MESSAGE_TYPES = [
   'STATE_SNAPSHOT',
@@ -464,6 +499,14 @@ export const ClientHelloSchema = z.object({
   lastStateVersion: z.number().int().optional(),
 });
 export type ClientHello = z.infer<typeof ClientHelloSchema>;
+
+/** Overlay báo đã render tới stateVersion nào (dùng cho Connection Test bước 9). */
+export const ClientAckSchema = z.object({
+  type: z.literal('ACK'),
+  stateVersion: z.number().int().min(0),
+  seq: z.number().int().min(0).optional(),
+});
+export type ClientAck = z.infer<typeof ClientAckSchema>;
 
 export const CreateSessionRequestSchema = z.object({
   name: z.string().trim().min(1).max(100).default('Phiên LIVE'),

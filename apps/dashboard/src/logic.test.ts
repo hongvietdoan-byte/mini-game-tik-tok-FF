@@ -16,6 +16,8 @@ function snapshot(state: AdminSnapshot['public']['state'] = 'LOBBY'): AdminSnaps
     pool: {} as AdminSnapshot['pool'],
     simulator: null,
     error: null,
+    live: {} as AdminSnapshot['live'],
+    overlay: { clients: 0, lastAckStateVersion: null, lastAckAtMs: null },
   };
 }
 

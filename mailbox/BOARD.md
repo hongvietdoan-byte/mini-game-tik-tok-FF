@@ -22,9 +22,11 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 | C-0004 | codex1 | Unit test `Store` (persistence) | C-0001 (dùng fixtures) | XONG, đã gộp (14 test) |
 | C-0005 | codex1 | `scripts/privacy-check.mjs` + `.github/workflows/ci.yml` | — | CHỜ |
 | C-0006 | codex2 | `apps/overlay` 1080×1920, 8 cảnh, chế độ mock, client WS | — | XONG, đã gộp |
-| C-0013 | codex1 | Viết lại 36 câu DEMO chủ đề Free Fire + bảng đề xuất `docs/review/` | C-0003 | CHỜ |
+| C-0013 | codex1 | Viết lại 36 câu DEMO chủ đề Free Fire + bảng đề xuất `docs/review/` | C-0003 | XONG, đã gộp — **chờ người dùng duyệt nội dung** |
 | C-0012 | codex2 | ~~Sửa cảnh ĐỒNG HẠNG với 3 khối bục~~ | — | **HUỶ** — V3 cấm 3 khối bục; Victory làm lại khi có cúp/sân tách nền |
-| C-0007 | codex2 | `apps/dashboard` tối thiểu (Live Control) | C-0006 (dùng chung khung Vite) | CHỜ |
+| C-0007 | codex2 | `apps/dashboard` tối thiểu (Live Control) | C-0006 | XONG, đã gộp |
+| C-0016 | codex2 | Overlay/dashboard theo hợp đồng V3 | — | ĐANG LÀM |
+| C-0018 | codex2 | Connection Test + Connection Manager + hướng dẫn OBS | C-0016, M2 | CHỜ |
 | C-0008 | codex2 | Playwright smoke + ảnh chụp cảnh overlay (Edge) | C-0006 | CHỜ |
 | — | coordinator | `apps/server`: SessionRuntime, routes, WS, recovery (`04aa4a4`) | — | XONG — 14 test tích hợp + 1 test tải xanh |
 | — | coordinator | Test tích hợp 15 câu × 100 người, crash/restart, test tải | server | XONG (`tests/integration`, `tests/load`) |

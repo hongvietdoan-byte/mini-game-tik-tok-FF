@@ -284,6 +284,16 @@ class MockDashboardClient implements DashboardClient {
       autoMode: this.autoMode,
       recoveryPending: false,
       suspendedFrom: this.suspendedFrom,
+      live: {
+        source: 'MOCK',
+        status: this.connection,
+        connectedSinceMs: null,
+        lastCommentAtMs: null,
+        commentsReceived: 0,
+        reconnects: 0,
+        detail: null,
+      },
+      overlay: { clients: 0, lastAckStateVersion: null, lastAckAtMs: null },
       config: this.config,
       current: questionVisible ? {
         questionInstanceId: demoQuestion.questionInstanceId,

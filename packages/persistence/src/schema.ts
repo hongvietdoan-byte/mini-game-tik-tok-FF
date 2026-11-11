@@ -349,3 +349,18 @@ export const connectionEvents = sqliteTable(
   },
   (t) => [index('connection_events_session_idx').on(t.sessionId, t.id)],
 );
+
+/**
+ * Sự kiện comment đã xử lý (chỉ các comment là đáp án hợp lệ trong cửa sổ nhận).
+ * Bền qua khởi động lại: nguồn phát lại comment cũ (cùng eventId) sau reconnect/restart không bao giờ được tính lại.
+ */
+export const processedEvents = sqliteTable(
+  'processed_events',
+  {
+    source: text('source').notNull(),
+    eventId: text('event_id').notNull(),
+    questionInstanceId: text('question_instance_id').notNull(),
+    receivedAtMs: integer('received_at_ms').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.source, t.eventId] }), index('processed_events_received_idx').on(t.receivedAtMs)],
+);

@@ -37,6 +37,9 @@ Cả hai app Vite proxy `/api` và `/ws` (ws: true) sang `127.0.0.1:8787`, nên 
 | GET | `/api/sessions/:id/history` | admin | `{ rounds: [...], actions: [...] }` (xem `Store.history`) |
 | GET | `/api/questions` | admin | `Question[]` của pack phiên hiện tại |
 | GET | `/api/diagnostics` | admin | `{ metrics, recentRejections, db: { path, walMode }, uptimeMs }` |
+| POST | `/api/sessions/:id/source` | admin | `{ action: 'CONNECT' \| 'DISCONNECT' \| 'RECONNECT' }` → `{ ok, health: LiveSourceHealth }` — Connection Manager. Mất kết nối giữa câu → `CONNECTION_INTERRUPTED`; kết nối lại KHÔNG tự chạy tiếp (operator bấm Tiếp tục) |
+| GET | `/api/system/checks` | admin | `{ checks: SystemCheck[9], live, overlay }` — Connection Test 9 bước, mỗi bước `PASS` / `FAIL` / `NOT_TESTED` + `detail` |
+| POST | `/api/system/selftest` | admin | `{ ok, mockComment, engineRecorded, detail, durationMs }` — tự kiểm pipeline trên DB tạm (không đụng phiên LIVE); kết quả dùng cho bước 5 và 8 |
 
 Mã HTTP của `/commands`:
 - `200` — `ok: true` (kể cả `duplicate: true` khi gửi lại cùng `commandId`).
@@ -68,4 +71,6 @@ Mã HTTP của `/commands`:
    - `podium` chỉ ở ROUND_END / VICTORY. `answerCount` = tổng đáp án được nhận của câu hiện tại (0 ở PREPARE).
    - `mc: { state: 'idle'|'welcome'|'ask'|'react'|'celebrate', bubble }` — MC Kelly, không phải người chơi; lời thoại do server quyết định.
    - Mọi thông điệp có `seq` tăng đơn điệu trong một lần chạy server; client thấy `seq` hụt hoặc nhỏ hơn bản đang giữ (server khởi động lại) → dùng snapshot mới nhất.
-8. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).
+8. **ACK của overlay (V3.1):** sau mỗi lần render xong một snapshot, overlay gửi `{ type: 'ACK', stateVersion, seq? }` (`ClientAckSchema`). Server dùng để chấm bước 9 "Overlay cập nhật đúng". Kênh admin gửi ACK bị bỏ qua.
+9. `AdminSnapshot.live` (`LiveSourceHealth`): `status`, `connectedSinceMs`, `lastCommentAtMs`, `commentsReceived`, `reconnects`, `detail`; `AdminSnapshot.overlay`: `{ clients, lastAckStateVersion, lastAckAtMs }` — số overlay đang kết nối, KHÔNG khẳng định OBS/LIVE Studio đang phát.
+10. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).
