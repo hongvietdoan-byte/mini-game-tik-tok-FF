@@ -28,6 +28,7 @@ const demoQuestion: PublicQuestion = {
     { id: 'A', text: '2 người' }, { id: 'B', text: '4 người' },
     { id: 'C', text: '3 người' }, { id: 'D', text: '5 người' },
   ],
+  optionsVisible: true,
   isDemo: true,
 };
 
@@ -250,6 +251,8 @@ class MockDashboardClient implements DashboardClient {
         ],
         tieAcrossCutoff: false,
       } : null,
+      // TODO(codex2, C-0016): mock theo hợp đồng V3 (PREPARE ẩn đáp án, Top 10 COMPACT, MC bubble theo state).
+      mc: { state: 'idle', bubble: 'Bình luận A/B/C/D để tham gia' },
       connection: this.connection,
       safeZone: INITIAL_TEST_SAFE_ZONE,
     };
@@ -259,6 +262,16 @@ class MockDashboardClient implements DashboardClient {
       autoMode: this.autoMode,
       recoveryPending: false,
       suspendedFrom: this.suspendedFrom,
+      live: {
+        source: 'MOCK',
+        status: this.connection,
+        connectedSinceMs: null,
+        lastCommentAtMs: null,
+        commentsReceived: 0,
+        reconnects: 0,
+        detail: null,
+      },
+      overlay: { clients: 0, lastAckStateVersion: null, lastAckAtMs: null },
       config: this.config,
       current: questionVisible || effectiveState === 'PREPARE' ? {
         questionInstanceId: demoQuestion.questionInstanceId,
