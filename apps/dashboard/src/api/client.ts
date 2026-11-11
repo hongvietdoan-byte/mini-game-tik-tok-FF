@@ -4,6 +4,8 @@ import type {
   CommandResult,
   CreateSessionRequest,
   LiveSourceHealth,
+  Question,
+  QuestionReview,
   SimulatorRequest,
   SystemCheck,
 } from '@quiz/contracts';
@@ -18,8 +20,10 @@ export type SystemChecksResponse = {
   overlay: { clients: number; lastAck: { stateVersion: number; atMs: number } | null };
 };
 export type SelfTestResponse = { ok: boolean; mockComment: boolean; engineRecorded: boolean; detail: string; durationMs: number };
+export type HealthResponse = { ok: boolean; contractVersion: number; sessionId: string | null };
 
 export interface DashboardClient {
+  getHealth(): Promise<HealthResponse>;
   currentSession(): Promise<string | null>;
   createSession(token: string, request: CreateSessionRequest): Promise<{ sessionId: string; snapshot: AdminSnapshot }>;
   getState(token: string, sessionId: string): Promise<AdminSnapshot>;
@@ -28,6 +32,8 @@ export interface DashboardClient {
   controlConnection(token: string, sessionId: string, action: 'LOSE' | 'RESTORE'): Promise<{ ok: boolean; status: string }>;
   controlSource(token: string, sessionId: string, action: SourceControlAction): Promise<{ ok: boolean; health: LiveSourceHealth }>;
   sendComment(token: string, sessionId: string, comment: { userId: string; displayName: string; text: string }): Promise<{ ok: boolean }>;
+  getQuestions(token: string): Promise<Question[]>;
+  reviewQuestion(token: string, questionId: string, decision: QuestionReview['decision'], reason?: string): Promise<{ ok: boolean; question: Question }>;
   getSystemChecks(token: string): Promise<SystemChecksResponse>;
   runSystemSelfTest(token: string): Promise<SelfTestResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
@@ -63,6 +69,10 @@ async function jsonRequest<T>(path: string, token: string | null, init: RequestI
 }
 
 export const apiClient: DashboardClient = {
+  getHealth() {
+    return jsonRequest('/health', null);
+  },
+
   async currentSession() {
     const result = await jsonRequest<{ sessionId: string | null }>('/api/sessions/current', null);
     return result.sessionId;
@@ -110,6 +120,16 @@ export const apiClient: DashboardClient = {
   sendComment(token, sessionId, comment) {
     return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/comments`, token, {
       method: 'POST', body: JSON.stringify(comment),
+    });
+  },
+
+  getQuestions(token) {
+    return jsonRequest('/api/questions', token);
+  },
+
+  reviewQuestion(token, questionId, decision, reason) {
+    return jsonRequest(`/api/questions/${encodeURIComponent(questionId)}/approve`, token, {
+      method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }),
     });
   },
 

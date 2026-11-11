@@ -13,6 +13,8 @@ import {
   type LiveSourceHealth,
   type PublicQuestion,
   type PublicSnapshot,
+  type Question,
+  type QuestionReview,
   type RejectReason,
   type SimulatorRequest,
   type SystemCheck,
@@ -35,6 +37,35 @@ const demoQuestion: PublicQuestion = {
   optionsVisible: true,
   isDemo: true,
 };
+
+const mockReviewQuestions: Question[] = Array.from({ length: 18 }, (_, index) => {
+  const approved = index < 10;
+  const id = `mock-review-${String(index + 1).padStart(2, '0')}`;
+  return {
+    id,
+    packId: 'demo',
+    subtopicId: index % 2 === 0 ? 'clash-squad' : 'free-fire-basics',
+    prompt: `DEMO: Câu hỏi mẫu ${index + 1} về Free Fire?`,
+    options: [
+      { id: 'A', text: `Lựa chọn A của câu ${index + 1}` },
+      { id: 'B', text: `Lựa chọn B của câu ${index + 1}` },
+      { id: 'C', text: `Lựa chọn C của câu ${index + 1}` },
+      { id: 'D', text: `Lựa chọn D của câu ${index + 1}` },
+    ],
+    correctOptionId: 'B',
+    explanation: 'Dữ liệu mẫu chỉ dùng để xem giao diện duyệt câu hỏi.',
+    difficulty: (['EASY', 'MEDIUM', 'HARD'] as const)[index % 3]!,
+    tags: ['DEMO'],
+    sourceRefs: [],
+    verificationStatus: approved ? 'OPERATOR_VERIFIED' : 'DEMO',
+    approvalStatus: approved ? 'APPROVED' : 'PENDING_REVIEW',
+    version: 1,
+    media: null,
+    validFrom: null,
+    validUntil: null,
+    lastUsedAt: null,
+  };
+});
 
 function makeLeaderboard(): LeaderboardEntry[] {
   return [
@@ -69,6 +100,10 @@ class MockDashboardClient implements DashboardClient {
   private listeners = new Set<(snapshot: AdminSnapshot, serverTimeMs: number) => void>();
   private statusListeners = new Set<(status: SocketStatus) => void>();
   private commandResults = new Map<string, CommandResponse>();
+
+  async getHealth() {
+    return { ok: true, contractVersion: 1, sessionId: this.sessionId };
+  }
 
   async currentSession() {
     return this.sessionId && this.snapshot().sessionStatus === 'OPEN' ? this.sessionId : null;
@@ -212,6 +247,18 @@ class MockDashboardClient implements DashboardClient {
     this.stateVersion += 1;
     this.emit();
     return { ok: true };
+  }
+
+  async getQuestions(_token: string) {
+    return mockReviewQuestions.map((question) => ({ ...question, options: question.options.map((option) => ({ ...option })) }));
+  }
+
+  async reviewQuestion(_token: string, questionId: string, decision: QuestionReview['decision'], _reason?: string) {
+    const question = mockReviewQuestions.find((item) => item.id === questionId);
+    if (!question) throw new Error('Không có câu hỏi.');
+    question.approvalStatus = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    question.verificationStatus = decision === 'APPROVE' ? 'OPERATOR_VERIFIED' : 'UNVERIFIED';
+    return { ok: true, question: { ...question, options: question.options.map((option) => ({ ...option })) } };
   }
 
   subscribe(_token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void) {
