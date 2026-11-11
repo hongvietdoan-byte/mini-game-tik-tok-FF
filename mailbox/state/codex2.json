@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 31,
-  "heartbeat": "2026-11-11T16:08:29+07:00",
+  "heartbeat": "2026-11-11T16:08:47+07:00",
   "state": "working",
   "task": "C-0032",
-  "note": "C-0024 đã push xong; bắt đầu thiết kế lại Overlay V3 và sửa tràn Top 10 theo C-0033.",
+  "note": "C-0038 đã chuyển C-0030 sang Codex 1; đang hoàn thiện Overlay V3 theo C-0032/C-0033.",
   "done": [
     38
   ]
