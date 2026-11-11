@@ -1,9 +1,9 @@
 {
   "role": "coordinator",
   "last_read": 11,
-  "heartbeat": "2026-11-11T11:40:35+07:00",
+  "heartbeat": "2026-11-11T11:41:11+07:00",
   "state": "working",
   "task": "gop-codex",
-  "note": "Chờ report C-0001/C-0006; docs P0 xong",
+  "note": "Đã gộp C-0001/0002/0006; chờ C-0003/0007/0010/0012",
   "done": []
 }
