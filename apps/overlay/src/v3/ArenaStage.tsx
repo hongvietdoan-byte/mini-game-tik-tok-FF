@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import type { AudienceSeatView, LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
-import { characterHue, shortName, splitBubble } from './arenaLogic';
+import { shortName, splitBubble } from './arenaLogic';
+import { BrandMark } from './BrandMark';
+import { McSequence } from './mc/mc-sequence-player';
 import './arena.css';
 
 /**
  * Bố cục V3 "Storm Arena" theo ảnh mẫu người dùng duyệt (11/11): header, BXH Top 10 trái, khung câu hỏi + đồng hồ + 4 đáp án,
  * MC Kelly + bong bóng hướng dẫn, khán giả 7×5. Mọi chữ/điểm là lớp DOM độc lập (không ghép vào ảnh nền).
- * Chưa có asset tách lớp (logo, nền bão, chibi quay lưng) → vẽ bằng CSS / hình giữ chỗ.
+ * Kelly và chibi lấy từ asset bank local; logo, khung động, ghế và hiệu ứng sân khấu được dựng bằng CSS/SVG.
  */
 
 const ASSET_BASE = '/assets';
@@ -24,16 +26,7 @@ export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
         <span>STORM</span>
         <span>ARENA</span>
       </div>
-      <div className="v3-title">
-        <svg className="v3-crown" viewBox="0 0 120 60" aria-hidden="true">
-          <path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" />
-        </svg>
-        <div className="v3-title-main">
-          <span>BÁ VƯƠNG</span>
-          <span>ĐẠI CHIẾN</span>
-        </div>
-        <div className="v3-title-ribbon">ĐẤU TRƯỜNG BÃO TỐ</div>
-      </div>
+      <BrandMark ribbon="ĐẤU TRƯỜNG BÃO TỐ" />
       <div className="v3-round-badge">
         <b>{round ? `VÒNG ${round.roundNumber}` : 'SẮP BẮT ĐẦU'}</b>
         <span>
@@ -149,15 +142,10 @@ function QuestionBoard({ snapshot, remainingMs }: { snapshot: PublicSnapshot; re
 }
 
 function McKelly({ snapshot }: { snapshot: PublicSnapshot }) {
-  const [imgOk, setImgOk] = useState(true);
   return (
     <section className={`v3-mc v3-mc-${snapshot.mc.state}`} data-layer="kelly">
       <div className="v3-mc-figure">
-        {imgOk ? (
-          <img src={`${ASSET_BASE}/mc/kelly.png`} alt="" onError={() => setImgOk(false)} draggable={false} />
-        ) : (
-          <div className="v3-mc-placeholder">MC</div>
-        )}
+        <McSequence state={snapshot.mc.state} />
       </div>
       <div className="v3-mc-plate">
         <svg viewBox="0 0 120 60" aria-hidden="true">
@@ -182,16 +170,12 @@ const seatY = (y: number) => AUDIENCE_TOP_Y + ((y - 1105) * (AUDIENCE_FRONT_Y - 
 const AUDIENCE_TOP_Y = 1190;
 const AUDIENCE_FRONT_Y = 1880;
 
-function SeatChibi({ characterId, hue }: { characterId: string; hue: number }) {
+function SeatChibi({ characterId }: { characterId: string }) {
   const [ok, setOk] = useState(true);
-  return ok ? (
+  if (!ok) return null;
+  return (
     <div className="v3-chibi-img" aria-hidden="true">
       <img src={`${ASSET_BASE}/chibi/${characterId}.png`} alt="" width={92} height={104} loading="lazy" decoding="async" draggable={false} onError={() => setOk(false)} />
-    </div>
-  ) : (
-    <div className="v3-chibi" aria-hidden="true" style={{ ['--hue' as string]: hue }}>
-      <span className="v3-chibi-hair" />
-      <span className="v3-chibi-body" />
     </div>
   );
 }
@@ -213,7 +197,6 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
 
 const Seat = React.memo(function Seat({ seat }: SeatProps) {
   const o = seat.occupant;
-  const hue = o ? characterHue(o.characterId) : 0;
   return (
     <div
       className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''}`}
@@ -222,11 +205,10 @@ const Seat = React.memo(function Seat({ seat }: SeatProps) {
         top: seatY(seat.y),
         zIndex: 10 + Math.round(seat.depth),
         ['--s' as string]: seat.scale,
-        ['--hue' as string]: hue,
       }}
       data-testid="audience-seat"
     >
-      {o && <SeatChibi characterId={o.characterId} hue={hue} />}
+      {o && <SeatChibi characterId={o.characterId} />}
       <div className="v3-seat-back" aria-hidden="true">
         <svg viewBox="0 0 120 60">
           <path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" />
@@ -273,6 +255,68 @@ export function ArenaStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot
         <span className="v3-bolt-l" />
         <span className="v3-bolt-r" />
         <span className="v3-lights" />
+        <svg className="v3-arena-environment" viewBox="0 0 1080 1920" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="arena-steel" x1="0" y1="0" x2="0.9" y2="1">
+              <stop offset="0" stopColor="#303e9e" />
+              <stop offset="0.48" stopColor="#151841" />
+              <stop offset="1" stopColor="#080c29" />
+            </linearGradient>
+            <linearGradient id="arena-neon" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#19bfff" />
+              <stop offset="0.48" stopColor="#8754ff" />
+              <stop offset="1" stopColor="#ff43e9" />
+            </linearGradient>
+            <radialGradient id="arena-core">
+              <stop offset="0" stopColor="#9c6cff" stopOpacity="0.2" />
+              <stop offset="0.68" stopColor="#1634ff" stopOpacity="0.08" />
+              <stop offset="1" stopColor="#08102e" stopOpacity="0" />
+            </radialGradient>
+            <filter id="arena-glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="5" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <ellipse cx="540" cy="190" rx="650" ry="410" fill="url(#arena-core)" />
+          <g className="v3-env-vortex" fill="none" stroke="url(#arena-neon)" filter="url(#arena-glow)">
+            <path d="M-90 150C90-75 388-89 566 33s167 272-2 337S173 415 124 267 264 30 438 80s190 186 73 260" />
+            <path d="M-26 260C104 26 390-2 562 108s142 216-10 278S256 388 227 265s119-193 250-142 120 116 75 166" />
+            <path d="M108 28C292-54 490-15 587 91" />
+          </g>
+          <g className="v3-env-lightning" fill="none" strokeLinecap="round" strokeLinejoin="round" filter="url(#arena-glow)">
+            <path d="M76-18 26 98l71-22-43 126 100-154-63 18 46-84" />
+            <path d="m1004-12 50 112-75-21 53 130-103-151 66 17-47-82" />
+            <path d="M12 420 54 500l-32-2 72 72-32-88 26 5-51-67" />
+            <path d="m1068 410-42 82 32-2-73 76 33-91-28 7 50-72" />
+            <path d="M-40 56 52 112 24 139l121 46-40 31 132 31" />
+            <path d="m1120 54-92 57 28 28-121 46 40 31-132 31" />
+            <path d="M-25 245 91 292 58 319l137 40-42 36 111 28" />
+            <path d="m1105 243-116 49 33 27-137 40 42 36-111 28" />
+            <path d="M-30 574 67 612 36 640l122 47-42 35 87 33" />
+            <path d="m1110 572-97 40 31 28-122 47 42 35-87 33" />
+            <path d="M202-22 260 32l-24 26 75 42-28 25 83 28" />
+            <path d="m878-23-57 56 24 26-75 42 28 25-83 28" />
+          </g>
+          <g className="v3-env-truss" fill="none" stroke="url(#arena-neon)" strokeLinejoin="round">
+            <path d="M-28 737 126 837 219 1030M1108 737 954 837 861 1030" />
+            <path d="m-4 813 155 40-90 85 130 25M1084 813l-155 40 90 85-130 25" />
+            <path d="M36 704 125 774 90 850M1044 704l-89 70 35 76" />
+            <path d="M0 1004 196 932M1080 1004 884 932" />
+          </g>
+          <g className="v3-env-banner" stroke="url(#arena-neon)" strokeLinejoin="round">
+            <path d="M18 807h82v27l-7 13v115l-34 28-34-28V847l-7-13z" fill="url(#arena-steel)" />
+            <path d="M998 807h64v27l-7 13v115l-25 28-25-28V847l-7-13z" fill="url(#arena-steel)" />
+            <path d="m58 840 7 17 18 1-14 11 5 18-16-10-16 10 5-18-14-11 18-1zM1030 840l6 17 18 1-13 11 5 18-16-10-16 10 5-18-14-11 18-1z" fill="#ff49ea" />
+            <path d="M40 910h34M1014 910h32" fill="none" stroke="#8cc8fb" />
+          </g>
+          <path className="v3-env-stage" d="m0 1032 183-72h714l183 72v84H0z" fill="url(#arena-steel)" />
+          <path className="v3-env-stage-edge" d="M0 1034h1080M26 1104h1028" fill="none" stroke="url(#arena-neon)" />
+          <path className="v3-env-floor" d="m0 1118 140 60h800l140-60v802H0z" fill="url(#arena-steel)" />
+          <g className="v3-env-floor-rails" fill="none" stroke="url(#arena-neon)">
+            <path d="M-60 1198Q540 1278 1140 1198M-60 1320Q540 1400 1140 1320M-60 1450Q540 1530 1140 1450M-60 1590Q540 1670 1140 1590M-60 1738Q540 1818 1140 1738M-60 1884Q540 1964 1140 1884" />
+            <path d="M0 1142 185 1220v700M1080 1142l-185 78v700" />
+          </g>
+        </svg>
       </div>
       <BrandHeader snapshot={snapshot} />
       <Top10 entries={snapshot.leaderboard?.entries ?? []} />

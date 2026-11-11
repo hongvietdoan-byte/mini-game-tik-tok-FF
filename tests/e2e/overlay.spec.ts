@@ -1,5 +1,5 @@
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
 const scenes = [
@@ -19,6 +19,10 @@ const scenes = [
 
 const screenshotDirectory = join(process.cwd(), 'test-results', 'e2e', 'screenshots');
 mkdirSync(screenshotDirectory, { recursive: true });
+const localAssetDirectory = resolve(process.cwd(), '../../../assets-local');
+const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
+const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
+const hasLocalBrandLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
 
 let closestSafeMargin = Number.POSITIVE_INFINITY;
 let closestSafeScene = '';
@@ -30,9 +34,19 @@ test.afterAll(() => {
 function watchPageErrors(page: Page) {
   const errors: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
+      errors.push(`console: ${message.text()}`);
+    }
   });
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('response', (response) => {
+    if (response.status() < 400) return;
+    const pathname = new URL(response.url()).pathname;
+    const optionalMcManifest = pathname === '/assets/mc/kelly/manifest.json';
+    const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset || !hasLocalBrandLogo;
+    if (optionalMcManifest || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
+    errors.push(`http ${response.status()}: ${pathname}`);
+  });
   return errors;
 }
 
@@ -160,8 +174,45 @@ test('top10-short shows only its three real entries', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('question scene loads the approved Kelly and chibi assets when the local asset bank is present', async ({ page }) => {
+  test.skip(!hasLocalCharacterAssets || !hasLocalKellyAsset || !hasLocalBrandLogo, 'Local assets are excluded from Git; validate when the asset bank is available.');
+  const { errors } = await openScene(page, 'question', 'QUESTION');
+  const brandLogo = page.getByTestId('brand-logo');
+  await expect(brandLogo).toBeVisible();
+  await expect(brandLogo).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect.poll(() => brandLogo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  const kelly = page.locator('.v3-mc-figure img.mc-sequence');
+  await expect(kelly).toBeVisible();
+  await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  const mcCrop = await kelly.evaluate((image: HTMLImageElement) => ({
+    parentHeight: image.parentElement?.clientHeight ?? 0,
+    imageHeight: image.getBoundingClientRect().height,
+    overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
+  }));
+  expect(mcCrop.overflow).toBe('hidden');
+  expect(mcCrop.imageHeight).toBeGreaterThan(mcCrop.parentHeight);
+
+  const chibis = page.locator('.v3-chibi-img img');
+  await expect(chibis).toHaveCount(35);
+  await expect.poll(() => chibis.evaluateAll((images) => images.filter((image) => {
+    const candidate = image as HTMLImageElement;
+    return candidate.complete && candidate.naturalWidth > 0;
+  }).length)).toBe(35);
+  await expect.poll(() => chibis.first().evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover');
+  await expect.poll(() => chibis.first().evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');
+  await expect(page.locator('.v3-mc-placeholder, .v3-chibi')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('question crowd labels stay clear of the quiz and Top 1 badge fits its score column', async ({ page }) => {
   const { errors } = await openScene(page, 'question', 'QUESTION');
+  const top10 = page.locator('[data-testid="v3-top10"]');
+  const mcFigure = page.locator('.v3-mc-figure');
+  const [top10Box, mcBox] = await Promise.all([top10.boundingBox(), mcFigure.boundingBox()]);
+  expect(top10Box).not.toBeNull();
+  expect(mcBox).not.toBeNull();
+  expect(mcBox!.y).toBeGreaterThanOrEqual(top10Box!.y + top10Box!.height);
+
   const seatNames = page.locator('.v3-seat-name');
   await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
   await expect(page.locator('.v3-seat-back')).toHaveCount(35);
@@ -193,6 +244,27 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
     overflow: getComputedStyle(element).textOverflow,
   }))).toEqual({ clipped: true, overflow: 'ellipsis' });
   await expect(score).toHaveText('21.000');
+  expect(errors).toEqual([]);
+});
+
+test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', async ({ page }) => {
+  const errors = watchPageErrors(page);
+  await page.goto('/?mock=question&hud=1&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
+  const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
+  await expect(stage).toBeVisible();
+  await expect(page.getByTestId('tiktok-hud')).toBeVisible();
+  await expect(page.getByTestId('tiktok-live-info')).toContainText('LIVE');
+  await expect(page.getByTestId('tiktok-actions').locator('> div')).toHaveCount(5);
+  await expect(page.getByTestId('tiktok-comments').locator('p')).toHaveCount(4);
+  await expect(page.getByTestId('tiktok-comment-bar')).toContainText('Bình luận');
+  await expect(page.getByTestId('safe-zone-guides')).toBeVisible();
+  const values = await stage.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return ['--safe-top', '--safe-right', '--safe-bottom', '--safe-left', '--safe-right-from-y']
+      .map((name) => style.getPropertyValue(name).trim());
+  });
+  expect(values).toEqual(['180px', '140px', '120px', '20px', '700px']);
+  await page.screenshot({ path: join(screenshotDirectory, 'question-hud.png'), fullPage: true });
   expect(errors).toEqual([]);
 });
 

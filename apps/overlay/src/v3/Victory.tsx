@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
 import { podiumLeftToRight } from '../overlayLogic';
 import { shortName } from './arenaLogic';
+import { BrandMark } from './BrandMark';
 
 /**
  * Popup vinh danh Top 3 theo V3 §11: phông cổng năng lượng, CÚP + SÂN KHẤU GỐC ở giữa (không thêm 3 khối bục),
@@ -61,16 +62,7 @@ export function VictoryStage({ snapshot }: { snapshot: PublicSnapshot }) {
       )}
       <div className="v3v-dim" aria-hidden="true" />
       <header className="v3v-header">
-        <div className="v3-title">
-          <svg className="v3-crown" viewBox="0 0 120 60" aria-hidden="true">
-            <path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" />
-          </svg>
-          <div className="v3-title-main">
-            <span>BÁ VƯƠNG</span>
-            <span>ĐẠI CHIẾN</span>
-          </div>
-          <div className="v3-title-ribbon">VINH DANH TOP 3 · VÒNG {snapshot.round?.roundNumber ?? 1}</div>
-        </div>
+        <BrandMark ribbon={`VINH DANH TOP 3 · VÒNG ${snapshot.round?.roundNumber ?? 1}`} />
       </header>
       <div className="v3v-trophy" data-layer="trophy">
         {trophyOk ? (
