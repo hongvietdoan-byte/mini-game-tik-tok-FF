@@ -151,6 +151,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--violet); box-sha
 .pool-warning.is-warning > span { color: var(--gold); }
 .metrics-details { margin-top: 11px; color: var(--muted); font-size: 10px; }
 .metrics-details summary { cursor: pointer; }
+
+.desktop-auth-status { color: var(--muted); margin: 1rem 0; }
+.desktop-app-info { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem 1rem; margin-top: 1rem; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: .8rem; }
+.desktop-app-info code { color: var(--text); overflow-wrap: anywhere; }
+.desktop-app-info button { margin-left: auto; }
 .metrics-details > div { padding: 5px 0; display: flex; justify-content: space-between; border-bottom: 1px solid rgba(176,188,230,.06); }
 .metrics-details > div b { color: #e4e5ef; }
 .safe-zone-panel > p { margin-top: 12px; color: var(--muted); font-size: 10px; }
