@@ -28,7 +28,7 @@ Cả hai app Vite proxy `/api` và `/ws` (ws: true) sang `127.0.0.1:8787`, nên 
 |---|---|---|---|
 | GET | `/health` | — | `{ ok: true, contractVersion, sessionId: string \| null }` |
 | GET | `/api/sessions/current` | — | `{ sessionId: string \| null }` (phiên OPEN mới nhất) |
-| POST | `/api/sessions` | admin | `CreateSessionRequest` → `201 { sessionId, snapshot: AdminSnapshot }` |
+| POST | `/api/sessions` | admin | `CreateSessionRequest` → `201 { sessionId, snapshot: AdminSnapshot }`; đã có phiên OPEN → `409 { code: 'SESSION_ALREADY_OPEN', sessionId }`; mode ≠ MOCK → `422 NOT_ALLOWED_IN_MODE` (LIVE_CONNECTOR_BLOCKED) |
 | GET | `/api/sessions/:id/state` | — / admin | không token → `PublicSnapshot`; có token → `AdminSnapshot` |
 | POST | `/api/sessions/:id/commands` | admin | `CommandEnvelope` → `CommandResult` (xem mã HTTP dưới) |
 | POST | `/api/sessions/:id/simulator` | admin, chỉ MOCK | `SimulatorRequest` → `{ ok, running, players }` |
@@ -56,4 +56,9 @@ Mã HTTP của `/commands`:
 4. `ANSWER_COUNTS` có thể đến nhiều lần trong cùng `stateVersion` (đếm số đáp án) — cập nhật `answerCount`/`participantCount`.
 5. Đồng hồ: dùng `timer.remainingMs` + `serverTimeMs` của thông điệp để nội suy; khi `timer.running=false` thì đứng yên.
 6. Mất kết nối: tự nối lại (backoff 0.5 s → tối đa 5 s), gửi lại HELLO với `lastStateVersion`; **không phát lại hiệu ứng cũ**.
-7. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).
+7. Ý nghĩa trường (server thật, đã có test tích hợp):
+   - `round.questionIndex` **bắt đầu từ 0** → hiển thị `questionIndex + 1` / `questionCount`.
+   - `question` chỉ khác null khi trạng thái hiệu lực là ACCEPTING hoặc REVEAL (kể cả khi đang PAUSED/CONNECTION_INTERRUPTED từ đó); ở PREPARE là null.
+   - `reveal` chỉ khác null ở REVEAL. `leaderboard`: REVEAL → `COMPACT` (Top 3); LEADERBOARD / ROUND_END / VICTORY / INTERMISSION → `FULL` (≤ 10); còn lại null.
+   - `podium` chỉ ở ROUND_END / VICTORY. `answerCount` = tổng đáp án được nhận của câu hiện tại.
+8. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).

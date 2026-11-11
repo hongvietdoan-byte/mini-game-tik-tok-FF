@@ -1,0 +1,933 @@
+import { randomInt, randomUUID } from 'node:crypto';
+import {
+  CONTRACT_VERSION,
+  CommandEnvelopeSchema,
+  CommentEventSchema,
+  INITIAL_TEST_SAFE_ZONE,
+  type AdminSnapshot,
+  type CommandBody,
+  type CommandEnvelope,
+  type CommandResult,
+  type ConnectionStatus,
+  type CreateSessionRequest,
+  type IngestMetrics,
+  type LeaderboardEntry,
+  type OptionId,
+  type PublicSnapshot,
+  type QuestionSnapshot,
+  type RawComment,
+  type RejectReason,
+  type SessionConfig,
+  type SimulatorRequest,
+  type WsMessage,
+  type WsMessageType,
+  type WsPayloads,
+} from '@quiz/contracts';
+import {
+  acceptWindow,
+  buildPodium,
+  computeRoundScores,
+  createInitialState,
+  currentQuestionInstanceId,
+  decideComment,
+  effectiveState,
+  isEligible,
+  rankPlayers,
+  remainingMs,
+  sanitizeDisplayName,
+  sceneFor,
+  selectRound,
+  topN,
+  transition,
+  type EngineEvent,
+  type EngineInput,
+  type EngineState,
+  type PreparedRound,
+} from '@quiz/quiz-core';
+import { MockAdapter, MockSimulator, type LiveAdapter, type Scheduler, type SimPlayer } from '@quiz/live-adapters';
+import type { SessionRow, Store } from '@quiz/persistence';
+
+/**
+ * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
+ *
+ * Mỗi đầu vào (lệnh operator, đồng hồ, kết nối) đi qua `apply()`:
+ *   reducer thuần → MỘT transaction SQLite gồm (hiệu ứng DB + snapshot trạng thái + bản ghi kiểm toán + outbox)
+ *   → commit → mới phát WebSocket từ outbox → đặt lại đồng hồ.
+ * Node đơn luồng + better-sqlite3 đồng bộ ⇒ mọi đầu vào được xử lý tuần tự, không có tranh chấp.
+ */
+
+export type Audience = 'public' | 'admin';
+export type Outgoing = { audience: Audience; message: WsMessage };
+export type RuntimeListener = (batch: Outgoing[]) => void;
+export type DispatchOutcome = { status: number; result: CommandResult };
+
+type ApplyOk = { ok: true; state: EngineState; events: EngineEvent[] };
+type ApplyFail = { ok: false; code: CommandResult extends infer R ? (R extends { ok: false; code: infer C } ? C : never) : never; message: string };
+type ApplyResult = ApplyOk | ApplyFail;
+
+type PreparedSelection = { round: PreparedRound; seed: number; snapshots: QuestionSnapshot[] };
+
+const ZERO_COUNTS = (): Record<OptionId, number> => ({ A: 0, B: 0, C: 0, D: 0 });
+const REJECT_REASONS: RejectReason[] = [
+  'INVALID_EVENT',
+  'NOT_AN_ANSWER',
+  'NOT_ACCEPTING',
+  'EARLY',
+  'LATE',
+  'DUPLICATE_EVENT',
+  'DUPLICATE_ANSWER',
+  'STALE_SOURCE_TIMESTAMP',
+];
+const MAX_REJECTIONS = 50;
+const MAX_SEEN_EVENTS = 100_000;
+const HEARTBEAT_MS = 1_000;
+const COUNTS_THROTTLE_MS = 250;
+
+export function statusForResult(r: CommandResult): number {
+  if (r.ok) return 200;
+  if (r.code === 'STALE_STATE_VERSION') return 409;
+  return 422;
+}
+
+/** Người chơi giả lập tối thiểu cho simulator (tên hư cấu). */
+export function simPlayers(n: number): SimPlayer[] {
+  return Array.from({ length: n }, (_, i) => ({
+    userId: `sim-${String(i + 1).padStart(4, '0')}`,
+    displayName: `Khán giả ${i + 1}`,
+  }));
+}
+
+export type RuntimeDeps = { store: Store; scheduler: Scheduler; adapter: LiveAdapter };
+
+export class SessionRuntime {
+  engine: EngineState;
+  readonly metrics: IngestMetrics;
+  private listeners = new Set<RuntimeListener>();
+  private timerHandle: unknown = null;
+  private heartbeatHandle: unknown = null;
+  private countsHandle: unknown = null;
+  private snapshots = new Map<string, QuestionSnapshot>();
+  private snapshotsRoundId: string | null = null;
+  private counts = ZERO_COUNTS();
+  private countsQid: string | null = null;
+  private participants = 0;
+  private ranked: LeaderboardEntry[] = [];
+  private seenEvents = new Set<string>();
+  private rejections: { atMs: number; reason: RejectReason }[] = [];
+  private simulator: MockSimulator | null = null;
+  private notice: { code: string; message: string } | null = null;
+  private poolCache: AdminSnapshot['pool'] | null = null;
+  private unsubs: (() => void)[] = [];
+  private disposed = false;
+
+  private constructor(
+    private readonly deps: RuntimeDeps,
+    readonly session: SessionRow,
+    engine: EngineState,
+  ) {
+    this.engine = engine;
+    this.metrics = {
+      received: 0,
+      accepted: 0,
+      rejected: Object.fromEntries(REJECT_REASONS.map((r) => [r, 0])) as Record<RejectReason, number>,
+    };
+  }
+
+  get id() {
+    return this.session.id;
+  }
+  get config(): SessionConfig {
+    return this.session.config;
+  }
+  private get store() {
+    return this.deps.store;
+  }
+  private get scheduler() {
+    return this.deps.scheduler;
+  }
+  private get adapter() {
+    return this.deps.adapter;
+  }
+
+  // -------------------------------------------------------------------------
+  // Khởi tạo / khôi phục
+  // -------------------------------------------------------------------------
+
+  static async create(deps: RuntimeDeps, req: CreateSessionRequest): Promise<SessionRuntime> {
+    const now = deps.scheduler.now();
+    const id = `ses-${randomUUID()}`;
+    const config = req.config;
+    deps.store.createSession({ id, name: req.name, mode: config.mode, packId: config.packId, config, now });
+    const engine = createInitialState({
+      sessionId: id,
+      mode: config.mode,
+      timings: config.timings,
+      leaderboardInterval: config.leaderboardInterval,
+      speedMultiplier: config.speedMultiplier,
+    });
+    deps.store.transaction(() => deps.store.saveGameSnapshot(engine, sceneFor(engine), null, now));
+    const rt = new SessionRuntime(deps, deps.store.getSession(id)!, engine);
+    await rt.attach();
+    return rt;
+  }
+
+  /**
+   * Mở lại phiên sau khi tiến trình dừng đột ngột. KHÔNG BAO GIỜ tự chạy tiếp:
+   * reducer đưa phiên vào PAUSED/RECOVERY, chỉ operator mới chọn Tiếp tục / Huỷ câu / Dừng.
+   */
+  static async recover(deps: RuntimeDeps, row: SessionRow): Promise<SessionRuntime> {
+    const stored = deps.store.latestGameSnapshot(row.id);
+    if (!stored) throw new Error(`Phiên ${row.id} không có snapshot trạng thái`);
+    // Trạng thái kết nối là sự thật của tiến trình cũ — tiến trình mới chưa kết nối gì.
+    const engine: EngineState = { ...stored, connectionOk: false };
+    const rt = new SessionRuntime(deps, row, engine);
+    // Outbox chưa phát của tiến trình cũ: client sẽ tự lấy snapshot mới qua HELLO, không phát lại hiệu ứng cũ.
+    const stale = deps.store.takeUnpublished(row.id);
+    deps.store.markPublished(
+      stale.map((s) => s.id),
+      deps.scheduler.now(),
+    );
+    rt.rebuildCaches();
+    rt.apply({ kind: 'PROCESS_RESTARTED', lastHeartbeatMs: row.lastHeartbeatMs ?? deps.scheduler.now() });
+    const integrity = rt.verifyIntegrity();
+    if (integrity) rt.apply({ kind: 'FATAL', code: 'SCORE_INTEGRITY', message: integrity });
+    await rt.attach();
+    return rt;
+  }
+
+  private async attach() {
+    this.unsubs.push(this.adapter.onComment((c) => this.safe(() => this.ingest(c))));
+    this.unsubs.push(this.adapter.onStatus((s) => this.safe(() => this.onConnectionStatus(s))));
+    this.beat();
+    this.arm();
+    if (this.engine.sessionStatus === 'OPEN') {
+      try {
+        await this.adapter.connect();
+      } catch (err) {
+        this.store.recordConnectionEvent(this.id, this.adapter.source, 'BLOCKED', String(err), this.scheduler.now());
+      }
+    }
+  }
+
+  private rebuildCaches() {
+    const r = this.engine.round;
+    if (!r) return;
+    this.loadRound(r.roundId);
+    this.ranked = rankPlayers(this.store.standings(r.roundId));
+    this.participants = this.store.participantCount(r.roundId);
+    const qid = currentQuestionInstanceId(this.engine);
+    if (qid) {
+      this.countsQid = qid;
+      this.counts = this.store.optionCounts(qid);
+    }
+  }
+
+  private loadRound(roundId: string) {
+    if (this.snapshotsRoundId === roundId) return;
+    this.snapshots = new Map(this.store.roundQuestions(roundId).map((q) => [q.id, q.snapshot]));
+    this.snapshotsRoundId = roundId;
+  }
+
+  dispose() {
+    this.disposed = true;
+    for (const h of [this.timerHandle, this.heartbeatHandle, this.countsHandle]) if (h !== null) this.scheduler.clearTimeout(h);
+    this.timerHandle = this.heartbeatHandle = this.countsHandle = null;
+    this.simulator?.stop();
+    this.simulator = null;
+    for (const u of this.unsubs.splice(0)) u();
+    void this.adapter.disconnect().catch(() => {});
+  }
+
+  subscribe(fn: RuntimeListener): () => void {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Lõi: apply
+  // -------------------------------------------------------------------------
+
+  private apply(
+    input: EngineInput,
+    opts: { action?: CommandEnvelope; prepared?: PreparedSelection } = {},
+  ): ApplyResult {
+    const now = this.scheduler.now();
+    const prev = this.engine;
+    const res = transition(prev, input, now);
+    if (!res.ok) return res;
+    if (!res.changed) return { ok: true, state: prev, events: [] };
+
+    let integrityError: string | null = null;
+    try {
+      this.store.transaction(() => {
+        if (opts.prepared) {
+          this.store.createRound({
+            id: opts.prepared.round.roundId,
+            sessionId: this.id,
+            roundNumber: opts.prepared.round.roundNumber,
+            seed: opts.prepared.seed,
+            selectionMode: 'RANDOM',
+            snapshots: opts.prepared.snapshots,
+            now,
+          });
+          this.poolCache = null;
+        }
+        this.engine = res.state;
+        integrityError = this.applyEffects(res.events, now);
+        this.store.saveGameSnapshot(
+          res.state,
+          sceneFor(res.state),
+          res.state.timer ? remainingMs(res.state, now) : null,
+          now,
+        );
+        if (opts.action) {
+          const result: CommandResult = {
+            ok: true,
+            stateVersion: res.state.stateVersion,
+            state: res.state.state,
+            duplicate: false,
+          };
+          this.recordAction(opts.action, result, now);
+        }
+        for (const m of this.outboxFor(prev, res.state, res.events, now))
+          this.store.addOutbox(this.id, res.state.stateVersion, m.type, m.payload, now);
+      });
+    } catch (err) {
+      // Transaction đã rollback: trả bộ nhớ về trạng thái trước rồi để caller xử lý.
+      this.engine = prev;
+      this.snapshotsRoundId = null;
+      this.rebuildCaches();
+      throw err;
+    }
+
+    this.publish();
+    this.arm();
+    this.afterCommit(res.events, input);
+    if (integrityError) this.apply({ kind: 'FATAL', code: 'SCORE_INTEGRITY', message: integrityError });
+    return { ok: true, state: this.engine, events: res.events };
+  }
+
+  /** Hiệu ứng DB theo sự kiện (chạy TRONG transaction). @returns thông điệp lỗi toàn vẹn nếu có. */
+  private applyEffects(events: EngineEvent[], now: number): string | null {
+    let integrity: string | null = null;
+    for (const e of events) {
+      switch (e.type) {
+        case 'ROUND_STARTED':
+          this.store.setRoundStatus(e.roundId, 'RUNNING', now);
+          this.snapshotsRoundId = null;
+          this.loadRound(e.roundId);
+          this.ranked = [];
+          this.participants = 0;
+          break;
+        case 'QUESTION_OPENED':
+          this.store.markQuestion(e.questionInstanceId, 'OPEN', now);
+          this.countsQid = e.questionInstanceId;
+          this.counts = ZERO_COUNTS();
+          break;
+        case 'QUESTION_CLOSED':
+          this.store.markQuestion(e.questionInstanceId, 'CLOSED', now);
+          this.counts = this.store.optionCounts(e.questionInstanceId);
+          integrity = this.scoreRound(now, 'AFTER_QUESTION', e.questionInstanceId) ?? integrity;
+          break;
+        case 'QUESTION_VOIDED':
+          this.store.markQuestion(e.questionInstanceId, 'VOIDED', now, e.afterReveal);
+          if (e.afterReveal) {
+            this.store.insertVoidReversals(this.engine.round!.roundId, e.questionInstanceId, now);
+            integrity = this.scoreRound(now, 'AFTER_VOID', e.questionInstanceId) ?? integrity;
+          }
+          break;
+        case 'ROUND_ABORTED':
+          this.store.setRoundStatus(e.roundId, 'ABORTED', now);
+          break;
+        case 'ROUND_ENDED':
+          this.store.setRoundStatus(e.roundId, 'COMPLETED', now);
+          this.store.saveLeaderboardSnapshot({
+            roundId: e.roundId,
+            questionInstanceId: null,
+            kind: 'FINAL',
+            entries: topN(this.ranked, 10),
+            participantCount: this.participants,
+            now,
+          });
+          break;
+        case 'SESSION_STOPPED':
+          this.store.closeSession(this.id, now);
+          break;
+        case 'STATE_CHANGED':
+        case 'VICTORY_STARTED':
+        case 'AUTO_START_REQUESTED':
+        case 'RECOVERY_REQUIRED':
+        case 'ERROR_RAISED':
+          break;
+        default: {
+          const never: never = e;
+          throw new Error(`Sự kiện chưa xử lý: ${JSON.stringify(never)}`);
+        }
+      }
+    }
+    return integrity;
+  }
+
+  /**
+   * Chấm lại TOÀN VÒNG từ dữ liệu gốc, ghi phần sổ cái còn thiếu (idempotent),
+   * rồi đối chiếu tổng sổ cái với kết quả tính. Lệch ⇒ lỗi toàn vẹn (FATAL).
+   */
+  private scoreRound(now: number, kind: 'AFTER_QUESTION' | 'AFTER_VOID', qid: string): string | null {
+    const r = this.engine.round!;
+    this.loadRound(r.roundId);
+    const { ledger, totals } = computeRoundScores(
+      [...this.snapshots.values()].map((s) => ({
+        questionInstanceId: s.questionInstanceId,
+        index: s.index,
+        correctOptionId: s.correctOptionId,
+        closed: r.closed.includes(s.questionInstanceId),
+        voided: r.voided.includes(s.questionInstanceId),
+      })),
+      this.store.answersForRound(r.roundId),
+    );
+    this.store.insertLedger(r.roundId, ledger, now);
+    this.store.saveRoundPlayers(r.roundId, totals.values(), now);
+    const integrity = this.compareLedger(r.roundId, totals);
+    this.ranked = rankPlayers(this.store.standings(r.roundId));
+    this.participants = this.store.participantCount(r.roundId);
+    this.store.saveLeaderboardSnapshot({
+      roundId: r.roundId,
+      questionInstanceId: qid,
+      kind,
+      entries: topN(this.ranked, 10),
+      participantCount: this.participants,
+      now,
+    });
+    return integrity;
+  }
+
+  private compareLedger(roundId: string, totals: Map<string, { score: number }>): string | null {
+    const sums = this.store.ledgerTotals(roundId);
+    const bad: string[] = [];
+    for (const [pid, t] of totals) if ((sums.get(pid) ?? 0) !== t.score) bad.push(pid);
+    for (const [pid, s] of sums) if (!totals.has(pid) && s !== 0) bad.push(pid);
+    return bad.length
+      ? `Sổ cái lệch với điểm tính lại ở vòng ${roundId} (${bad.length} người chơi, ví dụ ${bad.slice(0, 3).join(', ')})`
+      : null;
+  }
+
+  /** Kiểm toàn vẹn khi khôi phục: tính lại vòng hiện tại và so với sổ cái đã lưu (không ghi gì). */
+  verifyIntegrity(): string | null {
+    const r = this.engine.round;
+    if (!r) return null;
+    this.loadRound(r.roundId);
+    const { totals } = computeRoundScores(
+      [...this.snapshots.values()].map((s) => ({
+        questionInstanceId: s.questionInstanceId,
+        index: s.index,
+        correctOptionId: s.correctOptionId,
+        closed: r.closed.includes(s.questionInstanceId),
+        voided: r.voided.includes(s.questionInstanceId),
+      })),
+      this.store.answersForRound(r.roundId),
+    );
+    return this.compareLedger(r.roundId, totals);
+  }
+
+  private afterCommit(events: EngineEvent[], input: EngineInput) {
+    for (const e of events) {
+      if (e.type === 'QUESTION_OPENED') {
+        const snap = this.snapshots.get(e.questionInstanceId);
+        if (snap && this.simulator)
+          this.simulator.onQuestionOpened({
+            questionInstanceId: e.questionInstanceId,
+            correctOptionId: snap.correctOptionId,
+            windowMs: this.engine.timer?.durationMs ?? 0,
+          });
+      } else if (e.type === 'SESSION_STOPPED') {
+        this.simulator?.stop();
+        this.simulator = null;
+        if (this.heartbeatHandle !== null) this.scheduler.clearTimeout(this.heartbeatHandle);
+        this.heartbeatHandle = null;
+      } else if (e.type === 'AUTO_START_REQUESTED') {
+        const out = this.systemCommand({ type: 'START_ROUND' });
+        if (!out.result.ok) {
+          this.notice = { code: 'AUTO_START_FAILED', message: out.result.message };
+          this.systemCommand({ type: 'SET_AUTO_MODE', enabled: false, reason: 'Tự động bắt đầu vòng thất bại' });
+        }
+      }
+    }
+    void input;
+  }
+
+  // -------------------------------------------------------------------------
+  // Đồng hồ, heartbeat
+  // -------------------------------------------------------------------------
+
+  private arm() {
+    if (this.timerHandle !== null) this.scheduler.clearTimeout(this.timerHandle);
+    this.timerHandle = null;
+    const t = this.engine.timer;
+    if (this.disposed || !t || t.deadlineMs === null || this.engine.sessionStatus === 'CLOSED') return;
+    const version = this.engine.stateVersion;
+    const deadline = t.deadlineMs;
+    const fire = () => {
+      this.timerHandle = null;
+      if (this.disposed || this.engine.stateVersion !== version) return;
+      const left = deadline - this.scheduler.now();
+      if (left > 0) {
+        this.timerHandle = this.scheduler.setTimeout(fire, left);
+        return;
+      }
+      this.safe(() => this.apply({ kind: 'TIMER_ELAPSED', expectedStateVersion: version }));
+    };
+    this.timerHandle = this.scheduler.setTimeout(fire, deadline - this.scheduler.now());
+  }
+
+  private beat() {
+    if (this.disposed || this.engine.sessionStatus === 'CLOSED') return;
+    this.store.heartbeat(this.id, this.scheduler.now());
+    this.heartbeatHandle = this.scheduler.setTimeout(() => this.beat(), HEARTBEAT_MS);
+  }
+
+  private safe(fn: () => void) {
+    try {
+      fn();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      try {
+        this.apply({ kind: 'FATAL', code: 'RUNTIME_EXCEPTION', message });
+      } catch {
+        /* DB hỏng hẳn: không thể làm gì thêm, giữ nguyên trạng thái trong bộ nhớ */
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Lệnh operator
+  // -------------------------------------------------------------------------
+
+  dispatch(raw: unknown): DispatchOutcome {
+    const parsed = CommandEnvelopeSchema.safeParse(raw);
+    if (!parsed.success) {
+      const result: CommandResult = {
+        ok: false,
+        code: 'VALIDATION_FAILED',
+        message: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+        stateVersion: this.engine.stateVersion,
+        duplicate: false,
+      };
+      return { status: 422, result };
+    }
+    const env = parsed.data;
+    const prior = this.store.findAction(env.commandId);
+    if (prior) {
+      const result = { ...(JSON.parse(prior.resultJson) as CommandResult), duplicate: true };
+      return { status: statusForResult(result), result };
+    }
+
+    const now = this.scheduler.now();
+    const cmd = env.command;
+    let prepared: PreparedSelection | undefined;
+    if (this.needsPreparedRound(env)) {
+      const count = 'questionCount' in cmd && cmd.questionCount ? cmd.questionCount : this.config.questionsPerRound;
+      const allowReuse = 'allowReuse' in cmd ? !!cmd.allowReuse : false;
+      const sel = this.prepareRound(count, allowReuse, now);
+      if (!sel.ok) {
+        const result: CommandResult = {
+          ok: false,
+          code: 'INSUFFICIENT_QUESTIONS',
+          message: `Không đủ câu hỏi chưa dùng: cần ${sel.required}, còn ${sel.unused} (đủ điều kiện ${sel.eligible}). Hãy giảm số câu, cho phép dùng lại hoặc đổi bộ câu hỏi.`,
+          stateVersion: this.engine.stateVersion,
+          duplicate: false,
+          details: sel,
+        };
+        this.store.transaction(() => this.recordAction(env, result, now));
+        return { status: 422, result };
+      }
+      prepared = sel.prepared;
+    }
+
+    const res = this.apply(
+      {
+        kind: 'COMMAND',
+        expectedStateVersion: env.expectedStateVersion,
+        command: cmd,
+        ...(prepared ? { preparedRound: prepared.round } : {}),
+      },
+      { action: env, ...(prepared ? { prepared } : {}) },
+    );
+    if (!res.ok) {
+      const result: CommandResult = {
+        ok: false,
+        code: res.code,
+        message: res.message,
+        stateVersion: this.engine.stateVersion,
+        duplicate: false,
+      };
+      this.store.transaction(() => this.recordAction(env, result, now));
+      return { status: statusForResult(result), result };
+    }
+    if (cmd.type === 'SET_AUTO_MODE' && cmd.enabled) this.notice = null;
+    const result: CommandResult = { ok: true, stateVersion: res.state.stateVersion, state: res.state.state, duplicate: false };
+    return { status: 200, result };
+  }
+
+  /** Lệnh nội bộ (auto mode) — đi cùng đường kiểm toán với lệnh operator. */
+  systemCommand(command: CommandBody): DispatchOutcome {
+    return this.dispatch({
+      commandId: `sys-${randomUUID()}`,
+      expectedStateVersion: this.engine.stateVersion,
+      operatorId: 'system',
+      requestedAtMs: this.scheduler.now(),
+      command,
+    });
+  }
+
+  private needsPreparedRound(env: CommandEnvelope): boolean {
+    const e = this.engine;
+    if (env.expectedStateVersion !== e.stateVersion || e.sessionStatus === 'CLOSED') return false;
+    if (e.suspended?.kind === 'RECOVERY') return false;
+    if (env.command.type === 'START_ROUND') return e.state === 'LOBBY';
+    if (env.command.type === 'RESTART_ROUND')
+      return !!e.round && ['PREPARE', 'ACCEPTING', 'REVEAL', 'LEADERBOARD'].includes(effectiveState(e));
+    return false;
+  }
+
+  private prepareRound(
+    count: number,
+    allowReuse: boolean,
+    now: number,
+  ):
+    | { ok: true; prepared: PreparedSelection }
+    | { ok: false; eligible: number; unused: number; required: number } {
+    const roundNumber = this.store.nextRoundNumber(this.id);
+    const roundId = `${this.id}:r${roundNumber}`;
+    const seed =
+      this.config.seed !== undefined ? (this.config.seed + roundNumber * 7919) | 0 : randomInt(1, 2 ** 31 - 1);
+    const sel = selectRound({
+      roundId,
+      seed,
+      count,
+      pool: this.store.listQuestions(this.config.packId),
+      usedInSession: this.store.usedQuestionIdsInSession(this.id),
+      allowDemo: this.config.mode === 'MOCK' && this.config.allowDemoQuestions,
+      allowReuse,
+      nowMs: now,
+    });
+    if (!sel.ok) return { ok: false, eligible: sel.eligible, unused: sel.unused, required: sel.required };
+    return {
+      ok: true,
+      prepared: {
+        round: { roundId, roundNumber, questionInstanceIds: sel.snapshots.map((s) => s.questionInstanceId) },
+        seed,
+        snapshots: sel.snapshots,
+      },
+    };
+  }
+
+  private recordAction(env: CommandEnvelope, result: CommandResult, now: number) {
+    this.store.recordAction({
+      commandId: env.commandId,
+      sessionId: this.id,
+      operatorId: env.operatorId,
+      commandType: env.command.type,
+      reason: env.command.reason ?? null,
+      expectedStateVersion: env.expectedStateVersion,
+      resultStateVersion: result.stateVersion,
+      accepted: result.ok,
+      resultJson: JSON.stringify(result),
+      requestedAtMs: env.requestedAtMs,
+      now,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Nhận comment (đường nóng)
+  // -------------------------------------------------------------------------
+
+  ingest(raw: RawComment): { accepted: true } | { accepted: false; reason: RejectReason } {
+    const now = this.scheduler.now();
+    this.metrics.received += 1;
+    const parsed = CommentEventSchema.safeParse({ ...raw, receivedAtMs: now });
+    if (!parsed.success || !parsed.data.userId.trim()) return this.reject('INVALID_EVENT', now);
+    const ev = parsed.data;
+
+    const win = acceptWindow(this.engine);
+    const decision = decideComment(ev, win ? { accepting: true, ...win } : null, {
+      maxSourceLagMs: this.config.maxSourceLagMs,
+    });
+    if (!decision.ok) return this.reject(decision.reason, now);
+
+    const qid = currentQuestionInstanceId(this.engine)!;
+    const roundId = this.engine.round!.roundId;
+    if (ev.eventId) {
+      const key = `${ev.source}:${ev.eventId}`;
+      if (this.seenEvents.has(key)) return this.reject('DUPLICATE_EVENT', now);
+      this.seenEvents.add(key);
+      if (this.seenEvents.size > MAX_SEEN_EVENTS) {
+        const first = this.seenEvents.values().next().value;
+        if (first !== undefined) this.seenEvents.delete(first);
+      }
+    }
+
+    const name = sanitizeDisplayName(ev.displayName);
+    const inserted = this.store.transaction(() => {
+      const playerId = this.store.resolvePlayer(ev.source, ev.userId, name, now);
+      this.store.touchPlayer(playerId, name, now);
+      return this.store.insertAnswer({
+        questionInstanceId: qid,
+        roundId,
+        playerId,
+        option: decision.option,
+        receivedAtMs: now,
+        sourceEventId: ev.eventId ?? null,
+      });
+    });
+    if (!inserted) return this.reject('DUPLICATE_ANSWER', now);
+
+    this.metrics.accepted += 1;
+    if (this.countsQid === qid) this.counts[decision.option] += 1;
+    this.participants = this.store.participantCount(roundId);
+    this.scheduleCounts();
+    return { accepted: true };
+  }
+
+  private reject(reason: RejectReason, now: number) {
+    this.metrics.rejected[reason] += 1;
+    this.rejections.push({ atMs: now, reason });
+    if (this.rejections.length > MAX_REJECTIONS) this.rejections.shift();
+    return { accepted: false as const, reason };
+  }
+
+  private scheduleCounts() {
+    if (this.countsHandle !== null || this.disposed) return;
+    this.countsHandle = this.scheduler.setTimeout(() => {
+      this.countsHandle = null;
+      const qid = this.countsQid;
+      if (!qid) return;
+      this.emit([
+        {
+          audience: 'public',
+          message: this.wrap('ANSWER_COUNTS', {
+            questionInstanceId: qid,
+            answerCount: this.answerCount(),
+            participantCount: this.participants,
+          }),
+        },
+        { audience: 'admin', message: this.wrap('ADMIN_SNAPSHOT', this.adminSnapshot()) },
+      ]);
+    }, COUNTS_THROTTLE_MS);
+  }
+
+  private onConnectionStatus(status: ConnectionStatus) {
+    const now = this.scheduler.now();
+    this.store.recordConnectionEvent(this.id, this.adapter.source, status, null, now);
+    this.emit([{ audience: 'public', message: this.wrap('CONNECTION_STATUS', { status }) }]);
+    const res = this.apply({ kind: 'CONNECTION_CHANGED', ok: status === 'CONNECTED' });
+    if (res.ok && res.events.length === 0) this.emitAdmin();
+  }
+
+  // -------------------------------------------------------------------------
+  // Công cụ MOCK
+  // -------------------------------------------------------------------------
+
+  private mockAdapter(): MockAdapter {
+    if (this.config.mode !== 'MOCK' || !(this.adapter instanceof MockAdapter))
+      throw new ModeError('Chỉ dùng được trong phiên MOCK');
+    return this.adapter;
+  }
+
+  simulatorControl(req: SimulatorRequest) {
+    const adapter = this.mockAdapter();
+    this.simulator?.stop();
+    this.simulator = null;
+    if (req.action === 'START') {
+      this.simulator = new MockSimulator(adapter, this.scheduler, {
+        players: simPlayers(req.players),
+        accuracy: req.accuracy,
+        participation: req.participation,
+        spamRate: req.spamRate,
+        noiseRate: req.noiseRate,
+        seed: req.seed,
+      });
+    }
+    this.emitAdmin();
+    return { ok: true, running: !!this.simulator, players: this.simulator?.opts.players.length ?? 0 };
+  }
+
+  mockConnection(action: 'LOSE' | 'RESTORE') {
+    const adapter = this.mockAdapter();
+    if (action === 'LOSE') adapter.simulateConnectionLoss();
+    else adapter.simulateConnectionRestore();
+    return { ok: true, status: adapter.status() };
+  }
+
+  mockComment(c: { userId: string; displayName: string; text: string; eventId?: string }) {
+    const adapter = this.mockAdapter();
+    return { ok: adapter.emit(c) };
+  }
+
+  // -------------------------------------------------------------------------
+  // Snapshot & phát
+  // -------------------------------------------------------------------------
+
+  private answerCount() {
+    return this.counts.A + this.counts.B + this.counts.C + this.counts.D;
+  }
+
+  publicSnapshot(now = this.scheduler.now()): PublicSnapshot {
+    const e = this.engine;
+    const eff = effectiveState(e);
+    const qid = currentQuestionInstanceId(e);
+    const snap = qid ? this.snapshots.get(qid) : undefined;
+    const showQuestion = !!snap && (eff === 'ACCEPTING' || eff === 'REVEAL');
+    const showReveal = !!snap && eff === 'REVEAL';
+    let leaderboard: PublicSnapshot['leaderboard'] = null;
+    if (e.round && (eff === 'LEADERBOARD' || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
+      leaderboard = { kind: 'FULL', entries: topN(this.ranked, 10) };
+    else if (e.round && eff === 'REVEAL') leaderboard = { kind: 'COMPACT', entries: topN(this.ranked, 3) };
+    return {
+      contractVersion: CONTRACT_VERSION,
+      sessionId: this.id,
+      stateVersion: e.stateVersion,
+      state: e.state,
+      scene: sceneFor(e),
+      paused: e.state === 'PAUSED',
+      mode: e.mode,
+      timer: e.timer
+        ? { durationMs: e.timer.durationMs, remainingMs: remainingMs(e, now), running: e.timer.deadlineMs !== null }
+        : null,
+      round: e.round
+        ? { roundNumber: e.round.roundNumber, questionIndex: e.round.questionIndex, questionCount: e.round.questionInstanceIds.length }
+        : null,
+      // PublicQuestion dựng tường minh: KHÔNG có correctOptionId / originalOptionId.
+      question: showQuestion
+        ? {
+            questionInstanceId: snap!.questionInstanceId,
+            index: snap!.index,
+            prompt: snap!.prompt,
+            options: snap!.options.map((o) => ({ id: o.id, text: o.text })),
+            isDemo: snap!.isDemo,
+          }
+        : null,
+      answerCount: showQuestion ? this.answerCount() : 0,
+      participantCount: e.round ? this.participants : 0,
+      reveal: showReveal
+        ? {
+            questionInstanceId: snap!.questionInstanceId,
+            correctOptionId: snap!.correctOptionId,
+            optionCounts: { ...this.counts },
+            explanation: snap!.explanation,
+          }
+        : null,
+      leaderboard,
+      podium: e.round && (eff === 'ROUND_END' || eff === 'VICTORY') ? buildPodium(this.ranked) : null,
+      connection: this.adapter.status(),
+      safeZone: INITIAL_TEST_SAFE_ZONE,
+    };
+  }
+
+  adminSnapshot(now = this.scheduler.now()): AdminSnapshot {
+    const e = this.engine;
+    const qid = currentQuestionInstanceId(e);
+    const snap = qid ? this.snapshots.get(qid) : undefined;
+    return {
+      public: this.publicSnapshot(now),
+      sessionStatus: e.sessionStatus,
+      autoMode: e.autoMode,
+      recoveryPending: e.suspended?.kind === 'RECOVERY',
+      suspendedFrom: e.suspended?.from ?? null,
+      config: this.config,
+      current: snap
+        ? {
+            questionInstanceId: snap.questionInstanceId,
+            correctOptionId: snap.correctOptionId,
+            optionCounts: { ...this.counts },
+            voided: !!e.round?.voided.includes(snap.questionInstanceId),
+          }
+        : null,
+      metrics: { ...this.metrics, rejected: { ...this.metrics.rejected } },
+      recentRejections: [...this.rejections].reverse().slice(0, 20),
+      pool: this.pool(now),
+      simulator: this.simulator ? { running: this.simulator.running, players: this.simulator.opts.players.length } : null,
+      error: e.error ?? this.notice,
+    };
+  }
+
+  private pool(now: number): AdminSnapshot['pool'] {
+    if (this.poolCache) return this.poolCache;
+    const allowDemo = this.config.mode === 'MOCK' && this.config.allowDemoQuestions;
+    const eligible = this.store.listQuestions(this.config.packId).filter((q) => isEligible(q, { allowDemo, nowMs: now }));
+    const used = this.store.usedQuestionIdsInSession(this.id);
+    const unused = eligible.filter((q) => !used.has(q.id)).length;
+    const required = this.config.questionsPerRound;
+    this.poolCache = { eligible: eligible.length, unusedInSession: unused, requiredNextRound: required, lowPoolWarning: unused < required };
+    return this.poolCache;
+  }
+
+  private outboxFor(prev: EngineState, next: EngineState, events: EngineEvent[], now: number) {
+    const out: { type: WsMessageType; payload: unknown }[] = [];
+    const pub = this.publicSnapshot(now);
+    out.push({ type: 'STATE_SNAPSHOT', payload: pub });
+    if (sceneFor(prev) !== pub.scene || prev.state !== next.state)
+      out.push({ type: 'SCENE_CHANGED', payload: { scene: pub.scene, state: pub.state } });
+    for (const e of events) {
+      if (e.type === 'QUESTION_OPENED' && pub.question) out.push({ type: 'QUESTION_OPENED_PUBLIC', payload: pub.question });
+      if (e.type === 'QUESTION_CLOSED' && pub.reveal) out.push({ type: 'ANSWER_REVEALED', payload: pub.reveal });
+      if (e.type === 'VICTORY_STARTED' && pub.podium) out.push({ type: 'VICTORY_STARTED', payload: { podium: pub.podium } });
+      if (e.type === 'ERROR_RAISED')
+        out.push({ type: 'ERROR_PUBLIC', payload: { code: 'PAUSED_TECHNICAL', message: 'Tạm dừng kỹ thuật' } });
+    }
+    if (pub.leaderboard && events.some((e) => e.type === 'QUESTION_CLOSED' || e.type === 'QUESTION_VOIDED' || e.type === 'STATE_CHANGED'))
+      out.push({ type: 'LEADERBOARD_UPDATED', payload: pub.leaderboard });
+    return out;
+  }
+
+  private publish() {
+    const rows = this.store.takeUnpublished(this.id);
+    if (rows.length === 0) return;
+    const now = this.scheduler.now();
+    const batch: Outgoing[] = rows.map((r) => ({
+      audience: 'public',
+      message: {
+        v: CONTRACT_VERSION,
+        type: r.type,
+        sessionId: this.id,
+        stateVersion: r.stateVersion,
+        serverTimeMs: now,
+        payload: r.payload,
+      } as WsMessage,
+    }));
+    batch.push({ audience: 'admin', message: this.wrap('ADMIN_SNAPSHOT', this.adminSnapshot(now)) });
+    this.store.markPublished(
+      rows.map((r) => r.id),
+      now,
+    );
+    this.emit(batch);
+  }
+
+  private emitAdmin() {
+    this.emit([{ audience: 'admin', message: this.wrap('ADMIN_SNAPSHOT', this.adminSnapshot()) }]);
+  }
+
+  wrap<T extends WsMessageType>(type: T, payload: WsPayloads[T]): WsMessage<T> {
+    return {
+      v: CONTRACT_VERSION,
+      type,
+      sessionId: this.id,
+      stateVersion: this.engine.stateVersion,
+      serverTimeMs: this.scheduler.now(),
+      payload,
+    } as WsMessage<T>;
+  }
+
+  private emit(batch: Outgoing[]) {
+    for (const fn of [...this.listeners]) {
+      try {
+        fn(batch);
+      } catch {
+        /* lỗi của một client không được làm hỏng runtime */
+      }
+    }
+  }
+}
+
+export class ModeError extends Error {}
