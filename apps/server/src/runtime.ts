@@ -758,7 +758,10 @@ export class SessionRuntime {
       if (prev === 'RECONNECTING') this.health.reconnects += 1;
       this.health.connectedSinceMs = now;
       this.health.detail = null;
-    } else this.health.connectedSinceMs = null;
+    } else {
+      this.health.connectedSinceMs = null;
+      this.health.detail = this.adapter.describe?.() ?? this.health.detail;
+    }
     this.emit([{ audience: 'public', message: this.wrap('CONNECTION_STATUS', { status }) }]);
     const res = this.apply({ kind: 'CONNECTION_CHANGED', ok: status === 'CONNECTED' });
     if (res.ok && res.events.length === 0) this.emitAdmin();
@@ -812,6 +815,7 @@ export class SessionRuntime {
       this.health.detail = err instanceof Error ? err.message : String(err);
     }
     this.health.status = this.adapter.status();
+    if (this.health.detail === null && this.health.status !== 'CONNECTED') this.health.detail = this.adapter.describe?.() ?? null;
     this.emitAdmin();
     return { ok: this.health.detail === null, health: this.liveHealth() };
   }

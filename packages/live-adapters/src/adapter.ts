@@ -9,6 +9,8 @@ export interface LiveAdapter {
   onComment(cb: (comment: RawComment) => void): () => void;
   onStatus(cb: (status: ConnectionStatus) => void): () => void;
   healthCheck(): Promise<{ ok: boolean; detail: string }>;
+  /** Lỗi/ghi chú gần nhất của nguồn (tuỳ chọn) — hiển thị ở Connection Manager. */
+  describe?(): string | null;
 }
 
 class Emitter<T> {

@@ -10,11 +10,12 @@ import {
   ClientAckSchema,
   ClientHelloSchema,
   CreateSessionRequestSchema,
+  QuestionReviewSchema,
   SimulatorRequestSchema,
 } from '@quiz/contracts';
-import { MockAdapter, TikTokAdapterBlocked, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
+import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
-import type { SystemCheck } from '@quiz/contracts';
+import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
 import { serveSpa } from './static';
@@ -32,7 +33,7 @@ export type AppOptions = {
   adminToken: string;
   allowedOrigins?: string[];
   /** Mặc định: MOCK → MockAdapter, TIKTOK → TikTokAdapterBlocked. Test có thể thay. */
-  adapterFactory?: (mode: 'MOCK' | 'TIKTOK') => LiveAdapter;
+  adapterFactory?: (mode: 'MOCK' | 'TIKTOK', config: SessionConfig) => LiveAdapter;
   logger?: boolean;
   startedAtMs?: number;
   /** Thư mục bản build (vite build) để phục vụ cùng origin: /dashboard/ và /overlay/ (bộ cài Windows, OBS). */
@@ -76,8 +77,17 @@ const MockCommentSchema = z.object({
 export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const { store, scheduler } = opts;
   const allowed = new Set(opts.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
+  // TIKTOK: thư viện cộng đồng tiktok-live-connector — KHÔNG CHÍNH THỨC, người dùng chốt dùng tạm (BOARD #17).
   const adapterFactory =
-    opts.adapterFactory ?? ((mode) => (mode === 'MOCK' ? new MockAdapter() : new TikTokAdapterBlocked()));
+    opts.adapterFactory ??
+    ((mode: 'MOCK' | 'TIKTOK', config: SessionConfig): LiveAdapter =>
+      mode === 'MOCK'
+        ? new MockAdapter()
+        : new TikTokLiveAdapter({
+            username: config.tiktokUsername ?? '',
+            scheduler,
+            ...(process.env.EULER_API_KEY ? { signApiKey: process.env.EULER_API_KEY } : {}),
+          }));
   const startedAtMs = opts.startedAtMs ?? scheduler.now();
 
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 256 * 1024 });
@@ -193,14 +203,8 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         message: 'Đang có phiên mở — dừng phiên đó trước khi tạo phiên mới',
         sessionId: rt.id,
       });
-    if (parsed.data.config.mode !== 'MOCK')
-      return reply.code(422).send({
-        ok: false,
-        code: 'NOT_ALLOWED_IN_MODE',
-        message: 'LIVE_CONNECTOR_BLOCKED: kết nối TikTok chưa qua cổng khả thi (Phase 4) — chỉ chạy được MOCK',
-      });
     const runtime = await SessionRuntime.create(
-      { store, scheduler, adapter: adapterFactory(parsed.data.config.mode) },
+      { store, scheduler, adapter: adapterFactory(parsed.data.config.mode, parsed.data.config) },
       parsed.data,
     );
     attachRuntime(runtime);
@@ -263,6 +267,16 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!guard(req, reply, false)) return reply;
     const packId = rt?.config.packId ?? 'demo';
     return store.listQuestions(packId);
+  });
+
+  /** Người dùng duyệt / từ chối câu hỏi (BOARD #13). Câu đã dùng trong vòng giữ snapshot cũ — không đổi kết quả cũ. */
+  app.post<{ Params: { id: string } }>('/api/questions/:id/approve', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = QuestionReviewSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const q = store.reviewQuestion(req.params.id, parsed.data.decision, parsed.data.operatorId, Math.floor(scheduler.now()));
+    if (!q) return reply.code(404).send({ ok: false, code: 'NOT_FOUND', message: 'Không có câu hỏi' });
+    return { ok: true, question: q };
   });
 
   app.get('/api/diagnostics', async (req, reply) => {
@@ -339,7 +353,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
             isTiktok ? 'FAIL' : 'NOT_TESTED',
             isTiktok
               ? (live?.detail ?? `trạng thái ${live?.status ?? '—'}`)
-              : 'LIVE_CONNECTOR_BLOCKED — đang chạy offline/Mock (docs/TIKTOK_CONNECTOR_SPIKE.md)',
+              : 'Phiên hiện tại là MOCK — tạo phiên TIKTOK (username tài khoản đang LIVE) để kiểm tra; kết nối dùng thư viện cộng đồng, KHÔNG CHÍNH THỨC',
           ),
       isTiktok && live?.lastCommentAtMs
         ? check('testComment', 'Nhận được comment thử nghiệm', 'PASS', `comment gần nhất ${iso(live.lastCommentAtMs)}, tổng ${live.commentsReceived}`)
@@ -427,7 +441,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const row = store.latestOpenSession();
       if (!row) return null;
       const r = await SessionRuntime.recover(
-        { store, scheduler, adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK') },
+        { store, scheduler, adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config) },
         row,
       );
       attachRuntime(r);

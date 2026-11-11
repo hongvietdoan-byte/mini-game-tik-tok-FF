@@ -212,13 +212,29 @@ export const SessionConfigSchema = z
     seed: z.number().int().optional(),
     /** Bỏ comment có sourceTimestamp cũ hơn ngưỡng này so với lúc nhận (cách ly sự kiện trễ). */
     maxSourceLagMs: z.number().int().min(0).max(60_000).default(5_000),
+    /** @username tài khoản TikTok đang phát LIVE — bắt buộc khi mode = TIKTOK. */
+    tiktokUsername: z
+      .string()
+      .trim()
+      .max(120)
+      .regex(/^(https?:\/\/(www\.)?tiktok\.com\/)?@?[A-Za-z0-9._]{2,24}(\/live)?\/?$/, 'TikTok username không hợp lệ')
+      .optional(),
   })
   .superRefine((c, ctx) => {
     if (c.mode !== 'MOCK' && c.speedMultiplier !== 1)
       ctx.addIssue({ code: 'custom', message: 'speedMultiplier chỉ dùng được trong MOCK' });
     if (c.mode !== 'MOCK' && c.allowDemoQuestions)
       ctx.addIssue({ code: 'custom', message: 'Câu hỏi DEMO không được vào LIVE thật' });
+    if (c.mode === 'TIKTOK' && !c.tiktokUsername)
+      ctx.addIssue({ code: 'custom', path: ['tiktokUsername'], message: 'Cần TikTok username của tài khoản đang LIVE' });
   });
+
+export const QuestionReviewSchema = z.object({
+  decision: z.enum(['APPROVE', 'REJECT']),
+  reason: z.string().trim().max(500).optional(),
+  operatorId: z.string().trim().min(1).max(100).default('operator'),
+});
+export type QuestionReview = z.infer<typeof QuestionReviewSchema>;
 export type SessionConfig = z.infer<typeof SessionConfigSchema>;
 
 /**

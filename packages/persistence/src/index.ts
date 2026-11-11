@@ -185,6 +185,31 @@ export class Store {
     }));
   }
 
+  /**
+   * Người dùng duyệt / từ chối một câu hỏi (tool chỉ đề xuất — BOARD #13).
+   * Duyệt → APPROVED + OPERATOR_VERIFIED (được vào phiên LIVE thật). Lưu bản chụp vào question_versions để kiểm toán.
+   * @returns câu hỏi sau khi cập nhật, hoặc null nếu không tồn tại.
+   */
+  reviewQuestion(id: string, decision: 'APPROVE' | 'REJECT', operatorId: string, now: number): Question | null {
+    return this.transaction(() => {
+      const r = this.raw.prepare('SELECT pack_id AS p FROM questions WHERE id = ?').get(id) as { p: string } | undefined;
+      if (!r) return null;
+      if (decision === 'APPROVE')
+        this.raw
+          .prepare("UPDATE questions SET approval_status = 'APPROVED', verification_status = 'OPERATOR_VERIFIED', updated_at_ms = ? WHERE id = ?")
+          .run(now, id);
+      else this.raw.prepare("UPDATE questions SET approval_status = 'REJECTED', updated_at_ms = ? WHERE id = ?").run(now, id);
+      const q = this.listQuestions(r.p).find((x) => x.id === id)!;
+      this.raw
+        .prepare(
+          `INSERT INTO question_versions (question_id, version, snapshot_json, edited_by, created_at_ms) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (question_id, version) DO UPDATE SET snapshot_json = excluded.snapshot_json, edited_by = excluded.edited_by, created_at_ms = excluded.created_at_ms`,
+        )
+        .run(id, q.version, JSON.stringify(q), `${decision}:${operatorId}`, now);
+      return q;
+    });
+  }
+
   // --- Phiên ----------------------------------------------------------------
 
   createSession(s: { id: string; name: string; mode: string; packId: string; config: SessionConfig; now: number }) {
