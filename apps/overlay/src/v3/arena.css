@@ -508,7 +508,7 @@
 .v3-header { top: 42px; height: 196px; contain: layout paint; }
 .v3-logo-storm { left: 30px; top: 24px; width: 254px; height: 90px; font-size: 42px; }
 .v3-title { top: -4px; width: 404px; }
-.v3-brand-logo { height: 184px; }
+.v3-brand-logo { height: 202px; }
 .v3-title-main { font-size: 46px; }
 .v3-title-ribbon { margin-top: 0; padding: 5px 24px; font-size: 15px; }
 .v3-round-badge { right: 25px; top: 24px; width: 230px; height: 92px; }
@@ -516,9 +516,9 @@
 .v3-round-badge span { font-size: 17px; }
 .v3-top10 {
   left: 98px;
-  top: 250px;
-  width: 260px;
-  height: 486px;
+  top: 270px;
+  width: 300px;
+  height: 466px;
   padding: 12px 8px 10px;
   border-radius: 18px;
   border-color: rgba(188, 157, 255, .9);
@@ -530,13 +530,13 @@
 .v3-top10-title b { color: #fff; font-size: 27px; letter-spacing: 1px; }
 .v3-top10 ol { gap: 3px; }
 .v3-top10 li {
-  grid-template-columns: 25px minmax(0, 1fr) 64px;
+  grid-template-columns: 25px minmax(0, 1fr) 60px;
   gap: 2px;
   height: 34px;
   padding: 0 5px 0 0;
   border: 1px solid rgba(191, 174, 255, .12);
   background: rgba(255,255,255,.025);
-  font-size: 14px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   contain: layout paint;
 }
@@ -559,25 +559,28 @@
 }
 .v3-name-text { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .v3-top10 .v3-name > :first-child { min-width: 0; }
-.v3-top10 .v3-top1-badge { flex: 0 0 auto; min-width: 31px; height: 20px; margin-left: 1px; padding: 0 4px; font-size: 11px; }
-.v3-score { display: block; width: 64px; min-width: 64px; text-align: right; white-space: nowrap; font-size: 14px; letter-spacing: -.25px; }
+.v3-top10 .v3-top1-badge { flex: 0 0 auto; min-width: 28px; height: 20px; margin-left: 1px; padding: 0 3px; font-size: 10px; }
+.v3-score { display: block; width: 60px; min-width: 60px; text-align: right; white-space: nowrap; font-size: 13px; letter-spacing: -.25px; }
 .v3-board {
-  left: 376px;
-  top: 250px;
-  width: 607px;
-  height: 486px;
+  left: 416px;
+  top: 270px;
+  width: 567px;
+  height: 466px;
   clip-path: polygon(3% 0, 100% 0, 100% 94%, 96% 100%, 0 100%, 0 7%);
   background: linear-gradient(180deg, rgba(34, 24, 104, .96), rgba(15, 10, 54, .97));
   box-shadow: inset 0 0 0 3px rgba(188,157,255,.9), inset 0 0 30px rgba(112,73,245,.35), 0 18px 45px rgba(4,2,20,.25);
   contain: layout paint;
 }
 .v3-board-tab { left: 25px; top: 18px; padding: 9px 38px 9px 28px; font-size: 26px; }
+.v3-board-tab::before { content: ''; position: absolute; left: calc(100% - 4px); top: 50%; width: 160px; height: 5px; transform: translateY(-50%); background: linear-gradient(90deg, #ffc84d, #ff8e2e 72%, transparent); box-shadow: 0 0 10px rgba(255, 189, 61, .8); }
 .v3-board-tab::after { content: 'ϟ'; position: absolute; right: 21px; top: 2px; color: var(--gold); font-size: 25px; }
-.v3-timer { right: 14px; top: -18px; width: 144px; height: 144px; z-index: 3; }
+.v3-timer { right: 14px; top: 0; width: 144px; height: 144px; z-index: 3; }
 .v3-timer-track { stroke-width: 9; fill: #17113f; }
 .v3-timer-arc { stroke-width: 9; filter: none; }
 .v3-timer b { font-size: 34px; }
-.v3-question { left: 18px; right: 18px; top: 86px; height: 160px; font-size: 28px; }
+.v3-question { left: 18px; right: 18px; top: 86px; height: 160px; font-size: 24px; }
+.v3-question.is-long { font-size: 22px; }
+.v3-question.is-xlong { font-size: 20px; }
 .v3-question.is-long { font-size: 28px; }
 .v3-question.is-xlong { font-size: 24px; }
 .v3-options { left: 20px; right: 20px; top: 263px; gap: 12px 14px; }
@@ -867,15 +870,35 @@
     radial-gradient(ellipse 52% 18% at 50% 15%, rgba(39, 105, 242, .28), transparent 77%);
   mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,.94) 62%, transparent 100%);
 }
-.v3-arena-environment { opacity: 1; }
-.v3-env-vortex { opacity: .3; stroke-width: 2.4; }
-.v3-env-lightning path:nth-child(odd) { stroke: #58dcff; stroke-width: 4; opacity: .94; filter: drop-shadow(0 0 9px #19bfff); }
-.v3-env-lightning path:nth-child(even) { stroke: #ec63ff; stroke-width: 3.2; opacity: .9; filter: drop-shadow(0 0 9px #d13cff); }
-.v3-env-truss { opacity: .72; }
+.v3-arena-environment { z-index: 3; opacity: 1; }
+.v3-arena-backdrop { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.v3-bg::before { z-index: 1; background: linear-gradient(180deg, rgba(7, 10, 39, .16), rgba(14, 9, 51, .28) 39%, rgba(8, 10, 38, .56) 100%); }
+.v3-bg > span { z-index: 2; }
+.v3-env-vortex { opacity: .12; stroke-width: 2.4; }
+.v3-env-lightning path:nth-child(odd) { stroke: #58dcff; stroke-width: 3; opacity: .25; filter: drop-shadow(0 0 7px #19bfff); }
+.v3-env-lightning path:nth-child(even) { stroke: #ec63ff; stroke-width: 2.5; opacity: .22; filter: drop-shadow(0 0 7px #d13cff); }
+.v3-env-truss { opacity: .18; }
 .v3-env-banner { opacity: .96; }
-.v3-env-stage-edge { stroke-width: 6; opacity: 1; }
-.v3-env-floor-rails { opacity: .58; }
+.v3-env-stage { opacity: .1; }
+.v3-env-stage-edge { stroke-width: 5; opacity: .3; }
+.v3-env-floor { opacity: .08; }
+.v3-env-floor-rails { opacity: .24; }
+.v3-storm { opacity: .14; }
+.v3-bolt-l, .v3-bolt-r { opacity: .08; }
+.v3-lights { opacity: .38; }
 .v3-header { height: 220px; }
 .v3-title { top: -40px; width: 440px; }
 .v3-brand-logo { height: 220px; }
 .v3-title-ribbon { padding: 4px 28px; font-size: 16px; }
+.v3-stage.has-tiktok-hud .v3-top10,
+.v3-stage.has-tiktok-hud .v3-board { top: 390px; }
+.v3-stage.has-tiktok-hud .v3-header { top: 260px; height: 110px; }
+.v3-stage.has-tiktok-hud .v3-logo-storm { left: 98px; top: 12px; width: 210px; height: 70px; font-size: 34px; }
+.v3-stage.has-tiktok-hud .v3-logo-storm span:last-child { padding-left: 26px; }
+.v3-stage.has-tiktok-hud .v3-title { top: 10px; width: 360px; }
+.v3-stage.has-tiktok-hud .v3-brand-logo { height: 84px; }
+.v3-stage.has-tiktok-hud .v3-round-badge { display: none; }
+.v3-stage.has-tiktok-hud .v3-mc { top: 900px; }
+.v3-stage .v3-mc-plate { left: 98px; width: 260px; }
+.v3-stage .v3-bubble { width: 593px; padding: 0 32px; }
+.v3-stage.has-tiktok-hud .v3-queue { top: 1160px; }

@@ -26,7 +26,7 @@ export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
         <span>STORM</span>
         <span>ARENA</span>
       </div>
-      <BrandMark ribbon="ĐẤU TRƯỜNG BÃO TỐ" />
+      <BrandMark />
       <div className="v3-round-badge">
         <b>{round ? `VÒNG ${round.roundNumber}` : 'SẮP BẮT ĐẦU'}</b>
         <span>
@@ -247,10 +247,12 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   );
 }
 
-export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
+export function ArenaStage({ snapshot, remainingMs, debug = false, hud = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; hud?: boolean }) {
+  const [backgroundOk, setBackgroundOk] = useState(true);
   return (
-    <div className="v3-stage" data-scene={snapshot.scene}>
+    <div className={`v3-stage${hud ? ' has-tiktok-hud' : ''}`} data-scene={snapshot.scene}>
       <div className="v3-bg" data-layer="background-storm" aria-hidden="true">
+        {backgroundOk && <img className="v3-arena-backdrop" src={`${ASSET_BASE}/victory/bg.jpg`} alt="" draggable={false} onError={() => setBackgroundOk(false)} />}
         <span className="v3-storm" />
         <span className="v3-bolt-l" />
         <span className="v3-bolt-r" />
@@ -306,7 +308,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
           <g className="v3-env-banner" stroke="url(#arena-neon)" strokeLinejoin="round">
             <path d="M18 807h82v27l-7 13v115l-34 28-34-28V847l-7-13z" fill="url(#arena-steel)" />
             <path d="M998 807h64v27l-7 13v115l-25 28-25-28V847l-7-13z" fill="url(#arena-steel)" />
-            <path d="m58 840 7 17 18 1-14 11 5 18-16-10-16 10 5-18-14-11 18-1zM1030 840l6 17 18 1-13 11 5 18-16-10-16 10 5-18-14-11 18-1z" fill="#ff49ea" />
+            <path d="m34 879 7-31 17 22 17-22 17 22 7-31 9 45H25zM30 888h66m979-9 6-27 10 17 7-22 8 22 10-17 6 27h-47zM1008 888h47" fill="#ff49ea" />
             <path d="M40 910h34M1014 910h32" fill="none" stroke="#8cc8fb" />
           </g>
           <path className="v3-env-stage" d="m0 1032 183-72h714l183 72v84H0z" fill="url(#arena-steel)" />

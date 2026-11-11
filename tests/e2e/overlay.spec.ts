@@ -119,6 +119,7 @@ async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator'
 for (const { name, scene } of scenes) {
   test(`mock scene: ${name}`, async ({ page }) => {
     const { stage, errors } = await openScene(page, name, scene);
+    await expect(stage.getByText('ĐẤU TRƯỜNG BÃO TỐ', { exact: true })).toHaveCount(0);
     await expectInsideSafeZone(page, stage, name);
     await page.screenshot({ path: join(screenshotDirectory, `${name}.png`), animations: 'disabled' });
     // So ảnh chuẩn chỉ khi bật E2E_SCREENSHOTS=1 (bố cục V3 còn đổi, chưa commit ảnh chuẩn — BOARD #15)
@@ -185,6 +186,9 @@ test('top10-short shows only its three real entries', async ({ page }) => {
 test('question scene loads the approved Kelly and chibi assets when the local asset bank is present', async ({ page }) => {
   test.skip(!hasLocalCharacterAssets || !hasLocalKellyAsset || !hasLocalBrandLogo, 'Local assets are excluded from Git; validate when the asset bank is available.');
   const { errors } = await openScene(page, 'question', 'QUESTION');
+  const stormBackdrop = page.locator('.v3-arena-backdrop');
+  await expect(stormBackdrop).toHaveAttribute('src', '/assets/victory/bg.jpg');
+  await expect.poll(() => stormBackdrop.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   const brandLogo = page.getByTestId('brand-logo');
   await expect(brandLogo).toBeVisible();
   await expect(brandLogo).toHaveAttribute('src', '/assets/brand/logo.png');
@@ -286,12 +290,33 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(errors).toEqual([]);
 });
 
+test('question and Top 10 stay below the 14 percent TikTok top safe zone', async ({ page }) => {
+  await openScene(page, 'question', 'QUESTION');
+  for (const selector of ['.v3-top10', '.v3-board', '.v3-timer']) {
+    const box = await page.locator(selector).boundingBox();
+    expect(box, `${selector} has a measurable position`).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(268.8);
+  }
+});
+
 test('TikTok HUD preview shows live chrome and lets the safe zone be adjusted', async ({ page }) => {
   const errors = watchPageErrors(page);
+  await page.setViewportSize({ width: 921, height: 2000 });
   await page.goto('/?mock=question&hud=1&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
   const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
   await expect(stage).toBeVisible();
   await expect(page.getByTestId('tiktok-hud')).toBeVisible();
+  const stageBox = await stage.boundingBox();
+  expect(stageBox).not.toBeNull();
+  expect(stageBox!.width).toBeGreaterThan(921);
+  expect(stageBox!.height).toBeGreaterThanOrEqual(1999);
+  expect(stageBox!.height).toBeLessThanOrEqual(2001);
+  for (const selector of ['.v3-top10', '.v3-board', '.v3-timer', '.v3-question', '[data-testid="option-A"]']) {
+    const box = await page.locator(selector).boundingBox();
+    expect(box, `${selector} stays visible after phone side crop`).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(-2);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(923);
+  }
   await expect(page.getByTestId('tiktok-live-info')).toContainText('LIVE');
   await expect(page.getByTestId('tiktok-actions').locator('> div')).toHaveCount(5);
   await expect(page.getByTestId('tiktok-comments').locator('p')).toHaveCount(4);

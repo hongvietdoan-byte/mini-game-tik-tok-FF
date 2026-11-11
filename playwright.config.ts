@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 import { resolve } from 'node:path';
 
 const localAssetDirectory = resolve(process.cwd(), '../../../assets-local');
+const overlayPort = process.env.PLAYWRIGHT_OVERLAY_PORT ?? '5176';
+const overlayUrl = `http://127.0.0.1:${overlayPort}`;
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -11,7 +13,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:5176',
+    baseURL: overlayUrl,
     channel: 'msedge',
     viewport: { width: 1080, height: 1920 },
     deviceScaleFactor: 1,
@@ -31,12 +33,12 @@ export default defineConfig({
     },
     {
       command: 'corepack pnpm --filter @quiz/overlay dev',
-      url: 'http://127.0.0.1:5176',
+      url: overlayUrl,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
       env: {
         QUIZ_PORT: '8788',
-        VITE_PORT: '5176',
+        VITE_PORT: overlayPort,
       },
     },
   ],
