@@ -94,6 +94,7 @@ function optionSize(text: string | undefined) {
 function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnapshot; remainingMs: number; debug: boolean }) {
   const q = snapshot.question;
   const reveal = snapshot.reveal;
+  const promptClass = promptSize(q?.prompt);
   const isLobby = snapshot.scene === 'LOBBY';
   const isPrepare = snapshot.state === 'PREPARE';
   const isReading = snapshot.state === 'READING';
@@ -105,7 +106,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
       <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
       {snapshot.timer && !isLobby && !isReading && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
       {isReading && <div className="v3-reading-status" data-testid="reading-status">MC ĐANG ĐỌC</div>}
-      <div className={`v3-question ${promptSize(q?.prompt)}`} data-testid="question-prompt">
+      <div className={`v3-question ${promptClass}`} data-testid="question-prompt">
         {isLobby ? (
           <>Bình luận <em>A, B, C</em> hoặc <em>D</em> để trả lời câu hỏi về Free Fire!</>
         ) : (
@@ -144,7 +145,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   );
 }
 
-function McKelly({ snapshot }: { snapshot: PublicSnapshot }) {
+export function McKelly({ snapshot }: { snapshot: PublicSnapshot }) {
   const bubble = snapshot.mc.bubble.replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
@@ -262,8 +263,11 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
 }
 
 export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
+  const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
+  const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
+  const stageClasses = ['v3-stage', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
-    <div className="v3-stage" data-scene={snapshot.scene}>
+    <div className={stageClasses} data-scene={snapshot.scene}>
       <div className="v3-bg" data-layer="background-storm" aria-hidden="true">
         <span className="v3-storm" />
         <span className="v3-bolt-l" />

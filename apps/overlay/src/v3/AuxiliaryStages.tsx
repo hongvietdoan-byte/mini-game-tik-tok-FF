@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
-import { BrandHeader, McCelebration } from './ArenaStage';
+import { BrandHeader, McKelly } from './ArenaStage';
 import './arena.css';
 
 function V3Backdrop() {
@@ -39,7 +39,9 @@ export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
       {entries.length === 0 && <p className="v3-full-empty">Chưa có người chơi</p>}
       <p className="v3-full-footnote">TÍCH LŨY ĐIỂM · TIẾP TỤC CHIẾN ĐẤU</p>
     </section>
-    <McCelebration />
+    <div className="v3-top10-guide" data-testid="top10-guide">
+      <McKelly snapshot={snapshot} />
+    </div>
   </div>;
 }
 

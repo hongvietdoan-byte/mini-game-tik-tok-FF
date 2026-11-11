@@ -6,10 +6,12 @@ const scenes = [
   { name: 'lobby', scene: 'LOBBY' },
   { name: 'prepare', scene: 'QUESTION' },
   { name: 'reading', scene: 'QUESTION' },
+  { name: 'reading-longest', scene: 'QUESTION' },
   { name: 'question', scene: 'QUESTION' },
   { name: 'reveal', scene: 'REVEAL' },
   { name: 'top10', scene: 'INTERIM_TOP10' },
   { name: 'top10-short', scene: 'INTERIM_TOP10' },
+  { name: 'top10-long-name', scene: 'INTERIM_TOP10' },
   { name: 'round-winner', scene: 'ROUND_WINNER' },
   { name: 'victory', scene: 'VICTORY' },
   { name: 'victory-tie', scene: 'VICTORY' },
@@ -107,7 +109,10 @@ async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator'
         box.y - edges.top,
         edges.bottom - (box.y + box.height),
       ];
-      const margin = Math.min(...margins);
+      const top10RowsMayExtendTo73Percent = sceneName.toLowerCase().startsWith('top10') && selector === '[data-testid="leaderboard-row"]';
+      const bottomLimit = top10RowsMayExtendTo73Percent ? stageBox.y + stageBox.height * 0.73 : edges.bottom;
+      const safeMargins = [...margins.slice(0, 3), bottomLimit - (box.y + box.height)];
+      const margin = Math.min(...safeMargins);
       if (margin < closestSafeMargin) {
         closestSafeMargin = margin;
         closestSafeScene = sceneName;
@@ -163,6 +168,27 @@ test('READING shows the question and four answers without starting the answer co
   expect(errors).toEqual([]);
 });
 
+test('longest DEMO question remains readable while Kelly reads it', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'reading-longest', 'QUESTION');
+  const prompt = stage.getByTestId('question-prompt');
+  const answers = stage.locator('[data-testid^="option-"] .v3-option-text');
+  await expect(prompt).toContainText('Trong Battle Royale');
+  await expect(stage.getByTestId('reading-status')).toHaveText('MC ĐANG ĐỌC');
+  await expect(stage.getByTestId('timer')).toHaveCount(0);
+  const promptFont = await prompt.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  const answerFonts = await answers.evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
+  expect(promptFont, 'long READING prompt must stay at least 30 px').toBeGreaterThanOrEqual(30);
+  expect(answerFonts.every((fontSize) => fontSize >= 28), 'READING choices must stay at least 28 px').toBe(true);
+  const fits = await prompt.evaluate((element) => element.scrollHeight <= element.clientHeight);
+  expect(fits, 'long READING prompt must remain inside its enlarged card').toBe(true);
+  const kelly = stage.locator('.v3-mc-figure img.mc-sequence');
+  await expect(kelly).toBeVisible();
+  await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await page.waitForTimeout(8_100);
+  await page.screenshot({ path: join(screenshotDirectory, 'reading-longest.png'), animations: 'disabled' });
+  expect(errors).toEqual([]);
+});
+
 test('longest DEMO question stays clear of the timer and fully inside its frame', async ({ page }) => {
   const { stage, errors } = await openScene(page, 'question-longest', 'QUESTION');
   const prompt = stage.getByTestId('question-prompt');
@@ -179,11 +205,19 @@ test('longest DEMO question stays clear of the timer and fully inside its frame'
       contentFits: prompt.scrollHeight <= prompt.clientHeight,
       renderedLines: textRange.getClientRects().length,
       promptHeight: prompt.clientHeight,
+      fontSize: Number.parseFloat(getComputedStyle(prompt).fontSize),
     };
   });
   expect(layout.overlapsTimer, 'timer must sit above the question copy').toBe(false);
   expect(layout.contentFits, 'longest DEMO prompt must not overflow its card').toBe(true);
   expect(layout.renderedLines).toBeGreaterThan(1);
+  expect(layout.fontSize, 'longest DEMO prompt must stay at least 30 px').toBeGreaterThanOrEqual(30);
+  const answerFonts = await stage.locator('[data-testid^="option-"] .v3-option-text').evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
+  expect(answerFonts.every((fontSize) => fontSize >= 28), 'question choices must stay at least 28 px').toBe(true);
+  const kelly = stage.locator('.v3-mc-figure img.mc-sequence');
+  await expect(kelly).toBeVisible();
+  await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await page.waitForTimeout(8_100);
   await page.screenshot({ path: join(screenshotDirectory, 'question-longest.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
 });
@@ -202,6 +236,7 @@ test('longest DEMO answer uses a full-width card and remains uncut in ACCEPTING'
     const textBox = range.getBoundingClientRect();
     return {
       lines: range.getClientRects().length,
+      fontSize: Number.parseFloat(getComputedStyle(text).fontSize),
       textHeight: text.scrollHeight,
       cardHeight: text.parentElement?.clientHeight ?? 0,
       textWidth: text.scrollWidth,
@@ -212,6 +247,7 @@ test('longest DEMO answer uses a full-width card and remains uncut in ACCEPTING'
   }));
   for (const measurement of measurements) {
     expect(measurement.lines, 'answer must fit in at most three lines').toBeLessThanOrEqual(3);
+    expect(measurement.fontSize, 'long answer must stay at least 28 px').toBeGreaterThanOrEqual(28);
     expect(measurement.textHeight, 'answer text must not overflow vertically').toBeLessThanOrEqual(measurement.cardHeight);
     expect(measurement.textWidth, 'answer text must not overflow horizontally').toBeLessThanOrEqual(measurement.cardWidth);
     expect(measurement.textBottom, 'answer text must stay above the question panel edge').toBeLessThanOrEqual(measurement.boardBottom - 8);
@@ -278,8 +314,43 @@ test('XSS shaped names render as text', async ({ page }) => {
   await expect(badge).toBeVisible();
   const boxes = await Promise.all([name.boundingBox(), badge.boundingBox(), score.boundingBox()]);
   expect(boxes.every(Boolean)).toBe(true);
-  expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x);
+  expect(boxes[1]!.y).toBeGreaterThanOrEqual(boxes[0]!.y + boxes[0]!.height - 2);
   expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[2]!.x);
+  expect(errors).toEqual([]);
+});
+
+test('full Top 10 fills the reference height and shows 14-character names beside Kelly', async ({ page }) => {
+  const { errors } = await openScene(page, 'top10-long-name', 'INTERIM_TOP10');
+  const panel = page.getByTestId('v3-top10-large');
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.y).toBeGreaterThanOrEqual(268);
+  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(1403);
+  expect(panelBox!.height).toBeGreaterThanOrEqual(1120);
+  const rows = panel.locator('[data-testid="leaderboard-row"]');
+  await expect(rows).toHaveCount(10);
+  const [firstRow, lastRow] = await Promise.all([rows.first().boundingBox(), rows.last().boundingBox()]);
+  expect(firstRow).not.toBeNull();
+  expect(lastRow).not.toBeNull();
+  expect(lastRow!.y + lastRow!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height - 40);
+  const name = rows.first().locator('.v3-full-name-text');
+  const badge = rows.first().locator('[data-testid="top1-badge"]');
+  await expect(name).toHaveText('StormKingAlpha');
+  await expect(badge).toHaveText('x3');
+  const [nameBox, badgeBox] = await Promise.all([name.boundingBox(), badge.boundingBox()]);
+  expect(nameBox).not.toBeNull();
+  expect(badgeBox).not.toBeNull();
+  expect(badgeBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 2);
+  expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const guide = page.getByTestId('top10-guide');
+  await expect(guide).toBeVisible();
+  await expect(guide.getByTestId('mc-bubble')).toBeVisible();
+  const [figureBox, bubbleBox] = await Promise.all([guide.locator('.v3-mc-figure').boundingBox(), guide.getByTestId('mc-bubble').boundingBox()]);
+  expect(figureBox).not.toBeNull();
+  expect(bubbleBox).not.toBeNull();
+  expect(bubbleBox!.y).toBeGreaterThanOrEqual(figureBox!.y + figureBox!.height - 2);
+  await page.waitForTimeout(8_100);
+  await page.screenshot({ path: join(screenshotDirectory, 'top10.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
 });
 
