@@ -1,8 +1,9 @@
 {
   "role": "cloud",
-  "last_read": 0,
-  "heartbeat": "2026-11-11T15:39:58+00:00",
+  "last_read": 81,
+  "heartbeat": "2026-11-11T15:47:03+00:00",
   "state": "waiting",
   "task": null,
-  "note": "Phiên cloud sẵn sàng; chờ coordinator gộp tools/mb.py (vai cloud) vào main rồi giao task --to cloud"
+  "note": "Phiên cloud sẵn sàng; chờ coordinator gộp tools/mb.py (vai cloud) vào main rồi giao task --to cloud",
+  "done": []
 }
