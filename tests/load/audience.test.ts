@@ -88,9 +88,13 @@ describe('tải Audience V3', () => {
       .prepare('SELECT COUNT(*) AS n, COUNT(DISTINCT player_id) AS players FROM answers WHERE round_id = ? AND question_instance_id = ?')
       .get(roundId, questionId) as { n: number; players: number };
     const scores = h.store.raw
-      .prepare('SELECT COUNT(*) AS n, COUNT(DISTINCT player_id) AS players FROM score_events WHERE round_id = ? AND question_instance_id = ?')
+      .prepare("SELECT COUNT(*) AS n, COUNT(DISTINCT player_id) AS players FROM score_events WHERE round_id = ? AND question_instance_id = ? AND score_reason = 'CORRECT'")
       .get(roundId, questionId) as { n: number; players: number };
+    const duplicateScores = h.store.raw
+      .prepare('SELECT COUNT(*) AS n FROM (SELECT 1 FROM score_events WHERE round_id = ? AND question_instance_id = ? GROUP BY player_id, score_reason HAVING COUNT(*) > 1)')
+      .get(roundId, questionId) as { n: number };
     expect(answers).toEqual({ n: 2_000, players: 2_000 });
     expect(scores).toEqual({ n: 2_000, players: 2_000 });
+    expect(duplicateScores.n).toBe(0);
   });
 });
