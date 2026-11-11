@@ -1,12 +1,11 @@
 {
   "role": "codex2",
-  "last_read": 23,
-  "heartbeat": "2026-11-11T15:10:23+07:00",
+  "last_read": 29,
+  "heartbeat": "2026-11-11T15:54:09+07:00",
   "state": "working",
   "task": "C-0024",
   "note": "C-0021 đã push/report/done; C-0026 huỷ theo C-0028. Bắt đầu C-0024 trên worktree riêng, chỉ apps/dashboard/**.",
   "done": [
-    26,
-    28
+    31
   ]
 }
