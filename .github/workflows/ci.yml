@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    # Dự án dùng better-sqlite3; chạy trên Windows khớp môi trường phát triển và đích triển khai.
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cài Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Bật Corepack
+        run: corepack enable
+
+      - name: Cài dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Kiểm tra quyền riêng tư
+        run: pnpm privacy:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # TODO Phase 2: thêm Playwright smoke test sau khi quy trình ảnh chụp overlay ổn định.
