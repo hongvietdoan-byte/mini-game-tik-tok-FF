@@ -434,7 +434,7 @@ export class SessionRuntime {
     const { ledger, totals } = computeRoundScores(
       this.scoringQuestions(r),
       this.store.answersForRound(r.roundId),
-      { speedBonusMax: this.config.speedBonusMax ?? 0 },
+      { mode: this.config.scoringMode ?? 'CLASSIC', speedBonusMax: this.config.speedBonusMax ?? 0 },
     );
     this.store.insertLedger(r.roundId, ledger, now);
     this.store.saveRoundPlayers(r.roundId, totals.values(), now);
@@ -486,7 +486,7 @@ export class SessionRuntime {
     const { totals } = computeRoundScores(
       this.scoringQuestions(r),
       this.store.answersForRound(r.roundId),
-      { speedBonusMax: this.config.speedBonusMax ?? 0 },
+      { mode: this.config.scoringMode ?? 'CLASSIC', speedBonusMax: this.config.speedBonusMax ?? 0 },
     );
     return this.compareLedger(r.roundId, totals);
   }

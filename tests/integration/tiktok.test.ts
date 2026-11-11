@@ -107,10 +107,10 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
     expect(rt.adminSnapshot().live.commentsReceived).toBe(4);
 
     for (let i = 0; i < 100 && rt.engine.state === 'ACCEPTING'; i++) h.scheduler.advance(250);
-    // đúng +100 + thưởng tốc độ (trả lời gần như ngay khi mở → gần tối đa 50)
+    // Kahoot: trả lời gần như ngay khi mở → gần 1000 (500–1000)
     const total = h.store.ledgerTotals(rt.engine.round!.roundId).get('TIKTOK:1001')!;
-    expect(total).toBeGreaterThan(140);
-    expect(total).toBeLessThanOrEqual(150);
+    expect(total).toBeGreaterThan(980);
+    expect(total).toBeLessThanOrEqual(1000);
   });
 
   it('mất kết nối TikTok giữa câu → treo câu, adapter tự nối lại nhưng câu KHÔNG tự chạy tiếp', async () => {

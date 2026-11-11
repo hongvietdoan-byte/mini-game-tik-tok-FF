@@ -64,6 +64,7 @@ const rt = await SessionRuntime.create(
       maxSourceLagMs: 5_000,
       audienceRotateEvery: 2,
       speedBonusMax: 50,
+      scoringMode: 'KAHOOT',
       audiencePinTop: 3,
     },
   },

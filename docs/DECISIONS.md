@@ -61,7 +61,11 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 ### (bản cũ) TikTok connector bị chặn cho tới cổng khả thi (Phase 4)
 - `TikTokAdapterBlocked` luôn báo `BLOCKED`; server từ chối tạo phiên mode TIKTOK (`LIVE_CONNECTOR_BLOCKED`). Không khẳng định có API chính thức khi chưa có bằng chứng.
 
-## D-16 · Thưởng tốc độ (người dùng chốt 11/11, thay bản "không thưởng tốc độ")
+## D-16b · Tính điểm kiểu Kahoot (người dùng chốt 11/11 — mặc định)
+- Câu đúng: `round(1000 × (2T − t) / 2T)` (500–1000), ghi sổ CORRECT 500 + SPEED 0–500; chuỗi: STREAK +100 × (n − 1) ≤ 500. Tối đa vòng 15 câu: 21.000.
+- Cùng rủi ro độ trễ TikTok như D-16; `scoringMode: 'CLASSIC'` để quay về cách cũ.
+
+## D-16 · Thưởng tốc độ (người dùng chốt 11/11, thay bản "không thưởng tốc độ") — nay là chế độ CLASSIC
 - Câu đúng được thêm tối đa `speedBonusMax` (mặc định 50): `⌊max × (cửa sổ − thời gian) / cửa sổ⌋`, thời gian = lúc SERVER nhận − lúc mở câu; ghi dòng sổ điểm `SPEED`.
 - Rủi ro đã báo người dùng: độ trễ giao bình luận TikTok khác nhau giữa người xem → người mạng chậm bị thiệt; operator có thể tắt (0) theo phiên.
 - Sau khi Tiếp tục từ tạm dừng, thời gian vẫn tính từ lúc mở câu lần đầu (thưởng giảm) — chấp nhận ở MVP.

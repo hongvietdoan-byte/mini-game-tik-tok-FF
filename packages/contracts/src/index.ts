@@ -206,6 +206,8 @@ export const SessionConfigSchema = z
     leaderboardInterval: z.number().int().min(1).max(20).default(5),
     /** Thưởng tốc độ tối đa cho câu đúng (0 = tắt). Người dùng chốt 11/11: có thưởng tốc độ. */
     speedBonusMax: z.number().int().min(0).max(500).default(50),
+    /** KAHOOT (mặc định, người dùng chốt 11/11): 500–1000/câu đúng theo tốc độ + chuỗi tới +500. CLASSIC: 100 + speedBonusMax + mốc 3/5/10. */
+    scoringMode: z.enum(['KAHOOT', 'CLASSIC']).default('KAHOOT'),
     timings: TimingsSchema.default({}),
     /** Chỉ hợp lệ trong MOCK. */
     speedMultiplier: z.number().min(1).max(200).default(1),

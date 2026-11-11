@@ -64,6 +64,7 @@ export async function runPipelineSelfTest(): Promise<SelfTestResult> {
           maxSourceLagMs: 5_000,
           audienceRotateEvery: 2,
           speedBonusMax: 0,
+          scoringMode: 'CLASSIC',
           audiencePinTop: 3,
         },
       },

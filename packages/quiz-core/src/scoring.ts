@@ -9,7 +9,27 @@ export const SCORE_RULES = {
   ],
 } as const;
 
-export type ScoreReason = 'CORRECT' | 'SPEED' | 'STREAK_3' | 'STREAK_5' | 'STREAK_10';
+export type ScoreReason = 'CORRECT' | 'SPEED' | 'STREAK' | 'STREAK_3' | 'STREAK_5' | 'STREAK_10';
+
+/**
+ * Chế độ tính điểm.
+ * - KAHOOT (mặc định từ 11/11, người dùng chốt): câu đúng = round(1000 × (1 − (t/T)/2)) → 500…1000;
+ *   ghi sổ thành CORRECT 500 + SPEED 0…500. Chuỗi đúng liên tiếp: từ câu thứ 2 cộng +100 × (chuỗi − 1), tối đa +500 (dòng STREAK).
+ * - CLASSIC (bản cũ): +100, thưởng tốc độ tuỳ chọn (speedBonusMax), mốc chuỗi 3/5/10 → +30/+50/+100.
+ */
+export type ScoringMode = 'KAHOOT' | 'CLASSIC';
+export const KAHOOT_RULES = { maxPoints: 1000, streakStep: 100, streakMax: 500 } as const;
+
+/** Điểm Kahoot cho một câu đúng (số học nguyên, làm tròn như Kahoot). Không biết thời gian → coi như hết giờ (500). */
+export function kahootPoints(elapsedMs: number | null, windowMs: number, max: number = KAHOOT_RULES.maxPoints): number {
+  if (!(windowMs > 0) || elapsedMs === null || !Number.isFinite(elapsedMs)) return max / 2;
+  const e = Math.min(windowMs, Math.max(0, Math.round(elapsedMs)));
+  return Math.round((max * (2 * windowMs - e)) / (2 * windowMs));
+}
+
+export function kahootStreakBonus(streak: number): number {
+  return Math.min(KAHOOT_RULES.streakMax, KAHOOT_RULES.streakStep * Math.max(0, streak - 1));
+}
 
 /**
  * Thưởng tốc độ (người dùng chốt 11/11): chỉ cho câu ĐÚNG, giảm tuyến tính từ `max` (trả lời ngay khi mở)
@@ -38,7 +58,9 @@ export type RoundQuestionInput = {
 export type AnswerInput = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs?: number };
 
 export type ScoringOptions = {
-  /** Thưởng tốc độ tối đa cho một câu đúng (0 = tắt). */
+  /** Mặc định CLASSIC ở mức hàm thuần (giữ tương thích); phiên mới mặc định KAHOOT (SessionConfig.scoringMode). */
+  mode?: ScoringMode;
+  /** CLASSIC: thưởng tốc độ tối đa cho một câu đúng (0 = tắt). */
   speedBonusMax?: number;
 };
 
@@ -80,6 +102,7 @@ export function computeRoundScores(
     }
   }
   const speedMax = opts.speedBonusMax ?? 0;
+  const kahoot = opts.mode === 'KAHOOT';
 
   const ordered = [...questions].sort((x, y) => x.index - y.index);
   const totals = new Map<string, PlayerTotals>();
@@ -95,7 +118,23 @@ export function computeRoundScores(
 
     for (const t of totals.values()) {
       const option = qa.get(t.playerId);
-      if (option !== undefined && option === q.correctOptionId) {
+      if (option !== undefined && option === q.correctOptionId && kahoot) {
+        t.streak += 1;
+        t.correctCount += 1;
+        const at = receivedAt.get(`${q.questionInstanceId}\u0000${t.playerId}`);
+        const elapsed = q.openedAtMs != null && at !== undefined ? at - q.openedAtMs : null;
+        const pts = kahootPoints(elapsed, q.windowMs ?? 0);
+        const base = KAHOOT_RULES.maxPoints / 2;
+        t.score += pts;
+        ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'CORRECT', points: base });
+        if (pts > base)
+          ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'SPEED', points: pts - base });
+        const sb = kahootStreakBonus(t.streak);
+        if (sb > 0) {
+          t.score += sb;
+          ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'STREAK', points: sb });
+        }
+      } else if (option !== undefined && option === q.correctOptionId) {
         t.streak += 1;
         t.correctCount += 1;
         t.score += SCORE_RULES.correct;

@@ -1,3 +1,5 @@
+> **Cập nhật 11/11 (người dùng chốt): tính điểm KIỂU KAHOOT là mặc định.** Câu đúng 500–1000 điểm (1000 nếu trả lời ngay, giảm đều về 500 khi hết giờ, theo giờ server nhận); đúng liên tiếp từ câu thứ 2 cộng +100, +200… tối đa +500; sai/không trả lời 0 điểm và mất chuỗi. Vòng 15 câu tối đa 21.000 điểm. Cách tính cũ (CLASSIC) vẫn chọn được theo phiên.
+
 > **Cập nhật 11/11 (người dùng chốt):** có **thưởng tốc độ** cho câu đúng — tối đa +50, giảm đều từ lúc mở câu tới hết giờ (theo giờ server nhận bình luận); cấu hình `speedBonusMax` theo phiên (0 = tắt). Phần "không thưởng tốc độ" bên dưới đã lỗi thời.
 
 # Luật chơi dành cho operator

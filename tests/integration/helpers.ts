@@ -107,7 +107,12 @@ export function runUntil(h: Harness, pred: () => boolean, stepMs = 100, maxMs = 
 }
 
 /** Bản tính THAM CHIẾU ĐỘC LẬP (không dùng quiz-core) — chỉ từ bảng answers + round_questions. */
-export function referenceScores(store: Store, roundId: string, opts: { speedBonusMax?: number; windowMs?: number } = {}) {
+export function referenceScores(
+  store: Store,
+  roundId: string,
+  opts: { mode?: 'KAHOOT' | 'CLASSIC'; speedBonusMax?: number; windowMs?: number } = {},
+) {
+  const mode = opts.mode ?? 'KAHOOT'; // khớp mặc định của phiên
   // Mặc định khớp cấu hình phiên mặc định: thưởng tốc độ tối đa 50, cửa sổ 15 s, tốc độ ×1.
   const speedMax = opts.speedBonusMax ?? 50;
   const windowMs = opts.windowMs ?? 15_000;
@@ -151,7 +156,15 @@ export function referenceScores(store: Store, roundId: string, opts: { speedBonu
           const left = Math.min(windowMs, Math.max(0, windowMs - (at - q.openedAt)));
           speed = Math.floor((speedMax * left) / windowMs);
         }
-        t.score += 100 + speed + (bonus[s] ?? 0);
+        if (mode === 'KAHOOT') {
+          // Kahoot (viết độc lập): round(1000 × (1 − (t/T)/2)); không biết t → 500; chuỗi +100×(n−1) ≤ 500
+          let pts = 500;
+          if (q.openedAt !== null && at !== undefined) {
+            const el = Math.min(windowMs, Math.max(0, at - q.openedAt));
+            pts = Math.round((1000 * (2 * windowMs - el)) / (2 * windowMs));
+          }
+          t.score += pts + Math.min(500, 100 * (s - 1));
+        } else t.score += 100 + speed + (bonus[s] ?? 0);
         t.correct += 1;
       } else streak.set(p, 0);
     }
