@@ -1,9 +1,12 @@
 {
   "role": "codex2",
   "last_read": 76,
-  "heartbeat": "2026-11-11T22:54:09+07:00",
+  "heartbeat": "2026-11-11T23:31:25+07:00",
   "state": "working",
   "task": "C-0082",
   "note": "đang thay Victory SVG bằng bg.jpg + trophy-stage.png trong nhánh C-0080",
-  "done": []
+  "done": [
+    82,
+    87
+  ]
 }
