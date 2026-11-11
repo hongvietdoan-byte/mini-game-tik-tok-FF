@@ -439,6 +439,7 @@ class MockDashboardClient implements DashboardClient {
       case 'IDLE':
       case 'LOBBY': return 'LOBBY';
       case 'PREPARE':
+      case 'READING':
       case 'ACCEPTING': return 'QUESTION';
       case 'REVEAL': return 'REVEAL';
       case 'LEADERBOARD': return this.isFullLeaderboard() ? 'INTERIM_TOP10' : 'REVEAL';
