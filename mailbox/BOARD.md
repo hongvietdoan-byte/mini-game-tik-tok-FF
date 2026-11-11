@@ -22,6 +22,7 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 | C-0004 | codex1 | Unit test `Store` (persistence) | C-0001 (dùng fixtures) | CHỜ |
 | C-0005 | codex1 | `scripts/privacy-check.mjs` + `.github/workflows/ci.yml` | — | CHỜ |
 | C-0006 | codex2 | `apps/overlay` 1080×1920, 8 cảnh, chế độ mock, client WS | — | XONG, đã gộp |
+| C-0014 | codex1 | Viết lại 36 câu DEMO chủ đề Free Fire + bảng đề xuất `docs/review/` | C-0003 | CHỜ |
 | C-0012 | codex2 | Sửa cảnh ĐỒNG HẠNG (mock + chân bục theo rank) | C-0006 | CHỜ (sau C-0007) |
 | C-0007 | codex2 | `apps/dashboard` tối thiểu (Live Control) | C-0006 (dùng chung khung Vite) | CHỜ |
 | C-0008 | codex2 | Playwright smoke + ảnh chụp cảnh overlay (Edge) | C-0006 | CHỜ |
@@ -51,3 +52,4 @@ Trạng thái `main`: contracts / quiz-core / persistence / live-adapters đã v
 11. Phase 1 overlay chỉ dùng **token màu** (`#2D387F #7049F5 #FFCC58 #E47E5F #D24470 #8CC8FB`) + font hệ thống hỗ trợ tiếng Việt. **Chưa dùng asset/ảnh đầu vào nào** (cúp, chibi, logo — Phase 5, cần xác nhận quyền).
 12. Token admin không bao giờ nằm trong URL; server chỉ bind `127.0.0.1`.
 13. **Câu hỏi: tool chỉ ĐỀ XUẤT; người dùng sửa, chọn, duyệt** (người dùng chốt 11/11). Người dùng sửa được cả câu hỏi, 4 đáp án và đáp án đúng. Không câu nào vào vòng công khai nếu người dùng chưa duyệt; sửa câu đã duyệt → phiên bản mới, quay về chờ duyệt. AI/fixtures không bao giờ tự đặt `APPROVED`. `fixtures/` chỉ là dữ liệu DEMO kiểm thử engine.
+14. **Nội dung câu hỏi chỉ về Free Fire** (người dùng chốt 11/11) — kể cả bộ DEMO. Dữ kiện giải BVĐC (đội, tuyển thủ, lịch, kết quả) chỉ dùng khi người dùng duyệt nguồn.
