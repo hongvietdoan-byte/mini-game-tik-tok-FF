@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_TIMINGS, type CommandBody, type GameState, type Scene } from '@quiz/contracts';
+import { DEFAULT_TIMINGS, MAX_MC_READING_MS, type CommandBody, type GameState, type Scene } from '@quiz/contracts';
 import {
+  acceptWindow,
   createInitialState,
   sceneFor,
   transition,
@@ -22,8 +23,8 @@ const TIMINGS = {
   intermissionMs: 1_000,
 };
 
-function initial(mode: 'MOCK' | 'TIKTOK' = 'MOCK', speedMultiplier = 1): EngineState {
-  return createInitialState({ sessionId: 's1', mode, timings: TIMINGS, leaderboardInterval: 5, speedMultiplier });
+function initial(mode: 'MOCK' | 'TIKTOK' = 'MOCK', speedMultiplier = 1, mcVoiceEnabled = false): EngineState {
+  return createInitialState({ sessionId: 's1', mode, timings: TIMINGS, leaderboardInterval: 5, speedMultiplier, mcVoiceEnabled });
 }
 
 function prepared(count = 15, roundNumber = 1): PreparedRound {
@@ -51,8 +52,8 @@ function elapse(state: EngineState): TransitionResult {
   return transition(state, { kind: 'TIMER_ELAPSED', expectedStateVersion: state.stateVersion }, deadline);
 }
 
-function beginRound(count = 15, connected = true, speedMultiplier = 1): EngineState {
-  let state = initial('MOCK', speedMultiplier);
+function beginRound(count = 15, connected = true, speedMultiplier = 1, mcVoiceEnabled = false): EngineState {
+  let state = initial('MOCK', speedMultiplier, mcVoiceEnabled);
   if (connected) state = ok(transition(state, { kind: 'CONNECTION_CHANGED', ok: true }, 0));
   state = ok(cmd(state, { type: 'OPEN_LOBBY' }, 10));
   return ok(cmd(state, { type: 'START_ROUND' }, 20, prepared(count)));
@@ -60,6 +61,10 @@ function beginRound(count = 15, connected = true, speedMultiplier = 1): EngineSt
 
 function reachAccepting(count = 3): EngineState {
   return ok(elapse(beginRound(count)));
+}
+
+function reachReading(count = 3): EngineState {
+  return ok(elapse(beginRound(count, true, 1, true)));
 }
 
 function reachReveal(count = 1): EngineState {
@@ -179,6 +184,7 @@ describe('transition/version và truy vấn scene', () => {
 
   it.each([
     ['IDLE', null, 'LOBBY'], ['LOBBY', null, 'LOBBY'], ['PREPARE', null, 'QUESTION'],
+    ['READING', null, 'QUESTION'],
     ['ACCEPTING', null, 'QUESTION'], ['REVEAL', null, 'REVEAL'], ['LEADERBOARD', null, 'INTERIM_TOP10'],
     ['ROUND_END', null, 'ROUND_WINNER'], ['VICTORY', null, 'VICTORY'], ['INTERMISSION', null, 'INTERMISSION'],
     ['PAUSED', { from: 'ACCEPTING', kind: 'PAUSE' }, 'QUESTION'],
@@ -186,6 +192,120 @@ describe('transition/version và truy vấn scene', () => {
     ['ERROR', { from: 'ACCEPTING', kind: 'ERROR' }, 'CONNECTION_LOST'],
   ] as [GameState, EngineState['suspended'], Scene][])('sceneFor %s → %s', (stateName, suspended, scene) => {
     expect(sceneFor({ ...initial(), state: stateName, suspended })).toBe(scene);
+  });
+});
+
+describe('MC Voice — pha READING', () => {
+  it('chỉ mở pha đọc khi phiên bật voice; ACK đúng câu mở ACCEPTING đúng một lần', () => {
+    const legacy = ok(elapse(beginRound(2)));
+    expect(legacy.state).toBe('ACCEPTING');
+
+    const reading = reachReading(2);
+    const qid = reading.round!.questionInstanceIds[reading.round!.questionIndex]!;
+    expect(reading.state).toBe('READING');
+    expect(reading.timer).toMatchObject({ durationMs: MAX_MC_READING_MS, remainingMs: MAX_MC_READING_MS });
+    expect(sceneFor(reading)).toBe('QUESTION');
+    expect(acceptWindow(reading)).toBeNull();
+
+    const wrongQuestion = transition(reading, {
+      kind: 'MC_READING_FINISHED', expectedStateVersion: reading.stateVersion, questionInstanceId: 'old-question',
+    }, 2_000);
+    expect(wrongQuestion).toMatchObject({ ok: false, code: 'ILLEGAL_TRANSITION' });
+
+    const stale = transition(reading, {
+      kind: 'MC_READING_FINISHED', expectedStateVersion: reading.stateVersion - 1, questionInstanceId: qid,
+    }, 2_000);
+    expect(stale).toMatchObject({ ok: false, code: 'STALE_STATE_VERSION' });
+
+    const finished = transition(reading, {
+      kind: 'MC_READING_FINISHED', expectedStateVersion: reading.stateVersion, questionInstanceId: qid,
+    }, 2_000);
+    expect(finished).toMatchObject({
+      ok: true,
+      state: { state: 'ACCEPTING', acceptOpenAtMs: 2_000, timer: { durationMs: TIMINGS.answerMs } },
+      events: expect.arrayContaining([{ type: 'QUESTION_OPENED', questionInstanceId: qid, index: 0 }]),
+    });
+    if (finished.ok) {
+      expect(acceptWindow(finished.state)?.openAtMs).toBe(2_000);
+      expect(finished.events.filter((event) => event.type === 'QUESTION_OPENED')).toHaveLength(1);
+      const duplicate = transition(finished.state, {
+        kind: 'MC_READING_FINISHED', expectedStateVersion: reading.stateVersion, questionInstanceId: qid,
+      }, 2_001);
+      expect(duplicate).toMatchObject({ ok: false, code: 'STALE_STATE_VERSION' });
+    }
+  });
+
+  it('fallback không audio mở chữ ngay; timer và ACK tới đúng hạn đều rơi về chữ', () => {
+    const reading = reachReading(2);
+    const qid = reading.round!.questionInstanceIds[reading.round!.questionIndex]!;
+    const fallback = transition(reading, {
+      kind: 'MC_READING_FALLBACK', expectedStateVersion: reading.stateVersion, questionInstanceId: qid, reason: 'NO_AUDIO',
+    }, 1_500);
+    expect(fallback).toMatchObject({
+      ok: true,
+      state: { state: 'ACCEPTING', acceptOpenAtMs: 1_500 },
+      events: expect.arrayContaining([
+        { type: 'MC_READING_ABORTED', questionInstanceId: qid, reason: 'NO_AUDIO' },
+        { type: 'QUESTION_OPENED', questionInstanceId: qid, index: 0 },
+      ]),
+    });
+
+    const timeout = elapse(reading);
+    expect(timeout).toMatchObject({
+      ok: true,
+      state: { state: 'ACCEPTING' },
+      events: expect.arrayContaining([{ type: 'MC_READING_ABORTED', questionInstanceId: qid, reason: 'TIMEOUT' }]),
+    });
+
+    const atLimit = transition(reading, {
+      kind: 'MC_READING_FINISHED', expectedStateVersion: reading.stateVersion, questionInstanceId: qid,
+    }, reading.timer!.deadlineMs!);
+    expect(atLimit).toMatchObject({
+      ok: true,
+      state: { state: 'ACCEPTING' },
+      events: expect.arrayContaining([{ type: 'MC_READING_ABORTED', questionInstanceId: qid, reason: 'TIMEOUT' }]),
+    });
+  });
+
+  it('pause đóng băng trần đọc; resume tiếp phần còn lại và vẫn chưa nhận comment', () => {
+    let reading = reachReading(2);
+    const pauseAt = reading.timer!.deadlineMs! - 15_000;
+    reading = ok(cmd(reading, { type: 'PAUSE' }, pauseAt));
+    expect(reading.state).toBe('PAUSED');
+    expect(reading.suspended).toEqual({ from: 'READING', kind: 'PAUSE' });
+    expect(reading.timer).toMatchObject({ remainingMs: 15_000, deadlineMs: null });
+
+    const resumeAt = pauseAt + 1_200;
+    reading = ok(cmd(reading, { type: 'RESUME' }, resumeAt));
+    expect(reading.state).toBe('READING');
+    expect(reading.timer!.deadlineMs).toBe(resumeAt + 15_000);
+    expect(acceptWindow(reading)).toBeNull();
+  });
+
+  it('skip/void/stop/recovery đều xử lý được khi đang đọc mà không mở câu để chấm', () => {
+    const reading = reachReading(3);
+    const skipped = cmd(reading, { type: 'SKIP_QUESTION', reason: 'Bỏ câu khi MC đang đọc' }, 1_500);
+    expect(skipped).toMatchObject({
+      ok: true,
+      state: { state: 'PREPARE', round: { questionIndex: 1, voided: ['r1:q01'] } },
+      events: expect.arrayContaining([{ type: 'QUESTION_VOIDED', questionInstanceId: 'r1:q01', afterReveal: false }]),
+    });
+    expect(skipped.ok && skipped.events.some((event) => event.type === 'QUESTION_OPENED')).toBe(false);
+
+    const oneQuestionReading = reachReading(1);
+    const voided = cmd(oneQuestionReading, { type: 'VOID_QUESTION', reason: 'Huỷ câu chưa đọc xong' }, 1_500);
+    expect(voided).toMatchObject({ ok: true, state: { state: 'LEADERBOARD', round: { voided: ['r1:q01'] } } });
+    expect(voided.ok && voided.events.some((event) => event.type === 'QUESTION_OPENED')).toBe(false);
+
+    const stopped = cmd(reading, { type: 'STOP', reason: 'Dừng lúc đang đọc' }, 1_500);
+    expect(stopped).toMatchObject({ ok: true, state: { state: 'IDLE', sessionStatus: 'CLOSED' } });
+
+    const recovered = transition(oneQuestionReading, { kind: 'PROCESS_RESTARTED', lastHeartbeatMs: 1_500 }, 1_700);
+    expect(recovered).toMatchObject({ ok: true, state: { state: 'PAUSED', suspended: { from: 'READING', kind: 'RECOVERY' } } });
+    if (recovered.ok) {
+      const recoveryVoid = cmd(recovered.state, { type: 'RESOLVE_RECOVERY', decision: 'VOID', reason: 'Huỷ câu sau khi phục hồi' }, 1_800);
+      expect(recoveryVoid).toMatchObject({ ok: true, state: { state: 'LEADERBOARD', round: { voided: ['r1:q01'] } } });
+    }
   });
 });
 

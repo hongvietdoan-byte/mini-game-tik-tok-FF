@@ -13,6 +13,10 @@ const normalActions: Record<GameState, DashboardAction[]> = {
     { type: 'PAUSE', label: 'Tạm dừng' },
     { type: 'MANUAL_NEXT', label: 'Tiếp' },
   ],
+  READING: [
+    { type: 'PAUSE', label: 'Tạm dừng' },
+    { type: 'MANUAL_NEXT', label: 'Tiếp' },
+  ],
   ACCEPTING: [
     { type: 'PAUSE', label: 'Tạm dừng' },
   ],

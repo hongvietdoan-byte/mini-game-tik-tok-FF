@@ -136,6 +136,38 @@ async function closeSocket(socket: WebSocket): Promise<void> {
 }
 
 describe('V3 §17 — acceptance', () => {
+  it('MC Voice: READING hiện đủ bốn đáp án nhưng chưa nhận comment và không lộ đáp án đúng', async () => {
+    const h = await session({}, { mcVoiceEnabled: true });
+    expect((await command(h, { type: 'OPEN_LOBBY' })).status).toBe(200);
+    expect((await command(h, { type: 'START_ROUND' })).status).toBe(200);
+    runUntil(h, () => rt(h).engine.state === 'READING');
+
+    const r = rt(h);
+    const questionId = currentQuestionInstanceId(r.engine)!;
+    const publicView = r.publicSnapshot();
+    expect(publicView.state).toBe('READING');
+    expect(publicView.question).toMatchObject({
+      questionInstanceId: questionId,
+      optionsVisible: true,
+      options: expect.arrayContaining([
+        expect.objectContaining({ id: 'A' }),
+        expect.objectContaining({ id: 'B' }),
+        expect.objectContaining({ id: 'C' }),
+        expect.objectContaining({ id: 'D' }),
+      ]),
+    });
+    expect(publicView.question?.options).toHaveLength(4);
+    expect(publicView.question).not.toHaveProperty('correctOptionId');
+    expect(publicView.question).not.toHaveProperty('originalOptionId');
+    expect(publicView.reveal).toBeNull();
+
+    const received = r.ingest({
+      source: 'MOCK', userId: 'early-mc-comment', displayName: 'Đến sớm', text: 'A', eventId: 'early-mc-comment-1',
+    });
+    expect(received).toEqual({ accepted: false, reason: 'NOT_ACCEPTING' });
+    expect(answerRows(h, questionId)).toHaveLength(0);
+  });
+
   it('một người gửi A 100 lần chỉ tạo một answer và một score event', async () => {
     const h = await sessionWithCorrectA();
     await startAccepting(h);

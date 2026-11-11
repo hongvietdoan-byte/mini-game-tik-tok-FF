@@ -197,6 +197,7 @@ export class SessionRuntime {
       timings: config.timings,
       leaderboardInterval: config.leaderboardInterval,
       speedMultiplier: config.speedMultiplier,
+      mcVoiceEnabled: config.mcVoiceEnabled,
     });
     deps.store.transaction(() => deps.store.saveGameSnapshot(engine, sceneFor(engine), null, now));
     const rt = new SessionRuntime(deps, deps.store.getSession(id)!, engine);
@@ -416,6 +417,7 @@ export class SessionRuntime {
         }
         case 'VICTORY_STARTED':
         case 'AUTO_START_REQUESTED':
+        case 'MC_READING_ABORTED':
         case 'RECOVERY_REQUIRED':
         case 'ERROR_RAISED':
           break;
@@ -886,8 +888,8 @@ export class SessionRuntime {
     // LEADERBOARD ngắn sau mỗi câu vẫn ở bố cục câu hỏi (đáp án đã công bố); chỉ mốc mới là BXH lớn.
     const bigBoard = eff === 'LEADERBOARD' && isInterimLeaderboard(e);
     const postReveal = eff === 'REVEAL' || (eff === 'LEADERBOARD' && !bigBoard);
-    const showQuestion = !!snap && (eff === 'PREPARE' || eff === 'ACCEPTING' || postReveal);
-    // PREPARE: chỉ câu hỏi, chưa có 4 đáp án (người dùng chốt 11/11).
+    const showQuestion = !!snap && (eff === 'PREPARE' || eff === 'READING' || eff === 'ACCEPTING' || postReveal);
+    // PREPARE chỉ hiện câu hỏi; READING hiện đủ bốn đáp án để MC đọc, chưa mở nhận comment.
     const showOptions = showQuestion && eff !== 'PREPARE';
     const showReveal = !!snap && postReveal;
     let leaderboard: PublicSnapshot['leaderboard'] = null;
@@ -900,7 +902,7 @@ export class SessionRuntime {
     if (e.round && (bigBoard || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
       leaderboard = { kind: 'FULL', entries: withChar(topN(this.ranked, 10)) };
     // Top 10 gọn cạnh câu hỏi (V3 §10) — chỉ cập nhật khi chốt câu, không đổi trong lúc trả lời.
-    else if (e.round && (eff === 'PREPARE' || eff === 'ACCEPTING' || postReveal))
+    else if (e.round && (eff === 'PREPARE' || eff === 'READING' || eff === 'ACCEPTING' || postReveal))
       leaderboard = { kind: 'COMPACT', entries: withChar(topN(this.ranked, 10)) };
     const revealView = showReveal
       ? {

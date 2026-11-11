@@ -3,10 +3,12 @@ import type {
   CommandErrorCode,
   GameState,
   LiveSource,
+  McReadingFallbackReason,
   McState,
   Scene,
   Timings,
 } from '@quiz/contracts';
+import { MAX_MC_READING_MS } from '@quiz/contracts';
 
 /**
  * Máy trạng thái có thẩm quyền — HÀM THUẦN: (state, input, now) => result/events.
@@ -41,6 +43,7 @@ export type EngineState = {
   timings: Timings;
   leaderboardInterval: number;
   speedMultiplier: number;
+  mcVoiceEnabled: boolean;
   autoMode: boolean;
   timer: EngineTimer | null;
   round: EngineRound | null;
@@ -56,6 +59,15 @@ export type PreparedRound = { roundId: string; roundNumber: number; questionInst
 export type EngineInput =
   | { kind: 'COMMAND'; expectedStateVersion: number; command: CommandBody; preparedRound?: PreparedRound }
   | { kind: 'TIMER_ELAPSED'; expectedStateVersion: number }
+  /** Chỉ runtime sau khi xác thực lease/playback identity mới được gửi ACK hoàn tất. */
+  | { kind: 'MC_READING_FINISHED'; expectedStateVersion: number; questionInstanceId: string }
+  /** Fallback sớm khi không có audio/owner hoặc playback lỗi; TIMEOUT do timer phát ra. */
+  | {
+      kind: 'MC_READING_FALLBACK';
+      expectedStateVersion: number;
+      questionInstanceId: string;
+      reason: Exclude<McReadingFallbackReason, 'TIMEOUT'>;
+    }
   | { kind: 'CONNECTION_CHANGED'; ok: boolean }
   | { kind: 'FATAL'; code: string; message: string }
   | { kind: 'PROCESS_RESTARTED'; lastHeartbeatMs: number };
@@ -65,6 +77,7 @@ export type EngineEvent =
   | { type: 'ROUND_STARTED'; roundId: string; roundNumber: number }
   | { type: 'ROUND_ABORTED'; roundId: string; cause: 'RESTART' | 'STOP' }
   | { type: 'QUESTION_OPENED'; questionInstanceId: string; index: number }
+  | { type: 'MC_READING_ABORTED'; questionInstanceId: string; reason: McReadingFallbackReason }
   | { type: 'QUESTION_CLOSED'; questionInstanceId: string }
   | { type: 'QUESTION_VOIDED'; questionInstanceId: string; afterReveal: boolean }
   | { type: 'ROUND_ENDED'; roundId: string }
@@ -84,6 +97,7 @@ export function createInitialState(init: {
   timings: Timings;
   leaderboardInterval: number;
   speedMultiplier: number;
+  mcVoiceEnabled?: boolean;
 }): EngineState {
   return {
     sessionId: init.sessionId,
@@ -94,6 +108,7 @@ export function createInitialState(init: {
     timings: init.timings,
     leaderboardInterval: init.leaderboardInterval,
     speedMultiplier: init.mode === 'MOCK' ? init.speedMultiplier : 1,
+    mcVoiceEnabled: init.mcVoiceEnabled ?? false,
     autoMode: false,
     timer: null,
     round: null,
@@ -139,6 +154,7 @@ export function sceneFor(s: EngineState): Scene {
     case 'LOBBY':
       return 'LOBBY';
     case 'PREPARE':
+    case 'READING':
     case 'ACCEPTING':
       return 'QUESTION';
     case 'REVEAL':
@@ -174,6 +190,8 @@ export function mcFor(s: EngineState, reveal: { correctOptionId: string } | null
       return { state: 'welcome', bubble: 'Bình luận A/B/C/D để tham gia' };
     case 'PREPARE':
       return { state: 'ask', bubble: 'Câu hỏi tiếp theo, chuẩn bị nhé!' };
+    case 'READING':
+      return { state: 'ask', bubble: 'Đang đọc câu hỏi và đáp án...' };
     case 'ACCEPTING':
       return { state: 'ask', bubble: 'Chọn đáp án ngay! Bình luận A, B, C hoặc D' };
     case 'REVEAL':
@@ -203,6 +221,7 @@ export function isInterimLeaderboard(s: EngineState): boolean {
 const PAUSABLE: readonly GameState[] = [
   'LOBBY',
   'PREPARE',
+  'READING',
   'ACCEPTING',
   'REVEAL',
   'LEADERBOARD',
@@ -210,8 +229,8 @@ const PAUSABLE: readonly GameState[] = [
   'VICTORY',
   'INTERMISSION',
 ];
-const IN_QUESTION_PRE_REVEAL: readonly GameState[] = ['PREPARE', 'ACCEPTING'];
-const IN_ROUND_PLAY: readonly GameState[] = ['PREPARE', 'ACCEPTING', 'REVEAL', 'LEADERBOARD'];
+const IN_QUESTION_PRE_REVEAL: readonly GameState[] = ['PREPARE', 'READING', 'ACCEPTING'];
+const IN_ROUND_PLAY: readonly GameState[] = ['PREPARE', 'READING', 'ACCEPTING', 'REVEAL', 'LEADERBOARD'];
 
 type Draft = { s: EngineState; events: EngineEvent[] };
 
@@ -226,6 +245,7 @@ function assertNever(x: never): never {
 function clone(s: EngineState): EngineState {
   return {
     ...s,
+    mcVoiceEnabled: s.mcVoiceEnabled ?? false,
     timer: s.timer ? { ...s.timer } : null,
     round: s.round
       ? {
@@ -285,6 +305,13 @@ function enterPrepare(d: Draft, index: number, now: number) {
   setTimer(d, d.s.timings.prepareMs, now);
 }
 
+function enterReading(d: Draft, now: number) {
+  d.s.acceptOpenAtMs = null;
+  go(d, 'READING');
+  // Đây là giới hạn thời gian thật; không rút ngắn theo speedMultiplier của MOCK.
+  d.s.timer = { durationMs: MAX_MC_READING_MS, remainingMs: MAX_MC_READING_MS, deadlineMs: now + MAX_MC_READING_MS };
+}
+
 function enterAccepting(d: Draft, now: number) {
   go(d, 'ACCEPTING');
   setTimer(d, d.s.timings.answerMs, now);
@@ -325,6 +352,15 @@ function advance(d: Draft, now: number): boolean {
       d.events.push({ type: 'AUTO_START_REQUESTED' });
       return true;
     case 'PREPARE':
+      if (d.s.mcVoiceEnabled) enterReading(d, now);
+      else enterAccepting(d, now);
+      return true;
+    case 'READING':
+      d.events.push({
+        type: 'MC_READING_ABORTED',
+        questionInstanceId: currentQuestionInstanceId(d.s)!,
+        reason: 'TIMEOUT',
+      });
       enterAccepting(d, now);
       return true;
     case 'ACCEPTING': {
@@ -418,6 +454,27 @@ export function transition(state: EngineState, input: EngineInput, now: number):
   const d: Draft = { s: clone(state), events: [] };
 
   switch (input.kind) {
+    case 'MC_READING_FINISHED':
+    case 'MC_READING_FALLBACK': {
+      if (input.expectedStateVersion !== state.stateVersion)
+        return fail('STALE_STATE_VERSION', 'ACK MC thuộc phiên bản trạng thái cũ');
+      if (state.state !== 'READING')
+        return fail('ILLEGAL_TRANSITION', `ACK MC không hợp lệ ở trạng thái ${state.state}`);
+      if (input.questionInstanceId !== currentQuestionInstanceId(state))
+        return fail('ILLEGAL_TRANSITION', 'ACK MC không khớp câu hỏi đang đọc');
+      if (!state.timer || state.timer.deadlineMs === null)
+        return fail('ILLEGAL_TRANSITION', 'Không có thời hạn đọc MC đang chạy');
+      // ACK tới cùng lúc hoặc sau hạn cứng không được mở câu bằng đường phát audio.
+      if (now >= state.timer.deadlineMs) {
+        advance(d, now);
+        return done(d);
+      }
+      if (input.kind === 'MC_READING_FALLBACK')
+        d.events.push({ type: 'MC_READING_ABORTED', questionInstanceId: input.questionInstanceId, reason: input.reason });
+      enterAccepting(d, now);
+      return done(d);
+    }
+
     case 'TIMER_ELAPSED': {
       if (input.expectedStateVersion !== state.stateVersion)
         return fail('STALE_STATE_VERSION', 'Timer thuộc phiên bản trạng thái cũ');
