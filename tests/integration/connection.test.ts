@@ -4,6 +4,15 @@ import { ManualScheduler } from '@quiz/live-adapters';
 import { AUTH, TOKEN, boot, command, createSession, rt, runUntil, tempDbPath, type Harness } from './helpers';
 
 const open: Harness[] = [];
+
+/** Chờ tới khi điều kiện đúng (WS là bất đồng bộ; máy bận có thể chậm) — tối đa 5 s. */
+async function waitFor(cond: () => boolean | Promise<boolean>, ms = 5_000) {
+  const end = Date.now() + ms;
+  while (!(await cond())) {
+    if (Date.now() > end) throw new Error('waitFor: hết thời gian chờ');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 afterEach(async () => {
   for (const h of open.splice(0)) {
     await h.quiz.close().catch(() => {});
@@ -110,14 +119,14 @@ describe('V3.1 — Connection Manager, kiểm tra hệ thống, ACK overlay', ()
       ws.once('open', () => ws.send(JSON.stringify({ type: 'HELLO', role: 'overlay' })));
       ws.once('message', (d) => res(JSON.parse(String(d))));
     });
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(async () => (await checks()).overlay === 'PASS');
     c = await checks();
     expect(c.overlay).toBe('PASS');
     expect(c.overlayUpdated).toBe('FAIL'); // chưa ACK
     expect(c).toMatchObject({ mockComment: 'PASS', engineRecorded: 'PASS' });
 
     ws.send(JSON.stringify({ type: 'ACK', stateVersion: first.stateVersion }));
-    await new Promise((r) => setTimeout(r, 50));
+    await waitFor(async () => (await checks()).overlayUpdated === 'PASS');
     c = await checks();
     expect(c.overlayUpdated).toBe('PASS');
     expect(rt(h).adminSnapshot().overlay).toMatchObject({ clients: 1, lastAckStateVersion: first.stateVersion });
@@ -129,11 +138,11 @@ describe('V3.1 — Connection Manager, kiểm tra hệ thống, ACK overlay', ()
       admin.once('message', () => res());
     });
     admin.send(JSON.stringify({ type: 'ACK', stateVersion: 9999 }));
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 150));
     expect(rt(h).adminSnapshot().overlay.lastAckStateVersion).toBe(first.stateVersion);
     ws.close();
     admin.close();
-    await new Promise((r) => setTimeout(r, 50));
+    await waitFor(() => rt(h).adminSnapshot().overlay.clients === 0);
     expect(rt(h).adminSnapshot().overlay.clients).toBe(0);
   });
 });
