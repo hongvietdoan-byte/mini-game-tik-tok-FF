@@ -615,16 +615,22 @@ test('Victory matches the approved 1080×1920 asset layout and keeps podium labe
         plateBottom: stage && plate ? (plate.bottom - stage.top) / scale : 0,
         plateLeft: stage && plate ? (plate.left - stage.left) / scale : 0,
         plateRight: stage && plate ? (plate.right - stage.left) / scale : 0,
+        plateWidth: plate ? plate.width / scale : 0,
+        scoreReflectionTop: stage && slot?.querySelector<HTMLElement>('.v3v-score-reflection')
+          ? (slot.querySelector<HTMLElement>('.v3v-score-reflection')!.getBoundingClientRect().top - stage.top) / scale
+          : 0,
         plateText: slot?.querySelector<HTMLElement>('.v3v-nameplate')?.innerText ?? '',
       };
     });
     const trophyStage = document.querySelector<HTMLElement>('[data-testid="victory-trophy-stage"]')?.getBoundingClientRect();
-    const trophyTopUnits = stage && trophyStage ? (trophyStage.top - stage.top) / scale : 0;
-    const trophyBottomUnits = stage && trophyStage ? (trophyStage.bottom - stage.top) / scale : 0;
+    const trophyFrame = document.querySelector<HTMLElement>('.v3v-trophy')?.getBoundingClientRect();
+    const trophyTopUnits = stage && trophyFrame ? (trophyFrame.top - stage.top) / scale : 0;
+    const trophyBottomUnits = stage && trophyFrame ? (trophyFrame.bottom - stage.top) / scale : 0;
+    const trophyImageWidthRatio = stage && trophyStage ? trophyStage.width / stage.width : 0;
     const logo = document.querySelector<HTMLElement>('.v3v-header .v3-brand-logo')?.getBoundingClientRect();
     const logoWidthRatio = stage && logo ? logo.width / stage.width : 0;
     const logoHeightRatio = stage && logo ? logo.height / stage.height : 0;
-    return { slots, trophyTopUnits, trophyBottomUnits, logoWidthRatio, logoHeightRatio };
+    return { slots, trophyTopUnits, trophyBottomUnits, trophyImageWidthRatio, logoWidthRatio, logoHeightRatio };
   });
   expect(geometry.slots).toHaveLength(3);
   for (const slot of geometry.slots) {
@@ -634,17 +640,25 @@ test('Victory matches the approved 1080×1920 asset layout and keeps podium labe
     expect(slot.figureHeight).toBeLessThanOrEqual(420);
     expect(slot.imageHeight).toBeGreaterThanOrEqual(350);
     expect(slot.imageHeight).toBeLessThanOrEqual(420);
-    expect(slot.plateTop).toBeGreaterThanOrEqual(1360);
-    expect(slot.plateTop).toBeLessThanOrEqual(1385);
-    expect(slot.plateBottom).toBeLessThanOrEqual(1498);
-    expect(slot.plateLeft).toBeGreaterThanOrEqual(60);
-    expect(slot.plateRight).toBeLessThanOrEqual(1020);
+    expect(slot.plateTop).toBeGreaterThanOrEqual(1335);
+    expect(slot.plateTop).toBeLessThanOrEqual(1365);
+    expect(slot.plateBottom).toBeLessThanOrEqual(1470);
+    expect(slot.plateLeft).toBeGreaterThanOrEqual(40);
+    expect(slot.plateRight).toBeLessThanOrEqual(1040);
+    expect(slot.plateWidth).toBeGreaterThanOrEqual(300);
+    expect(slot.plateWidth).toBeLessThanOrEqual(330);
+    expect(slot.scoreReflectionTop).toBeGreaterThanOrEqual(slot.plateBottom);
+    expect(slot.scoreReflectionTop).toBeLessThanOrEqual(slot.plateBottom + 20);
     expect(slot.plateText).toContain('PTS');
   }
   expect(geometry.trophyTopUnits / 1920).toBeGreaterThanOrEqual(0.22);
   expect(geometry.trophyTopUnits / 1920).toBeLessThanOrEqual(0.24);
   expect(geometry.trophyBottomUnits / 1920).toBeGreaterThanOrEqual(0.69);
   expect(geometry.trophyBottomUnits / 1920).toBeLessThanOrEqual(0.71);
+  expect(geometry.trophyImageWidthRatio).toBeGreaterThanOrEqual(1.45);
+  await expect(page.locator('.v3v .v3-mc-portrait')).toHaveCount(0);
+  await expect(page.locator('.v3v-medal')).toHaveCount(0);
+  await expect(page.locator('.v3v-score-reflection')).toHaveCount(3);
   expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.27);
   expect(geometry.logoHeightRatio).toBeGreaterThanOrEqual(0.18);
   await expect(page.locator('.v3v-caption')).toContainText('VÒNG');

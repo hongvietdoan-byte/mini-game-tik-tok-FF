@@ -793,17 +793,19 @@
 /* C-0082: dùng nền và trophy-stage raster được duyệt; overlay chỉ giữ glow, bảng tên, reflection và confetti. */
 .v3v { isolation: isolate; overflow: hidden; background: #080d2b; }
 .v3v-bg-image { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
-.v3v-trophy-glow { position: absolute; z-index: 1; left: 11%; top: 19%; width: 78%; height: 44%; background: radial-gradient(ellipse, rgba(146, 68, 255, .4), rgba(48, 64, 220, .19) 43%, transparent 72%); filter: blur(26px); }
+.v3v-bg-dim { position: absolute; z-index: 1; inset: 0 0 auto; height: 55%; background: linear-gradient(180deg, rgba(4, 5, 33, .58), rgba(7, 7, 43, .4) 70%, transparent); pointer-events: none; }
+.v3v-trophy-glow { position: absolute; z-index: 2; left: 11%; top: 19%; width: 78%; height: 44%; background: radial-gradient(ellipse, rgba(146, 68, 255, .52), rgba(48, 64, 220, .24) 43%, transparent 72%); filter: blur(26px); pointer-events: none; }
+.v3v-trophy-glow::before { content: ''; position: absolute; inset: 0 -14%; background: linear-gradient(154deg, transparent 42%, rgba(213, 202, 255, .08) 46%, rgba(223, 210, 255, .6) 48%, rgba(183, 143, 255, .28) 49%, transparent 53%), linear-gradient(25deg, transparent 40%, rgba(198, 174, 255, .08) 46%, rgba(220, 211, 255, .52) 48%, rgba(183, 143, 255, .26) 49%, transparent 54%); mix-blend-mode: screen; filter: blur(3px); }
 .v3v-floor-reflection { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; height: 30%; background: linear-gradient(180deg, transparent, rgba(57, 55, 203, .13) 20%, rgba(37, 31, 122, .32) 60%, rgba(9, 12, 48, .18)); pointer-events: none; }
 .v3v-confetti { position: absolute; z-index: 4; inset: 25% 0 31%; pointer-events: none; }
-.v3v-confetti i { position: absolute; border-radius: 2px; box-shadow: 0 0 8px currentColor; opacity: .8; }
+.v3v-confetti i { position: absolute; border-radius: 2px 5px 2px 5px; box-shadow: 0 0 12px currentColor; opacity: .92; }
 .v3v-header { top: 40px; height: 390px; z-index: 10; display: flex; flex-direction: column; align-items: center; animation: v3v-fade 1.5s ease-out both; }
 .v3v-header .v3-title { position: relative; left: auto; top: auto; width: 420px; margin: 0; transform: none; }
 .v3v-header .v3-brand-logo { display: block; width: 420px; height: 350px; object-fit: contain; margin: 0 auto; }
 .v3v-header .v3-title-ribbon { display: none; }
 .v3v-caption { position: absolute; top: 356px; display: block; margin: 0; color: #eeeaff; font-size: 13px; font-weight: 800; letter-spacing: 2px; text-align: center; text-shadow: 0 2px 8px #1a0c5e, 0 0 14px #7d52ff; }
-.v3v-trophy { position: absolute; left: 0; top: 448px; width: 100%; height: 900px; z-index: 3; animation: v3v-trophy 3s ease-out both; }
-.v3v-trophy img.v3v-trophy-stage { display: block; width: 100%; height: 100%; object-fit: fill; filter: drop-shadow(0 14px 24px rgba(4, 4, 28, .46)); }
+.v3v-trophy { position: absolute; left: 0; top: 448px; width: 100%; height: 900px; z-index: 3; overflow: hidden; animation: v3v-trophy 3s ease-out both; }
+.v3v-trophy img.v3v-trophy-stage { position: absolute; top: 0; left: -25%; display: block; width: 150%; height: 110%; object-fit: fill; filter: drop-shadow(0 14px 24px rgba(4, 4, 28, .46)); }
 .v3v-podium { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
 .v3v-slot { position: absolute; display: flex; flex-direction: column; align-items: center; overflow: visible; }
 .v3v-place-1 { left: 410px; top: 905px; width: 260px; z-index: 3; }
@@ -815,30 +817,31 @@
 .v3v-place-1 .v3v-figure img { width: 178px; }
 .v3v-shadow { position: absolute; z-index: -1; bottom: -6px; left: 13%; right: 13%; height: 28px; border-radius: 50%; background: radial-gradient(ellipse, rgba(2, 3, 25, .9), rgba(112, 72, 255, .27) 44%, transparent 74%); }
 .v3v-chibi-placeholder { width: 166px; height: 360px; border-radius: 100px 100px 20px 20px; background: linear-gradient(180deg, rgba(122, 88, 255, .35), rgba(23, 23, 72, .75)); }
-.v3v-nameplate { position: relative; order: 0; width: 270px; min-width: 0; max-width: none; height: 92px; margin: 42px 0 0; padding: 8px 27px 7px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; overflow: visible; clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%); border: 2px solid transparent; background: linear-gradient(180deg, rgba(22, 19, 77, .98), rgba(8, 13, 48, .98)) padding-box, linear-gradient(105deg, var(--rank-color), #f2eaff 50%, var(--rank-color)) border-box; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .3), 0 0 17px color-mix(in srgb, var(--rank-color) 56%, transparent); animation: v3v-plate 1.7s ease-out .35s both; -webkit-box-reflect: below 2px linear-gradient(transparent 10%, rgba(157, 113, 255, .25) 58%, transparent 100%); }
-.v3v-nameplate.is-tied { height: 112px; margin-top: 22px; padding-top: 6px; padding-bottom: 5px; }
-.v3v-place-1 .v3v-nameplate { width: 290px; }
-.v3v-place-1 .v3v-nameplate.is-tied { height: 112px; }
+.v3v-nameplate { position: relative; order: 0; flex: 0 0 110px; width: 320px; min-width: 0; max-width: none; height: 110px; margin: 20px 0 0; padding: 8px 24px 7px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; overflow: visible; clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%); border: 3px solid transparent; background: linear-gradient(180deg, color-mix(in srgb, var(--rank-color) 28%, rgba(22, 19, 77, .98)), rgba(8, 13, 48, .98)) padding-box, linear-gradient(105deg, var(--rank-color), #fff 50%, var(--rank-color)) border-box; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .46), 0 0 26px color-mix(in srgb, var(--rank-color) 78%, transparent); animation: v3v-plate 1.7s ease-out .35s both; -webkit-box-reflect: below 2px linear-gradient(transparent 10%, rgba(157, 113, 255, .25) 58%, transparent 100%); }
+.v3v-nameplate.is-tied { flex-basis: 116px; height: 116px; margin-top: 14px; padding-top: 6px; padding-bottom: 5px; }
+.v3v-place-1 .v3v-nameplate { width: 320px; }
+.v3v-place-1 .v3v-nameplate.is-tied { height: 116px; }
 .v3v-place-1 .v3v-nameplate { --rank-color: #ffc84b; }
 .v3v-place-2 .v3v-nameplate { --rank-color: #70cfff; }
 .v3v-place-3 .v3v-nameplate { --rank-color: #ff885b; }
 .v3v-nameplate::after { content: ''; position: absolute; right: 8%; bottom: 4px; left: 8%; height: 2px; background: linear-gradient(90deg, transparent, var(--rank-color), transparent); opacity: .9; pointer-events: none; }
-.v3v-laurel { position: absolute; z-index: 0; top: -10px; width: 48px; height: 70px; fill: none; stroke: var(--rank-color); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--rank-color) 70%, transparent)); }
-.v3v-laurel-left { left: -3px; }
-.v3v-laurel-right { right: -3px; transform: scaleX(-1); }
-.v3v-rank-crown { position: absolute; z-index: 3; top: -25px; left: 50%; width: 45px; height: 31px; transform: translateX(-50%); filter: drop-shadow(0 0 7px color-mix(in srgb, var(--rank-color) 82%, transparent)); }
+.v3v-laurel { position: absolute; z-index: 0; top: -13px; width: 58px; height: 82px; fill: none; stroke: var(--rank-color); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 7px color-mix(in srgb, var(--rank-color) 85%, transparent)); }
+.v3v-laurel-left { left: -5px; }
+.v3v-laurel-right { right: -5px; transform: scaleX(-1); }
+.v3v-rank-crown { position: absolute; z-index: 3; top: -31px; left: 50%; width: 56px; height: 39px; transform: translateX(-50%); filter: drop-shadow(0 0 10px color-mix(in srgb, var(--rank-color) 90%, transparent)); }
 .v3v-rank-crown svg { width: 100%; height: 100%; overflow: visible; }
 .v3v-rank-crown path { fill: var(--rank-color); stroke: #fff4d7; stroke-width: 2; stroke-linejoin: round; }
-.v3v-medal { position: relative; z-index: 2; flex: none; width: 42px; height: 42px; font-size: 25px; border: 1px solid rgba(255, 255, 255, .75); filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .45)); }
-.v3v-names { position: relative; z-index: 2; flex: 1; min-width: 0; display: grid; gap: 2px; text-align: center; line-height: 1; }
-.v3v-names b { font-size: 19px; line-height: 1; }
+.v3v-names { position: relative; z-index: 2; flex: 1; min-width: 0; display: grid; gap: 7px; text-align: center; line-height: 1; }
+.v3v-names b { font-size: 34px; font-style: italic; font-weight: 950; line-height: 1; color: #fff; text-shadow: 0 1px 3px #11102a, 0 0 10px color-mix(in srgb, var(--rank-color) 56%, transparent); }
+.v3v-nameplate.is-tied .v3v-names b { font-size: 25px; }
 .v3v-player-row { justify-content: center; gap: 3px; }
 .v3v-player-name { max-width: 100%; }
 .v3v-player-row .v3-top1-badge { min-width: 26px; height: 18px; margin-left: 2px; padding: 0 4px; font-size: 11px; }
-.v3v-names i { color: var(--rank-color); font-size: 15px; font-weight: 900; line-height: 1; }
+.v3v-names i { color: #fff1bb; font-size: 28px; font-weight: 900; font-style: normal; line-height: 1; text-shadow: 0 0 8px color-mix(in srgb, var(--rank-color) 80%, transparent); }
 .v3v-names small { font-size: 12px; line-height: 1; }
-.v3v-names .tie-label { color: #ff9fe6; font-size: 10px; letter-spacing: 1px; line-height: 1; }
-.v3v-nameplate-reflection { position: absolute; z-index: 0; left: 9%; right: 9%; top: calc(100% + 2px); height: 25px; clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%); background: linear-gradient(180deg, color-mix(in srgb, var(--rank-color) 48%, transparent), transparent); filter: blur(5px); opacity: .55; }
+.v3v-names .tie-label { color: #ff9fe6; font-size: 15px; letter-spacing: 1px; line-height: 1; }
+.v3v-nameplate-reflection { position: absolute; z-index: 0; left: -30px; right: -30px; top: calc(100% + 2px); height: 36px; clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%); background: linear-gradient(180deg, color-mix(in srgb, var(--rank-color) 54%, transparent), transparent); filter: blur(6px); opacity: .65; }
+.v3v-score-reflection { position: absolute; z-index: 1; top: calc(100% + 5px); left: -30px; right: -30px; color: var(--rank-color); font-size: 28px; font-weight: 900; line-height: 1; text-align: center; opacity: .34; filter: blur(1.5px); transform: scaleY(-1); mask-image: linear-gradient(180deg, #000 0%, transparent 78%); }
 .v3v-empty { z-index: 7; top: 1120px; }
 .v3v-tie-note { display: none; }
 
@@ -1082,9 +1085,6 @@
 .v3-mc-portrait { position: absolute; z-index: 7; left: 24px; top: 1330px; width: 220px; height: 340px; pointer-events: none; }
 .v3-mc-portrait .v3-mc-figure { left: 0; top: 0; width: 220px; height: 320px; }
 .v3-mc-portrait .v3-mc-figure img { width: 220px; }
-.v3v .v3-mc-portrait { left: 16px; top: 1535px; z-index: 8; width: 200px; height: 310px; }
-.v3v .v3-mc-portrait .v3-mc-figure { width: 200px; height: 290px; }
-.v3v .v3-mc-portrait .v3-mc-figure img { width: 200px; }
 @keyframes v3-mc-breathe { 50% { transform: translateY(-3px) scale(1.012); } }
 @keyframes v3-mc-welcome { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-7px) rotate(2deg); } }
 @keyframes v3-mc-ask { from { transform: translateX(0) rotate(0); } to { transform: translateX(12px) rotate(-3deg); } }
