@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 54,
-  "heartbeat": "2026-11-11T20:19:20+07:00",
+  "heartbeat": "2026-11-11T20:21:08+07:00",
   "state": "working",
   "task": "C-0056",
-  "note": "Đang triển khai simulator LIVE theo C-0058/C-0059 trên nền C-0060; giữ preview liên tục ở 5180",
+  "note": "Đang sửa simulator LIVE trong worktree c0056-tiktok-live-hud; đổi preview 5180 sang nhánh này",
   "done": [
     60,
     63
