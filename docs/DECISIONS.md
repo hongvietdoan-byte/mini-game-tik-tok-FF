@@ -83,6 +83,18 @@ Mỗi mục: **Quyết định** · Lý do · Hệ quả. Quyết định hành 
 - Tập trung: game đúng + kết nối TikTok LIVE ổn định + đóng gói Windows. Animation chỉ ở mức tối thiểu (PNG tĩnh + transform nhẹ); không Spine/Rive/Pixi ở MVP.
 - Đóng gói: Electron (server chạy trong tiến trình chính, phục vụ dashboard + overlay cùng một origin loopback), bộ cài NSIS, dữ liệu ở %APPDATA%.
 
+## D-19 · Plan V4 là tài liệu điều phối mới nhất (người dùng gửi 12/11)
+`docs/STORM_ARENA_MASTER_DIRECTION_ACTION_PLAN_V4.pdf` (bản chữ: `.txt` cùng tên). Thứ tự ưu tiên khi mâu thuẫn: quyết định trực tiếp mới nhất của người dùng + ảnh đã duyệt → V4 → V3 (UI/gameplay) → V2 (kiến trúc) → BOARD/DECISIONS/HANDOFF → báo cáo agent. Trạng thái phải phân biệt: IMPLEMENTED, UNIT_VERIFIED, E2E_VERIFIED, VISUAL_APPROVED, LIVE_VERIFIED, BLOCKED, DEFERRED.
+
+## D-20 · Victory (V4 D07/D08) — quyết định cuối, không hỏi lại
+Giữ nguyên cúp + sân khấu/bục gốc (`assets-local/victory/trophy-stage.png`), KHÔNG dựng lại bằng SVG/CSS. Ba nhân vật đứng trên mặt sàn/bục thấp nhất phía trước sân khấu: Top 1 giữa, Top 2 trái, Top 3 phải; không thêm 3 bục 1/2/3 riêng; không che phần chính của cúp. Bỏ logo Free Fire phía trên; tên TikTok + điểm render động. Ảnh ref: `assets-local/ref/victory-ref.png`. Mọi diễn giải trái điều này (BOARD #16 bản cũ "đứng sàn phía trước, tách khỏi bục"; chữ "đứng TRÊN bục" hiểu thành bục xếp hạng riêng) = SUPERSEDED.
+
+## D-21 · Tính điểm: GIỮ Kahoot (người dùng chốt lại 12/11, thắng V4 mục 3)
+V4 ghi +100/câu đúng và không ưu tiên tốc độ; người dùng chọn giữ D-16b (Kahoot 500–1000 theo tốc độ + chuỗi). Không đổi engine.
+
+## D-22 · Thứ tự việc theo V4 (người dùng chốt 12/11)
+P0 trước, giọng MC (P1) dừng sau mốc 2. P2 (Theme Pack runtime, AI Question Studio, analytics…) = DEFERRED_UNTIL_AFTER_EVENT. 36 câu hiện chỉ được duyệt để CHẠY THỬ (BOARD #20), chưa đạt cổng Data của V4 cho buổi thi thật.
+
 ## Hoãn (backlog)
 SMART_RANDOM theo quota 7/5/3 (Phase 2) · auto mode nhiều vòng có preflight đầy đủ (Phase 6) · purge/export dữ liệu người chơi (Phase 6) ·
 backup định kỳ (Phase 6) · void hồi tố câu cũ · tie-break công bố trước vòng.
