@@ -11,6 +11,7 @@ import {
   type ConnectionStatus,
   type CreateSessionRequest,
   type IngestMetrics,
+  type LiveSourceHealth,
   type LeaderboardEntry,
   type OptionId,
   type PublicSnapshot,
@@ -122,6 +123,8 @@ export class SessionRuntime {
   private unsubs: (() => void)[] = [];
   private disposed = false;
   private seq = 0;
+  private health: LiveSourceHealth;
+  private overlayInfo: AdminSnapshot['overlay'] = { clients: 0, lastAckStateVersion: null, lastAckAtMs: null };
 
   private constructor(
     private readonly deps: RuntimeDeps,
@@ -133,6 +136,15 @@ export class SessionRuntime {
       received: 0,
       accepted: 0,
       rejected: Object.fromEntries(REJECT_REASONS.map((r) => [r, 0])) as Record<RejectReason, number>,
+    };
+    this.health = {
+      source: deps.adapter.source,
+      status: deps.adapter.status(),
+      connectedSinceMs: null,
+      lastCommentAtMs: null,
+      commentsReceived: 0,
+      reconnects: 0,
+      detail: null,
     };
   }
 
@@ -199,6 +211,7 @@ export class SessionRuntime {
   }
 
   private async attach() {
+    this.store.pruneProcessedEvents(this.scheduler.now() - 7 * 24 * 3_600_000);
     this.unsubs.push(this.adapter.onComment((c) => this.safe(() => this.ingest(c))));
     this.unsubs.push(this.adapter.onStatus((s) => this.safe(() => this.onConnectionStatus(s))));
     this.beat();
@@ -207,7 +220,9 @@ export class SessionRuntime {
       try {
         await this.adapter.connect();
       } catch (err) {
-        this.store.recordConnectionEvent(this.id, this.adapter.source, 'BLOCKED', String(err), this.scheduler.now());
+        this.health.detail = err instanceof Error ? err.message : String(err);
+        this.health.status = this.adapter.status();
+        this.store.recordConnectionEvent(this.id, this.adapter.source, 'BLOCKED', this.health.detail, this.scheduler.now());
       }
     }
   }
@@ -239,6 +254,15 @@ export class SessionRuntime {
     this.simulator = null;
     for (const u of this.unsubs.splice(0)) u();
     void this.adapter.disconnect().catch(() => {});
+  }
+
+  /** Tầng app báo số client overlay WS + ACK hiển thị mới nhất. */
+  setOverlayInfo(info: AdminSnapshot['overlay']) {
+    this.overlayInfo = { ...info };
+  }
+
+  liveHealth(): LiveSourceHealth {
+    return { ...this.health, status: this.adapter.status() };
   }
 
   subscribe(fn: RuntimeListener): () => void {
@@ -649,6 +673,8 @@ export class SessionRuntime {
   ingest(raw: RawComment): { accepted: true } | { accepted: false; reason: RejectReason } {
     const now = this.scheduler.now();
     this.metrics.received += 1;
+    this.health.commentsReceived += 1;
+    this.health.lastCommentAtMs = now;
     const parsed = CommentEventSchema.safeParse({ ...raw, receivedAtMs: now });
     if (!parsed.success || !parsed.data.userId.trim()) return this.reject('INVALID_EVENT', now);
     const ev = parsed.data;
@@ -673,6 +699,8 @@ export class SessionRuntime {
 
     const name = sanitizeDisplayName(ev.displayName);
     const inserted = this.store.transaction(() => {
+      // Bền qua khởi động lại: eventId đã xử lý (kể cả ở tiến trình trước) không bao giờ được tính lại.
+      if (ev.eventId && !this.store.markEventProcessed(ev.source, ev.eventId, qid, now)) return 'DUP_EVENT' as const;
       const playerId = this.store.resolvePlayer(ev.source, ev.userId, name, now);
       this.store.touchPlayer(playerId, name, now);
       return this.store.insertAnswer({
@@ -684,6 +712,7 @@ export class SessionRuntime {
         sourceEventId: ev.eventId ?? null,
       });
     });
+    if (inserted === 'DUP_EVENT') return this.reject('DUPLICATE_EVENT', now);
     if (!inserted) return this.reject('DUPLICATE_ANSWER', now);
 
     this.metrics.accepted += 1;
@@ -723,6 +752,13 @@ export class SessionRuntime {
   private onConnectionStatus(status: ConnectionStatus) {
     const now = this.scheduler.now();
     this.store.recordConnectionEvent(this.id, this.adapter.source, status, null, now);
+    const prev = this.health.status;
+    this.health.status = status;
+    if (status === 'CONNECTED') {
+      if (prev === 'RECONNECTING') this.health.reconnects += 1;
+      this.health.connectedSinceMs = now;
+      this.health.detail = null;
+    } else this.health.connectedSinceMs = null;
     this.emit([{ audience: 'public', message: this.wrap('CONNECTION_STATUS', { status }) }]);
     const res = this.apply({ kind: 'CONNECTION_CHANGED', ok: status === 'CONNECTED' });
     if (res.ok && res.events.length === 0) this.emitAdmin();
@@ -761,6 +797,23 @@ export class SessionRuntime {
     if (action === 'LOSE') adapter.simulateConnectionLoss();
     else adapter.simulateConnectionRestore();
     return { ok: true, status: adapter.status() };
+  }
+
+  /** Connection Manager (V3.1 mục C): connect / disconnect / reconnect nguồn comment. Không tự resume câu hỏi. */
+  async sourceControl(action: 'CONNECT' | 'DISCONNECT' | 'RECONNECT') {
+    try {
+      if (action !== 'CONNECT') await this.adapter.disconnect();
+      if (action !== 'DISCONNECT') {
+        await this.adapter.connect();
+        if (action === 'RECONNECT') this.health.reconnects += 1;
+      }
+      this.health.detail = null;
+    } catch (err) {
+      this.health.detail = err instanceof Error ? err.message : String(err);
+    }
+    this.health.status = this.adapter.status();
+    this.emitAdmin();
+    return { ok: this.health.detail === null, health: this.liveHealth() };
   }
 
   mockComment(c: { userId: string; displayName: string; text: string; eventId?: string }) {
@@ -862,6 +915,8 @@ export class SessionRuntime {
       pool: this.pool(now),
       simulator: this.simulator ? { running: this.simulator.running, players: this.simulator.opts.players.length } : null,
       error: e.error ?? this.notice,
+      live: { ...this.health, status: this.adapter.status() },
+      overlay: { ...this.overlayInfo },
     };
   }
 

@@ -70,6 +70,10 @@ function prepareStatements(r: Database.Database) {
          correct_count = excluded.correct_count, streak = excluded.streak`,
     ),
     heartbeat: r.prepare('UPDATE live_sessions SET last_heartbeat_ms = ? WHERE id = ?'),
+    eventMark: r.prepare(
+      `INSERT INTO processed_events (source, event_id, question_instance_id, received_at_ms) VALUES (?, ?, ?, ?)
+       ON CONFLICT (source, event_id) DO NOTHING`,
+    ),
   };
 }
 
@@ -340,6 +344,26 @@ export class Store {
     );
     if (res.changes === 1) this.stmt.roundPlayerJoin.run(a.roundId, a.playerId, Math.floor(a.receivedAtMs));
     return res.changes === 1;
+  }
+
+  /** Ghi nhận eventId của nguồn. @returns false nếu sự kiện này đã từng được xử lý (kể cả trước khi khởi động lại). */
+  markEventProcessed(source: string, eventId: string, questionInstanceId: string, now: number): boolean {
+    return this.stmt.eventMark.run(source, eventId, questionInstanceId, Math.floor(now)).changes === 1;
+  }
+
+  /** Dọn sự kiện cũ (mặc định giữ 7 ngày). */
+  pruneProcessedEvents(beforeMs: number): number {
+    return this.raw.prepare('DELETE FROM processed_events WHERE received_at_ms < ?').run(Math.floor(beforeMs)).changes;
+  }
+
+  /** Ghi rồi đọc lại một dòng settings để chứng minh DB ghi được (Connection Test bước 2). */
+  probeWrite(now: number): boolean {
+    const key = '__probe__';
+    this.raw
+      .prepare('INSERT INTO settings (key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms')
+      .run(key, JSON.stringify(now), now);
+    const r = this.raw.prepare('SELECT value_json AS v FROM settings WHERE key = ?').get(key) as { v: string } | undefined;
+    return r?.v === JSON.stringify(now);
   }
 
   answersForRound(roundId: string): StoredAnswer[] {

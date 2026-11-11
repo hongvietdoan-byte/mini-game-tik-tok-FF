@@ -7,13 +7,16 @@ import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import {
   CONTRACT_VERSION,
+  ClientAckSchema,
   ClientHelloSchema,
   CreateSessionRequestSchema,
   SimulatorRequestSchema,
 } from '@quiz/contracts';
 import { MockAdapter, TikTokAdapterBlocked, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
+import type { SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
+import { runPipelineSelfTest, type SelfTestResult } from './selftest';
 
 export const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
@@ -81,11 +84,21 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const overlayClients = new Set<WebSocket>();
   const adminClients = new Set<WebSocket>();
   let unsub: (() => void) | null = null;
+  let lastAck: { stateVersion: number; atMs: number } | null = null;
+  let lastSelfTest: SelfTestResult | null = null;
+  const pushOverlayInfo = () =>
+    rt?.setOverlayInfo({
+      clients: overlayClients.size,
+      lastAckStateVersion: lastAck?.stateVersion ?? null,
+      lastAckAtMs: lastAck?.atMs ?? null,
+    });
 
   function attachRuntime(next: SessionRuntime) {
     unsub?.();
     rt?.dispose();
     rt = next;
+    lastAck = null;
+    pushOverlayInfo();
     unsub = next.subscribe((batch: Outgoing[]) => {
       for (const o of batch) {
         const data = JSON.stringify(o.message);
@@ -243,6 +256,96 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     };
   });
 
+  // --- Connection Manager & kiểm tra hệ thống (V3.1 mục C, E) --------------------
+
+  const SourceControlSchema = z.object({ action: z.enum(['CONNECT', 'DISCONNECT', 'RECONNECT']) });
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/source', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const s = sessionOr404(req.params.id, reply);
+    if (!s) return reply;
+    const parsed = SourceControlSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    return s.sourceControl(parsed.data.action);
+  });
+
+  /** Tự kiểm pipeline trên DB tạm trong bộ nhớ (không đụng phiên LIVE): mock comment → engine chấm điểm. */
+  app.post('/api/system/selftest', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    lastSelfTest = await runPipelineSelfTest();
+    return lastSelfTest;
+  });
+
+  app.get('/api/system/checks', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const now = scheduler.now();
+    const check = (id: SystemCheck['id'], label: string, status: SystemCheck['status'], detail: string): SystemCheck => ({
+      id,
+      label,
+      status,
+      detail,
+      checkedAtMs: now,
+    });
+    let dbOk = false;
+    let dbErr = '';
+    try {
+      dbOk = store.probeWrite(Math.floor(now));
+    } catch (err) {
+      dbErr = err instanceof Error ? err.message : String(err);
+    }
+    const live = rt?.liveHealth() ?? null;
+    const st = rt?.engine.stateVersion ?? null;
+    const isTiktok = rt?.config.mode === 'TIKTOK';
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const checks: SystemCheck[] = [
+      check('backend', 'Backend hoạt động', 'PASS', `uptime ${Math.round((now - startedAtMs) / 1000)} s`),
+      check(
+        'database',
+        'Database hoạt động',
+        dbOk ? 'PASS' : 'FAIL',
+        dbOk ? `ghi/đọc thử OK — ${store.path}` : `ghi/đọc thử lỗi ${dbErr}`,
+      ),
+      check('theme', 'Theme Pack tải thành công', 'NOT_TESTED', 'Theme Pack chưa triển khai (V3 P3) — đang dùng giao diện mặc định'),
+      overlayClients.size > 0
+        ? check('overlay', 'Overlay hiển thị', 'PASS', `${overlayClients.size} overlay đang kết nối (không khẳng định OBS/LIVE Studio đang phát)`)
+        : check('overlay', 'Overlay hiển thị', 'FAIL', 'Chưa có overlay nào kết nối — mở Overlay URL trong OBS / trình duyệt'),
+      lastSelfTest
+        ? check('mockComment', 'Mock Comment hoạt động', lastSelfTest.mockComment ? 'PASS' : 'FAIL', lastSelfTest.detail)
+        : check('mockComment', 'Mock Comment hoạt động', 'NOT_TESTED', 'Bấm "Chạy tự kiểm"'),
+      isTiktok && live?.status === 'CONNECTED'
+        ? check('tiktokConnector', 'TikTok Connector kết nối', 'PASS', `kết nối từ ${iso(live.connectedSinceMs ?? now)}`)
+        : check(
+            'tiktokConnector',
+            'TikTok Connector kết nối',
+            isTiktok ? 'FAIL' : 'NOT_TESTED',
+            isTiktok
+              ? (live?.detail ?? `trạng thái ${live?.status ?? '—'}`)
+              : 'LIVE_CONNECTOR_BLOCKED — đang chạy offline/Mock (docs/TIKTOK_CONNECTOR_SPIKE.md)',
+          ),
+      isTiktok && live?.lastCommentAtMs
+        ? check('testComment', 'Nhận được comment thử nghiệm', 'PASS', `comment gần nhất ${iso(live.lastCommentAtMs)}, tổng ${live.commentsReceived}`)
+        : check(
+            'testComment',
+            'Nhận được comment thử nghiệm',
+            'NOT_TESTED',
+            isTiktok ? 'Chưa nhận comment nào từ TikTok' : 'Chỉ áp dụng khi có kết nối TikTok',
+          ),
+      lastSelfTest
+        ? check('engineRecorded', 'Quiz Engine ghi nhận câu trả lời', lastSelfTest.engineRecorded ? 'PASS' : 'FAIL', lastSelfTest.detail)
+        : check('engineRecorded', 'Quiz Engine ghi nhận câu trả lời', 'NOT_TESTED', 'Bấm "Chạy tự kiểm"'),
+      st === null || overlayClients.size === 0
+        ? check('overlayUpdated', 'Overlay cập nhật đúng', 'NOT_TESTED', st === null ? 'Chưa có phiên' : 'Chưa có overlay kết nối')
+        : lastAck && lastAck.stateVersion >= st
+          ? check('overlayUpdated', 'Overlay cập nhật đúng', 'PASS', `overlay đã hiển thị v${lastAck.stateVersion} (server v${st})`)
+          : check(
+              'overlayUpdated',
+              'Overlay cập nhật đúng',
+              'FAIL',
+              `overlay báo v${lastAck?.stateVersion ?? '—'}, server v${st} — overlay cần gửi ACK sau khi render`,
+            ),
+    ];
+    return { checks, live, overlay: { clients: overlayClients.size, lastAck } };
+  });
+
   // --- WebSocket ----------------------------------------------------------------
 
   app.get('/ws', { websocket: true }, (socket, req) => {
@@ -252,12 +355,20 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       if (!role) socket.close(4400, 'HELLO timeout');
     }, 5_000);
     socket.on('message', (data) => {
-      if (role) return; // sau HELLO, client không gửi gì khác ở Phase 1
       let msg: unknown;
       try {
         msg = JSON.parse(String(data));
       } catch {
         socket.close(4400, 'JSON không hợp lệ');
+        return;
+      }
+      if (role) {
+        // Sau HELLO chỉ nhận ACK từ overlay (Connection Test bước 9); mọi thứ khác bị bỏ qua.
+        const ack = role === 'overlay' ? ClientAckSchema.safeParse(msg) : null;
+        if (ack?.success && (!lastAck || ack.data.stateVersion >= lastAck.stateVersion)) {
+          lastAck = { stateVersion: ack.data.stateVersion, atMs: scheduler.now() };
+          pushOverlayInfo();
+        }
         return;
       }
       const hello = ClientHelloSchema.safeParse(msg);
@@ -277,6 +388,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       } else {
         role = 'overlay';
         overlayClients.add(socket);
+        pushOverlayInfo();
         if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', rt.publicSnapshot())));
       }
     });
@@ -284,6 +396,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       clearTimeout(helloTimer);
       overlayClients.delete(socket);
       adminClients.delete(socket);
+      pushOverlayInfo();
     });
   });
 
