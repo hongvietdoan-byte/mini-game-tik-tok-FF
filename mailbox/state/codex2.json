@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 76,
-  "heartbeat": "2026-11-11T22:15:26+07:00",
+  "heartbeat": "2026-11-11T22:16:31+07:00",
   "state": "working",
-  "task": "C-0076",
-  "note": "đang rà sửa safe-zone trên nhánh Victory/logo",
+  "task": "C-0079",
+  "note": "đang dựng Dashboard Voice Settings bằng adapter giả; chờ hợp đồng API C-0078",
   "done": []
 }
