@@ -6,6 +6,10 @@ Vòng ngữ cảnh: `.claude/settings.json` (cục bộ) đặt `CLAUDE_CODE_AUT
 
 Phiên trước đầy context. Phiên mới: **chỉ điều phối** (memory `coordinator-delegate-not-code`) — giao code cho Codex qua hòm thư, rà report, gộp nhánh.
 
+## Cập nhật 12/11 ~14:30 (phiên mới)
+- Người dùng CHỐT 2 nền: Victory `assets-local/victory/bg-user-cover.jpg` (gốc 3:4 `bg-user-src.png`, đã cắt phủ 9:16), màn câu hỏi `assets-local/arena/bg-question-user.jpg` (8 cờ đội in sẵn, y 14–32 %). Giao codex2 **C-0122** (ưu tiên trước C-0109/C-0118). Bỏ hẳn `bg-redraw.jpg`/`bg-ref-clean.jpg`.
+- Đã gộp main C-0119. C-0120 nhắc codex2 tự sửa `static.ts` MIME audio (đã cho phép ở C-0111). codex1 làm **C-0121** (F9 server: overlay role program/preview).
+
 ## Mới nhất (12/11 ~10:25) — đọc khối này trước, mọi khối dưới đã cũ
 - Người dùng đổi tài khoản Claude lúc ~10:25; phiên kế tiếp quản điều phối. Thư coordinator gần nhất: **C-0115**. Hòm thư coordinator sạch. Đặt lại `py -X utf8 tools/mb.py wait --for coordinator --timeout 3600 --interval 60` chạy nền.
 - **Đã gộp main (P0 xong)**: preflight `GET /api/preflight`, backup + `CHAY_GAME.cmd`, rehearsal Mock, simulator event ID, placeholder asset, 6 lỗi cloud tìm (C-0100), giới hạn độ dài câu hỏi (110/28 ký tự), chọn câu theo độ khó (mục tiêu 7/5/3, lệch ±2, chưa gán = vừa; mặc định vẫn RANDOM, không có nút bật trên dashboard). Lần kiểm cuối trên main: 286 unit test, typecheck sạch, privacy PASS; e2e coordinator CHƯA chạy lại. BOARD #18–#22.
