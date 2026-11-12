@@ -25,6 +25,8 @@ mkdirSync(screenshotDirectory, { recursive: true });
 const localAssetDirectory = resolve(process.cwd(), '../../../assets-local');
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
+const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
+const hasLocalVictoryRedraw = existsSync(join(localAssetDirectory, 'victory', 'bg-redraw.jpg'));
 
 let closestSafeMargin = Number.POSITIVE_INFINITY;
 let closestSafeScene = '';
@@ -46,8 +48,10 @@ function watchPageErrors(page: Page) {
     const pathname = new URL(response.url()).pathname;
     const optionalMcManifest = pathname === '/assets/mc/kelly/manifest.json';
     const optionalArenaAsset = pathname.startsWith('/assets/arena/');
+    const optionalEventLogo = pathname === '/assets/brand/logo.png' && !hasLocalEventLogo;
+    const optionalVictoryBackground = pathname === '/assets/victory/bg-redraw.jpg' && !hasLocalVictoryRedraw;
     const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset;
-    if (optionalMcManifest || optionalArenaAsset || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
+    if (optionalMcManifest || optionalArenaAsset || optionalEventLogo || optionalVictoryBackground || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
     errors.push(`http ${response.status()}: ${pathname}`);
   });
   return errors;
@@ -129,9 +133,10 @@ for (const { name, scene } of scenes) {
     if (name === 'victory' || name === 'victory-tie') await page.setViewportSize({ width: 1080, height: 1920 });
     const { stage, errors } = await openScene(page, name, scene);
     if (name === 'victory' || name === 'victory-tie' || name === 'round-winner') {
-      await expect(stage.locator('.v3-brand-logo')).toBeVisible();
       await expect(stage.getByTestId('victory-background')).toBeVisible();
-      await expect(stage.getByTestId('victory-trophy-stage')).toBeVisible();
+      if (hasLocalEventLogo) await expect(stage.getByTestId('v3v-event-logo')).toBeVisible();
+      else await expect(stage.locator('.v3v-logo-fallback .v3-title')).toBeVisible();
+      await expect(stage.locator('.v3v-trophy, .v3v-trophy-glow, .v3v-side-lightning')).toHaveCount(0);
     } else {
       await expect(stage.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
     }
@@ -742,7 +747,7 @@ test('question arena and Top 10 keep eight optional logo flags in the side rails
   await page.screenshot({ path: join(screenshotDirectory, 'arena-top10.png'), animations: 'disabled' });
 });
 
-test('Victory matches the approved 1080×1920 asset layout and keeps podium labels readable', async ({ page }) => {
+test('Victory uses the redraw background unchanged and keeps podium labels on adjustable anchors', async ({ page }) => {
   const errors = watchPageErrors(page);
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.goto('/?mock=victory', { waitUntil: 'domcontentloaded' });
@@ -767,52 +772,54 @@ test('Victory matches the approved 1080×1920 asset layout and keeps podium labe
         plateLeft: stage && plate ? (plate.left - stage.left) / scale : 0,
         plateRight: stage && plate ? (plate.right - stage.left) / scale : 0,
         plateWidth: plate ? plate.width / scale : 0,
-        scoreReflectionTop: stage && slot?.querySelector<HTMLElement>('.v3v-score-reflection')
-          ? (slot.querySelector<HTMLElement>('.v3v-score-reflection')!.getBoundingClientRect().top - stage.top) / scale
-          : 0,
+        place,
+        centerX: stage && slot ? ((slot.getBoundingClientRect().left + slot.getBoundingClientRect().width / 2) - stage.left) / scale : 0,
         plateText: slot?.querySelector<HTMLElement>('.v3v-nameplate')?.innerText ?? '',
       };
     });
-    const trophyStage = document.querySelector<HTMLElement>('[data-testid="victory-trophy-stage"]')?.getBoundingClientRect();
-    const trophyFrame = document.querySelector<HTMLElement>('.v3v-trophy')?.getBoundingClientRect();
-    const trophyTopUnits = stage && trophyFrame ? (trophyFrame.top - stage.top) / scale : 0;
-    const trophyBottomUnits = stage && trophyFrame ? (trophyFrame.bottom - stage.top) / scale : 0;
-    const trophyImageWidthRatio = stage && trophyStage ? trophyStage.width / stage.width : 0;
-    const logo = document.querySelector<HTMLElement>('.v3v-header .v3-brand-logo')?.getBoundingClientRect();
+    const background = document.querySelector<HTMLImageElement>('[data-testid="victory-background"]');
+    const logo = document.querySelector<HTMLElement>('.v3v-event-logo, .v3v-logo-fallback .v3-title')?.getBoundingClientRect();
     const logoWidthRatio = stage && logo ? logo.width / stage.width : 0;
     const logoHeightRatio = stage && logo ? logo.height / stage.height : 0;
-    return { slots, trophyTopUnits, trophyBottomUnits, trophyImageWidthRatio, logoWidthRatio, logoHeightRatio };
+    const logoTopRatio = stage && logo ? (logo.top - stage.top) / stage.height : 0;
+    return { slots, logoTopRatio, logoWidthRatio, logoHeightRatio, background: background ? {
+      src: new URL(background.currentSrc || background.src).pathname,
+      naturalWidth: background.naturalWidth,
+      naturalHeight: background.naturalHeight,
+      filter: getComputedStyle(background).filter,
+      objectFit: getComputedStyle(background).objectFit,
+    } : null };
   });
   expect(geometry.slots).toHaveLength(3);
   for (const slot of geometry.slots) {
-    expect(slot.footY).toBeGreaterThanOrEqual(1308);
-    expect(slot.footY).toBeLessThanOrEqual(1328);
-    expect(slot.figureHeight).toBeGreaterThanOrEqual(380);
-    expect(slot.figureHeight).toBeLessThanOrEqual(420);
-    expect(slot.imageHeight).toBeGreaterThanOrEqual(350);
-    expect(slot.imageHeight).toBeLessThanOrEqual(420);
-    expect(slot.plateTop).toBeGreaterThanOrEqual(1335);
-    expect(slot.plateTop).toBeLessThanOrEqual(1365);
-    expect(slot.plateBottom).toBeLessThanOrEqual(1470);
+    const center = slot.place === 1;
+    expect(slot.centerX).toBeGreaterThanOrEqual(center ? 546 : slot.place === 2 ? 222 : 838);
+    expect(slot.centerX).toBeLessThanOrEqual(center ? 556 : slot.place === 2 ? 232 : 848);
+    expect(slot.footY).toBeGreaterThanOrEqual(center ? 1368 : 1358);
+    expect(slot.footY).toBeLessThanOrEqual(center ? 1378 : 1368);
+    expect(slot.figureHeight).toBeGreaterThanOrEqual(center ? 450 : 390);
+    expect(slot.figureHeight).toBeLessThanOrEqual(center ? 470 : 410);
+    expect(slot.imageHeight).toBeGreaterThanOrEqual(center ? 430 : 370);
+    expect(slot.imageHeight).toBeLessThanOrEqual(center ? 470 : 410);
+    expect(slot.plateTop).toBeGreaterThanOrEqual(center ? 1378 : 1368);
+    expect(slot.plateTop).toBeLessThanOrEqual(center ? 1392 : 1382);
+    expect(slot.plateBottom).toBeLessThanOrEqual(1510);
     expect(slot.plateLeft).toBeGreaterThanOrEqual(40);
     expect(slot.plateRight).toBeLessThanOrEqual(1040);
-    expect(slot.plateWidth).toBeGreaterThanOrEqual(300);
-    expect(slot.plateWidth).toBeLessThanOrEqual(330);
-    expect(slot.scoreReflectionTop).toBeGreaterThanOrEqual(slot.plateBottom);
-    expect(slot.scoreReflectionTop).toBeLessThanOrEqual(slot.plateBottom + 20);
+    expect(slot.plateWidth).toBe(300);
     expect(slot.plateText).toContain('PTS');
   }
-  expect(geometry.trophyTopUnits / 1920).toBeGreaterThanOrEqual(0.22);
-  expect(geometry.trophyTopUnits / 1920).toBeLessThanOrEqual(0.24);
-  expect(geometry.trophyBottomUnits / 1920).toBeGreaterThanOrEqual(0.69);
-  expect(geometry.trophyBottomUnits / 1920).toBeLessThanOrEqual(0.71);
-  expect(geometry.trophyImageWidthRatio).toBeGreaterThanOrEqual(1.45);
+  expect(geometry.background?.src).toBe('/assets/victory/bg-redraw.jpg');
+  expect(geometry.background?.filter).toBe('none');
+  expect(geometry.background?.objectFit).toBe('fill');
+  if (hasLocalVictoryRedraw) expect([geometry.background?.naturalWidth, geometry.background?.naturalHeight]).toEqual([1080, 1920]);
   await expect(page.locator('.v3v .v3-mc-portrait')).toHaveCount(0);
   await expect(page.locator('.v3v-medal')).toHaveCount(0);
-  await expect(page.locator('.v3v-score-reflection')).toHaveCount(3);
-  expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.27);
-  expect(geometry.logoHeightRatio).toBeGreaterThanOrEqual(0.18);
-  await expect(page.locator('.v3v-caption')).toContainText('VÒNG');
+  await expect(page.locator('.v3v-score-reflection, .v3v-nameplate-reflection')).toHaveCount(0);
+  await expect(page.locator('.v3v-trophy, .v3v-trophy-stage, .v3v-bg-dim, .v3v-fan-lights, .v3v-side-lightning')).toHaveCount(0);
+  expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.4);
+  expect(geometry.logoTopRatio).toBeGreaterThanOrEqual(0.015);
+  expect(geometry.logoTopRatio + geometry.logoHeightRatio).toBeLessThanOrEqual(0.26);
   await expect(page.locator('.v3v-header')).not.toContainText('VINH DANH TOP 3');
   await page.screenshot({ path: join(screenshotDirectory, 'victory-approved-layout.png'), animations: 'disabled' });
   expect(errors).toEqual([]);

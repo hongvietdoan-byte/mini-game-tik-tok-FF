@@ -1,10 +1,30 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
 import { podiumLeftToRight } from '../overlayLogic';
 import { shortName } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 
 const ASSET = '/assets';
+const VICTORY_BACKGROUND = `${ASSET}/victory/bg-redraw.jpg`;
+const VICTORY_LAYOUT = {
+  '--v3v-place-2-x': '21%',
+  '--v3v-place-1-x': '51%',
+  '--v3v-place-3-x': '78%',
+  '--v3v-place-2-feet': '71%',
+  '--v3v-place-1-feet': '71.5%',
+  '--v3v-place-3-feet': '71%',
+  '--v3v-side-height': '399px',
+  '--v3v-center-height': '459px',
+  '--v3v-side-width': '210px',
+  '--v3v-center-width': '242px',
+} as CSSProperties;
+
+function VictoryLogo() {
+  const [ok, setOk] = useState(true);
+  return ok
+    ? <img className="v3v-event-logo" src={`${ASSET}/brand/logo.png`} alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí" draggable={false} decoding="async" data-testid="v3v-event-logo" onError={() => setOk(false)} />
+    : <div className="v3v-logo-fallback"><BrandMark /></div>;
+}
 
 function Chibi({ entry }: { entry: LeaderboardEntry }) {
   const [ok, setOk] = useState(true);
@@ -53,8 +73,6 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
           {tied && <strong className="tie-label">ĐỒNG HẠNG</strong>}
         </div>
       </div>
-      <span className="v3v-nameplate-reflection" aria-hidden="true" />
-      <span className="v3v-score-reflection" aria-hidden="true">{lead.score.toLocaleString('vi-VN')} PTS</span>
     </div>
   );
 }
@@ -131,28 +149,12 @@ export function VictoryStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const podium = snapshot.podium;
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene}>
-      <img className="v3v-bg-image" src={`${ASSET}/victory/bg.jpg`} alt="" draggable={false} decoding="async" data-testid="victory-background" />
-      <div className="v3v-bg-dim" aria-hidden="true" />
-      <div className="v3v-fan-lights" aria-hidden="true" />
-      <div className="v3v-side-lightning" aria-hidden="true"><i /><i /></div>
-      <div className="v3v-trophy-glow" aria-hidden="true" />
-      <div className="v3v-floor-reflection" aria-hidden="true" />
+      <img className="v3v-bg-image" src={VICTORY_BACKGROUND} alt="" draggable={false} decoding="async" data-testid="victory-background" />
       <VictoryConfetti />
       <header className="v3v-header">
-        <BrandMark />
-        <span className="v3v-caption">VÒNG {snapshot.round?.roundNumber ?? 1}</span>
+        <VictoryLogo />
       </header>
-      <div className="v3v-trophy" data-layer="trophy">
-        <img
-          className="v3v-trophy-stage"
-          src={`${ASSET}/victory/trophy-stage.png`}
-          alt=""
-          draggable={false}
-          decoding="async"
-          data-testid="victory-trophy-stage"
-        />
-      </div>
-      <div className="v3v-podium">
+      <div className="v3v-podium" style={VICTORY_LAYOUT}>
         {podium && podiumLeftToRight(podium.slots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} />)}
         {(!podium || podium.slots.length === 0) && <div className="v3v-empty">Chưa có người chơi đạt điểm</div>}
       </div>
