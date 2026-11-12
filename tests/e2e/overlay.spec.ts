@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { getE2eAssetDirectory } from './assets';
+import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
 
 const scenes = [
   { name: 'lobby', scene: 'LOBBY' },
@@ -64,6 +65,34 @@ async function openScene(page: Page, sceneName: string, expectedScene: string) {
   const query = new URLSearchParams({ mock: sceneName });
   await page.goto(`/?${query.toString()}`, { waitUntil: 'domcontentloaded' });
   const stage = page.locator(`[data-testid="stage"][data-scene="${expectedScene}"]`);
+  await expect(stage).toBeVisible();
+  await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  return { stage, errors };
+}
+
+async function openLobbyWithTenLeaderboardEntries(page: Page) {
+  const base = makeMockSnapshot('question');
+  if (!base) throw new Error('Missing question mock for lobby leaderboard check.');
+  const snapshot = { ...base, scene: 'LOBBY' as const, state: 'LOBBY' as const, question: null, answerCount: 0 };
+  const errors = watchPageErrors(page);
+  await page.routeWebSocket('/ws', (socket) => {
+    socket.onMessage((message) => {
+      const incoming = JSON.parse(String(message)) as { type?: string };
+      if (incoming.type !== 'HELLO') return;
+      socket.send(JSON.stringify({
+        v: 1,
+        type: 'STATE_SNAPSHOT',
+        seq: 1,
+        sessionId: snapshot.sessionId,
+        stateVersion: snapshot.stateVersion,
+        serverTimeMs: Date.now(),
+        payload: snapshot,
+      }));
+    });
+  });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const stage = page.locator('[data-testid="stage"][data-scene="LOBBY"]');
   await expect(stage).toBeVisible();
   await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -233,6 +262,51 @@ test('reveal marks exactly one correct option', async ({ page }) => {
   await expect(correctOptions).toHaveCount(1);
   await expect(correctOptions).toHaveAttribute('data-testid', 'option-B');
   expect(errors).toEqual([]);
+});
+
+test('Top 10 đủ 10 hàng nằm trên tóc MC ở sảnh và bốn pha câu hỏi', async ({ page }) => {
+  const cases = [
+    { name: 'lobby', scene: 'LOBBY' },
+    { name: 'prepare', scene: 'QUESTION' },
+    { name: 'reading', scene: 'QUESTION' },
+    { name: 'question', scene: 'QUESTION' },
+    { name: 'reveal', scene: 'REVEAL' },
+  ];
+  const stackingIssues: string[] = [];
+
+  for (const { name, scene } of cases) {
+    const { stage, errors } = name === 'lobby'
+      ? await openLobbyWithTenLeaderboardEntries(page)
+      : await openScene(page, name, scene);
+    const top10 = stage.getByTestId('v3-top10');
+    const rows = top10.locator('[data-testid="leaderboard-row"]');
+    await expect(rows).toHaveCount(10);
+    await page.screenshot({ path: join(screenshotDirectory, `${name}-top10-layer.png`), animations: 'disabled' });
+
+    const [top10Z, mcZ, nameBox, mcBox] = await Promise.all([
+      top10.evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
+      stage.locator('.v3-mc').evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
+      rows.last().locator('.v3-name-text').boundingBox(),
+      stage.locator('.v3-mc-figure').boundingBox(),
+    ]);
+    if (top10Z <= mcZ) stackingIssues.push(`${name}: Top 10 z-index ${top10Z} is not above MC ${mcZ}`);
+    if (!nameBox || !mcBox) {
+      stackingIssues.push(`${name}: tenth row name or MC frame has no box`);
+      continue;
+    }
+
+    const textOverlapsMc = nameBox.x < mcBox.x + mcBox.width
+      && nameBox.x + nameBox.width > mcBox.x
+      && nameBox.y < mcBox.y + mcBox.height
+      && nameBox.y + nameBox.height > mcBox.y;
+    if (!textOverlapsMc) stackingIssues.push(`${name}: tenth-row name does not reach the overlapping MC image area`);
+    const hitRemainsInTop10 = await page.evaluate(({ x, y }) =>
+      document.elementFromPoint(x, y)?.closest('.v3-top10') !== null,
+    { x: nameBox.x + nameBox.width / 2, y: nameBox.y + nameBox.height / 2 });
+    if (!hitRemainsInTop10) stackingIssues.push(`${name}: hit test at tenth-row name lands under MC`);
+    expect(errors, `${name}: no console or page errors`).toEqual([]);
+  }
+  expect(stackingIssues).toEqual([]);
 });
 
 test('sảnh, câu hỏi, reveal và Top 10 giữa vòng dùng nền C-0133 không có cờ rời', async ({ page }) => {
