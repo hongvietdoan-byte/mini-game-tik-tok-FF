@@ -5,7 +5,14 @@ on:
   # Nhánh codex1/codex2 do coordinator chạy test cục bộ trước khi gộp.
   push:
     branches: [main]
-    paths-ignore: ["mailbox/**", "docs/**", "**/*.md"]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "tests/**"
+      - "fixtures/assets-placeholder/**"
+      - "scripts/privacy-check.*"
+      - "playwright.config.ts"
+      - ".github/workflows/ci.yml"
   workflow_dispatch:
 
 jobs:
@@ -37,4 +44,10 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # TODO Phase 2: thêm Playwright smoke test sau khi quy trình ảnh chụp overlay ổn định.
+      - name: Cài Chromium cho Playwright
+        run: pnpm exec playwright install chromium
+
+      - name: E2E overlay với asset giữ chỗ
+        env:
+          QUIZ_ASSETS_DIR: ${{ github.workspace }}/fixtures/assets-placeholder
+        run: pnpm test:e2e
