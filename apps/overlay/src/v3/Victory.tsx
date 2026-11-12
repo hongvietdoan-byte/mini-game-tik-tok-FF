@@ -43,7 +43,7 @@ function Chibi({ entry }: { entry: LeaderboardEntry }) {
 
 function podiumNameSize(name: string): number {
   const length = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name)).length;
-  return Math.max(20, Math.min(34, 38 - length));
+  return Math.max(22, Math.min(34, 38 - length * 0.9));
 }
 
 function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
@@ -68,7 +68,7 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
         <div className="v3v-names">
           <span className="v3v-rank-label" data-testid="podium-rank">TOP {slot.rank}</span>
           {slot.entries.slice(0, 2).map((entry) => {
-            const displayName = shortName(entry.displayName, 18);
+            const displayName = shortName(entry.displayName, 16);
             return (
               <b className="v3v-player-row" key={entry.playerId}>
                 <span className="v3v-player-name" style={{ fontSize: `${podiumNameSize(displayName)}px` }}>{displayName}</span>

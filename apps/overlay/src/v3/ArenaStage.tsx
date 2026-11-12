@@ -80,16 +80,16 @@ function Timer({ ms, totalMs, running }: { ms: number; totalMs: number; running:
   );
 }
 
-/** Câu hỏi dài tự giảm cỡ chữ để luôn nằm trọn trong khung (không cắt chữ). */
+/** Câu hỏi dài giữ sàn 24px; câu vượt 160 ký tự thuộc ngưỡng rút gọn nội dung. */
 function promptSize(prompt: string | undefined) {
   const n = prompt?.length ?? 0;
-  return n > 170 ? 'is-xlong' : n > 110 ? 'is-long' : '';
+  return n > 160 ? 'is-xlong' : n > 110 ? 'is-long' : '';
 }
 
-/** Đáp án dài (tối đa 90 ký tự theo QUESTION_LIMITS) giảm cỡ chữ để hiện đủ trong 3 dòng. */
+/** Đáp án dài giữ sàn 20px; nội dung trên 45 ký tự được đội nội dung rút gọn. */
 function optionSize(text: string | undefined) {
   const n = text?.length ?? 0;
-  return n > 70 ? 'is-xxlong' : n > 52 ? 'is-xlong' : n > 30 ? 'is-long' : '';
+  return n > 45 ? 'is-xlong' : n > 30 ? 'is-long' : '';
 }
 
 function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnapshot; remainingMs: number; debug: boolean }) {
@@ -101,6 +101,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const isReading = snapshot.state === 'READING';
   const optionsVisible = !!q?.optionsVisible && !isPrepare;
   const hasLongOption = !!q?.options.some((option) => option.text.length > 45);
+  const hasLongLabel = !!q?.options.some((option) => option.text.length > 30);
   const totalAnswers = reveal ? Object.values(reveal.optionCounts).reduce((a, b) => a + b, 0) : 0;
   return (
     <section className="v3-board" data-layer="quiz-hud">
@@ -115,7 +116,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
         )}
       </div>
       {!isLobby && (
-        <div className={`v3-options ${reveal ? 'is-revealed' : ''} ${hasLongOption ? 'has-long-option' : ''}`} data-testid="option-list">
+        <div className={`v3-options ${reveal ? 'is-revealed' : ''} ${hasLongOption ? 'has-long-option' : ''} ${hasLongLabel ? 'has-long-label' : ''}`} data-testid="option-list">
           {(['A', 'B', 'C', 'D'] as const).map((id) => {
             const opt = optionsVisible ? q?.options.find((o) => o.id === id) : undefined;
             const correct = !!reveal && reveal.correctOptionId === id;

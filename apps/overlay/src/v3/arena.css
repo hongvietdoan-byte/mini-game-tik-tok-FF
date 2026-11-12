@@ -1415,19 +1415,39 @@
 .v3-stage--question-user .v3-mc-figure { transform: none; animation-play-state: paused; }
 .v3-stage--question-user .v3-mc-figure img { animation: none; transform: none; object-position: top center; }
 .v3-stage--question-user[data-scene="LOBBY"] .v3-question { font-size: 38px; font-weight: 900; }
-.v3-stage--question-user .v3-header .v3-title.is-wide { top: -17px; }
-.v3-stage--question-user .v3-top10 { left: 16px; top: 270px; width: 254px; height: 440px; background: linear-gradient(180deg, #201766, #100c39); }
-.v3-stage--question-user .v3-board { left: 278px; top: 295px; width: 780px; height: 470px !important; background: linear-gradient(160deg, #11145b, #080c2f) padding-box, linear-gradient(130deg, #ff58e8, #5ecfff 42%, #a26cff) border-box; }
+.v3-stage--question-user .v3-header .v3-title.is-wide { top: -14px; }
+.v3-stage--question-user .v3-top10 { left: 98px; top: 345px; width: 300px; height: 466px; background: linear-gradient(180deg, #201766, #100c39); }
+.v3-stage--question-user .v3-board { left: 416px; top: 345px; width: 567px; height: 470px !important; background: linear-gradient(160deg, #11145b, #080c2f) padding-box, linear-gradient(130deg, #ff58e8, #5ecfff 42%, #a26cff) border-box; }
 .v3-stage--question-user .v3-mc,
 .v3-stage--question-user.has-long-prompt .v3-mc,
 .v3-stage--question-user.has-long-options .v3-mc,
-.v3-stage--question-user.has-long-prompt.has-long-options .v3-mc { top: 770px; left: 0; right: 0; height: 360px; z-index: 9; }
-.v3-stage--question-user .v3-mc .v3-mc-figure { left: 150px; top: 0; width: 230px; height: 300px; overflow: hidden; }
-.v3-stage--question-user .v3-mc .v3-mc-figure img { position: static; inset: auto; display: block; width: 230px; height: 300px; max-height: none; margin: 0; object-fit: cover; object-position: top center; }
-.v3-stage--question-user .v3-mc .v3-mc-plate { left: 146px; top: 240px; width: 250px; height: 52px; }
-.v3-stage--question-user:not([data-scene="LOBBY"]) .v3-mc .v3-mc-plate { top: 300px; }
-.v3-stage--question-user.has-long-options .v3-options.has-long-option .v3-option-text.is-xxlong,
-.v3-stage--question-user.has-long-prompt.has-long-options .v3-options.has-long-option .v3-option-text.is-xxlong { font-size: 13px; line-height: .95; padding-block: 2px; }
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-mc { top: 760px; left: 0; right: 0; height: 470px; z-index: 9; }
+.v3-stage--question-user .v3-mc .v3-mc-figure { left: 108px; top: 0; width: 280px; height: 390px; overflow: hidden; }
+.v3-stage--question-user .v3-mc .v3-mc-figure img { position: absolute; left: 50%; top: 0; display: block; width: 280px; height: 390px; max-height: none; margin: 0; object-fit: cover; object-position: top center; transform: translateX(-50%); }
+.v3-stage--question-user .v3-mc .v3-mc-plate { left: 100px; top: 392px; width: 280px; height: 56px; }
+.v3-stage--question-user .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-prompt .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-options .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-mc .v3-bubble { left: 410px; top: 84px; width: 568px; height: 220px; }
+.v3-stage--question-user .v3-question.is-long,
+.v3-stage--question-user .v3-question.is-xlong { font-size: 24px; line-height: 1.08; }
+.v3-stage--question-user.has-long-options .v3-options.has-long-option .v3-option-text,
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-options.has-long-option .v3-option-text,
+.v3-stage--question-user .v3-option-text.is-long,
+.v3-stage--question-user .v3-option-text.is-xlong,
+.v3-stage--question-user .v3-options.has-long-option .v3-option-text { font-size: 20px; line-height: 1; padding-block: 0; }
+.v3-stage--question-user .v3-options.has-long-label .v3-option-text.is-long,
+.v3-stage--question-user .v3-options.has-long-label .v3-option-text.is-xlong { align-self: stretch; }
+.v3-stage--question-user .v3-options.has-long-label.is-revealed .v3-option,
+.v3-stage--question-user.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option { grid-template-columns: 42px minmax(0, 1fr); }
+.v3-stage--question-user .v3-options.has-long-label.is-revealed .v3-letter,
+.v3-stage--question-user.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-letter { grid-column: 1; grid-row: 1; align-self: start; line-height: 1; }
+.v3-stage--question-user .v3-options.has-long-label.is-revealed .v3-option-text,
+.v3-stage--question-user.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option-text { grid-column: 2; grid-row: 1; align-self: stretch; }
+.v3-stage--question-user .v3-options.has-long-label.is-revealed .v3-option-count,
+.v3-stage--question-user.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option-count { grid-column: 1; grid-row: 1; justify-self: center; align-self: end; font-size: 12px; line-height: 1; }
+.v3-stage--question-user .v3-options.has-long-label.is-revealed .v3-option-meter,
+.v3-stage--question-user.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option-meter { left: 61px; bottom: 1px; }
 .v3-question-banner-mask {
   position: absolute;
   z-index: 2;
