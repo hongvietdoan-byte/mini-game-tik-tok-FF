@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T12:48:04+07:00",
+  "heartbeat": "2026-11-12T13:08:20+07:00",
   "state": "waiting",
   "task": "C-0085",
-  "note": "Chưa có thư mở khóa C-0085; status chưa báo câu trả lời mới, DP1/DP2 đã xong và DP3 thuộc codex2.",
+  "note": "Không có task khả thi; đã gửi note rảnh X-0198, C-0085 chờ thư mở khóa.",
   "done": [
     86,
     88,
