@@ -4,6 +4,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import os
 from pathlib import Path
+import shutil
 import socket
 import sqlite3
 import tempfile
@@ -121,6 +122,40 @@ class RestoreSafetyTests(unittest.TestCase):
             finally:
                 connection.rollback()
                 connection.close()
+
+    def test_mirror_restore_removes_extra_assets_but_keeps_excluded_folders(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="quiz-restore-mirror-") as temp:
+            root = Path(temp)
+            backup_dir = self._create_backup(root)
+            assets = root / "assets-local"
+            (assets / "extra").mkdir()
+            (assets / "extra" / "old.png").write_bytes(b"extra")
+            (assets / "review").mkdir()
+            (assets / "review" / "keep.txt").write_text("review", encoding="utf-8")
+            (assets / "_backup").mkdir()
+            (assets / "_backup" / "keep.txt").write_text("backup", encoding="utf-8")
+
+            with patch.object(backup, "server_is_listening", return_value=False), \
+                    patch.object(backup, "restore_database", side_effect=lambda source, destination: (destination.parent.mkdir(parents=True, exist_ok=True), shutil.copy2(source, destination))), \
+                    redirect_stdout(StringIO()):
+                backup.restore_backup(backup_dir, root, assume_yes=True, mirror=True)
+
+            self.assertFalse((assets / "extra" / "old.png").exists())
+            self.assertFalse((assets / "extra").exists())
+            self.assertEqual((assets / "review" / "keep.txt").read_text(encoding="utf-8"), "review")
+            self.assertEqual((assets / "_backup" / "keep.txt").read_text(encoding="utf-8"), "backup")
+
+    def test_default_restore_keeps_assets_not_in_manifest(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="quiz-restore-no-mirror-") as temp:
+            root = Path(temp)
+            backup_dir = self._create_backup(root)
+            extra = root / "assets-local" / "extra.png"
+            extra.write_bytes(b"extra")
+            with patch.object(backup, "server_is_listening", return_value=False), \
+                    patch.object(backup, "restore_database", side_effect=lambda source, destination: (destination.parent.mkdir(parents=True, exist_ok=True), shutil.copy2(source, destination))), \
+                    redirect_stdout(StringIO()):
+                backup.restore_backup(backup_dir, root, assume_yes=True)
+            self.assertTrue(extra.exists())
 
 
 

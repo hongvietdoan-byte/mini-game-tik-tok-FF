@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error Dự án tắt allowJs nên TS không nạp JSDoc của .mjs; hàm pure được định kiểu tại đây.
-import { checkFiles as untypedCheckFiles, parseExtraPatterns as untypedParseExtraPatterns } from './privacy-check.mjs';
+import { checkFiles as untypedCheckFiles, parseExtraPatterns as untypedParseExtraPatterns, readTrackedFiles as untypedReadTrackedFiles } from './privacy-check.mjs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const checkFiles: (files: { path: string; content?: string; sizeBytes?: number; isSymlink?: boolean }[], extraPatterns?: string[]) => string[] = untypedCheckFiles;
 const parseExtraPatterns: (environmentValue?: string, localFileContent?: string) => string[] = untypedParseExtraPatterns;
+const readTrackedFiles: (root: string, paths: string[], errors?: string[]) => { path: string; content?: string }[] = untypedReadTrackedFiles;
 
 describe('checkFiles', () => {
   it('chặn bảng tính ở mọi nơi và ảnh ngoài các thư mục cho phép', () => {
@@ -32,7 +36,7 @@ describe('checkFiles', () => {
 
   it('chỉ cho ảnh giữ chỗ trong đúng thư mục fixtures và giới hạn mỗi ảnh 4 KB', () => {
     expect(checkFiles([
-      { path: 'fixtures/assets-placeholder/chibi/demo.png', sizeBytes: 4_096 },
+      { path: 'fixtures/assets-placeholder/chibi/chibi-01.png', sizeBytes: 4_096 },
       { path: 'fixtures/assets-placeholder/README.md', content: 'ảnh giữ chỗ DEMO' },
     ])).toEqual([]);
 
@@ -40,8 +44,8 @@ describe('checkFiles', () => {
       { path: 'fixtures/assets-placeholder/victory/bg.jpg', sizeBytes: 4_097 },
     ])).toContain('fixtures/assets-placeholder/victory/bg.jpg: ảnh giữ chỗ vượt quá 4 KB');
     expect(checkFiles([
-      { path: 'fixtures/assets-placeholder/chibi/no-size.png' },
-    ])).toContain('fixtures/assets-placeholder/chibi/no-size.png: không xác minh được kích thước ảnh giữ chỗ');
+      { path: 'fixtures/assets-placeholder/chibi/chibi-01.png' },
+    ])).toContain('fixtures/assets-placeholder/chibi/chibi-01.png: không xác minh được kích thước ảnh giữ chỗ');
     expect(checkFiles([
       { path: 'fixtures/assets-placeholder/chibi/link.png', sizeBytes: 12, isSymlink: true },
     ])).toContain('fixtures/assets-placeholder/chibi/link.png: ảnh giữ chỗ không được là symlink');
@@ -51,6 +55,21 @@ describe('checkFiles', () => {
     expect(checkFiles([
       { path: 'fixtures/assets-placeholder/extra.bin', sizeBytes: 12 },
     ])).toContain('fixtures/assets-placeholder/extra.bin: chỉ cho ảnh giữ chỗ và README.md trong thư mục này');
+    expect(checkFiles([
+      { path: 'fixtures/assets-placeholder/chibi/new-small-image.png', sizeBytes: 12 },
+    ])).toContain('fixtures/assets-placeholder/chibi/new-small-image.png: ảnh nằm ngoài thư mục được phép');
+  });
+
+  it('xem file tracked đã bị xóa khỏi worktree là vắng mặt, không phải lỗi đọc', () => {
+    const root = mkdtempSync(join(tmpdir(), 'quiz-privacy-missing-'));
+    const errors: string[] = [];
+    try {
+      const files = readTrackedFiles(root, ['scripts/deleted-locally.ts'], errors);
+      expect(files).toEqual([{ path: 'scripts/deleted-locally.ts' }]);
+      expect(errors).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('chặn tên tệp nhạy cảm và thư mục kho chibi', () => {

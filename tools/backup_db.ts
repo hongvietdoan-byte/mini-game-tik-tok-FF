@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { Store } from '@quiz/persistence';
+import { backupSqliteReadonly } from '../packages/persistence/src/readonly-backup';
 
 const [sourceArg, destinationArg] = process.argv.slice(2);
 if (!sourceArg || !destinationArg) {
@@ -14,9 +14,4 @@ if (source === destination) {
   process.exit(2);
 }
 
-const store = new Store(source);
-try {
-  await store.backup(destination);
-} finally {
-  store.close();
-}
+await backupSqliteReadonly(source, destination);

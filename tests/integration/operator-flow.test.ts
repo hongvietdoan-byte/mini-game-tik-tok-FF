@@ -242,7 +242,7 @@ async function connectOverlay(h: TestServer) {
     const message = JSON.parse(raw) as WsMessage;
     messages.push(message);
     if (message.type === 'STATE_SNAPSHOT')
-      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, seq: message.seq }));
+      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, seq: message.seq, role: 'program' }));
   });
   await new Promise<void>((resolve, reject) => {
     socket.once('open', resolve);

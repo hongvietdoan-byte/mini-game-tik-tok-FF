@@ -18,6 +18,44 @@ const ASSET_APPROVALS_PATH = 'assets/ASSET_APPROVALS.json';
 const LOCAL_EXTRA_PATTERNS_PATH = 'assets-local/privacy-patterns.txt';
 const PLACEHOLDER_ASSET_PREFIX = 'fixtures/assets-placeholder/';
 const MAX_PLACEHOLDER_IMAGE_BYTES = 4 * 1024;
+const PLACEHOLDER_IMAGE_PATHS = new Set([
+  'fixtures/assets-placeholder/brand/logo.png',
+  'fixtures/assets-placeholder/chibi/chibi-01.png',
+  'fixtures/assets-placeholder/chibi/chibi-02.png',
+  'fixtures/assets-placeholder/chibi/chibi-03.png',
+  'fixtures/assets-placeholder/chibi/chibi-04.png',
+  'fixtures/assets-placeholder/chibi/chibi-05.png',
+  'fixtures/assets-placeholder/chibi/chibi-06.png',
+  'fixtures/assets-placeholder/chibi/chibi-07.png',
+  'fixtures/assets-placeholder/chibi/chibi-08.png',
+  'fixtures/assets-placeholder/chibi/chibi-09.png',
+  'fixtures/assets-placeholder/chibi/chibi-10.png',
+  'fixtures/assets-placeholder/chibi/chibi-11.png',
+  'fixtures/assets-placeholder/chibi/chibi-12.png',
+  'fixtures/assets-placeholder/chibi/chibi-002-a124.png',
+  'fixtures/assets-placeholder/chibi/chibi-004-alvaro.png',
+  'fixtures/assets-placeholder/chibi/chibi-005-andrew.png',
+  'fixtures/assets-placeholder/chibi/chibi-006-antonio.png',
+  'fixtures/assets-placeholder/chibi/chibi-007-caroline.png',
+  'fixtures/assets-placeholder/chibi/chibi-008-clu.png',
+  'fixtures/assets-placeholder/chibi/chibi-009-d-bee.png',
+  'fixtures/assets-placeholder/chibi/chibi-010-dasha.png',
+  'fixtures/assets-placeholder/chibi/chibi-011-dimitri.png',
+  'fixtures/assets-placeholder/chibi/chibi-012-ford.png',
+  'fixtures/assets-placeholder/chibi/chibi-013-hayato.png',
+  'fixtures/assets-placeholder/chibi/chibi-014-homer.png',
+  'fixtures/assets-placeholder/chibi/chibi-015-ignis.png',
+  'fixtures/assets-placeholder/chibi/chibi-016-iris.png',
+  'fixtures/assets-placeholder/chibi/chibi-017-joseph.png',
+  'fixtures/assets-placeholder/chibi/chibi-018-jota.png',
+  'fixtures/assets-placeholder/chibi/chibi-019-k.png',
+  'fixtures/assets-placeholder/chibi/chibi-020-kairos.png',
+  'fixtures/assets-placeholder/chibi/chibi-021-kapella.png',
+  'fixtures/assets-placeholder/chibi/chibi-022-kassie.png',
+  'fixtures/assets-placeholder/mc/kelly.png',
+  'fixtures/assets-placeholder/victory/bg.jpg',
+  'fixtures/assets-placeholder/victory/trophy-stage.png',
+].map((path) => path.toLowerCase()));
 
 /** @typedef {{ path: string; content?: string; sizeBytes?: number; isSymlink?: boolean }} PrivacyFile */
 
@@ -64,7 +102,7 @@ function isAllowedImagePath(path) {
   return normalized.startsWith('assets/')
     || /^apps\/[^/]+\/public\//.test(normalized)
     || normalized.startsWith('tests/e2e/__screenshots__/')
-    || normalized.startsWith(PLACEHOLDER_ASSET_PREFIX);
+    || PLACEHOLDER_IMAGE_PATHS.has(normalized);
 }
 
 function approvedAssetPaths(files) {
@@ -179,6 +217,33 @@ function readTrackedTextFile(repositoryRoot, path) {
   return readFileSync(absolutePath, 'utf8');
 }
 
+/** Đọc metadata/content của file được Git theo dõi; file bị xóa cục bộ được xem như đã vắng mặt. */
+export function readTrackedFiles(repositoryRoot, trackedPaths, readErrors = []) {
+  return trackedPaths.map((path) => {
+    const isApprovalManifest = lowerPath(path) === ASSET_APPROVALS_PATH.toLowerCase();
+    let metadata;
+    try {
+      const info = lstatSync(resolve(repositoryRoot, path));
+      metadata = { sizeBytes: info.size, isSymlink: info.isSymbolicLink() };
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
+        readErrors.push(`${path}: không thể đọc metadata tệp đã theo dõi`);
+      }
+      return { path };
+    }
+    if (lowerPath(path).startsWith(PLACEHOLDER_ASSET_PREFIX) && metadata.isSymlink) {
+      return { path, ...metadata };
+    }
+    if (!isApprovalManifest && !isTextFile(path)) return { path, ...metadata };
+    try {
+      return { path, ...metadata, content: readTrackedTextFile(repositoryRoot, path) };
+    } catch {
+      readErrors.push(`${path}: không thể đọc tệp text đã theo dõi`);
+      return { path, ...metadata };
+    }
+  });
+}
+
 function runCli() {
   const args = process.argv.slice(2);
   const json = args.includes('--json');
@@ -207,27 +272,7 @@ function runCli() {
   } catch {
     readErrors.push(LOCAL_EXTRA_PATTERNS_PATH + ': không thể đọc tệp pattern cục bộ');
   }
-  const files = trackedPaths.map((path) => {
-    const isApprovalManifest = lowerPath(path) === ASSET_APPROVALS_PATH.toLowerCase();
-    let metadata;
-    try {
-      const info = lstatSync(resolve(repositoryRoot, path));
-      metadata = { sizeBytes: info.size, isSymlink: info.isSymbolicLink() };
-    } catch {
-      readErrors.push(`${path}: không thể đọc metadata tệp đã theo dõi`);
-      return { path };
-    }
-    if (lowerPath(path).startsWith(PLACEHOLDER_ASSET_PREFIX) && metadata.isSymlink) {
-      return { path, ...metadata };
-    }
-    if (!isApprovalManifest && !isTextFile(path)) return { path, ...metadata };
-    try {
-      return { path, ...metadata, content: readTrackedTextFile(repositoryRoot, path) };
-    } catch {
-      readErrors.push(`${path}: không thể đọc tệp text đã theo dõi`);
-      return { path, ...metadata };
-    }
-  });
+  const files = readTrackedFiles(repositoryRoot, trackedPaths, readErrors);
   const violations = [...checkFiles(files, extraPatterns), ...readErrors];
   const uniqueViolations = [...new Set(violations)];
 
