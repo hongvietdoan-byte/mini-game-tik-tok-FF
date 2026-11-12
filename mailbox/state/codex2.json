@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 137,
-  "heartbeat": "2026-11-12T21:36:32+07:00",
+  "heartbeat": "2026-11-12T21:54:56+07:00",
   "state": "working",
   "task": "C-0142",
-  "note": "Đã nhận C-0142, gộp ảnh Top 10 C-0141; rà ảnh offline và sửa LOBBY/leaderboard/MC trong worktree codex2/c0142-offline-ui.",
+  "note": "Đang chỉnh và rà bằng mắt các màn offline theo C-0142",
   "done": []
 }
