@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 116,
-  "heartbeat": "2026-11-12T15:12:38+07:00",
+  "heartbeat": "2026-11-12T15:13:41+07:00",
   "state": "working",
-  "task": "C-0122",
-  "note": "Đã ack C-0122; đang kiểm tra asset nguồn, nhánh C-0068 và layout trước khi đổi nền question/victory",
+  "task": "C-0127",
+  "note": "Ưu tiên C-0127 trên nhánh C-0068; cố định bốn pha question, MC bán thân, logo gọn; áp dụng CI C-0126 trước khi push",
   "done": [
     120,
     124
