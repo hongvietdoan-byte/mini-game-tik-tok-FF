@@ -45,6 +45,22 @@ describe('preflight theo role của mỗi overlay connection', () => {
     expect(summarizeOverlaySessions(sessions).programClients).toBe(1);
   });
 
+  it('chỉ lấy audioState của ACK mới nhất từ program, bỏ qua preview', () => {
+    const sessions = new Map<object, OverlaySession>();
+    const preview = {};
+    const program = {};
+    registerOverlaySession(sessions, preview);
+    registerOverlaySession(sessions, program);
+    recordOverlayAck(sessions, preview, { role: 'preview', stateVersion: 7, audioState: 'suspended' }, 9_400);
+    recordOverlayAck(sessions, program, { role: 'program', stateVersion: 7, audioState: 'running' }, 9_500);
+    expect(summarizeOverlaySessions(sessions).programAudioState).toBe('running');
+
+    recordOverlayAck(sessions, program, { role: 'program', stateVersion: 6, audioState: 'unavailable' }, 9_600);
+    expect(summarizeOverlaySessions(sessions).programAudioState).toBe('running');
+    recordOverlayAck(sessions, program, { role: 'program', stateVersion: 8, audioState: 'suspended' }, 9_700);
+    expect(summarizeOverlaySessions(sessions).programAudioState).toBe('suspended');
+  });
+
   it('program ngắt kết nối thì preview còn lại không giữ PASS', () => {
     const sessions = new Map<object, OverlaySession>();
     const preview = {};

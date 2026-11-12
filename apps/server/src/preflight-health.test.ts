@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveSourceHealth } from '@quiz/contracts';
-import { commentSourcePreflight, overlayAckPreflight } from './preflight-health';
+import { commentSourcePreflight, overlayAckPreflight, overlayAudioPreflight, OVERLAY_AUDIO_WARNING } from './preflight-health';
 
 const connected: LiveSourceHealth = {
   source: 'TIKTOK', status: 'CONNECTED', connectedSinceMs: 1, detail: null, reconnects: 0,
@@ -24,5 +24,13 @@ describe('preflight health', () => {
     expect(overlayAckPreflight({ ...pending, nowMs: 3_000 }).status).toBe('FAIL');
     expect(overlayAckPreflight({ ...pending, ackVersion: 3 }).status).toBe('PASS');
     expect(overlayAckPreflight({ ...pending, clients: 0 }).status).toBe('FAIL');
+  });
+
+  it('cảnh báo âm thanh bị chặn, cho PASS khi đang phát hoặc tắt có chủ đích', () => {
+    expect(overlayAudioPreflight('suspended')).toEqual({ status: 'WARN', reason: OVERLAY_AUDIO_WARNING });
+    expect(overlayAudioPreflight('unavailable')).toEqual({ status: 'WARN', reason: OVERLAY_AUDIO_WARNING });
+    expect(overlayAudioPreflight('running').status).toBe('PASS');
+    expect(overlayAudioPreflight('disabled').status).toBe('PASS');
+    expect(overlayAudioPreflight(null).status).toBe('WARN');
   });
 });

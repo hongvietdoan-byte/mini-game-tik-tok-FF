@@ -18,6 +18,7 @@ import {
   DEFAULT_DIFFICULTY_TARGETS,
   questionLengthWarnings,
   SimulatorRequestSchema,
+  type OverlayAudioState,
 } from '@quiz/contracts';
 import { formatDifficultyCounts, isEligible, planPreferredDifficultyCounts } from '@quiz/quiz-core';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
@@ -31,7 +32,7 @@ import { McVoicePreGenerateManager } from './voice/pre-generate';
 import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile, EnvironmentMcVoiceCredentialStore } from './voice/types';
 import { McVoiceService } from './voice/service';
 import { preflightAssets } from './preflight-assets';
-import { commentSourcePreflight, overlayAckPreflight } from './preflight-health';
+import { commentSourcePreflight, overlayAckPreflight, overlayAudioPreflight } from './preflight-health';
 import {
   recordOverlayAck,
   registerOverlaySession,
@@ -218,13 +219,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   }
 
   type PreflightStatus = 'PASS' | 'FAIL' | 'WARN';
-  type PreflightCheck = { id: string; label: string; status: PreflightStatus; reason: string };
+  type PreflightCheck = { id: string; label: string; status: PreflightStatus; reason: string; audioState?: OverlayAudioState | null };
   function makePreflight(session: SessionRuntime | null = rt) {
     const checkedAtMs = Math.floor(scheduler.now());
     const headHash = currentHeadHash();
     const checks: PreflightCheck[] = [];
-    const check = (id: string, label: string, status: PreflightStatus, reason: string) =>
-      checks.push({ id, label, status, reason });
+    const check = (id: string, label: string, status: PreflightStatus, reason: string, audioState?: OverlayAudioState | null) =>
+      checks.push({ id, label, status, reason, ...(audioState === undefined ? {} : { audioState }) });
 
     if (!session) {
       check('questions', 'Ngân hàng câu hỏi', 'WARN', 'Chưa có phiên để xác định bộ câu hỏi và số câu mỗi vòng.');
@@ -289,6 +290,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
 
     if (!session) {
       check('overlayAck', 'Overlay đã ACK', 'WARN', 'Chưa có phiên mở để đối chiếu ACK với stateVersion.');
+      check('overlayAudio', 'Âm thanh nguồn trong LIVE Studio', 'WARN', 'Chưa có phiên overlay program để kiểm tra âm thanh.', null);
       check('commentSource', 'Nguồn comment', 'WARN', 'Chưa có phiên để xác định MOCK/TIKTOK.');
     } else {
       const overlaySummary = summarizeOverlaySessions(overlaySessions);
@@ -306,6 +308,8 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         ack.status,
         ack.reason,
       );
+      const audio = overlayAudioPreflight(overlaySummary.programAudioState);
+      check('overlayAudio', 'Âm thanh nguồn trong LIVE Studio', audio.status, audio.reason, overlaySummary.programAudioState);
       const live = session.liveHealth();
       const sourceHealth = commentSourcePreflight(session.config.mode, live, scheduler.now());
       check('commentSource', 'Nguồn comment', sourceHealth.status, sourceHealth.reason);
@@ -696,6 +700,8 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     const live = rt?.liveHealth() ?? null;
     const st = rt?.engine.stateVersion ?? null;
     const isTiktok = rt?.config.mode === 'TIKTOK';
+    const overlaySummary = summarizeOverlaySessions(overlaySessions);
+    const programAudio = overlayAudioPreflight(overlaySummary.programAudioState);
     const iso = (ms: number) => new Date(ms).toISOString();
     const checks: SystemCheck[] = [
       check('backend', 'Backend hoạt động', 'PASS', `uptime ${Math.round((now - startedAtMs) / 1000)} s`),
@@ -707,7 +713,14 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       ),
       check('theme', 'Theme Pack tải thành công', 'NOT_TESTED', 'Theme Pack chưa triển khai (V3 P3) — đang dùng giao diện mặc định'),
       overlayClients.size > 0
-        ? check('overlay', 'Overlay hiển thị', 'PASS', `${overlayClients.size} overlay đang kết nối (không khẳng định OBS/LIVE Studio đang phát)`)
+        ? check(
+            'overlay',
+            'Overlay hiển thị',
+            programAudio.status === 'WARN' && overlaySummary.programAudioState !== null ? 'WARN' : 'PASS',
+            programAudio.status === 'WARN' && overlaySummary.programAudioState !== null
+              ? programAudio.reason
+              : `${overlayClients.size} overlay đang kết nối (không khẳng định OBS/LIVE Studio đang phát)${overlaySummary.programAudioState ? `; audioState=${overlaySummary.programAudioState}` : ''}`,
+          )
         : check('overlay', 'Overlay hiển thị', 'FAIL', 'Chưa có overlay nào kết nối — mở Overlay URL trong OBS / trình duyệt'),
       lastSelfTest
         ? check('mockComment', 'Mock Comment hoạt động', lastSelfTest.mockComment ? 'PASS' : 'FAIL', lastSelfTest.detail)
@@ -744,7 +757,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
               `overlay báo v${lastAck?.stateVersion ?? '—'}, server v${st} — overlay cần gửi ACK sau khi render`,
             ),
     ];
-    return { checks, live, overlay: { clients: overlayClients.size, lastAck } };
+    return { checks, live, overlay: { clients: overlayClients.size, lastAck, audioState: overlaySummary.programAudioState } };
   });
 
   // --- WebSocket ----------------------------------------------------------------
