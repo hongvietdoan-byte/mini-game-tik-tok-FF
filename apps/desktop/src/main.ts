@@ -3,12 +3,12 @@
  * Server Fastify chạy NGAY TRONG tiến trình này (không cần Node/terminal), phục vụ dashboard + overlay
  * trên một cổng loopback cố định để OBS / TikTok LIVE Studio dùng một Overlay URL ổn định.
  */
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { RealScheduler } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
-import { buildApp, loadOrCreateAdminToken, type QuizApp } from '@quiz/server';
+import { buildApp, loadOrCreateAdminToken, SafeStorageMcVoiceCredentialStore, type QuizApp } from '@quiz/server';
 import { DEMO_PACK, DEMO_QUESTIONS } from '../../../fixtures/index';
 
 const HOST = '127.0.0.1';
@@ -55,6 +55,13 @@ async function startServer() {
     store,
     scheduler,
     adminToken,
+    mcVoice: {
+      credentials: new SafeStorageMcVoiceCredentialStore(join(dataDir, 'mc-voice-token.dat'), {
+        isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+        encryptString: (value) => safeStorage.encryptString(value),
+        decryptString: (value) => safeStorage.decryptString(value),
+      }),
+    },
     webRoots: { dashboard: join(APP_DIR, 'web', 'dashboard'), overlay: join(APP_DIR, 'web', 'overlay') },
   });
   await quiz.recover();

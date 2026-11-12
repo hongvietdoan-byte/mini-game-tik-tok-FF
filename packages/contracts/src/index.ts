@@ -35,6 +35,52 @@ export const McReadingFallbackReasonSchema = z.enum([
 ]);
 export type McReadingFallbackReason = z.infer<typeof McReadingFallbackReasonSchema>;
 
+export const McVoiceSettingsSchema = z.object({
+  provider: z.literal('CLIPAI'),
+  voiceName: z.literal('Kelly'),
+  /** Chỉ biểu thị có token; API không trả lại token hay dạng đã che. */
+  hasToken: z.boolean(),
+  ready: z.boolean(),
+  primaryOverlayInstanceId: z.string().nullable(),
+});
+export type McVoiceSettings = z.infer<typeof McVoiceSettingsSchema>;
+
+export const McVoiceSettingsUpdateSchema = z.object({
+  token: z.string().trim().min(1).max(4_096).optional(),
+  clearToken: z.boolean().optional(),
+  primaryOverlayInstanceId: z.string().trim().min(1).max(128).nullable().optional(),
+  confirmPrimaryOverlayChange: z.boolean().optional(),
+}).superRefine((value, ctx) => {
+  if (value.clearToken && value.token !== undefined)
+    ctx.addIssue({ code: 'custom', path: ['token'], message: 'Không thể vừa đặt vừa xoá token.' });
+});
+export type McVoiceSettingsUpdate = z.infer<typeof McVoiceSettingsUpdateSchema>;
+
+export const McVoiceTestRequestSchema = z.object({
+  confirmed: z.literal(true),
+  text: z.string().trim().min(1).max(1_000),
+});
+export type McVoiceTestRequest = z.infer<typeof McVoiceTestRequestSchema>;
+
+export const McVoicePreGenerateRequestSchema = z.object({
+  questionIds: z.array(z.string().trim().min(1).max(64)).min(1).max(200),
+}).superRefine((value, ctx) => {
+  if (new Set(value.questionIds).size !== value.questionIds.length)
+    ctx.addIssue({ code: 'custom', path: ['questionIds'], message: 'Danh sách câu hỏi không được trùng.' });
+});
+export type McVoicePreGenerateRequest = z.infer<typeof McVoicePreGenerateRequestSchema>;
+
+export const McVoicePreGenerateProgressSchema = z.object({
+  jobId: z.string().min(1).max(100),
+  status: z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED']),
+  total: z.number().int().min(0),
+  completed: z.number().int().min(0),
+  failed: z.number().int().min(0),
+  tooLong: z.number().int().min(0),
+  updatedAtMs: z.number().finite(),
+});
+export type McVoicePreGenerateProgress = z.infer<typeof McVoicePreGenerateProgressSchema>;
+
 /** Trần đọc câu hỏi và bốn đáp án trong một lần phát MC. */
 export const MAX_MC_READING_MS = 20_000;
 
@@ -99,6 +145,18 @@ export type IngestMetrics = {
 
 export const DifficultySchema = z.enum(['EASY', 'MEDIUM', 'HARD']);
 export type Difficulty = z.infer<typeof DifficultySchema>;
+export const QUESTION_SELECTION_MODES = ['RANDOM', 'DIFFICULTY'] as const;
+export const QuestionSelectionModeSchema = z.enum(QUESTION_SELECTION_MODES);
+export type QuestionSelectionMode = z.infer<typeof QuestionSelectionModeSchema>;
+
+/** Tỷ lệ mục tiêu cho vòng 15 câu; selector tự co giãn cho 10/20 câu. */
+export const DEFAULT_DIFFICULTY_TARGETS = { EASY: 7, MEDIUM: 5, HARD: 3 } as const;
+export const DifficultyTargetsSchema = z.object({
+  EASY: z.number().int().min(0).max(20).default(DEFAULT_DIFFICULTY_TARGETS.EASY),
+  MEDIUM: z.number().int().min(0).max(20).default(DEFAULT_DIFFICULTY_TARGETS.MEDIUM),
+  HARD: z.number().int().min(0).max(20).default(DEFAULT_DIFFICULTY_TARGETS.HARD),
+}).refine((targets) => targets.EASY + targets.MEDIUM + targets.HARD > 0, 'Ít nhất một mục tiêu độ khó phải lớn hơn 0');
+export type DifficultyTargets = z.infer<typeof DifficultyTargetsSchema>;
 
 export const VerificationStatusSchema = z.enum([
   'UNVERIFIED',
@@ -135,7 +193,8 @@ export const QuestionSchema = z
     options: z.array(QuestionOptionSchema).length(4),
     correctOptionId: z.string().min(1),
     explanation: z.string().max(QUESTION_LIMITS.explanationMax).default(''),
-    difficulty: DifficultySchema,
+    /** Câu cũ chưa gán độ khó được xem là mức vừa. */
+    difficulty: DifficultySchema.default('MEDIUM'),
     tags: z.array(z.string().max(40)).max(20).default([]),
     sourceRefs: z.array(z.string().max(200)).max(20).default([]),
     verificationStatus: VerificationStatusSchema,
@@ -155,6 +214,50 @@ export const QuestionSchema = z
       ctx.addIssue({ code: 'custom', message: 'correctOptionId không thuộc options' });
   });
 export type Question = z.infer<typeof QuestionSchema>;
+
+/** Ngưỡng nội dung khuyến nghị cho overlay; vượt ngưỡng chỉ cảnh báo, không từ chối câu. */
+export const QUESTION_WARNING_LIMITS = { promptMax: 110, optionMax: 28 } as const;
+
+export type QuestionLengthWarning = {
+  code: 'TOO_LONG';
+  field: 'prompt' | 'option';
+  characterCount: number;
+  limit: number;
+  optionId?: string;
+};
+
+function questionCharacterCount(value: string): number {
+  return Array.from(value.trim()).length;
+}
+
+/** Trả về cảnh báo cho từng trường vượt ngưỡng; không biến cảnh báo thành lỗi validation. */
+export function questionLengthWarnings(
+  question: Pick<Question, 'prompt' | 'options'>,
+): QuestionLengthWarning[] {
+  const warnings: QuestionLengthWarning[] = [];
+  const promptLength = questionCharacterCount(question.prompt);
+  if (promptLength > QUESTION_WARNING_LIMITS.promptMax) {
+    warnings.push({
+      code: 'TOO_LONG',
+      field: 'prompt',
+      characterCount: promptLength,
+      limit: QUESTION_WARNING_LIMITS.promptMax,
+    });
+  }
+  for (const option of question.options) {
+    const optionLength = questionCharacterCount(option.text);
+    if (optionLength > QUESTION_WARNING_LIMITS.optionMax) {
+      warnings.push({
+        code: 'TOO_LONG',
+        field: 'option',
+        optionId: option.id,
+        characterCount: optionLength,
+        limit: QUESTION_WARNING_LIMITS.optionMax,
+      });
+    }
+  }
+  return warnings;
+}
 
 /** Ảnh chụp bất biến của câu hỏi tại thời điểm tạo vòng (đã xáo đáp án). */
 export type QuestionSnapshot = {
@@ -214,6 +317,12 @@ export const SessionConfigSchema = z
     mode: LiveSourceSchema.default('MOCK'),
     packId: z.string().min(1).max(64).default('demo'),
     questionsPerRound: QuestionsPerRoundSchema.default(15),
+    /** RANDOM giữ nguyên mặc định; DIFFICULTY bật phân bổ mục tiêu dễ/vừa/khó. */
+    questionSelectionMode: QuestionSelectionModeSchema.default('RANDOM'),
+    /** Mục tiêu gốc tương ứng 15 câu; được co giãn theo questionsPerRound. */
+    difficultyTargets: DifficultyTargetsSchema.default({}),
+    /** Cho phép lệch tối đa quanh mục tiêu khi cần; thiếu kho vẫn bù mức gần nhất. */
+    difficultyTolerance: z.number().int().min(0).max(2).default(2),
     /** Hiện Top 10 đầy đủ sau mỗi N câu (mặc định 5) và luôn sau câu cuối. */
     leaderboardInterval: z.number().int().min(1).max(20).default(5),
     /** Thưởng tốc độ tối đa cho câu đúng (0 = tắt). Người dùng chốt 11/11: có thưởng tốc độ. */
@@ -259,7 +368,10 @@ export const QuestionReviewSchema = z.object({
   operatorId: z.string().trim().min(1).max(100).default('operator'),
 });
 export type QuestionReview = z.infer<typeof QuestionReviewSchema>;
-export type SessionConfig = z.infer<typeof SessionConfigSchema>;
+type SessionConfigOutput = z.infer<typeof SessionConfigSchema>;
+/** Các trường mới có schema default vẫn optional ở type đầu vào để giữ tương thích caller cũ. */
+export type SessionConfig = Omit<SessionConfigOutput, 'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance'> &
+  Partial<Pick<SessionConfigOutput, 'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance'>>;
 
 /**
  * Vùng an toàn (px trên khung 1080×1920). GIÁ TRỊ MẶC ĐỊNH LÀ PRESET THỬ NGHIỆM BẢO THỦ,
@@ -362,6 +474,7 @@ export const CommandErrorCodeSchema = z.enum([
   'CONNECTION_NOT_READY',
   'INSUFFICIENT_QUESTIONS',
   'NOT_ALLOWED_IN_MODE',
+  'PREFLIGHT_FAILED',
   'VALIDATION_FAILED',
 ]);
 export type CommandErrorCode = z.infer<typeof CommandErrorCodeSchema>;
@@ -592,7 +705,8 @@ export const CreateSessionRequestSchema = z.object({
   name: z.string().trim().min(1).max(100).default('Phiên LIVE'),
   config: SessionConfigSchema.default({}),
 });
-export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
+type CreateSessionRequestOutput = z.infer<typeof CreateSessionRequestSchema>;
+export type CreateSessionRequest = Omit<CreateSessionRequestOutput, 'config'> & { config: SessionConfig };
 
 export const SimulatorRequestSchema = z.object({
   action: z.enum(['START', 'STOP']),

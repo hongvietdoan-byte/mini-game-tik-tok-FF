@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import WebSocket from 'ws';
 import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
-import { AUTH, TOKEN, makeQuestions, tempDbPath } from './helpers';
+import { AUTH, TOKEN, makeQuestions, markCurrentWebBuild, tempDbPath } from './helpers';
 
 type RoundReplay = {
   questionsPerRound: 10;
@@ -72,12 +76,23 @@ async function bootReplay(connections: ReplayConnection[]) {
   const scheduler = new ManualScheduler(1_800_000_000_000);
   const store = new Store(tempDbPath());
   store.seedQuestions({ id: 'demo', name: 'Replay DEMO' }, makeQuestions(40), scheduler.now());
+  const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-replay-preflight-'));
+  const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
+  for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
+  markCurrentWebBuild(webRoots.dashboard, webRoots.overlay);
+  for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
+    const path = join(webRoots.assets, relative);
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, 'test asset placeholder');
+  }
   let connectionIndex = 0;
   let adapter: TikTokLiveAdapter | null = null;
   const quiz: QuizApp = await buildApp({
     store,
     scheduler,
     adminToken: TOKEN,
+    repositoryRoot: process.cwd(),
+    webRoots,
     adapterFactory: (_mode, config) => {
       adapter = new TikTokLiveAdapter({
         username: config.tiktokUsername!,
@@ -88,9 +103,17 @@ async function bootReplay(connections: ReplayConnection[]) {
       return adapter;
     },
   });
+  await quiz.app.listen({ host: '127.0.0.1', port: 0 });
+  const port = (quiz.app.server.address() as AddressInfo).port;
+  const sockets: WebSocket[] = [];
   cleanup.push(async () => {
+    for (const socket of sockets) {
+      if (socket.readyState === WebSocket.CLOSED) continue;
+      await new Promise<void>((resolve) => { socket.once('close', () => resolve()); socket.close(); });
+    }
     await quiz.close();
     store.close();
+    rmSync(tempRoot, { recursive: true, force: true });
   });
 
   const inject = (method: 'GET' | 'POST', url: string, payload?: unknown) => quiz.app.inject({
@@ -109,7 +132,36 @@ async function bootReplay(connections: ReplayConnection[]) {
     quiz,
     scheduler,
     store,
+    port,
+    sockets,
   };
+}
+
+async function connectOverlay(h: Awaited<ReturnType<typeof bootReplay>>) {
+  const socket = new WebSocket(`ws://127.0.0.1:${h.port}/ws`);
+  h.sockets.push(socket);
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Timeout ACK overlay trong replay.')), 5_000);
+    socket.on('error', reject);
+    socket.on('open', () => socket.send(JSON.stringify({ type: 'HELLO', role: 'overlay' })));
+    socket.on('message', (data) => {
+      let message: { type?: string; stateVersion?: number; seq?: number };
+      try { message = JSON.parse(String(data)) as typeof message; } catch { return; }
+      if (message.type !== 'STATE_SNAPSHOT' || typeof message.stateVersion !== 'number') return;
+      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, seq: message.seq }));
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
+async function waitForOverlayAck(h: Awaited<ReturnType<typeof bootReplay>>) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const response = await h.inject('GET', '/api/preflight');
+    if (response.json().checks.find((item: { id: string }) => item.id === 'overlayAck')?.status === 'PASS') return;
+    await flush();
+  }
+  throw new Error('Overlay chưa ACK stateVersion hiện tại trong replay.');
 }
 
 function runUntilAccepting(h: Awaited<ReturnType<typeof bootReplay>>) {
@@ -195,9 +247,11 @@ describe('TikTok comment replay qua runtime', () => {
     const connection = new ReplayConnection();
     const h = await bootReplay([connection]);
     const sessionId = await createReplaySession(h, { questionsPerRound: replay.questionsPerRound });
+    await connectOverlay(h);
     const runtime = h.quiz.runtime()!;
 
     await command(h, sessionId, { type: 'OPEN_LOBBY' });
+    await waitForOverlayAck(h);
     emitComment(connection, h, replay.beforeOpen);
     expect(runtime.metrics.rejected.NOT_ACCEPTING).toBe(1);
     await command(h, sessionId, { type: 'START_ROUND' });
@@ -304,8 +358,10 @@ describe('TikTok comment replay qua runtime', () => {
     const reconnected = new ReplayConnection();
     const h = await bootReplay([first, reconnected]);
     const sessionId = await createReplaySession(h, { questionsPerRound: 10 });
+    await connectOverlay(h);
     const runtime = h.quiz.runtime()!;
     await command(h, sessionId, { type: 'OPEN_LOBBY' });
+    await waitForOverlayAck(h);
     await command(h, sessionId, { type: 'START_ROUND' });
     runUntilAccepting(h);
 

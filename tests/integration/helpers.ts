@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CommandBody, SessionConfig } from '@quiz/contracts';
@@ -9,6 +10,19 @@ import { buildApp, type QuizApp } from '@quiz/server';
 
 export const TOKEN = 'test-admin-token-0123456789abcdef';
 export const AUTH = { authorization: `Bearer ${TOKEN}` };
+
+/** Dùng build marker hợp lệ cho app tích hợp có web roots tạm, để preflight giống bản đã build. */
+export function markCurrentWebBuild(...directories: string[]) {
+  let commit = 'test-build-without-git';
+  try {
+    commit = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], {
+      cwd: process.cwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim() || commit;
+  } catch {
+    // Preflight cảnh báo khi không có Git, nhưng vẫn cần marker để không báo thiếu dist.
+  }
+  for (const directory of directories) writeFileSync(join(directory, '.build-commit'), `${commit}\n`);
+}
 
 /** Câu hỏi giả tối thiểu cho test tích hợp (độc lập với fixtures của làn Codex). */
 export function makeQuestions(n: number, packId = 'demo') {

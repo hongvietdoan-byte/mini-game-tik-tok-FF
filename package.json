@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "concurrently -k -n server,overlay,dashboard \"corepack pnpm --filter @quiz/server dev\" \"corepack pnpm --filter @quiz/overlay dev\" \"corepack pnpm --filter @quiz/dashboard dev\"",
     "server": "corepack pnpm --filter @quiz/server start",
-    "build:web": "vite build apps/dashboard --base /dashboard/ && vite build apps/overlay --base /overlay/",
+    "build:web": "corepack pnpm --filter @quiz/dashboard exec vite build --base /dashboard/ && corepack pnpm --filter @quiz/overlay exec vite build --base /overlay/",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --project unit --project integration",
     "test:unit": "vitest run --project unit",

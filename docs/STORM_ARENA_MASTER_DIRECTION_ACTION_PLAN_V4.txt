@@ -1,0 +1,384 @@
+STORM ARENA — MASTER DIRECTION &
+EXECUTION PLAN V4.0
+
+Ngày chốt: 11/11/2026 | Đối tượng: Claude Coordinator, Codex 1/2, QA, operator | Trạng thái: tài liệu điều
+phối tổng hợp, không phải bằng chứng đã nghiệm thu.
+
+Mục đích: Một tài liệu duy nhất tổng hợp tầm nhìn sản phẩm, các quyết định thiết kế cuối cùng, logic phải giữ, những
+gì báo cáo xác nhận đã triển khai, khoảng trống còn lại, thứ tự công việc, quy trình nghiệm thu và hướng dẫn Claude
+tiếp tục trên codebase hiện có. Không xây lại dự án từ đầu.
+
+0. Cách đọc, nguồn và mức độ tin cậy
+
+Nguồn đối chiếu: CLAUDE_MASTER_BUILD_PLAN_V2.md, STORM_ARENA_CLAUDE_BUILD_SPEC_V3.md,
+BAO_CAO_TINH_HINH(2).md, RA_SOAT_QUY_TRINH.md, các ảnh và quyết định được người dùng chốt
+trong cuộc trò chuyện. Hai báo cáo ngày 11/11 là báo cáo từ agent, không phải kết quả tôi trực tiếp kiểm
+tra repository. Báo cáo rà soát cloud thiếu assets-local/ và môi trường Windows/Edge; không suy diễn
+chất lượng visual hoặc kết nối LIVE thật từ test cloud.
+
+Thứ tự ưu tiên khi mâu thuẫn: (1) quyết định trực tiếp mới nhất của người dùng + ảnh được người dùng
+duyệt; (2) tài liệu V4 này; (3) đặc tả V3 cho UI/gameplay; (4) V2 cho kiến trúc lõi; (5)
+BOARD/DECISIONS/HANDOFF được đồng bộ; (6) báo cáo agent. Không dùng ảnh tạo thử hoặc hình tìm
+kiếm thay thế reference gốc. Nếu không tìm thấy ảnh cuối cùng trong thư mục dự án, báo
+REFERENCE_MISSING, không tự suy đoán.
+
+Các trạng thái phải phân biệt: IMPLEMENTED, UNIT_VERIFIED, E2E_VERIFIED, VISUAL_APPROVED,
+LIVE_VERIFIED, BLOCKED, DEFERRED. Không được gọi một hạng mục là DONE nếu thiếu gate áp dụng.
+
+1. Product north star — KHÔNG THAY ĐỔI
+
+Storm Arena là mini game Quiz dành cho TikTok LIVE, chủ đề đầu tiên Đấu Trường Bão Tố / Bá Vương Đại
+Chiến. Người xem tham gia và trả lời bằng comment A/B/C/D, không lấy gift làm cơ chế chính. Một máy
+Windows chạy engine, dashboard và overlay 9:16; hình/âm thanh phát qua OBS hoặc TikTok LIVE Studio;
+TikTok connector đọc comment; Quiz Engine tính điểm, chọn câu, xếp hạng và vận hành nhiều trận. Gói
+chủ đề khác có thể thay nội dung, nhận diện, âm thanh, nhân vật mà không sửa engine. AI Question
+Studio tạo bộ câu hỏi từ gợi ý/tài liệu, bắt buộc con người duyệt trước khi dùng LIVE.
+
+MVP thực tế: Một buổi LIVE có ít nhất một trận 15 câu được duyệt, comment thật được nhận đúng, Top 10
+chính xác, MC đọc câu, overlay không bị HUD che, chuyển Victory Top 3 và lưu kết quả. Các chức năng
+dài hạn vẫn nằm trong roadmap, không xóa khỏi định hướng.
+
+2. Các quyết định sản phẩm/visual đã KHÓA
+
+| ID | Quyết định cuối cùng | Không được làm |
+|---|---|---|
+| D01 | Canvas dọc 1080×1920, responsive 720×1280; HUD TikTok có preset chỉnh được và phải thử trên điện thoại |
+Không mặc định cả khung 9:16 đều là safe zone |
+| D02 | Phong cách Storm Arena bán 3D, màu/nhận diện từ asset gốc; chiều sâu bằng ảnh/layer/ánh sáng; text UI động
+| Không thay asset gốc bằng SVG icon, CSS gradient hoặc poster phẳng |
+
+STORM ARENA | MASTER PLAN V4.0                                                                                        1
+| D03 | Màn Quiz: logo sự kiện, câu hỏi + 4 đáp án rõ ràng, timer, MC Kelly, Top 10, 7 hàng × 5 ghế khán giả | Không
+hy sinh khả năng đọc câu hỏi để nhồi hiệu ứng |
+| D04 | MC là Kelly; dùng asset nhân vật, PNG Sequence nếu có; voice TTS từ một API sẵn có | Không cần nhiều
+provider/AI hội thoại trong MVP |
+| D05 | Mỗi người chơi được gán characterId ổn định trong trận; 35 ghế là giới hạn hiển thị, không giới hạn người tham
+gia/chấm điểm | Không giới hạn trận còn 35 player; không random lại ở Victory |
+| D06 | BXH Top 10 được tính sau mỗi câu; có thể trình bày thu gọn khi hỏi và đầy đủ ở đoạn chuyển/công bố | Không
+để bảng che câu hỏi hoặc comment |
+| D07 | Victory cuối cùng: giữ nguyên hình cúp, sân khấu/bục gốc; ba nhân vật đứng trên mặt sàn/bục dưới cùng phía
+trước; Top 1 giữa, Top 2 trái, Top 3 phải; không thêm 3 cục bục 1/2/3 riêng; không che phần chính cúp | Không dựng
+lại cúp bằng SVG/CSS; không chuyển nhân vật lên các bệ riêng; không yêu cầu người dùng duyệt lại quyết định này |
+| D08 | Bỏ logo Free Fire ở trên cùng màn Victory; tên TikTok + điểm render động | Không đóng cứng tên/điểm trong
+ảnh nền |
+| D09 | Animation ưu tiên PNG Sequence (idle/victory/talking khi có), CSS chỉ cho chuyển động layer/hiệu ứng nhẹ;
+asset thiếu thì fallback tĩnh | Không ép Spine/Rive/3D rig trước LIVE |
+| D10 | Trước LIVE ưu tiên ổn định, nghiệm thu hình ảnh, comment thật và đủ câu hỏi; hoãn các phần mở rộng lớn |
+Không refactor toàn dự án hoặc thêm feature không cần thiết |
+
+Làm rõ mâu thuẫn trong RA_SOAT_QUY_TRINH.md: câu “đứng TRÊN bục” trong thư cũ không có nghĩa
+tạo ba bục xếp hạng mới. Người dùng đã chốt rõ ba nhân vật đứng trên nền/bục thấp nhất phía trước sân
+khấu, không che cúp. Cập nhật DECISIONS.md, đánh dấu mọi diễn giải trái D07 là SUPERSEDED; dùng
+ảnh reference đã duyệt trong hội thoại làm visual authority.
+
+3. Nguyên lý vận hành end-to-end
+
+• Người dùng mở app Windows (installer hoặc đường chạy đã kiểm chứng), chạy first-run wizard, kiểm tra
+database, assets, audio, connector, overlay.
+
+• Operator chọn Theme Pack, bộ câu hỏi APPROVED + VERIFIED, số câu/trận, thời gian, auto mode,
+voice; preflight kiểm đủ câu/asset/nguồn comment.
+
+• Kết nối phiên TikTok LIVE được phép; tách riêng đường nhận comment và đường phát hình/âm thanh.
+CONNECTED không đồng nghĩa đã nhận comment; cần test bằng comment thật.
+
+• Lobby: nhận người chơi theo comment đáp án hợp lệ hoặc JOIN nếu operator bật; định danh ổn định;
+gán nhân vật một lần cho mỗi player/round; xếp 35 ghế đại diện theo thuật toán minh bạch, những người
+khác vẫn chơi.
+
+• Engine tạo snapshot 15 câu theo SMART_RANDOM (mặc định 7 dễ/5 vừa/3 khó, quota có thể cấu hình),
+không lặp trong trận, ưu tiên không lặp trong phiên LIVE. Nếu thiếu câu: cảnh báo/khóa start hoặc dùng
+chính sách được cấu hình, tuyệt đối không tự lặp âm thầm.
+
+• Mỗi câu: PREPARE → chuẩn bị audio → READING (Kelly talking, đọc câu + lựa chọn) → ACCEPTING (mở
+15s theo đồng hồ backend) → REVEAL → LEADERBOARD → câu kế. Nếu voice tắt/lỗi, fallback đúng và
+không treo.
+
+• Comment: normalize A/B/C/D, gắn roundId/questionInstanceId/playerId, chống event trùng, mỗi player
+chỉ nhận câu trả lời hợp lệ đầu tiên, không sửa, không tính sau deadline, lưu transaction trước khi
+broadcast điểm.
+
+• Điểm mặc định +100 đúng, 0 sai/bỏ; bonus chuỗi 3/5/10 = +30/+50/+100 một lần/mốc. BXH: điểm →
+số đúng → đồng hạng. Không ưu tiên tốc độ comment mặc định.
+
+STORM ARENA | MASTER PLAN V4.0                                                                                          2
+• Kết thúc trận: snapshot Top 10, Top 3; Victory scene dùng characterId đã gán, cúp gốc, 3 người đứng
+bục thấp phía trước, không che cúp; voice vinh danh; lưu lịch sử.
+
+• Intermission → vòng tiếp theo nếu auto mode còn đủ điều kiện; nếu lỗi connector/asset/DB, tạm dừng
+và yêu cầu quyết định operator. Không hiển thị MOCK như LIVE thật.
+
+4. Logic code phải bảo toàn (contract)
+
+Backend là nguồn sự thật: state machine, timer, scoring, random seed, danh sách câu, leaderboards,
+voice transition. Overlay chỉ render snapshot/delta; không tự tính điểm, không lộ correctAnswer trước
+reveal.
+
+Event contract tối thiểu:
+
+   type GamePhase = 'IDLE'|'LOBBY'|'PREPARE'|'READING'|'ACCEPTING'|'REVEAL'|'LEADERBOARD'|'ROUND_FINISHED'|'INTERMISSION
+   '|'PAUSED'|'CONNECTION_INTERRUPTED'|'ERROR';
+   interface LiveComment { source:'TIKTOK'|'MOCK'; eventId?:string; userId:string; displayName:string; text:string; receivedAt:numb
+   er; }
+   interface AnswerRecord { roundId:string; questionInstanceId:string; playerId:string; answer:'A'|'B'|'C'|'D'; receivedAt:number; acce
+   pted:boolean; rejectionReason?:string; }
+   interface PlayerAppearance { roundId:string; playerId:string; characterId:string; seatId?:string; }
+   interface VictoryEntry { rank:number; playerId:string; displayName:string; score:number; characterId:string; }
+
+Tính đúng đắn: UNIQUE(roundId, questionInstanceId, playerId) cho đáp án đã nhận;
+transaction/idempotency khi chấm; stable identity không dựa nickname; không tính lại sau reconnect;
+lưu snapshot câu để việc sửa ngân hàng không thay đổi lịch sử; pause lưu remaining time; crash recovery
+không tự bật timer; đồng hạng xử lý nhất quán.
+
+35 ghế: 7×5, ghế chỉ là visual. Khi có >35 player, dùng lịch luân chuyển giữa các câu, giữ một số vị trí ưu
+tiên cho người mới hoặc người vừa trả lời (cấu hình, không ưu tiên điểm). Không render 2.000 avatar
+cùng lúc. Không thay nhân vật người chơi chỉ để tránh trùng Top 3.
+
+MC Voice: dùng một API TTS người dùng cung cấp. Settings có endpoint/voice/model/key theo schema
+thật của API; key backend only; test voice; cache theo nội dung + voice config; pre-generate audio câu
+hỏi; queue không chồng tiếng; skip/stop/pause hủy đúng; chỉ một audio output OBS thu được; nếu API lỗi
+→ cache → silent fallback. Không tự giả định format API. Với lời thoại dynamic như tên Top 3, sanitize và
+giới hạn nội dung. Giọng đọc phải tuân thủ quyền sử dụng.
+
+PNG Sequence: idle, talking, victory là khả năng mở rộng; khi chưa có frame thật phải báo thiếu asset,
+render ảnh tĩnh, không tạo giả animation hoàn chỉnh. Preload/cache texture, FPS cấu hình, fallback và
+reduced motion.
+
+5. Kiến trúc và dữ liệu cần giữ/mở rộng
+
+Giữ stack đang hoạt động theo V2/V3, không đổi framework vô cớ. Tách game-engine, live-adapter,
+question-bank, theme-runtime, ai-question-studio, voice-manager, character/audience, overlay,
+dashboard, persistence qua interface.
+
+Dữ liệu: theme_packs, subtopics, questions, question_versions, sources/evidence, approvals, sessions,
+rounds, round_questions snapshots, players, round_players, answers, score_events,
+seating_assignments, victory snapshots, voice cache metadata, settings, audit log. Migrations không
+
+STORM ARENA | MASTER PLAN V4.0                                                                                                           3
+được xóa lịch sử. Asset có manifest + checksum + backup.
+
+Theme Pack: manifest versioned, relative paths, schema validation, không cho chạy JS tùy ý; ít nhất một
+pack Storm Arena vận hành hoàn chỉnh trước, pack thứ hai để test tính tái sử dụng sau sự kiện.
+
+AI Question Studio (roadmap sau LIVE): nhập gợi ý, văn bản, PDF, ảnh, URL công khai truy cập được; trích
+xuất → fact candidates → sinh 4 lựa chọn → validate → dedup → human review → approved; nguồn
+Facebook bị chặn thì báo rõ và nhận file thay thế. Không tự đặt APPROVED cho câu AI/DEMO, không đưa
+thông tin nội bộ Megasheet vào câu hỏi công khai. Trạng thái APPROVED và VERIFIED phải độc lập; dữ
+liệu demo chỉ MOCK.
+
+6. Tình hình hiện tại theo hai báo cáo (11/11, chưa tự chạy repo)
+
+| Nhóm | Bằng chứng được báo cáo | Trạng thái quyết định |
+|---|---|---|
+| Engine, scoring, server, crash recovery | privacy PASS, typecheck sạch, 231/231 test PASS trong cloud | Giữ nguyên;
+không viết lại |
+| Dashboard, Connection Manager, 35 ghế | Có code, unit/load tests | Kiểm E2E visual và luồng end-to-end |
+| TikTok adapter | Code + mock/replay, chưa thử comment LIVE thật; LIVE Studio có báo No access | BLOCKED / chưa
+LIVE_VERIFIED |
+| Quiz Overlay | Nhiều vòng lệch ref, lỗi câu dài, logo, timer/đáp án | VISUAL_NOT_APPROVED |
+| Victory | Đã từng dựng SVG/CSS sai; asset victory/trophy-stage.png, victory/bg.jpg được báo có trên máy |
+VISUAL_NOT_APPROVED; D07 là quyết định cuối |
+| Top 10 | Logic/hiển thị đã code | Kiểm safe zone, thứ hạng và scene riêng |
+| 36 câu Free Fire | Chưa duyệt; DEMO bị chặn ở TikTok mode | BLOCKED: phải duyệt ít nhất 15 câu VERIFIED |
+| MC Voice | đang triển khai, chưa gọi API thật | P1 nếu thiếu; kiểm fallback |
+| PNG Sequence MC | player có, pose Kelly thiếu frame | Fallback tĩnh; không chặn game core |
+| Windows Installer | NSIS đã có, chưa thử máy sạch; hướng dẫn LIVE lại chạy .cmd từ source | Operational gap |
+| CI | Có ~198 lần đỏ, sau đó 4 lần xanh; E2E chưa vào CI | Bắt buộc gate CI trước merge |
+| E2E | 42/42 theo report Windows; cloud 29 pass/12 fail/1 skip vì asset/path/env | Chưa tái lập; chuẩn hóa fixture/path
+|
+| Theme runtime, AI Studio | module còn stub | DEFERRED có ghi quyết định, không đánh dấu DONE |
+| Backup, auto preflight | chưa có đầy đủ | Bổ sung mức tối thiểu trước LIVE |
+
+7. Priority & work packages — làm theo dependency, không làm
+đồng loạt
+
+P0 — BLOCKERS trước buổi LIVE
+
+P0.1 — Khóa reference và kiểm kê asset (Owner: Visual + Coordinator).
+• Đặt bản ref cuối của Quiz/Victory và asset gốc trong thư mục dễ truy cập, tạo ASSET_INVENTORY.md +
+contact sheet + checksum, chỉ rõ asset nào hiện diện và thiếu.
+• Victory phải trỏ asset cúp/sân khấu gốc, không vẽ lại. Chụp ref | rendered | overlay-diff, test
+1080×1920, 720×1280 và HUD mô phỏng; gửi người dùng duyệt trước merge.
+• PASS: user duyệt screenshot Quiz, Victory; không đè chữ/cắt đáp án/cúp bị che; tên/điểm động và Top
+10 đúng.
+
+STORM ARENA | MASTER PLAN V4.0                                                                                            4
+P0.2 — Bộ câu hỏi LIVE đủ điều kiện (Owner: Content + Operator).
+• Audit 36 câu, xác minh theo nguồn, sửa câu sai/thiếu nguồn, chọn tối thiểu 15 câu
+APPROVED+VERIFIED cho một vòng; bảo đảm mỗi câu 4 đáp án, một đáp án đúng.
+• PASS: preflight tạo được 15 câu không lặp; TikTok mode không cần bật DEMO bypass; có danh sách ID
+câu đã duyệt và nguồn.
+
+P0.3 — Kiểm chứng đường comment thật (Owner: Connector + Operator).
+• Kiểm tra quyền LIVE và phiên LIVE được phép; xác minh username/connection status; người thật
+comment A/B/C/D, engine nhận event, ghi player, chấm điểm, overlay cập nhật.
+• Log event ID đã ẩn thông tin nhạy cảm, timestamp nhận, latency, reconnect và failure mode. Không
+tìm cách vượt quyền LIVE.
+• PASS: có biên bản LIVE_VERIFIED và bằng chứng comment thật; nếu không có quyền thì đánh dấu
+BLOCKED, không giả báo thành công.
+
+P0.4 — Một đường chạy/stream duy nhất (Owner: Release + Operator).
+• Quyết định installer Windows hoặc source-run cho buổi tới, không lẫn hai data directory. Kiểm tra DB
+path, overlay URL, audio capture, build freshness. Nếu dùng CHAY_GAME.cmd, luôn rebuild web sau
+update, không tái dùng dist cũ.
+• PASS: khởi động từ máy operator, chạy overlay trong OBS/LIVE Studio, video/audio lên preview, lưu và
+khôi phục DB; hướng dẫn từng bước không mâu thuẫn.
+
+P0.5 — Tổng duyệt thật bằng Mock trước, LIVE thật sau (Owner: QA + Operator).
+• Chạy 1 vòng 15 câu và mục tiêu 6 vòng liên tiếp; test người mới, trùng comment, câu dài, Top 10,
+Victory, pause/reconnect, restart, lỗi audio, 35 ghế, 500–2.000 người mock ở mức tải đã cam kết.
+• PASS: biên bản có ảnh/video, kết quả từng gate, số lỗi P0/P1 còn mở; nếu chưa LIVE_VERIFIED thì chỉ
+được gọi MOCK_REHEARSAL_PASSED.
+
+P1 — Ổn định và sửa quy trình (song song có kiểm soát)
+
+P1.1 MC Kelly Voice: một API đã có; test voice, tạo trước audio, PREPARE→READING→ACCEPTING,
+queue/fallback, chỉ một audio output; PNG Sequence khi có frame, không chặn bởi thiếu animation.
+
+P1.2 Auto preflight + backup: trước Start kiểm số câu duyệt, theme asset, DB, connection, audio mode;
+sao lưu DB và assets-local theo phiên bản, kiểm restore; tắt auto khi thiếu điều kiện.
+
+P1.3 CI/E2E: QUIZ_ASSETS_DIR mặc định <repo>/assets-local, fixture an toàn trong repo, test phụ thuộc
+asset thật phải skip rõ, E2E Chromium trong CI, câu dài nhất, 720×1280, reduced motion, HUD. Không
+sửa test chỉ để xanh khi hành vi sai.
+
+P1.4 Quy trình merge: một task có tiêu chí nghiệm thu đo được, PR hoặc premerge CI, người code không
+tự duyệt visual, screenshot ref-side-by-side bắt buộc, main đỏ thì dừng merge; docs không được báo CI
+xanh nếu thực tế đỏ.
+
+P1.5 Đồng bộ tài liệu: DECISIONS.md là source of truth, sửa BOARD #11/#15/#16, HANDOFF chỉ một khối
+hiện hành, TIEN_DO có link bằng chứng, README khớp đường chạy; dọn nhánh/worktree sau khi xác
+nhận merged.
+
+STORM ARENA | MASTER PLAN V4.0                                                                          5
+P2 — Sau sự kiện / bản nền tảng dài hạn
+
+• Theme Pack runtime hoàn chỉnh, import/export, version compatibility, switching và layout variants.
+• AI Question Studio đầy đủ, URL/PDF/ảnh, source provenance, dedup, bulk approve, regeneration.
+• Character Pack mở rộng, nhiều PNG Sequence, MC lip sync nhẹ, reactions khi trả lời đúng.
+• Analytics, retention, rank liên buổi, nhiều game mode, audio lời dẫn động nâng cao.
+• Installer production hardening, update channel, backup/restore tự động, multi-operator nếu cần.
+
+Không xóa P2 khỏi roadmap; chỉ ghi DEFERRED_UNTIL_AFTER_EVENT.
+
+8. Ma trận nghiệm thu bắt buộc
+
+| Gate | Bằng chứng tối thiểu | Người duyệt |
+|---|---|---|
+| Functional | typecheck, unit/integration, test kết quả + commit hash | QA/Coordinator |
+| Visual | ảnh ref | actual | diff ở 1080×1920; HUD preview; 720×1280; câu dài | Người dùng |
+| Data | 15 câu APPROVED+VERIFIED, nguồn, snapshot và không trùng | Content/Operator |
+| Operational | installer/source-run được chốt, overlay + audio OBS/LIVE Studio, backup/restore | Operator |
+| LIVE | comment thật, thời gian, điểm, reconnect, không double-score | Operator + QA |
+| Release | tất cả P0 PASS hoặc có waiver rõ ràng; main xanh; build hash | Coordinator + Operator |
+Không đánh đồng: unit PASS ≠ visual approved ≠ LIVE verified. Với yêu cầu TikTok tương tác thật, thiếu
+LIVE gate thì NO-GO cho tuyên bố sản phẩm LIVE hoàn chỉnh. Có thể chạy MOCK demo nhưng phải ghi rõ.
+
+9. Test cases bắt buộc để chống tái diễn lỗi
+
+• Câu hỏi/đáp án tiếng Việt dài nhất, 2–4 dòng, ký tự dấu, font fallback; timer không đè chữ; 4 đáp án
+không bị cắt.
+• 0, 1, 35, 36, 500, 2.000 người; 7×5 ghế đúng; thay ghế không đổi player score/character.
+• Một player spam A 100 lần, A rồi B, comment đến đúng deadline, comment câu trước đến muộn,
+reconnect phát lại event.
+• Top 10 tie score, tie số đúng, tên dài, emoji, ký tự đặc biệt, display name độc hại.
+• Voice đọc quá dài, API timeout, cache hit, skip/pause trong lúc nói, overlay reconnect không phát trùng.
+• Victory đúng 3 nhân vật từ registry, Top 1 giữa, Top 2 trái, Top 3 phải, không che cúp, không thêm 3
+bục riêng; tên/điểm không bị HUD che.
+• Thiếu asset MC sequence → fallback tĩnh; thiếu asset cúp → BLOCK visual, không thay bằng SVG tự chế.
+• Theme invalid, DB write failure, crash/recovery, dist cũ, máy sạch, sai đường dẫn data.
+• TikTok mất kết nối giữa câu, không tự ghi nhận answer trong khoảng không quan sát được; operator có
+phương án hủy câu/tạm dừng.
+
+10. Runbook triển khai/đưa lên LIVE (mức operator)
+
+• Chọn đúng commit/build, kiểm phiên bản và đường dữ liệu; sao lưu DB + asset trước khi cập nhật.
+
+STORM ARENA | MASTER PLAN V4.0                                                                                6
+• Mở ứng dụng, kiểm dashboard/overlay/DB, assets và log; chạy Connection Test.
+• Chọn pack Storm Arena, bộ câu hỏi đã duyệt, 15 câu, voice và auto mode; preflight PASS.
+• Bật LIVE trên tài khoản được phép, kết nối TikTok; dùng comment thử nghiệm của người thật để xác
+nhận event đến.
+• Thêm Overlay vào OBS/LIVE Studio bằng Browser Source nếu hỗ trợ, nếu không dùng Window Capture;
+cấu hình 1080×1920; test audio capture; không tự nhận là connected khi chưa có bằng chứng.
+• Xem preview trên điện thoại: logo, câu hỏi, 4 đáp án, timer, Top 10, Kelly, 35 ghế, Victory và vùng
+comment.
+• Chạy một trận Mock rehearsal trước khi chuyển sang LIVE mode; ghi lại log và screenshot.
+• Trong LIVE: theo dõi connector health, received comment count, audio queue, trạng thái auto. Khi lỗi
+P0, pause; không tự chạy MOCK như tương tác thật.
+• Kết thúc: lưu lịch sử, export kết quả, backup DB/asset, ghi incident và phiên bản build.
+
+11. Quy tắc điều phối nhiều agent
+
+• Coordinator: owner scope, dependency, CI, docs, acceptance evidence; không tự duyệt UI do mình viết.
+• Codex UI: asset audit, Quiz Overlay, Victory, safe-zone screenshots; không sửa scoring.
+• Codex Core: engine, connector, voice, preflight, data; không tự sửa visual ngoài contract.
+• QA/Cloud: test độc lập, review rủi ro, CI/E2E reproducibility, audit bằng chứng.
+• Mỗi task có ID, owner, input refs, exact files/contract, DoD, test, screenshot nếu UI, commit hash, trạng
+thái. Không trộn nhiều hạng mục trong một report mơ hồ.
+• Trước merge: diff review, test, screenshot, user visual approval nếu UI; main đỏ = stop. Sau merge: cập
+nhật BOARD/DECISIONS/TIEN_DO cùng lúc, giữ HANDOFF một khối mới nhất.
+
+12. Thứ tự giao việc cụ thể cho Claude ngay bây giờ
+
+Lượt A — Audit & plan (chưa code):
+• Đọc V4, V3, V2 và hai báo cáo; đối chiếu git status, main, branch, assets-local, tài liệu hiện có.
+• Tạo docs/IMPLEMENTATION_GAP_MATRIX_V4.md có mỗi hạng mục: existing code, file path, evidence,
+missing, owner, priority, estimate, dependencies.
+• Cập nhật decision D07 trong DECISIONS.md và đánh dấu mâu thuẫn cũ superseded; không yêu cầu xác
+nhận lại.
+• Lập danh sách P0 theo dependency, xác nhận blocker do operator/TikTok không thể tự xử lý.
+• Gửi kế hoạch ngắn + file cần sửa, chờ duyệt trước khi code UI lớn.
+
+Lượt B — P0 thực thi:
+• UI: asset audit → scene reconstruction → screenshots/ref compare → user visual gate.
+• Data: 15 câu verified/approved → preflight.
+• Connector: thử comment thật khi có quyền; nếu thiếu quyền ghi BLOCKED.
+• Release: chốt đường chạy + OBS/audio → rehearsal.
+
+STORM ARENA | MASTER PLAN V4.0                                                                               7
+Lượt C — P1 sau P0: voice cơ bản, backup, CI/E2E, docs/branch hygiene. P2 không khởi động khi chưa có
+yêu cầu mới.
+
+13. Prompt điều phối để dán trực tiếp cho Claude
+
+Hãy đọc STORM_ARENA_MASTER_DIRECTION_ACTION_PLAN_V4.md như tài liệu điều phối tổng hợp mới nhất, kế thừa
+V2/V3 và hai báo cáo 11/11. Đây là update cho codebase hiện có, không phải dự án mới. Đầu tiên audit repository,
+asset và tài liệu, tạo IMPLEMENTATION_GAP_MATRIX_V4.md, đối chiếu bằng chứng, phân công P0/P1/P2 và xác định
+blocker; chưa sửa code trước khi trình kế hoạch. Các quyết định D01–D10 là bắt buộc. Riêng Victory: ba nhân vật đứng
+trên mặt sàn/bục dưới cùng phía trước sân khấu, Top 1 giữa/Top 2 trái/Top 3 phải, giữ cúp gốc và không che cúp;
+không thêm ba bục riêng; bỏ logo Free Fire phía trên. Không hỏi xác nhận lại quyết định này. Mọi task UI phải dùng
+asset thật, ảnh so ref | actual | diff và được người dùng duyệt trước merge. Không đánh dấu LIVE ready khi chưa nhận
+comment thật. Không phá engine đã test. Báo cáo phải phân biệt code complete, tests, visual approval và live
+verification. Chỉ sau khi tôi duyệt gap matrix và kế hoạch, mới triển khai từng P0 theo dependency.
+
+14. Những quyết định vẫn cần operator cung cấp (không được
+đoán)
+
+• Tài khoản có quyền LIVE PC hay không, phiên LIVE nào được phép test; tên tài khoản test nếu cần.
+• Xác nhận/duyệt ít nhất 15 câu nội dung sự kiện và nguồn tương ứng.
+• Cung cấp hoặc chỉ rõ vị trí file ảnh reference cuối cùng + asset gốc trong repository/máy Windows; tài
+liệu V4 ghi quyết định nhưng không thay thế bytes của asset.
+• Thông số thật của một TTS API (endpoint, auth, voice, audio response); nhập API key bằng cơ chế bảo
+mật, không dán trong chat.
+• Quyền sử dụng các artwork/nhân vật/logo nếu phát công khai.
+
+15. Release decision — GO / NO-GO
+
+GO (LIVE tương tác thật): 15 câu duyệt + verified, Visual APPROVED cho Quiz/Victory, overlay/audio được
+kiểm trên máy phát và điện thoại, connector LIVE_VERIFIED bằng comment thật, engine/DB/backup ổn,
+CI xanh, không còn P0.
+
+CONDITIONAL GO (demo offline/mock): các gate visual/engine/operational đạt, nhưng thiếu quyền TikTok
+hoặc comment thật; phải công bố là MOCK, không trình bày như tương tác LIVE thật.
+
+NO-GO: câu chưa duyệt, cúp/Quiz lệch reference chưa được duyệt, timer/đáp án bị che, connector không
+nhận comment nhưng vẫn quảng bá tương tác thật, lỗi mất dữ liệu/tính điểm trùng hoặc không có đường
+chạy đã kiểm chứng.
+
+Quyết định cuối: giữ nguyên tầm nhìn và kiến trúc đã đúng; khóa các quyết định thiết kế, sửa quy trình
+nghiệm thu, hoàn thành P0 theo bằng chứng trước khi mở rộng P2. Đây là kế hoạch hành động tổng thể,
+không chỉ là task sửa Victory.
+
+STORM ARENA | MASTER PLAN V4.0                                                                                        8
+

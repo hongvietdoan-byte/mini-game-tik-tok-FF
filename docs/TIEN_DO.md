@@ -1,56 +1,72 @@
 # Tiến độ dự án — Storm Arena LIVE Quiz
 
-Cập nhật: **11/11/2026 21:35** · Coordinator (Claude) cập nhật file này mỗi lần gộp việc / đổi kế hoạch.
-Ký hiệu: ✅ xong (đã gộp main, test xanh) · 🔄 đang làm · ⏳ chờ · ⛔ bị chặn (ghi lý do) · ETA = giờ dự kiến xong, **là ước lượng**, không phải cam kết.
+Cập nhật: **12/11/2026 sáng** (làn cloud viết lại theo C-0099, đối chiếu `main` @ `ff1d9f2`). Tài liệu điều phối: plan V4 (`docs/STORM_ARENA_MASTER_DIRECTION_ACTION_PLAN_V4.txt`, D-19..D-22). Chi tiết từng hạng mục: `docs/IMPLEMENTATION_GAP_MATRIX_V4.md`.
 
-Mốc sự kiện (từ đặc tả): tổng duyệt 12/11, thi đấu 13–14/11.
+Mốc sự kiện: tổng duyệt 12/11, thi đấu 13–14/11.
 
-## Tổng quan mốc
+**Trạng thái theo từ vựng V4:**
+- `IMPLEMENTED`: có code.
+- `UNIT_VERIFIED`: vitest unit/tích hợp PASS.
+- `E2E_VERIFIED`: Playwright tái lập được.
+- `VISUAL_APPROVED`: người dùng đã duyệt hình.
+- `LIVE_VERIFIED`: đã có comment thật.
+- `BLOCKED`, `DEFERRED`.
 
-| # | Mốc | Trạng thái | ETA | Điều kiện / chặn |
-|---|---|---|---|---|
-| M0 | Phase 0/1: engine, chấm điểm, server, khôi phục sau sự cố, 117 test | ✅ 11/11 12:20 | — | — |
-| M1 | V3 GĐ B: BXH sau mỗi câu, PREPARE chỉ hiện câu hỏi, Top 10 gọn, MC Kelly (trạng thái + lời thoại), `seq` | ✅ 11/11 12:15 | — | — |
-| M2 | Kết nối ổn định phía server: chống trùng comment bền vững, trạng thái nguồn, ACK overlay, API kiểm tra hệ thống 9 bước | ✅ 11/11 12:40 (`2999f2a`, 120 test) | — | — |
-| M3 | Dashboard điều khiển LIVE + overlay/dashboard theo hợp đồng V3 (C-0007, C-0016) | ✅ 11/11 12:50 | — | — |
-| M4 | Trang Kiểm tra kết nối 9 bước + Connection Manager + hướng dẫn OBS (C-0018) | ✅ 11/11 14:10 | — | — |
-| M5 | 36 câu Free Fire (chờ người dùng duyệt `docs/review/DE_XUAT_CAU_HOI_FF.md`) + privacy-check + CI Windows (C-0005) | ✅ 11/11 14:10 (CI ✅); duyệt câu: **người dùng** | — | — |
-| M6 | Bộ cài Windows (Electron 42 + NSIS): một cổng, app, bộ cài, dashboard tự lấy token (C-0019) | ✅ 11/11 14:10 — còn thử trên máy không có Node | — | máy sạch: **người dùng** |
-| M7 | Setup Wizard lần đầu 8 bước, cho bỏ qua TikTok (C-0021) + phiên TikTok + duyệt câu (C-0024) | ✅ 11/11 17:30 | — | — |
-| M8 | Bố cục V3 theo ảnh mẫu `ref/storm-arena-ref.png`: nền bão, sân vận động, khán đài bậc, HUD neon (C-0060/63/65) | 🔄 gần đạt — đã gộp vòng 2; logo to như mẫu (C-0073 codex2) | 12/11 sáng | chibi quay lưng: cần asset người dùng |
-| M9 | Overlay V3: header, Top 10 trái, câu hỏi + đồng hồ + 4 đáp án, MC Kelly (ảnh thật tách nền), 7×5 khán giả dùng **66 chibi thật** (mỗi người 1 nhân vật) | ✅ 11/11 15:50 — chạy vòng thật 100 người | — | chibi đang nhìn thẳng (mẫu là quay lưng) — cần bộ chibi quay lưng nếu muốn y mẫu |
-| M10 | 35 ghế khán giả: lõi + server + overlay; đếm đáp án realtime (C-0064); tải 2.000 người p99 ~9 ms, soak 60' không rò bộ nhớ | ✅ 11/11 20:45 | — | — |
-| M11 | Kết nối TikTok LIVE | 🔄 **dùng tạm thư viện cộng đồng `tiktok-live-connector` (người dùng chốt 11/11)** — adapter + server + test ✅ (`4b79ba4`); thư viện chạy được từ máy này; giao diện tạo phiên TikTok + duyệt câu (C-0024 codex2) | thử LIVE thật: ngay khi người dùng phát LIVE | **người dùng phát LIVE để thử bình luận thật**; song song vẫn hỏi kênh chính thức |
-| M12 | Popup vinh danh Top 3 theo `ref/victory-ref-2.webp`: chibi toàn thân ĐỨNG TRÊN bục, bảng tên lục giác dưới chân | 🔄 làm lại (C-0055/C-0068 codex2) — người dùng chê bản cũ | 12/11 sáng | — |
-| M13 | Tổng duyệt kỹ thuật bằng Mock: bộ cài + OBS + trọn trận + lưu kết quả + đóng an toàn | 🔄 e2e trọn vòng 10 câu với server thật ✅ (C-0062); còn thử OBS/LIVE Studio thật | 12/11 | người dùng thử OBS/LIVE Studio |
-| M14 | Sẵn sàng LIVE thật (V3.1 mục G) | ⛔ | phụ thuộc M11 | — |
-| M15 | MC Kelly PNG Sequence (idle/talking/excited/victory) | ⏳ trình phát sẵn, chưa có frame (dùng ảnh tĩnh) | khi có frame | frame từ người dùng |
-| M16 | Giọng MC Kelly (MCVoiceSystem, ClipAI) — spec `docs/specs/MC_VOICE_SPEC.md` | 🔄 bước 0 khảo sát + đề xuất (C-0070/C-0075 codex1) → người dùng duyệt → code (mock) → coordinator chạy thật | 12/11 | duyệt đề xuất; token ClipAI do người dùng nhập |
-| M17 | Mô phỏng UI TikTok LIVE + safe zone theo 3 ảnh iPhone thật (C-0056/58/66) | ✅ 11/11 21:20 — bố cục phát = bố cục xem thử; e2e safe-zone mọi scene (C-0067 codex1) 🔄 | — | — |
+Hiện **chưa mục nào** đạt `VISUAL_APPROVED` hay `LIVE_VERIFIED`. E2E chỉ có báo cáo từ máy Windows, chưa tái lập ở nơi khác.
+
+**Bằng chứng gần nhất @ `ff1d9f2`:** typecheck sạch · 268/268 test PASS · privacy-check PASS · tổng duyệt mã nguồn `MOCK_REHEARSAL_PASSED` (6 vòng × 15 câu, 500/2.000 người giả lập, `docs/reports/REHEARSAL_2026-11-12.md`).
+
+## Bảng mốc
+
+| # | Mốc | Trạng thái V4 | Còn thiếu / chặn |
+|---|---|---|---|
+| M0 | Engine, tính điểm Kahoot (D-21), server, khôi phục sau restart, chống chấm trùng | UNIT_VERIFIED | — |
+| M1 | Đủ pha PREPARE → READING → ACCEPTING → REVEAL → LEADERBOARD; pause/huỷ câu; mất kết nối | UNIT_VERIFIED | — |
+| M2 | Chọn câu: RANDOM có seed, không lặp trong phiên | UNIT_VERIFIED | SMART_RANDOM 7/5/3: chưa có, cần người dùng chốt (ma trận M3) |
+| M3 | 35 ghế khán giả, nhân vật cố định mỗi người, tải 2.000 người | UNIT_VERIFIED | Xoay ghế đang ghim Top 3 theo điểm; V4 nói không ưu tiên điểm, cần người dùng chốt (M2) |
+| M4 | Dashboard, Setup Wizard, Kiểm tra kết nối | IMPLEMENTED | E2E chưa tái lập ngoài Windows |
+| M5 | Màn câu hỏi (Quiz) theo ref | IMPLEMENTED trên nhánh `codex2/c0068-victory-ref` (C-0080, C-0098) | **Người dùng duyệt ảnh ghép** rồi mới gộp |
+| M6 | Victory: cúp + bục gốc, 3 nhân vật trên bục thấp (D07/D08) | IMPLEMENTED trên nhánh `c0068`; `main` vẫn là cúp SVG | **Người dùng duyệt**; kiểm logo phía trên (D08) |
+| M7 | Top 10 sau mỗi câu, đồng hạng | UNIT_VERIFIED (logic); giao diện mới trên nhánh `c0068` | Duyệt hình |
+| M8 | Kết nối TikTok (thư viện cộng đồng, chỉ đọc) | UNIT_VERIFIED (mock/replay) · **BLOCKED** cho LIVE | Người dùng phát một phiên LIVE được phép để thử comment thật |
+| M9 | Bộ câu hỏi cho buổi thi | **BLOCKED (người dùng)** | 36 câu mới được duyệt để chạy thử (BOARD #20); cần duyệt nội dung + nguồn ≥ 15 câu |
+| M10 | Preflight trước Start (TIKTOK) | UNIT_VERIFIED (đường HTTP) | Auto mode bỏ qua preflight (RA_SOAT_P0 F1, P0) |
+| M11 | Backup DB + asset, restore | IMPLEMENTED | Máy chưa có DB không khởi động được (F2, P0); không dọn bản cũ (F5); restore khi server chạy (F7) |
+| M12 | Đường chạy source-run `CHAY_GAME.cmd`, dữ liệu `<repo>\data` | IMPLEMENTED | Thiếu `py`/`git` thì dừng hẳn (F3, P0); kiểm bản build theo giờ commit (F4) |
+| M13 | Tổng duyệt | Mã nguồn: UNIT_VERIFIED · trên máy operator: chưa làm | OBS/LIVE Studio + audio + điện thoại, có ảnh/video |
+| M14 | CI + E2E | IMPLEMENTED một phần (CI chưa chạy Playwright) | C-0085 (codex1, đang xếp hàng) |
+| M15 | Giọng MC Kelly, Voice Settings | DEFERRED (D-22: dừng sau mốc 2) | API thật; C-0079 hoãn |
+| M16 | MC PNG Sequence | IMPLEMENTED, dùng ảnh tĩnh | Frame thật từ người dùng |
+| M17 | Theme Pack runtime, AI Question Studio, analytics | DEFERRED_UNTIL_AFTER_EVENT | — |
+| M18 | Sẵn sàng LIVE thật (V4 §15 GO) | **NO-GO** | Cần M5, M6, M8, M9 + sửa F1–F3 |
+
+## Đang chờ người dùng
+
+1. **Duyệt ≥ 15 câu + nguồn** cho buổi thi 13–14/11 (M9).
+2. **Duyệt ảnh ghép** màn câu hỏi, Top 10, Victory trên nhánh `codex2/c0068-victory-ref` (M5–M7).
+3. **Phát một phiên LIVE được phép** để thử comment thật (M8).
+4. **Xác nhận máy LIVE có `py` (Python ≥ 3.9) và `git`** (F3).
+5. **Thử overlay trong OBS/LIVE Studio + audio + xem trên điện thoại** (M13).
+6. **Chốt:**
+   - xoay ghế có ghim Top 3 hay không;
+   - có cần SMART_RANDOM 7/5/3 cho buổi thi không;
+   - JOIN ở sảnh để sau sự kiện?
+
+   (`IMPLEMENTATION_GAP_MATRIX_V4.md` §8)
 
 ## Việc theo làn (chi tiết: `mailbox/BOARD.md`)
 
-| Làn | Đang làm | Hàng chờ |
-|---|---|---|
-| coordinator | rà/gộp; chờ buổi LIVE thử (M11) | chạy thật ClipAI khi được duyệt |
-| codex1 | C-0067 e2e safe-zone | C-0070/75 đề xuất giọng MC |
-| codex2 | C-0068 Victory theo ref | C-0073 logo to như mẫu |
+| Làn | Đang làm / xếp hàng |
+|---|---|
+| coordinator | Điều phối V4; xử lý F1 (auto mode qua preflight — làn server) |
+| codex1 | C-0085 E2E nội dung dài + CI; đề xuất nhận F2–F5, F7 (backup, `CHAY_GAME.cmd`, `web_build.py`) |
+| codex2 | Chờ người dùng duyệt nhánh `c0068` |
+| cloud | C-0099 rà P0 (`docs/review/RA_SOAT_P0.md`) — xong |
 
 ## Nhật ký
-- 11/11 21:35 — Main: 227 test + 33 e2e xanh. Gộp HUD LIVE mô phỏng + safe zone, arena vòng 2, đếm đáp án realtime, e2e trọn vòng. Đang: Victory làm lại, logo to, đề xuất giọng MC ClipAI.
-- 11/11 15:55 — Overlay V3 theo ảnh mẫu + popup Top 3 + khán giả chibi thật (asset tách nền ở assets-local/, ngoài git); 170 test, e2e 17/17.
-- 11/11 15:10 — M10 server xong: 35 ghế, gán nhân vật, xoay ghế giữ Top 3, khôi phục sau restart, overlay không lộ ID (167 test); gộp C-0020B phát lại bình luận.
-- 11/11 14:35 — Người dùng chốt dùng tạm connector GitHub: TikTokLiveAdapter + phiên TIKTOK + API duyệt câu hỏi (146→158 test); thư viện chạy được qua mạng máy này; gộp C-0020 audience-engine.
-- 11/11 14:20 — Người dùng chọn hỏi kênh chính thức TikTok: thư nháp VI/EN ở `docs/TIKTOK_OFFICIAL_REQUEST.md`. Gộp 8 nhánh (C-0005, C-0018, C-0019, C-0008, DP1–DP4): 138/138 test, privacy-check PASS. Giao C-0020/C-0020B, C-0021.
-- 11/11 12:55 — M6: app Electron + bộ cài NSIS 112 MB chạy được (server trong app, dữ liệu %APPDATA%, thoát an toàn, log); gộp C-0016.
-- 11/11 13:05 — M6 bước 1: server phục vụ dashboard + overlay cùng một cổng (OBS dùng `http://127.0.0.1:8787/overlay/`); 126/126 test.
-- 11/11 12:55 — Gộp C-0013: 36 câu Free Fire (chế độ 6, bản đồ 7, vật phẩm 8, thuật ngữ 8, tổng quan 7), bảng duyệt ở docs/review/.
-- 11/11 12:45 — Gộp C-0007 dashboard (124 test); giao C-0018 (M4).
-- 11/11 12:40 — M2 xong: chống trùng comment bền qua khởi động lại, Connection Manager API, kiểm tra hệ thống 9 bước, ACK overlay.
-- 11/11 12:25 — Khảo sát connector xong: không có API chính thức → M11 ⛔ chờ quyết định.
-- 11/11 12:15 — Gộp V3 GĐ B (`5d6307d`); 117/117 test.
-- 11/11 12:05 — Gộp C-0004 (14 test Store).
-- 11/11 11:55 — Gộp C-0003 (36 test máy trạng thái).
-- 11/11 11:45 — Gộp C-0006 overlay, C-0010 sửa câu demo.
-- 11/11 11:40 — Gộp C-0001 fixtures, C-0002 test lõi + sửa lỗi emoji.
-- 11/11 11:05 — Server Phase 1 + test tích hợp/tải.
+
+- 12/11 sáng — Gộp C-0092 P0-A..D (preflight, backup + source-run, tổng duyệt mã nguồn, ảnh giữ chỗ) và C-0097 (event ID simulator). 268 test. Cloud rà P0: 3 lỗi P0 (F1–F3), xem `docs/review/RA_SOAT_P0.md`.
+- 12/11 00:13 — Người dùng gửi plan V4. Chốt D-19..D-22: giữ Kahoot, P0 trước, dừng giọng MC sau mốc 2. Cloud lập ma trận khoảng trống (C-0093).
+- 11/11 23:45 — 36 câu Free Fire được duyệt để chạy thử (BOARD #20).
+- 11/11 21:35 — 227 test + 33 E2E (Windows). Gộp HUD LIVE mô phỏng, safe zone, đếm đáp án realtime.
+- Nhật ký chi tiết trước 21:35 ngày 11/11: xem lịch sử git của file này (`git log -p docs/TIEN_DO.md`).

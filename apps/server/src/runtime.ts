@@ -32,6 +32,7 @@ import {
   currentQuestionInstanceId,
   decideComment,
   effectiveState,
+  formatDifficultyCounts,
   isEligible,
   isInterimLeaderboard,
   mcFor,
@@ -106,6 +107,11 @@ export type RuntimeDeps = {
   store: Store;
   scheduler: Scheduler;
   adapter: LiveAdapter;
+  /** Cổng kiểm tra dùng chung cho lệnh operator, auto mode và khôi phục. */
+  preflight?: (runtime: SessionRuntime) => {
+    checks: { id: string; status: 'PASS' | 'FAIL' | 'WARN'; reason: string }[];
+  };
+  warn?: (message: string) => void;
   /** Kho nhân vật mặc định (vd đọc từ assets-local/chibi/manifest.json); phiên có characterPool riêng thì dùng của phiên. */
   characterPool?: readonly string[];
 };
@@ -593,6 +599,37 @@ export class SessionRuntime {
 
     const now = this.scheduler.now();
     const cmd = env.command;
+    if (this.config.mode === 'TIKTOK' && (cmd.type === 'START_ROUND' || cmd.type === 'RESTART_ROUND')) {
+      let failures: { id: string; reason: string }[];
+      try {
+        const result = this.deps.preflight?.(this);
+        failures = result
+          ? result.checks.filter((item) => item.status === 'FAIL').map(({ id, reason }) => ({ id, reason }))
+          : [{ id: 'preflight', reason: 'Chưa cấu hình bộ kiểm tra preflight cho phiên TIKTOK.' }];
+      } catch (error) {
+        failures = [{ id: 'preflight', reason: error instanceof Error ? error.message : String(error) }];
+      }
+      if (failures.length > 0) {
+        const action = cmd.type === 'RESTART_ROUND' ? 'khởi động lại' : 'bắt đầu';
+        const message = `Không thể ${action} vòng TIKTOK khi preflight còn mục FAIL: ${failures.map((item) => `${item.id}: ${item.reason}`).join('; ')}`;
+        const result: CommandResult = {
+          ok: false,
+          code: 'PREFLIGHT_FAILED',
+          message,
+          stateVersion: this.engine.stateVersion,
+          duplicate: false,
+          details: failures,
+        };
+        this.notice = { code: 'PREFLIGHT_FAILED', message };
+        this.store.transaction(() => this.recordAction(env, result, now));
+        if (this.engine.autoMode) {
+          this.systemCommand({ type: 'SET_AUTO_MODE', enabled: false, reason: 'Preflight TIKTOK không đạt.' });
+        } else {
+          this.emitAdmin();
+        }
+        return { status: 422, result };
+      }
+    }
     let prepared: PreparedSelection | undefined;
     if (this.needsPreparedRound(env)) {
       const count = 'questionCount' in cmd && cmd.questionCount ? cmd.questionCount : this.config.questionsPerRound;
@@ -679,6 +716,15 @@ export class SessionRuntime {
       allowDemo: this.config.mode === 'MOCK' && this.config.allowDemoQuestions,
       allowReuse,
       nowMs: now,
+      selectionMode: this.config.questionSelectionMode,
+      difficultyTargets: this.config.difficultyTargets,
+      difficultyTolerance: this.config.difficultyTolerance,
+      onWarning: ({ questionIds }) => this.deps.warn?.(
+        `[quiz] TOO_LONG: dùng ${questionIds.length} câu vượt ngưỡng vì thiếu câu ngắn (id: ${questionIds.join(', ')}).`,
+      ),
+      onDistribution: ({ counts, targetCounts, tolerance }) => this.deps.warn?.(
+        `[quiz] Phân bố độ khó: ${formatDifficultyCounts(counts)} (mục tiêu ${formatDifficultyCounts(targetCounts)} ±${tolerance}).`,
+      ),
     });
     if (!sel.ok) return { ok: false, eligible: sel.eligible, unused: sel.unused, required: sel.required };
     return {

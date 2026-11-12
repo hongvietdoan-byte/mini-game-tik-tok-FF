@@ -16,8 +16,10 @@ const SENSITIVE_SHEET_NAMES = [
 ];
 const ASSET_APPROVALS_PATH = 'assets/ASSET_APPROVALS.json';
 const LOCAL_EXTRA_PATTERNS_PATH = 'assets-local/privacy-patterns.txt';
+const PLACEHOLDER_ASSET_PREFIX = 'fixtures/assets-placeholder/';
+const MAX_PLACEHOLDER_IMAGE_BYTES = 4 * 1024;
 
-/** @typedef {{ path: string; content?: string }} PrivacyFile */
+/** @typedef {{ path: string; content?: string; sizeBytes?: number; isSymlink?: boolean }} PrivacyFile */
 
 function normalizePath(path) {
   return String(path).replaceAll('\\', '/').replace(/^\.\//, '');
@@ -61,7 +63,8 @@ function isAllowedImagePath(path) {
   const normalized = lowerPath(path);
   return normalized.startsWith('assets/')
     || /^apps\/[^/]+\/public\//.test(normalized)
-    || normalized.startsWith('tests/e2e/__screenshots__/');
+    || normalized.startsWith('tests/e2e/__screenshots__/')
+    || normalized.startsWith(PLACEHOLDER_ASSET_PREFIX);
 }
 
 function approvedAssetPaths(files) {
@@ -116,6 +119,22 @@ export function checkFiles(files, extraPatterns = []) {
 
     if (IMAGE_EXTENSIONS.has(ext) && !isAllowedImagePath(path)) {
       violations.push(`${path}: ảnh nằm ngoài thư mục được phép`);
+    }
+
+    if (normalized.startsWith(PLACEHOLDER_ASSET_PREFIX)) {
+      const isPlaceholderImage = IMAGE_EXTENSIONS.has(ext);
+      const isPlaceholderReadme = normalized === `${PLACEHOLDER_ASSET_PREFIX}readme.md`;
+      if (!isPlaceholderImage && !isPlaceholderReadme) {
+        violations.push(`${path}: chỉ cho ảnh giữ chỗ và README.md trong thư mục này`);
+      }
+      if (isPlaceholderImage && file.isSymlink) violations.push(`${path}: ảnh giữ chỗ không được là symlink`);
+      if (isPlaceholderImage) {
+        if (!Number.isInteger(file.sizeBytes) || file.sizeBytes < 0) {
+          violations.push(`${path}: không xác minh được kích thước ảnh giữ chỗ`);
+        } else if (file.sizeBytes > MAX_PLACEHOLDER_IMAGE_BYTES) {
+          violations.push(`${path}: ảnh giữ chỗ vượt quá 4 KB`);
+        }
+      }
     }
 
     if (normalized.startsWith('assets/') && normalized !== ASSET_APPROVALS_PATH.toLowerCase() && basename(normalized) !== '.gitkeep') {
@@ -190,12 +209,23 @@ function runCli() {
   }
   const files = trackedPaths.map((path) => {
     const isApprovalManifest = lowerPath(path) === ASSET_APPROVALS_PATH.toLowerCase();
-    if (!isApprovalManifest && !isTextFile(path)) return { path };
+    let metadata;
     try {
-      return { path, content: readTrackedTextFile(repositoryRoot, path) };
+      const info = lstatSync(resolve(repositoryRoot, path));
+      metadata = { sizeBytes: info.size, isSymlink: info.isSymbolicLink() };
+    } catch {
+      readErrors.push(`${path}: không thể đọc metadata tệp đã theo dõi`);
+      return { path };
+    }
+    if (lowerPath(path).startsWith(PLACEHOLDER_ASSET_PREFIX) && metadata.isSymlink) {
+      return { path, ...metadata };
+    }
+    if (!isApprovalManifest && !isTextFile(path)) return { path, ...metadata };
+    try {
+      return { path, ...metadata, content: readTrackedTextFile(repositoryRoot, path) };
     } catch {
       readErrors.push(`${path}: không thể đọc tệp text đã theo dõi`);
-      return { path };
+      return { path, ...metadata };
     }
   });
   const violations = [...checkFiles(files, extraPatterns), ...readErrors];
