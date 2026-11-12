@@ -32,7 +32,7 @@ const importantElements = [
 ] as const;
 
 const hudBlockers = [
-  { label: 'host pill', selectors: ['[data-testid="tiktok-live-info"]'] },
+  { label: 'host avatar', selectors: ['.tiktok-hud-host-avatar'] },
   { label: 'viewers', selectors: ['[data-testid="tiktok-viewers"]', '.tiktok-hud-live-copy small'] },
   { label: 'live chips', selectors: ['[data-testid="tiktok-live-chips"]', '[data-testid="tiktok-actions"]'] },
   { label: 'event banner', selectors: ['[data-testid="tiktok-event-banner"]', '.tiktok-hud-demo-label'] },
@@ -65,10 +65,36 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     });
     const importantBoxes = important.flatMap(({ label, selector }) => {
       const elements = Array.from(stage.querySelectorAll(selector)).filter(visible);
-      return elements.map((element, index) => ({
-        label: elements.length > 1 ? `${label} ${index + 1}` : label,
-        box: element.getBoundingClientRect(),
-      }));
+      return elements.map((element, index) => {
+        let box = element.getBoundingClientRect();
+        if (isVictoryScene && element instanceof HTMLImageElement && element.classList.contains('v3v-event-logo') && element.complete && element.naturalWidth > 0) {
+          const canvas = document.createElement('canvas');
+          canvas.width = element.naturalWidth;
+          canvas.height = element.naturalHeight;
+          const context = canvas.getContext('2d');
+          if (context) {
+            context.drawImage(element, 0, 0);
+            const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+            let left = width; let top = height; let right = -1; let bottom = -1;
+            for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+              if (data[(y * width + x) * 4 + 3]! < 64) continue;
+              left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1);
+            }
+            if (right > left && bottom > top) {
+              const fit = getComputedStyle(element).objectFit;
+              const scaleX = box.width / width;
+              const scaleY = box.height / height;
+              const scale = fit === 'cover' ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+              const contentWidth = width * scale;
+              const contentHeight = height * scale;
+              const offsetX = box.left + (box.width - contentWidth) / 2;
+              const offsetY = box.top + (box.height - contentHeight) / 2;
+              box = new DOMRect(offsetX + left * scale, offsetY + top * scale, (right - left) * scale, (bottom - top) * scale);
+            }
+          }
+        }
+        return { label: elements.length > 1 ? `${label} ${index + 1}` : label, box };
+      });
     });
     const blockersFound = blockers.flatMap(({ label, selectors }) => {
       const element = selectors.map((selector) => stage.querySelector(selector)).find((candidate) => candidate && visible(candidate));
@@ -89,11 +115,13 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
       const isTopMeta = item.label.startsWith('top meta');
       const decorativeBleed = item.label === 'trophy';
       const approvedVictoryNameplate = isVictoryScene && item.label.startsWith('podium name');
+      const approvedVictoryLogoHudException = isVictoryScene && isBrandLogo && p.x1 >= 25 && p.x2 <= 75;
       if (!decorativeBleed && !approvedVictoryNameplate && !isBrandLogo && (p.x1 < 8.9 || p.x2 > 91.1)) add('crop-fill: phải nằm trong x=9–91%');
       if (isBrandLogo) {
+        if (isVictoryScene && !approvedVictoryLogoHudException) add('ngoại lệ HUD logo Victory chỉ hợp lệ trong dải giữa x=25–75%');
         const logoTopMin = isVictoryScene ? 1.4 : 0.8;
         const logoTopMax = isVictoryScene ? 3 : 5.5;
-        const logoBottomLimit = isVictoryScene ? 19.1 : 25.5;
+        const logoBottomLimit = isVictoryScene ? 22 : 25.5;
         if (p.y1 < logoTopMin || p.y1 > logoTopMax || p.y2 > logoBottomLimit) add(isVictoryScene
           ? `logo: giữ khoảng hở với đỉnh cúp (y≈${logoTopMin}–${logoBottomLimit}%)`
           : `logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
@@ -108,8 +136,9 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
       if (p.x1 < 70 && p.y2 > commentBandTop && p.y1 < 92) add(`cột bình luận trái: vùng x<70%, y=${commentBandTop}–92%`);
       if (p.y2 >= 92.5) add('thanh nhập: y phải nhỏ hơn 92.5%');
       for (const blocker of blockersFound) {
-        // HUD có thể phủ vùng trong suốt ở mép logo BVĐC; nội dung chính của logo vẫn nằm giữa.
-        if (item.label.startsWith('brand logo') && ['host pill', 'viewers', 'live chips'].includes(blocker.label)) continue;
+        // Chỉ cho logo Victory ở dải giữa đi qua banner sự kiện; các góc host/viewers vẫn phải thông thoáng.
+        if (approvedVictoryLogoHudException && ['event banner', 'live chips'].includes(blocker.label)) continue;
+        if (item.label.startsWith('brand logo') && !isVictoryScene && ['host avatar', 'viewers', 'live chips'].includes(blocker.label)) continue;
         if (intersects(item.box, blocker.box)) add(`giao vùng HUD: ${blocker.label}`);
       }
     }
