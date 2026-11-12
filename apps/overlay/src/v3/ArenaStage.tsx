@@ -102,11 +102,19 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const optionsVisible = !!q?.optionsVisible && !isPrepare;
   const hasLongOption = !!q?.options.some((option) => option.text.length > 45);
   const totalAnswers = reveal ? Object.values(reveal.optionCounts).reduce((a, b) => a + b, 0) : 0;
+  const instruction = snapshot.state === 'ACCEPTING'
+    ? <>Trả lời bằng cách{'\n'}comment <em>A, B, C hoặc D</em>{'\n'}để tham gia ngay!</>
+    : isReading
+      ? 'Cùng nghe câu hỏi và bốn đáp án nhé!'
+      : isPrepare
+        ? 'Sẵn sàng cho câu hỏi tiếp theo!'
+        : null;
   return (
     <section className="v3-board" data-layer="quiz-hud">
       <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
       {snapshot.timer && !isLobby && !isReading && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
       {isReading && <div className="v3-reading-status" data-testid="reading-status">MC ĐANG ĐỌC</div>}
+      {instruction && <div className="v3-answer-instruction v3-bubble" data-testid="mc-bubble"><p>{instruction}</p></div>}
       <div className={`v3-question ${promptClass}`} data-testid="question-prompt">
         {isLobby ? (
           <>Bình luận <em>A, B, C</em> hoặc <em>D</em> để trả lời câu hỏi về Free Fire!</>
@@ -147,7 +155,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
 }
 
 export function McKelly({ snapshot, bubbleOverride }: { snapshot: PublicSnapshot; bubbleOverride?: string }) {
-  const bubble = (bubbleOverride ?? snapshot.mc.bubble).replace(
+  const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
   );
@@ -162,13 +170,13 @@ export function McKelly({ snapshot, bubbleOverride }: { snapshot: PublicSnapshot
         </svg>
         MC KELLY
       </div>
-      <div className="v3-bubble" data-testid="mc-bubble">
+      {bubbleOverride !== undefined && <div className="v3-bubble" data-testid="mc-bubble">
         <p>
           {splitBubble(bubble).map((part, i) =>
             part.hl ? <em key={i}>{part.text}</em> : <React.Fragment key={i}>{part.text}</React.Fragment>,
           )}
         </p>
-      </div>
+      </div>}
     </section>
   );
 }
@@ -181,8 +189,12 @@ export function McCelebration() {
   );
 }
 
-/** Kéo toạ độ ghế của server (chân hàng sau ~1105 → hàng trước ~1825) xuống vùng khán giả theo ảnh mẫu (1190 → 1880), để hàng sau không chạm MC. */
-const seatY = (y: number) => AUDIENCE_TOP_Y + ((y - 1105) * (AUDIENCE_FRONT_Y - AUDIENCE_TOP_Y)) / (1825 - 1105);
+/** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1330–1860. */
+const seatY = (y: number, compactQuestion = false) => {
+  const top = compactQuestion ? 1330 : AUDIENCE_TOP_Y;
+  const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
+  return top + ((y - 1105) * (front - top)) / (1825 - 1105);
+};
 const AUDIENCE_TOP_Y = 1190;
 const AUDIENCE_FRONT_Y = 1880;
 
@@ -196,7 +208,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
   );
 }
 
-type SeatProps = { seat: AudienceSeatView };
+type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean };
 
 function sameSeat(previous: SeatProps, next: SeatProps) {
   const a = previous.seat;
@@ -208,17 +220,17 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
     left.characterId === right.characterId &&
     left.pinned === right.pinned &&
     left.result === right.result);
-  return a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
+  return previous.compactQuestion === next.compactQuestion && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
 }
 
-const Seat = React.memo(function Seat({ seat }: SeatProps) {
+const Seat = React.memo(function Seat({ seat, compactQuestion }: SeatProps) {
   const o = seat.occupant;
   return (
     <div
       className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''}`}
       style={{
         left: seat.x,
-        top: seatY(seat.y),
+        top: seatY(seat.y, compactQuestion),
         zIndex: 10 + Math.round(seat.depth),
         ['--s' as string]: seat.scale,
       }}
@@ -234,18 +246,19 @@ const Seat = React.memo(function Seat({ seat }: SeatProps) {
   );
 }, sameSeat);
 
-const SeatName = React.memo(function SeatName({ seat }: SeatProps) {
+const SeatName = React.memo(function SeatName({ seat, compactQuestion }: SeatProps) {
   const occupant = seat.occupant;
   if (!occupant) return null;
-  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''}`} style={{ left: seat.x, top: seatY(seat.y), ['--s' as string]: seat.scale }}>
+  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
     {shortName(occupant.displayName, 13)}
   </div>;
 }, sameSeat);
 
 function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   const a = snapshot.audience;
+  const compactQuestion = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const rows = a
-    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y)])).entries()].map(([row, y]) => ({ row, y }))
+    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion)])).entries()].map(([row, y]) => ({ row, y }))
     : [];
   return (
     <section className="v3-audience" data-layer="audience-seats">
@@ -253,10 +266,10 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
       {rows.map((r) => (
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
-      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} />)}
+      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} />)}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} />)}
+        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} />)}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
@@ -264,12 +277,13 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
 }
 
 export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
+  const questionBackground = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
-  const stageClasses = ['v3-stage', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
-      <ArenaBackdrop arena />
+      <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} />
       <div className="v3-env-wrap" data-layer="arena-geometry" aria-hidden="true">
         <svg className="v3-arena-environment" viewBox="0 0 1080 1920" preserveAspectRatio="none">
           <defs>

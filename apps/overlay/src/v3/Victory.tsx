@@ -5,17 +5,17 @@ import { shortName } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 
 const ASSET = '/assets';
-const VICTORY_BACKGROUND = `${ASSET}/victory/bg-redraw.jpg`;
+const VICTORY_BACKGROUND = `${ASSET}/victory/bg-user-cover.jpg`;
 const VICTORY_LAYOUT = {
-  '--v3v-place-2-x': '20%',
-  '--v3v-place-1-x': '51%',
-  '--v3v-place-3-x': '81%',
-  '--v3v-place-2-feet': '60.5%',
-  '--v3v-place-1-feet': '60.5%',
-  '--v3v-place-3-feet': '60.5%',
+  '--v3v-place-2-x': '14.5%',
+  '--v3v-place-1-x': '50%',
+  '--v3v-place-3-x': '85.5%',
+  '--v3v-place-2-feet': '62.5%',
+  '--v3v-place-1-feet': '62.5%',
+  '--v3v-place-3-feet': '62.5%',
   '--v3v-side-height': '384px',
   '--v3v-center-height': '384px',
-  '--v3v-side-width': '210px',
+  '--v3v-side-width': '180px',
   '--v3v-center-width': '242px',
 } as CSSProperties;
 

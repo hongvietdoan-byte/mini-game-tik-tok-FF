@@ -49,6 +49,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     const stageBox = stage.getBoundingClientRect();
     if (stageBox.width <= 0 || stageBox.height <= 0) throw new Error('Stage không có kích thước');
     const isVictoryScene = stage.querySelector('.v3v') !== null;
+    const compactQuestionHeader = stage.querySelector('.v3-stage--question-user') !== null;
 
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const visible = (element: Element) => {
@@ -97,7 +98,9 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
           ? `logo: giữ khoảng hở với đỉnh cúp (y≈${logoTopMin}–${logoBottomLimit}%)`
           : `logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
       } else if (isEventSubtitle) {
-        if (p.y1 < 24 || p.y2 > 28) add('dòng phụ phải nằm ngay dưới logo trong vùng header');
+        const subtitleTop = compactQuestionHeader ? 12.5 : 24;
+        const subtitleBottom = compactQuestionHeader ? 15.5 : 28;
+        if (p.y1 < subtitleTop || p.y2 > subtitleBottom) add('dòng phụ phải nằm ngay dưới logo trong vùng header');
       } else if (isTopMeta) {
         if (p.y1 < 0.8 || p.y2 > 12.1) add('thông tin vòng phải nằm trong dải header theo ref');
       } else if (p.y1 < 14) add('HUD trên: y bắt đầu từ 14%');
