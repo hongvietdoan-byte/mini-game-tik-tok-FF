@@ -1338,7 +1338,7 @@
 .v3-stage.has-long-prompt.has-long-options .v3-options.has-long-option .v3-option-text { font-size: 17px; line-height: 1.05; }
 .v3-stage.has-long-prompt.has-long-options .v3-mc { top: 724px; }
 .v3-mc { height: 410px; }
-.v3-mc .v3-bubble { top: 250px; height: 92px; min-height: 0; max-height: none; padding: 0 20px; }
+.v3-mc .v3-bubble { top: 250px; width: 580px; height: 92px; min-height: 0; max-height: none; padding: 0 20px; }
 .v3-mc .v3-bubble p { font-size: 24px; line-height: 1; }
 .v3-stage.has-long-prompt .v3-mc .v3-bubble { display: none; }
 .v3-stage.has-long-options .v3-mc .v3-bubble { display: none; }
@@ -1347,6 +1347,7 @@
 .v3-top10-guide { top: 1390px; }
 .v3-top10-guide .v3-bubble { min-height: 0; max-height: none; }
 .v3-top10-guide .v3-bubble p { font-size: 16px; line-height: 1.05; }
+.v3-top10-guide .v3-mc .v3-bubble { left: 0; right: auto; top: 260px; width: 224px; height: 112px; padding: 0 8px; }
 
 /* C-0127: question layout stays anchored across phases and prompt lengths. */
 .v3-stage--question-user .v3-header .v3-title.is-wide { left: 50%; top: -14px; width: 20%; }
@@ -1403,7 +1404,7 @@
   left: 410px;
   right: auto;
   top: 84px;
-  width: 580px;
+  width: 568px;
   height: 220px;
   min-height: 0;
   max-height: none;
