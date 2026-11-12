@@ -2,13 +2,14 @@ import React from 'react';
 import type { LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { BrandHeader, McKelly } from './ArenaStage';
 import { ArenaBackdrop } from './ArenaBackdrop';
+import { shortName } from './arenaLogic';
 import './arena.css';
 
 function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: number }) {
   return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row" style={{ '--row-index': index } as React.CSSProperties}>
     <span className="v3-full-rank">{entry.rank}</span>
     <span className="v3-full-name">
-      <span className="v3-full-name-text player-name" title={entry.displayName}>{entry.displayName}</span>
+      <span className="v3-full-name-text player-name" title={entry.displayName}>{shortName(entry.displayName, 16)}</span>
       {(entry.top1Streak ?? 0) >= 2 && <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${entry.top1Streak} lần`}>x{entry.top1Streak}</b>}
       {entry.tied && <small>ĐỒNG HẠNG</small>}
     </span>
@@ -19,7 +20,7 @@ function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: 
 export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const entries = snapshot.leaderboard?.entries ?? [];
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <ArenaBackdrop arena />
+    <ArenaBackdrop arena questionBackground showFlags={false} />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-leaderboard-full" data-layer="leaderboard-full" data-testid="v3-top10-large">
       <header className="v3-full-heading">
@@ -55,7 +56,7 @@ function FullTimer({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remain
 
 export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <ArenaBackdrop />
+    <ArenaBackdrop arena questionBackground showFlags={false} />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-intermission" data-layer="intermission" data-testid="intermission-message">
       <span className="v3-scene-kicker">HẾT VÒNG {snapshot.round?.roundNumber ?? 1}</span>
@@ -70,7 +71,7 @@ export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicS
 export function ConnectionLostStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const failed = snapshot.state === 'ERROR';
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <ArenaBackdrop />
+    <ArenaBackdrop arena questionBackground showFlags={false} />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-connection-lost" data-layer="connection-lost" data-testid="connection-lost-message">
       <div className="v3-connection-emblem" aria-hidden="true"><span /><i /></div>

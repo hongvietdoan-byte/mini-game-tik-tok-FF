@@ -50,7 +50,7 @@ function Top10({ entries }: { entries: LeaderboardEntry[] }) {
           <li key={e.playerId} className={`v3-rank-${e.rank <= 3 ? e.rank : 'n'}`} data-testid="leaderboard-row">
             <span className="v3-rank">{e.rank}</span>
             <span className="v3-name">
-              <span className="v3-name-text player-name" title={e.displayName}>{e.displayName}</span>
+              <span className="v3-name-text player-name" title={e.displayName}>{shortName(e.displayName, 16)}</span>
               {(e.top1Streak ?? 0) >= 2 && (
                 <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${e.top1Streak} lần`}>
                   x{e.top1Streak}
@@ -80,16 +80,16 @@ function Timer({ ms, totalMs, running }: { ms: number; totalMs: number; running:
   );
 }
 
-/** Câu hỏi dài tự giảm cỡ chữ để luôn nằm trọn trong khung (không cắt chữ). */
+/** Câu hỏi dài giữ sàn 24px; câu vượt 160 ký tự thuộc ngưỡng rút gọn nội dung. */
 function promptSize(prompt: string | undefined) {
   const n = prompt?.length ?? 0;
-  return n > 170 ? 'is-xlong' : n > 110 ? 'is-long' : '';
+  return n > 160 ? 'is-xlong' : n > 110 ? 'is-long' : '';
 }
 
-/** Đáp án dài (tối đa 90 ký tự theo QUESTION_LIMITS) giảm cỡ chữ để hiện đủ trong 3 dòng. */
+/** Đáp án dài giữ sàn 20px; nội dung trên 45 ký tự được đội nội dung rút gọn. */
 function optionSize(text: string | undefined) {
   const n = text?.length ?? 0;
-  return n > 52 ? 'is-xlong' : n > 30 ? 'is-long' : '';
+  return n > 45 ? 'is-xlong' : n > 30 ? 'is-long' : '';
 }
 
 function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnapshot; remainingMs: number; debug: boolean }) {
@@ -101,21 +101,22 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const isReading = snapshot.state === 'READING';
   const optionsVisible = !!q?.optionsVisible && !isPrepare;
   const hasLongOption = !!q?.options.some((option) => option.text.length > 45);
+  const hasLongLabel = !!q?.options.some((option) => option.text.length > 30);
   const totalAnswers = reveal ? Object.values(reveal.optionCounts).reduce((a, b) => a + b, 0) : 0;
   return (
     <section className="v3-board" data-layer="quiz-hud">
-      <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
+      <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'CHÀO MỪNG' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
       {snapshot.timer && !isLobby && !isReading && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
       {isReading && <div className="v3-reading-status" data-testid="reading-status">MC ĐANG ĐỌC</div>}
       <div className={`v3-question ${promptClass}`} data-testid="question-prompt">
         {isLobby ? (
-          <>Bình luận <em>A, B, C</em> hoặc <em>D</em> để trả lời câu hỏi về Free Fire!</>
+          <>SẮP BẮT ĐẦU</>
         ) : (
           q?.prompt ?? 'Đang chờ câu hỏi…'
         )}
       </div>
       {!isLobby && (
-        <div className={`v3-options ${reveal ? 'is-revealed' : ''} ${hasLongOption ? 'has-long-option' : ''}`} data-testid="option-list">
+        <div className={`v3-options ${reveal ? 'is-revealed' : ''} ${hasLongOption ? 'has-long-option' : ''} ${hasLongLabel ? 'has-long-label' : ''}`} data-testid="option-list">
           {(['A', 'B', 'C', 'D'] as const).map((id) => {
             const opt = optionsVisible ? q?.options.find((o) => o.id === id) : undefined;
             const correct = !!reveal && reveal.correctOptionId === id;
@@ -251,7 +252,7 @@ const SeatName = React.memo(function SeatName({ seat, compactQuestion }: SeatPro
 
 function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   const a = snapshot.audience;
-  const compactQuestion = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
+  const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const rows = a
     ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion)])).entries()].map(([row, y]) => ({ row, y }))
     : [];
@@ -272,8 +273,10 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
 }
 
 export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
-  const questionBackground = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
-  const questionBubble = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL' ? snapshot.mc.bubble : undefined;
+  const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
+  const questionBubble = snapshot.scene === 'LOBBY'
+    ? 'CHÀO MỪNG ĐẾN VỚI ĐẤU TRƯỜNG BÃO TỐ!'
+    : questionBackground ? snapshot.mc.bubble : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
   const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
