@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 116,
-  "heartbeat": "2026-11-12T16:07:31+07:00",
-  "state": "working",
-  "task": "C-0127",
-  "note": "Ưu tiên C-0127 trên nhánh C-0068; cố định bốn pha question, MC bán thân, logo gọn; áp dụng CI C-0126 trước khi push",
+  "heartbeat": "2026-11-12T16:08:29+07:00",
+  "state": "waiting",
+  "task": "C-0118",
+  "note": "C-0122/C-0126/C-0127/C-0128/C-0130 đã xử lý; chờ C-0118 ưu tiên thấp và chờ mốc 20:00 trước khi tiếp tục kiểm thử hoặc mở dev server.",
   "done": [
     120,
     122,
