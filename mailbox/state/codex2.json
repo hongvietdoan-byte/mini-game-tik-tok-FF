@@ -1,12 +1,14 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T10:24:42+07:00",
+  "heartbeat": "2026-11-12T10:43:34+07:00",
   "state": "working",
   "task": "C-0114",
   "note": "Đang kiểm thử Victory với bg-redraw.jpg và hoàn thiện ảnh thường/đồng hạng; sau đó xử lý C-0113",
   "done": [
     110,
-    111
+    111,
+    114,
+    115
   ]
 }
