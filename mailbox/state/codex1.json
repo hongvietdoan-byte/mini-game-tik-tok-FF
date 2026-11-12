@@ -1,7 +1,7 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T11:22:09+07:00",
+  "heartbeat": "2026-11-12T11:46:05+07:00",
   "state": "working",
   "task": "C-0117",
   "note": "Đã ack X-0188; đang đối chiếu F6, F8–F12 với main và giới hạn làn để chọn sửa/test an toàn.",
@@ -18,6 +18,7 @@
     104,
     105,
     106,
-    112
+    112,
+    117
   ]
 }
