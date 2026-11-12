@@ -252,7 +252,7 @@ const SeatName = React.memo(function SeatName({ seat, compactQuestion }: SeatPro
 
 function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   const a = snapshot.audience;
-  const compactQuestion = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
+  const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const rows = a
     ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion)])).entries()].map(([row, y]) => ({ row, y }))
     : [];
