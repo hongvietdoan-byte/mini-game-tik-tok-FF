@@ -1382,6 +1382,11 @@
 .v3-stage--question-user .v3-answer-instruction p { max-width: 330px; margin: 0; font-size: 17px; line-height: 1.05; white-space: pre-line; }
 .v3-stage--question-user .v3-answer-instruction em { color: var(--gold); font-style: normal; }
 .v3-stage--question-user[data-scene="REVEAL"] .v3-answer-instruction { display: none; }
+
+/* C-0131: keep the tab label away from the clipped board corner; size the Victory mark by its visible artwork. */
+.v3-stage--question-user .v3-board-tab { left: 32px; padding-left: 40px; }
+.v3v-header { top: -4px; height: 26.1%; }
+.v3v-header .v3v-event-logo { width: 46.5%; height: 100%; max-height: none; object-fit: contain; }
 .v3-top10 { height: 462px; }
 .v3-leaderboard-full { top: 500px; height: 620px; padding: 18px 22px 20px; }
 .v3-full-heading { min-height: 90px; padding-bottom: 10px; }
