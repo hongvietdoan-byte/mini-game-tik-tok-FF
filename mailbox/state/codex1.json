@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 156,
-  "heartbeat": "2026-11-13T00:50:35+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-13T00:53:42+07:00",
+  "state": "waiting",
   "task": "C-0159",
-  "note": "Đang sửa safe-zone assertions Victory theo test đã duyệt C-0131 trong worktree C-0085",
+  "note": "Đã push 399a8c0, typecheck xanh; chờ Codex2 report C-0157 để chạy full Edge E2E hai bộ assets",
   "done": []
 }
