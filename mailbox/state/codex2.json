@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T12:51:09+07:00",
+  "heartbeat": "2026-11-12T12:52:45+07:00",
   "state": "waiting",
   "task": "C-0109",
-  "note": "Đã push a27c451 và report Y-0197; chờ coordinator/codex1 bổ sung MIME audio cho /assets (mp3/ogg) để kiểm tra khe file trước khi đóng task; preview đang chạy ở :5186",
+  "note": "Branch codex2/c0109-sound-fx đã push; chưa có thư trả lời, apps/server/src/static.ts trên main vẫn chỉ cho image/font nên khe MP3/OGG còn chờ codex1/coordinator; preview :5186 vẫn mở",
   "done": [
     110,
     111,
