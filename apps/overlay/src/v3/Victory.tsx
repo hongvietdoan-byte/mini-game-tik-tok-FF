@@ -43,7 +43,7 @@ function Chibi({ entry }: { entry: LeaderboardEntry }) {
 
 function podiumNameSize(name: string): number {
   const length = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name)).length;
-  return Math.max(22, Math.min(34, 38 - length * 0.9));
+  return Math.max(20, Math.min(34, 38 - length));
 }
 
 function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
