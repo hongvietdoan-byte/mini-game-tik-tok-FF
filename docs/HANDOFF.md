@@ -6,6 +6,11 @@ Vòng ngữ cảnh: `.claude/settings.json` (cục bộ) đặt `CLAUDE_CODE_AUT
 
 Phiên trước đầy context. Phiên mới: **chỉ điều phối** (memory `coordinator-delegate-not-code`) — giao code cho Codex qua hòm thư, rà report, gộp nhánh.
 
+## Cập nhật 12/11 ~21:45
+- Người dùng DUYỆT màn câu hỏi (C-0133) + Victory (C-0131). Đã gộp main `4b1eebc` (UI + âm thanh C-0109 + role program/audioState C-0121/C-0132/C-0135 + C-0136): typecheck, 321 test, privacy, e2e 59/59 PASS; build:web xong. URL nguồn LIVE Studio: `/overlay/?role=program`.
+- Coordinator tự chạy thử offline 1 vòng MOCK 10 câu trên server thật (ảnh `assets-local/review/offline-1/`): chạy trọn tới Victory. Lỗi còn: sảnh chờ + Top 10 giữa vòng còn nền cũ, MC pha nhận đáp án lệch → codex2 **C-0142** (+C-0141 chụp Top 10). codex1: C-0138 script MOCK → C-0143 → C-0085 (đã mở khoá, giữ `tests/e2e/**`).
+- Người dùng yêu cầu vòng tự động: giao Codex sửa → rà → khi đạt tự chạy thử offline MOCK → báo. CI chỉ chạy main (không spam mail).
+
 ## Cập nhật 12/11 ~14:30 (phiên mới)
 - Người dùng CHỐT 2 nền: Victory `assets-local/victory/bg-user-cover.jpg` (gốc 3:4 `bg-user-src.png`, đã cắt phủ 9:16), màn câu hỏi `assets-local/arena/bg-question-user.jpg` (8 cờ đội in sẵn, y 14–32 %). Giao codex2 **C-0122** (ưu tiên trước C-0109/C-0118). Bỏ hẳn `bg-redraw.jpg`/`bg-ref-clean.jpg`.
 - Đã gộp main C-0119. C-0120 nhắc codex2 tự sửa `static.ts` MIME audio (đã cho phép ở C-0111). codex1 làm **C-0121** (F9 server: overlay role program/preview).
