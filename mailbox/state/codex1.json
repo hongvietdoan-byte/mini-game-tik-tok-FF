@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T10:59:00+07:00",
-  "state": "working",
-  "task": "C-0112",
-  "note": "Đang dựng công cụ question_bank.py và kiểm tra API/DB; server 127.0.0.1:8787 đang hoạt động nên sẽ ưu tiên API, không ghi DB trực tiếp.",
+  "heartbeat": "2026-11-12T10:59:56+07:00",
+  "state": "waiting",
+  "task": "C-0085",
+  "note": "C-0112 đã report X-0185 và done; C-0085 đang xếp hàng, chờ coordinator xác nhận các mốc gộp trước khi bắt đầu.",
   "done": [
     86,
     88,
