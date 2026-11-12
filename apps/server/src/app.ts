@@ -15,10 +15,11 @@ import {
   McVoiceSettingsUpdateSchema,
   McVoiceTestRequestSchema,
   QuestionReviewSchema,
+  DEFAULT_DIFFICULTY_TARGETS,
   questionLengthWarnings,
   SimulatorRequestSchema,
 } from '@quiz/contracts';
-import { isEligible } from '@quiz/quiz-core';
+import { formatDifficultyCounts, isEligible, planPreferredDifficultyCounts } from '@quiz/quiz-core';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
 import type { SessionConfig, SystemCheck } from '@quiz/contracts';
@@ -207,20 +208,47 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
 
     if (!session) {
       check('questions', 'Ngân hàng câu hỏi', 'WARN', 'Chưa có phiên để xác định bộ câu hỏi và số câu mỗi vòng.');
+      check('difficultyDistribution', 'Phân bố độ khó và số vòng dự kiến', 'WARN', 'Chưa có phiên để dự báo phân bố độ khó và số vòng còn đủ.');
     } else {
       const config = session.config;
       const allowDemo = config.mode === 'MOCK' && config.allowDemoQuestions;
       const questions = store.listQuestions(config.packId);
       const eligible = questions.filter((question) => isEligible(question, { allowDemo, nowMs: checkedAtMs }));
       const used = store.usedQuestionIdsInSession(session.id);
-      const unused = eligible.filter((question) => !used.has(question.id)).length;
+      const unusedQuestions = eligible.filter((question) => !used.has(question.id));
+      const unused = unusedQuestions.length;
       const enough = unused >= config.questionsPerRound;
       const excludesDemo = config.mode !== 'TIKTOK' || eligible.every((question) => question.verificationStatus !== 'DEMO');
+      const difficultyTargets = config.difficultyTargets ?? DEFAULT_DIFFICULTY_TARGETS;
+      const difficultyTolerance = config.difficultyTolerance ?? 2;
       check(
         'questions',
         'Câu APPROVED đủ và không lặp trong phiên',
         enough && excludesDemo ? 'PASS' : 'FAIL',
         `Bộ ${config.packId}: ${eligible.length} câu hợp lệ, ${unused} câu chưa dùng / cần ${config.questionsPerRound}; mode ${config.mode}${config.mode === 'TIKTOK' ? ', đã loại DEMO' : ''}.`,
+      );
+      const preview = planPreferredDifficultyCounts(
+        unusedQuestions,
+        config.questionsPerRound,
+        difficultyTargets,
+        difficultyTolerance,
+      );
+      const roundsAvailable = Math.floor(unused / config.questionsPerRound);
+      const modeDetail = config.questionSelectionMode === 'DIFFICULTY'
+        ? `Dự kiến vòng tới: ${formatDifficultyCounts(preview.counts)} (mục tiêu ${formatDifficultyCounts(preview.targetCounts)} ±${difficultyTolerance}).`
+        : `RANDOM đang bật; kho chưa dùng có ${formatDifficultyCounts(preview.availableCounts)}, chưa áp quota độ khó.`;
+      const outsideDifficultyRange = config.questionSelectionMode === 'DIFFICULTY' &&
+        (['EASY', 'MEDIUM', 'HARD'] as const).some((difficulty) =>
+          Math.abs(preview.counts[difficulty] - preview.targetCounts[difficulty]) > difficultyTolerance,
+        );
+      const roundsDetail = roundsAvailable >= 6
+        ? `Còn đủ ${roundsAvailable} vòng × ${config.questionsPerRound} câu.`
+        : `Còn đủ ${roundsAvailable} vòng × ${config.questionsPerRound} câu; 6 vòng cần ${6 * config.questionsPerRound}, hiện còn ${unused}.`;
+      check(
+        'difficultyDistribution',
+        'Phân bố độ khó và số vòng dự kiến',
+        enough && roundsAvailable >= 6 && !outsideDifficultyRange ? 'PASS' : 'WARN',
+        `${modeDetail} ${outsideDifficultyRange ? 'Kho hiện có buộc phải lệch quá ±2 ở ít nhất một mức.' : ''} ${roundsDetail}`.trim(),
       );
     }
 

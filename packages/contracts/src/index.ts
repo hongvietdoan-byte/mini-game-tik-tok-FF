@@ -145,6 +145,18 @@ export type IngestMetrics = {
 
 export const DifficultySchema = z.enum(['EASY', 'MEDIUM', 'HARD']);
 export type Difficulty = z.infer<typeof DifficultySchema>;
+export const QUESTION_SELECTION_MODES = ['RANDOM', 'DIFFICULTY'] as const;
+export const QuestionSelectionModeSchema = z.enum(QUESTION_SELECTION_MODES);
+export type QuestionSelectionMode = z.infer<typeof QuestionSelectionModeSchema>;
+
+/** Tỷ lệ mục tiêu cho vòng 15 câu; selector tự co giãn cho 10/20 câu. */
+export const DEFAULT_DIFFICULTY_TARGETS = { EASY: 7, MEDIUM: 5, HARD: 3 } as const;
+export const DifficultyTargetsSchema = z.object({
+  EASY: z.number().int().min(0).max(20).default(DEFAULT_DIFFICULTY_TARGETS.EASY),
+  MEDIUM: z.number().int().min(0).max(20).default(DEFAULT_DIFFICULTY_TARGETS.MEDIUM),
+  HARD: z.number().int().min(0).max(20).default(DEFAULT_DIFFICULTY_TARGETS.HARD),
+}).refine((targets) => targets.EASY + targets.MEDIUM + targets.HARD > 0, 'Ít nhất một mục tiêu độ khó phải lớn hơn 0');
+export type DifficultyTargets = z.infer<typeof DifficultyTargetsSchema>;
 
 export const VerificationStatusSchema = z.enum([
   'UNVERIFIED',
@@ -181,7 +193,8 @@ export const QuestionSchema = z
     options: z.array(QuestionOptionSchema).length(4),
     correctOptionId: z.string().min(1),
     explanation: z.string().max(QUESTION_LIMITS.explanationMax).default(''),
-    difficulty: DifficultySchema,
+    /** Câu cũ chưa gán độ khó được xem là mức vừa. */
+    difficulty: DifficultySchema.default('MEDIUM'),
     tags: z.array(z.string().max(40)).max(20).default([]),
     sourceRefs: z.array(z.string().max(200)).max(20).default([]),
     verificationStatus: VerificationStatusSchema,
@@ -304,6 +317,12 @@ export const SessionConfigSchema = z
     mode: LiveSourceSchema.default('MOCK'),
     packId: z.string().min(1).max(64).default('demo'),
     questionsPerRound: QuestionsPerRoundSchema.default(15),
+    /** RANDOM giữ nguyên mặc định; DIFFICULTY bật phân bổ mục tiêu dễ/vừa/khó. */
+    questionSelectionMode: QuestionSelectionModeSchema.default('RANDOM'),
+    /** Mục tiêu gốc tương ứng 15 câu; được co giãn theo questionsPerRound. */
+    difficultyTargets: DifficultyTargetsSchema.default({}),
+    /** Cho phép lệch tối đa quanh mục tiêu khi cần; thiếu kho vẫn bù mức gần nhất. */
+    difficultyTolerance: z.number().int().min(0).max(2).default(2),
     /** Hiện Top 10 đầy đủ sau mỗi N câu (mặc định 5) và luôn sau câu cuối. */
     leaderboardInterval: z.number().int().min(1).max(20).default(5),
     /** Thưởng tốc độ tối đa cho câu đúng (0 = tắt). Người dùng chốt 11/11: có thưởng tốc độ. */
@@ -349,7 +368,10 @@ export const QuestionReviewSchema = z.object({
   operatorId: z.string().trim().min(1).max(100).default('operator'),
 });
 export type QuestionReview = z.infer<typeof QuestionReviewSchema>;
-export type SessionConfig = z.infer<typeof SessionConfigSchema>;
+type SessionConfigOutput = z.infer<typeof SessionConfigSchema>;
+/** Các trường mới có schema default vẫn optional ở type đầu vào để giữ tương thích caller cũ. */
+export type SessionConfig = Omit<SessionConfigOutput, 'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance'> &
+  Partial<Pick<SessionConfigOutput, 'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance'>>;
 
 /**
  * Vùng an toàn (px trên khung 1080×1920). GIÁ TRỊ MẶC ĐỊNH LÀ PRESET THỬ NGHIỆM BẢO THỦ,
@@ -683,7 +705,8 @@ export const CreateSessionRequestSchema = z.object({
   name: z.string().trim().min(1).max(100).default('Phiên LIVE'),
   config: SessionConfigSchema.default({}),
 });
-export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
+type CreateSessionRequestOutput = z.infer<typeof CreateSessionRequestSchema>;
+export type CreateSessionRequest = Omit<CreateSessionRequestOutput, 'config'> & { config: SessionConfig };
 
 export const SimulatorRequestSchema = z.object({
   action: z.enum(['START', 'STOP']),
