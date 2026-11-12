@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T11:56:17+07:00",
+  "heartbeat": "2026-11-12T11:56:57+07:00",
   "state": "working",
-  "task": "C-0113",
-  "note": "C-0116 đạt kiểm thử riêng; đang xử lý 4 lỗi e2e ở cảnh header/Top 10 trên cùng worktree",
+  "task": "C-0109",
+  "note": "Đã push và báo cáo C-0116/C-0113; bắt đầu âm thanh và hiệu ứng overlay theo C-0109",
   "done": [
     110,
     111,
