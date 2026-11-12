@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T09:34:08+07:00",
+  "heartbeat": "2026-11-12T09:54:03+07:00",
   "state": "waiting",
   "task": "C-0085",
-  "note": "Đã kiểm tra mailbox/status; C-0085 vẫn chờ coordinator xác nhận C-0080/C-0082 đã gộp. Không có task khả thi khác; DP1/DP2 đã xong.",
+  "note": "Mailbox/status chưa có xác nhận C-0080/C-0082 đã gộp; C-0085 tiếp tục chờ điều kiện, DP1/DP2 đã xong.",
   "done": [
     86,
     88,
