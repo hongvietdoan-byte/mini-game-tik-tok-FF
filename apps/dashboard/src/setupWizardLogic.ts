@@ -1,5 +1,5 @@
 import type { CheckStatus, SystemCheck, SystemCheckId } from '@quiz/contracts';
-import type { SystemChecksResponse } from './api/client';
+import type { PreflightResponse, SystemChecksResponse } from './api/client';
 
 export const SETUP_DONE_KEY = 'quiz.setupDone';
 
@@ -40,6 +40,26 @@ export function overlaySetupStatus(response: SystemChecksResponse | null): Check
   if (overlay === 'FAIL' || updated === 'FAIL') return 'FAIL';
   if (overlay === 'PASS' && updated === 'PASS') return 'PASS';
   return 'NOT_TESTED';
+}
+
+export function applyProgramAckStatus(
+  response: SystemChecksResponse,
+  preflight: PreflightResponse | null,
+  error?: string,
+): SystemChecksResponse {
+  const programAck = preflight?.checks.find((check) => check.id === 'overlayAck');
+  const status: CheckStatus = error ? 'FAIL' : programAck?.status === 'PASS' || programAck?.status === 'FAIL'
+    ? programAck.status
+    : 'NOT_TESTED';
+  const detail = error
+    ? `Không xác nhận được ACK từ nguồn program: ${error}`
+    : programAck?.reason ?? 'Server chưa trả trạng thái ACK từ nguồn program.';
+  return {
+    ...response,
+    checks: response.checks.map((check) => check.id === 'overlayUpdated'
+      ? { ...check, status, detail }
+      : check),
+  };
 }
 
 export function healthSetupStatus(health: { ok: boolean } | null): CheckStatus {

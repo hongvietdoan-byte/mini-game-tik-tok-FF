@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SystemCheck } from '@quiz/contracts';
 import {
   healthSetupStatus,
+  applyProgramAckStatus,
   isSetupComplete,
   nextSetupStep,
   overlaySetupStatus,
@@ -40,6 +41,15 @@ describe('setup wizard status logic', () => {
     expect(overlaySetupStatus(checks({ overlay: 'PASS', overlayUpdated: 'FAIL' }))).toBe('FAIL');
     expect(overlaySetupStatus(checks({ overlay: 'PASS', overlayUpdated: 'NOT_TESTED' }))).toBe('NOT_TESTED');
     expect(overlaySetupStatus(null)).toBe('NOT_TESTED');
+  });
+
+  it('uses only the role-aware preflight ACK for overlay PASS', () => {
+    const oldChecks = checks({ overlay: 'PASS', overlayUpdated: 'PASS' });
+    expect(applyProgramAckStatus(oldChecks, { checks: [{ id: 'overlayAck', label: 'Overlay ACK', status: 'WARN', reason: 'Chỉ thấy tab xem thử.' }] }).checks.find((check) => check.id === 'overlayUpdated')?.status).toBe('NOT_TESTED');
+    expect(applyProgramAckStatus(oldChecks, { checks: [{ id: 'overlayAck', label: 'Overlay ACK', status: 'FAIL', reason: 'Program chưa ACK.' }] }).checks.find((check) => check.id === 'overlayUpdated')?.status).toBe('FAIL');
+    expect(applyProgramAckStatus(oldChecks, { checks: [{ id: 'overlayAck', label: 'Overlay ACK', status: 'PASS', reason: 'Program ACK.' }] }).checks.find((check) => check.id === 'overlayUpdated')?.status).toBe('PASS');
+    expect(applyProgramAckStatus(oldChecks, null).checks.find((check) => check.id === 'overlayUpdated')?.status).toBe('NOT_TESTED');
+    expect(applyProgramAckStatus(oldChecks, null, 'Network error').checks.find((check) => check.id === 'overlayUpdated')?.status).toBe('FAIL');
   });
 
   it('preserves an overlay result when continuing and marks skipped only on request', () => {

@@ -1,36 +1,38 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const scenes = [
-  { name: 'LOBBY', mock: 'lobby', scene: 'LOBBY', state: 'LOBBY', required: ['[data-layer="quiz-hud"]', '[data-testid="question-prompt"]', '[data-layer="leaderboard"]', '.v3-event-identity', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
-  { name: 'QUESTION', mock: 'question', scene: 'QUESTION', state: 'ACCEPTING', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '.v3-event-identity', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
-  { name: 'REVEAL', mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '.v3-event-identity', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
+  { name: 'LOBBY', mock: 'lobby', scene: 'LOBBY', state: 'LOBBY', required: ['[data-layer="quiz-hud"]', '[data-testid="question-prompt"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
+  { name: 'QUESTION', mock: 'question', scene: 'QUESTION', state: 'ACCEPTING', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
+  { name: 'READING', mock: 'reading', scene: 'QUESTION', state: 'READING', required: ['[data-layer="quiz-hud"]', '[data-testid="reading-status"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
+  { name: 'REVEAL', mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
   // Hợp đồng hiện tại phát state LEADERBOARD trong scene REVEAL; ghi riêng để không bỏ sót trạng thái.
-  { name: 'LEADERBOARD', mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '.v3-event-identity', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
-  { name: 'INTERIM_TOP10', mock: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD', required: ['[data-testid="v3-top10-large"]', '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]', '.v3-full-round', '.v3-title'] },
-  { name: 'INTERMISSION', mock: 'intermission', scene: 'INTERMISSION', state: 'INTERMISSION', required: ['[data-testid="intermission-message"]', '[data-testid="timer"]', '.v3-scene-kicker', '.v3-title'] },
-  { name: 'VICTORY', mock: 'victory', scene: 'VICTORY', state: 'VICTORY', required: ['.v3v-trophy', '.v3v-header .v3-title', '.v3v-caption', '[data-testid^="podium-slot-"] .nameplate'] },
-  { name: 'CONNECTION_LOST', mock: 'connection-lost', scene: 'CONNECTION_LOST', state: 'CONNECTION_INTERRUPTED', required: ['[data-testid="connection-lost-message"]', '.v3-scene-kicker', '.v3-title'] },
+  { name: 'LEADERBOARD', mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD', required: ['[data-layer="quiz-hud"]', '[data-testid="timer"]', '[data-testid="question-prompt"]', '[data-testid="option-A"]', '[data-layer="leaderboard"]', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-layer="kelly"] .v3-mc-figure'] },
+  { name: 'INTERIM_TOP10', mock: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD', required: ['[data-testid="v3-top10-large"]', '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]', '.v3-full-round', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title', '[data-testid="top10-guide"]'] },
+  { name: 'INTERMISSION', mock: 'intermission', scene: 'INTERMISSION', state: 'INTERMISSION', required: ['[data-testid="intermission-message"]', '[data-testid="timer"]', '.v3-scene-kicker', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title'] },
+  { name: 'VICTORY', mock: 'victory', scene: 'VICTORY', state: 'VICTORY', required: ['.v3v-bg-image', '.v3v-header', '[data-testid^="podium-slot-"] .v3v-nameplate'] },
+  { name: 'CONNECTION_LOST', mock: 'connection-lost', scene: 'CONNECTION_LOST', state: 'CONNECTION_INTERRUPTED', required: ['[data-testid="connection-lost-message"]', '.v3-scene-kicker', '[data-testid="event-mark"]', '[data-testid="round-card"]', '.v3-title'] },
 ] as const;
 
 const importantElements = [
   { label: 'quiz-hud', selector: '[data-layer="quiz-hud"]' },
   { label: 'timer', selector: '[data-testid="timer"]' },
+  { label: 'reading status', selector: '[data-testid="reading-status"]' },
   { label: 'question', selector: '[data-testid="question-prompt"]' },
   { label: 'answer', selector: '[data-testid^="option-"]:not([data-testid="option-list"])' },
   { label: 'Top10', selector: '[data-layer="leaderboard"], [data-testid="v3-top10-large"]' },
   { label: 'Top10 row', selector: '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]' },
-  { label: 'round label', selector: '.v3-event-identity span, .v3-full-round, .v3-scene-kicker, .v3-title-ribbon, .v3v-caption' },
-  { label: 'STORM ARENA', selector: '.v3-event-identity b' },
-  { label: 'brand logo', selector: '.v3-title img, .v3-title-main, .v3-crown' },
-  { label: 'trophy', selector: '.v3v-trophy' },
-  { label: 'podium name', selector: '[data-testid^="podium-slot-"] .nameplate' },
+  { label: 'round label', selector: '.v3-full-round, .v3-scene-kicker, .v3v-caption' },
+  { label: 'top meta', selector: '[data-testid="round-card"]' },
+  { label: 'brand logo', selector: '.v3-title img[data-testid="brand-logo"], .v3-title-main, .v3-crown, .v3v-event-logo' },
+  { label: 'event subtitle', selector: '.v3-title-ribbon' },
+  { label: 'podium name', selector: '[data-testid^="podium-slot-"] .v3v-nameplate' },
   { label: 'MC figure', selector: '[data-layer="kelly"] .v3-mc-figure' },
   { label: 'MC plate', selector: '[data-layer="kelly"] .v3-mc-plate' },
   { label: 'MC bubble', selector: '[data-testid="mc-bubble"]' },
 ] as const;
 
 const hudBlockers = [
-  { label: 'host pill', selectors: ['[data-testid="tiktok-live-info"]'] },
+  { label: 'host avatar', selectors: ['.tiktok-hud-host-avatar'] },
   { label: 'viewers', selectors: ['[data-testid="tiktok-viewers"]', '.tiktok-hud-live-copy small'] },
   { label: 'live chips', selectors: ['[data-testid="tiktok-live-chips"]', '[data-testid="tiktok-actions"]'] },
   { label: 'event banner', selectors: ['[data-testid="tiktok-event-banner"]', '.tiktok-hud-demo-label'] },
@@ -47,6 +49,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     const stageBox = stage.getBoundingClientRect();
     if (stageBox.width <= 0 || stageBox.height <= 0) throw new Error('Stage không có kích thước');
     const isVictoryScene = stage.querySelector('.v3v') !== null;
+    const compactQuestionHeader = stage.querySelector('.v3-stage--question-user') !== null;
 
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const visible = (element: Element) => {
@@ -62,10 +65,36 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     });
     const importantBoxes = important.flatMap(({ label, selector }) => {
       const elements = Array.from(stage.querySelectorAll(selector)).filter(visible);
-      return elements.map((element, index) => ({
-        label: elements.length > 1 ? `${label} ${index + 1}` : label,
-        box: element.getBoundingClientRect(),
-      }));
+      return elements.map((element, index) => {
+        let box = element.getBoundingClientRect();
+        if (isVictoryScene && element instanceof HTMLImageElement && element.classList.contains('v3v-event-logo') && element.complete && element.naturalWidth > 0) {
+          const canvas = document.createElement('canvas');
+          canvas.width = element.naturalWidth;
+          canvas.height = element.naturalHeight;
+          const context = canvas.getContext('2d');
+          if (context) {
+            context.drawImage(element, 0, 0);
+            const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+            let left = width; let top = height; let right = -1; let bottom = -1;
+            for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+              if (data[(y * width + x) * 4 + 3]! < 64) continue;
+              left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1);
+            }
+            if (right > left && bottom > top) {
+              const fit = getComputedStyle(element).objectFit;
+              const scaleX = box.width / width;
+              const scaleY = box.height / height;
+              const scale = fit === 'cover' ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+              const contentWidth = width * scale;
+              const contentHeight = height * scale;
+              const offsetX = box.left + (box.width - contentWidth) / 2;
+              const offsetY = box.top + (box.height - contentHeight) / 2;
+              box = new DOMRect(offsetX + left * scale, offsetY + top * scale, (right - left) * scale, (bottom - top) * scale);
+            }
+          }
+        }
+        return { label: elements.length > 1 ? `${label} ${index + 1}` : label, box };
+      });
     });
     const blockersFound = blockers.flatMap(({ label, selectors }) => {
       const element = selectors.map((selector) => stage.querySelector(selector)).find((candidate) => candidate && visible(candidate));
@@ -82,17 +111,34 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
         report.push(`${row.element} | ${row.rule} | ${row.x} | ${row.y}`);
       };
       const isBrandLogo = item.label.startsWith('brand logo');
+      const isEventSubtitle = item.label.startsWith('event subtitle');
+      const isTopMeta = item.label.startsWith('top meta');
       const decorativeBleed = item.label === 'trophy';
-      if (!decorativeBleed && !isBrandLogo && (p.x1 < 8.9 || p.x2 > 91.1)) add('crop-fill: phải nằm trong x=9–91%');
+      const approvedVictoryNameplate = isVictoryScene && item.label.startsWith('podium name');
+      const approvedVictoryLogoHudException = isVictoryScene && isBrandLogo && p.x1 >= 25 && p.x2 <= 75;
+      if (!decorativeBleed && !approvedVictoryNameplate && !isBrandLogo && (p.x1 < 8.9 || p.x2 > 91.1)) add('crop-fill: phải nằm trong x=9–91%');
       if (isBrandLogo) {
-        const logoBottomLimit = isVictoryScene ? 16 : 12.1;
-        if (p.y1 < 0.8 || p.y1 > 1.3 || p.y2 > logoBottomLimit) add(`logo: vị trí theo ref C-0073 (y≈1–${isVictoryScene ? 16 : 12}%)`);
+        if (isVictoryScene && !approvedVictoryLogoHudException) add('ngoại lệ HUD logo Victory chỉ hợp lệ trong dải giữa x=25–75%');
+        const logoTopMin = isVictoryScene ? 1.4 : 0.8;
+        const logoTopMax = isVictoryScene ? 3 : 5.5;
+        const logoBottomLimit = isVictoryScene ? 22 : 25.5;
+        if (p.y1 < logoTopMin || p.y1 > logoTopMax || p.y2 > logoBottomLimit) add(isVictoryScene
+          ? `logo: giữ khoảng hở với đỉnh cúp (y≈${logoTopMin}–${logoBottomLimit}%)`
+          : `logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
+      } else if (isEventSubtitle) {
+        const subtitleTop = compactQuestionHeader ? 12.5 : 24;
+        const subtitleBottom = compactQuestionHeader ? 15.5 : 28;
+        if (p.y1 < subtitleTop || p.y2 > subtitleBottom) add('dòng phụ phải nằm ngay dưới logo trong vùng header');
+      } else if (isTopMeta) {
+        if (p.y1 < 0.8 || p.y2 > 12.1) add('thông tin vòng phải nằm trong dải header theo ref');
       } else if (p.y1 < 14) add('HUD trên: y bắt đầu từ 14%');
-      if (p.x1 < 70 && p.y2 > 73 && p.y1 < 92) add('cột bình luận trái: vùng x<70%, y=73–92%');
+      const commentBandTop = isVictoryScene ? 79 : 73;
+      if (p.x1 < 70 && p.y2 > commentBandTop && p.y1 < 92) add(`cột bình luận trái: vùng x<70%, y=${commentBandTop}–92%`);
       if (p.y2 >= 92.5) add('thanh nhập: y phải nhỏ hơn 92.5%');
       for (const blocker of blockersFound) {
-        // Người dùng chấp nhận HUD che mép logo BVĐC; host pill/viewers không tính lỗi cho riêng logo.
-        if (item.label.startsWith('brand logo') && ['host pill', 'viewers'].includes(blocker.label)) continue;
+        // Chỉ cho logo Victory ở dải giữa đi qua banner sự kiện; các góc host/viewers vẫn phải thông thoáng.
+        if (approvedVictoryLogoHudException && ['event banner', 'live chips'].includes(blocker.label)) continue;
+        if (item.label.startsWith('brand logo') && !isVictoryScene && ['host avatar', 'viewers', 'live chips'].includes(blocker.label)) continue;
         if (intersects(item.box, blocker.box)) add(`giao vùng HUD: ${blocker.label}`);
       }
     }
@@ -112,9 +158,12 @@ for (const scene of scenes) {
     await expect(stage).toBeVisible();
     await expect(page.getByTestId('tiktok-hud')).toBeVisible();
     for (const selector of scene.required) await expect(stage.locator(selector).first(), `${scene.name}: phải có ${selector}`).toBeVisible();
-    if (scene.name === 'VICTORY') await expect(stage.locator('[data-testid^="podium-slot-"] .nameplate')).toHaveCount(3);
+    if (scene.name === 'VICTORY') {
+      await expect(stage.locator('[data-testid^="podium-slot-"] .v3v-nameplate')).toHaveCount(3);
+      await expect(stage.locator('.v3-mc-portrait, [data-testid="mc-celebration"]')).toHaveCount(0);
+    }
     expect(page.viewportSize()).toEqual({ width: 1080, height: 1920 });
-    if (scene.name === 'VICTORY') await page.waitForTimeout(7_100);
+    if (scene.name === 'VICTORY') await page.waitForTimeout(8_100);
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 
     const { issues, report, observedBlockers } = await inspectSafeZone(page);

@@ -1,19 +1,11 @@
 import React from 'react';
 import type { LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
-import { BrandHeader } from './ArenaStage';
+import { BrandHeader, McKelly } from './ArenaStage';
+import { ArenaBackdrop } from './ArenaBackdrop';
 import './arena.css';
 
-function V3Backdrop() {
-  return <div className="v3-bg" data-layer="background-storm" aria-hidden="true">
-    <span className="v3-storm" />
-    <span className="v3-bolt-l" />
-    <span className="v3-bolt-r" />
-    <span className="v3-lights" />
-  </div>;
-}
-
-function FullLeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
-  return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row">
+function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: number }) {
+  return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row" style={{ '--row-index': index } as React.CSSProperties}>
     <span className="v3-full-rank">{entry.rank}</span>
     <span className="v3-full-name">
       <span className="v3-full-name-text player-name" title={entry.displayName}>{entry.displayName}</span>
@@ -27,18 +19,21 @@ function FullLeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
 export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const entries = snapshot.leaderboard?.entries ?? [];
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <V3Backdrop />
-    <BrandHeader />
+    <ArenaBackdrop arena />
+    <BrandHeader snapshot={snapshot} />
     <section className="v3-leaderboard-full" data-layer="leaderboard-full" data-testid="v3-top10-large">
       <header className="v3-full-heading">
         <span className="eyebrow">BXH TRỰC TIẾP</span>
         <h1>TOP <b>10</b></h1>
         <span className="v3-full-round">SAU CÂU {String((snapshot.round?.questionIndex ?? 0) + 1).padStart(2, '0')}</span>
       </header>
-      <ol className="v3-full-list">{entries.slice(0, 10).map((entry) => <FullLeaderboardRow key={entry.playerId} entry={entry} />)}</ol>
+      <ol className="v3-full-list">{entries.slice(0, 10).map((entry, index) => <FullLeaderboardRow key={entry.playerId} entry={entry} index={index} />)}</ol>
       {entries.length === 0 && <p className="v3-full-empty">Chưa có người chơi</p>}
       <p className="v3-full-footnote">TÍCH LŨY ĐIỂM · TIẾP TỤC CHIẾN ĐẤU</p>
     </section>
+    <div className="v3-top10-guide" data-testid="top10-guide">
+      <McKelly snapshot={snapshot} bubbleOverride="BXH trực tiếp! Cùng xem ai đang dẫn đầu và bám sát Top 10 nhé." />
+    </div>
   </div>;
 }
 
@@ -60,8 +55,8 @@ function FullTimer({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remain
 
 export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <V3Backdrop />
-    <BrandHeader />
+    <ArenaBackdrop />
+    <BrandHeader snapshot={snapshot} />
     <section className="v3-intermission" data-layer="intermission" data-testid="intermission-message">
       <span className="v3-scene-kicker">HẾT VÒNG {snapshot.round?.roundNumber ?? 1}</span>
       <div className="v3-intermission-emblem" aria-hidden="true"><svg viewBox="0 0 120 60"><path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" /></svg></div>
@@ -75,8 +70,8 @@ export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicS
 export function ConnectionLostStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const failed = snapshot.state === 'ERROR';
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <V3Backdrop />
-    <BrandHeader />
+    <ArenaBackdrop />
+    <BrandHeader snapshot={snapshot} />
     <section className="v3-connection-lost" data-layer="connection-lost" data-testid="connection-lost-message">
       <div className="v3-connection-emblem" aria-hidden="true"><span /><i /></div>
       <span className="v3-scene-kicker">KẾT NỐI GIÁN ĐOẠN</span>

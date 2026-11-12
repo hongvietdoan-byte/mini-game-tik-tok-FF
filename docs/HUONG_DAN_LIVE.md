@@ -26,7 +26,7 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
 ## 2. Đưa overlay vào TikTok LIVE Studio
 
 1. Chọn bố cục dọc (Portrait 9:16).
-2. Thêm nguồn Link / Web (Browser) với URL `http://127.0.0.1:8787/overlay/`, kích thước 1080 × 1920.
+2. Thêm nguồn Link / Web (Browser) với URL `http://127.0.0.1:8787/overlay/?role=program` (bắt buộc có `?role=program`: chỉ nguồn này được tính là nguồn phát thật, không hiện nút bật âm; mở `/overlay/` không tham số trên trình duyệt chỉ là tab xem thử), kích thước 1080 × 1920.
 3. Kéo nguồn phủ kín khung hình và đặt ở lớp trên cùng.
 4. Nếu LIVE Studio không có nguồn Link, mở URL bằng Edge/Chrome rồi dùng Window capture.
 

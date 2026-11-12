@@ -1,8 +1,25 @@
-import type { LiveSourceHealth } from '@quiz/contracts';
+import type { LiveSourceHealth, OverlayAudioState } from '@quiz/contracts';
 
 export type PreflightHealthStatus = 'PASS' | 'FAIL' | 'WARN';
 export const COMMENT_RECENCY_WINDOW_MS = 5 * 60 * 1_000;
 export const OVERLAY_ACK_GRACE_MS = 2_000;
+export const OVERLAY_AUDIO_WARNING = 'Nguồn phát trong LIVE Studio chưa phát được âm thanh (trình duyệt chặn tự phát)';
+
+export function overlayAudioPreflight(audioState: OverlayAudioState | null): {
+  status: PreflightHealthStatus;
+  reason: string;
+} {
+  if (audioState === 'suspended' || audioState === 'unavailable') {
+    return { status: 'WARN', reason: OVERLAY_AUDIO_WARNING };
+  }
+  if (audioState === 'disabled') {
+    return { status: 'PASS', reason: 'Âm thanh nguồn trong LIVE Studio đã tắt theo cấu hình.' };
+  }
+  if (audioState === 'running') {
+    return { status: 'PASS', reason: 'Âm thanh nguồn trong LIVE Studio đang phát.' };
+  }
+  return { status: 'WARN', reason: 'Chưa nhận được trạng thái âm thanh từ nguồn trong LIVE Studio.' };
+}
 
 export function commentSourcePreflight(
   mode: 'MOCK' | 'TIKTOK',
@@ -36,6 +53,7 @@ export function commentSourcePreflight(
 
 export function overlayAckPreflight(input: {
   clients: number;
+  programClients: number;
   ackVersion: number | null;
   expectedVersion: number;
   nowMs: number;
@@ -43,6 +61,9 @@ export function overlayAckPreflight(input: {
   graceMs?: number;
 }): { status: PreflightHealthStatus; reason: string } {
   if (input.clients < 1) return { status: 'FAIL', reason: 'Chưa có overlay kết nối.' };
+  if (input.programClients < 1) {
+    return { status: 'WARN', reason: 'Chỉ thấy tab xem thử, chưa thấy nguồn trong LIVE Studio.' };
+  }
   if (input.ackVersion !== null && input.ackVersion >= input.expectedVersion) {
     return {
       status: 'PASS',

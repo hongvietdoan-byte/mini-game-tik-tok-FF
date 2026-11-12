@@ -18,6 +18,12 @@ const TYPES: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+const AUDIO_TYPES: Record<string, string> = {
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+};
+const MAX_AUDIO_ASSET_BYTES = 5 * 1024 * 1024;
+
 /**
  * Phục vụ bản build của một SPA dưới tiền tố (vd `/overlay/`) — không cần @fastify/static.
  * Chặn path traversal; đường dẫn không có đuôi file → index.html (SPA fallback).
@@ -59,9 +65,16 @@ export function serveAssets(app: FastifyInstance, prefix: '/assets', root: strin
     const rel = decodeURIComponent((req.params as { '*': string })['*'] ?? '');
     const target = normalize(join(base, rel));
     if (!target.startsWith(base + sep)) return reply.code(403).send('Forbidden');
-    if (!existsSync(target) || statSync(target).isDirectory()) return reply.code(404).send('Not found');
-    const type = TYPES[extname(target).toLowerCase()];
-    if (!type || !/^(image|font)\//.test(type)) return reply.code(415).send('Unsupported');
+    if (!existsSync(target)) return reply.code(404).send('Not found');
+    const stats = statSync(target);
+    if (stats.isDirectory()) return reply.code(404).send('Not found');
+    const extension = extname(target).toLowerCase();
+    const audioDirectory = `${resolve(base, 'audio')}${sep}`;
+    const audioType = AUDIO_TYPES[extension];
+    const isSupportedAudio = target.startsWith(audioDirectory) && audioType !== undefined;
+    const type = isSupportedAudio ? audioType : TYPES[extension];
+    if (!type || (!/^(image|font)\//.test(type) && !isSupportedAudio)) return reply.code(415).send('Unsupported');
+    if (isSupportedAudio && stats.size > MAX_AUDIO_ASSET_BYTES) return reply.code(413).send('Audio asset too large');
     return reply.header('content-type', type).header('cache-control', 'public, max-age=300').header('x-content-type-options', 'nosniff').send(readFileSync(target));
   });
   return true;

@@ -4,6 +4,7 @@ import type {
   CommandResult,
   CreateSessionRequest,
   LiveSourceHealth,
+  OverlayAudioState,
   Question,
   QuestionReview,
   SimulatorRequest,
@@ -17,7 +18,10 @@ export type SourceControlAction = 'CONNECT' | 'DISCONNECT' | 'RECONNECT';
 export type SystemChecksResponse = {
   checks: SystemCheck[];
   live: LiveSourceHealth | null;
-  overlay: { clients: number; lastAck: { stateVersion: number; atMs: number } | null };
+  overlay: { clients: number; lastAck: { stateVersion: number; atMs: number } | null; audioState?: OverlayAudioState | null };
+};
+export type PreflightResponse = {
+  checks: Array<{ id: string; label: string; status: 'PASS' | 'FAIL' | 'WARN'; reason: string }>;
 };
 export type SelfTestResponse = { ok: boolean; mockComment: boolean; engineRecorded: boolean; detail: string; durationMs: number };
 export type HealthResponse = { ok: boolean; contractVersion: number; sessionId: string | null };
@@ -35,6 +39,7 @@ export interface DashboardClient {
   getQuestions(token: string): Promise<Question[]>;
   reviewQuestion(token: string, questionId: string, decision: QuestionReview['decision'], reason?: string): Promise<{ ok: boolean; question: Question }>;
   getSystemChecks(token: string): Promise<SystemChecksResponse>;
+  getPreflight(token: string): Promise<PreflightResponse>;
   runSystemSelfTest(token: string): Promise<SelfTestResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
 }
@@ -135,6 +140,10 @@ export const apiClient: DashboardClient = {
 
   getSystemChecks(token) {
     return jsonRequest('/api/system/checks', token);
+  },
+
+  getPreflight(token) {
+    return jsonRequest('/api/preflight', token);
   },
 
   runSystemSelfTest(token) {
