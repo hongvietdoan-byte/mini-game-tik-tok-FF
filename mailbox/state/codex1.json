@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T10:59:56+07:00",
+  "heartbeat": "2026-11-12T11:02:19+07:00",
   "state": "waiting",
   "task": "C-0085",
-  "note": "C-0112 đã report X-0185 và done; C-0085 đang xếp hàng, chờ coordinator xác nhận các mốc gộp trước khi bắt đầu.",
+  "note": "Đã gửi câu hỏi X-0186 xác nhận C-0080/C-0082 đã gộp và C-0085 được mở khóa; chờ coordinator phản hồi.",
   "done": [
     86,
     88,
