@@ -19,6 +19,7 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: overlayUrl,
+    channel: process.env.CI ? undefined : 'msedge',
     viewport: { width: 1080, height: 1920 },
     deviceScaleFactor: 1,
   },

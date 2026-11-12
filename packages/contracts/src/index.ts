@@ -215,8 +215,10 @@ export const QuestionSchema = z
   });
 export type Question = z.infer<typeof QuestionSchema>;
 
-/** Ngưỡng nội dung khuyến nghị cho overlay; vượt ngưỡng chỉ cảnh báo, không từ chối câu. */
+/** Ngưỡng cảnh báo nội dung trong danh sách và tuyển chọn; vượt ngưỡng không từ chối câu. */
 export const QUESTION_WARNING_LIMITS = { promptMax: 110, optionMax: 28 } as const;
+/** Mốc hiển thị đã duyệt; preflight dùng để cảnh báo câu APPROVED dài hơn khung. */
+export const QUESTION_DISPLAY_LIMITS = { promptMax: 160, optionMax: 45 } as const;
 
 export type QuestionLengthWarning = {
   code: 'TOO_LONG';
@@ -233,26 +235,27 @@ function questionCharacterCount(value: string): number {
 /** Trả về cảnh báo cho từng trường vượt ngưỡng; không biến cảnh báo thành lỗi validation. */
 export function questionLengthWarnings(
   question: Pick<Question, 'prompt' | 'options'>,
+  limits: { promptMax: number; optionMax: number } = QUESTION_WARNING_LIMITS,
 ): QuestionLengthWarning[] {
   const warnings: QuestionLengthWarning[] = [];
   const promptLength = questionCharacterCount(question.prompt);
-  if (promptLength > QUESTION_WARNING_LIMITS.promptMax) {
+  if (promptLength > limits.promptMax) {
     warnings.push({
       code: 'TOO_LONG',
       field: 'prompt',
       characterCount: promptLength,
-      limit: QUESTION_WARNING_LIMITS.promptMax,
+      limit: limits.promptMax,
     });
   }
   for (const option of question.options) {
     const optionLength = questionCharacterCount(option.text);
-    if (optionLength > QUESTION_WARNING_LIMITS.optionMax) {
+    if (optionLength > limits.optionMax) {
       warnings.push({
         code: 'TOO_LONG',
         field: 'option',
         optionId: option.id,
         characterCount: optionLength,
-        limit: QUESTION_WARNING_LIMITS.optionMax,
+        limit: limits.optionMax,
       });
     }
   }

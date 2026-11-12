@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QuestionSchema, QUESTION_WARNING_LIMITS, questionLengthWarnings } from './index';
+import { QuestionSchema, QUESTION_DISPLAY_LIMITS, QUESTION_WARNING_LIMITS, questionLengthWarnings } from './index';
 
 function question(prompt: string, options: string[]) {
   return QuestionSchema.parse({
@@ -34,6 +34,17 @@ describe('questionLengthWarnings', () => {
     expect(questionLengthWarnings(value)).toEqual([
       { code: 'TOO_LONG', field: 'prompt', characterCount: 111, limit: 110 },
       { code: 'TOO_LONG', field: 'option', optionId: 'o1', characterCount: 29, limit: 28 },
+    ]);
+  });
+
+  it('dùng riêng mốc hiển thị 160/45 khi preflight cần đánh giá khung overlay', () => {
+    const value = question('x'.repeat(QUESTION_DISPLAY_LIMITS.promptMax + 1), [
+      'a'.repeat(QUESTION_DISPLAY_LIMITS.optionMax + 1), 'b', 'c', 'd',
+    ]);
+
+    expect(questionLengthWarnings(value, QUESTION_DISPLAY_LIMITS)).toEqual([
+      { code: 'TOO_LONG', field: 'prompt', characterCount: 161, limit: 160 },
+      { code: 'TOO_LONG', field: 'option', optionId: 'o1', characterCount: 46, limit: 45 },
     ]);
   });
 
