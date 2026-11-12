@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T13:52:31+07:00",
-  "state": "waiting",
+  "heartbeat": "2026-11-12T14:12:35+07:00",
+  "state": "working",
   "task": "C-0109",
-  "note": "Không có thư mới hoặc câu trả lời MIME; nhánh và report đã gửi, chờ hỗ trợ server audio để kiểm tra khe MP3/OGG. Preview :5186 vẫn mở",
+  "note": "C-0120 cho phép sửa static.ts và test riêng trong nhánh C-0109; đang kiểm tra C-0111 và đồng bộ origin/main trước khi triển khai MIME/giới hạn 5MB",
   "done": [
     110,
     111,
