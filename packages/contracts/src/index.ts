@@ -408,6 +408,7 @@ export const CommandErrorCodeSchema = z.enum([
   'CONNECTION_NOT_READY',
   'INSUFFICIENT_QUESTIONS',
   'NOT_ALLOWED_IN_MODE',
+  'PREFLIGHT_FAILED',
   'VALIDATION_FAILED',
 ]);
 export type CommandErrorCode = z.infer<typeof CommandErrorCodeSchema>;

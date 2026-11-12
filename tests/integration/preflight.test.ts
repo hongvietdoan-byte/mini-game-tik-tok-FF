@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ConnectionStatus, LiveSource, RawComment } from '@quiz/contracts';
+import type { CommandBody, ConnectionStatus, LiveSource, RawComment, SessionConfig } from '@quiz/contracts';
 import { ManualScheduler, MockAdapter, type LiveAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
@@ -84,26 +84,32 @@ async function makeHarness(options: {
   return harness;
 }
 
-async function createSession(h: Harness, mode: 'MOCK' | 'TIKTOK' = 'TIKTOK') {
+async function createSession(
+  h: Harness,
+  mode: 'MOCK' | 'TIKTOK' = 'TIKTOK',
+  overrides: Omit<Partial<SessionConfig>, 'timings'> & { timings?: Partial<SessionConfig['timings']> } = {},
+) {
   const response = await h.quiz.app.inject({
     method: 'POST', url: '/api/sessions', headers: AUTH,
     payload: { name: 'Phiên preflight', config: {
       mode, tiktokUsername: mode === 'TIKTOK' ? 'test_live' : undefined, packId: 'preflight',
       questionsPerRound: 10, allowDemoQuestions: mode === 'MOCK', seed: 77,
+      ...overrides,
     } },
   });
   expect(response.statusCode).toBe(201);
   return response.json().sessionId as string;
 }
 
-async function command(h: Harness, sessionId: string, type: 'OPEN_LOBBY' | 'START_ROUND') {
+async function command(h: Harness, sessionId: string, requested: CommandBody | 'OPEN_LOBBY' | 'START_ROUND') {
   const runtime = h.quiz.runtime();
   if (!runtime) throw new Error('Runtime chưa được tạo.');
   return h.quiz.app.inject({
     method: 'POST', url: `/api/sessions/${sessionId}/commands`, headers: AUTH,
     payload: {
       commandId: randomUUID(), expectedStateVersion: runtime.engine.stateVersion,
-      operatorId: 'preflight-test', requestedAtMs: h.scheduler.now(), command: { type },
+      operatorId: 'preflight-test', requestedAtMs: h.scheduler.now(),
+      command: typeof requested === 'string' ? { type: requested } : requested,
     },
   });
 }
@@ -180,6 +186,22 @@ describe('API preflight và cổng START_ROUND', () => {
 
     const afterStart = await h.quiz.app.inject({ method: 'GET', url: '/api/preflight', headers: AUTH });
     expect(afterStart.json().checks.find((item: { id: string }) => item.id === 'questions')).toMatchObject({ status: 'FAIL' });
+  });
+
+  it('auto mode gặp preflight FAIL thì không bắt đầu vòng và tự tắt', async () => {
+    const h = await makeHarness();
+    const sessionId = await createSession(h, 'TIKTOK', { timings: { lobbyMs: 1_000 } });
+    expect((await command(h, sessionId, 'OPEN_LOBBY')).statusCode).toBe(200);
+    expect((await command(h, sessionId, { type: 'SET_AUTO_MODE', enabled: true })).statusCode).toBe(200);
+
+    h.scheduler.advance(1_000);
+
+    const runtime = h.quiz.runtime()!;
+    expect(runtime.engine.state).toBe('LOBBY');
+    expect(runtime.engine.autoMode).toBe(false);
+    expect(runtime.engine.round).toBeNull();
+    expect(runtime.adminSnapshot().error?.code).toBe('AUTO_START_FAILED');
+    expect(runtime.adminSnapshot().error?.message).toContain('overlayAck: Chưa có overlay kết nối.');
   });
 
   it('loại câu DEMO khỏi TIKTOK và nêu rõ thiếu ngân hàng câu hỏi', async () => {

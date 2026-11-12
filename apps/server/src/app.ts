@@ -505,7 +505,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         sessionId: rt.id,
       });
     const runtime = await SessionRuntime.create(
-      { store, scheduler, characterPool: opts.characterPool, adapter: adapterFactory(parsed.data.config.mode, parsed.data.config) },
+      {
+        store,
+        scheduler,
+        characterPool: opts.characterPool,
+        adapter: adapterFactory(parsed.data.config.mode, parsed.data.config),
+        preflight: (session) => makePreflight(session),
+      },
       parsed.data,
     );
     attachRuntime(runtime);
@@ -526,18 +532,6 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!guard(req, reply, true)) return reply;
     const s = sessionOr404(req.params.id, reply);
     if (!s) return reply;
-    const requestedCommand = (req.body as { command?: { type?: unknown } } | null)?.command?.type;
-    if (s.config.mode === 'TIKTOK' && requestedCommand === 'START_ROUND') {
-      const preflight = makePreflight(s);
-      const failures = preflight.checks.filter((item) => item.status === 'FAIL');
-      if (failures.length > 0)
-        return reply.code(422).send({
-          ok: false,
-          code: 'PREFLIGHT_FAILED',
-          message: 'Không thể bắt đầu vòng TIKTOK khi preflight còn mục FAIL.',
-          details: failures,
-        });
-    }
     const out = s.dispatch(req.body);
     return reply.code(out.status).send(out.result);
   });
@@ -754,7 +748,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const row = store.latestOpenSession();
       if (!row) return null;
       const r = await SessionRuntime.recover(
-        { store, scheduler, characterPool: opts.characterPool, adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config) },
+        {
+          store,
+          scheduler,
+          characterPool: opts.characterPool,
+          adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config),
+          preflight: (session) => makePreflight(session),
+        },
         row,
       );
       attachRuntime(r);
