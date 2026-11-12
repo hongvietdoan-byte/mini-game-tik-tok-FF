@@ -58,7 +58,8 @@ echo [3/3] Dang chay may chu tai http://127.0.0.1:8787 ...
 start "" /min powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; if (Test-Path 'data/admin-token.txt') { Get-Content 'data/admin-token.txt' -Raw | Set-Clipboard }; Start-Process 'http://127.0.0.1:8787/dashboard/'"
 echo.
 echo  - Dashboard (dieu khien): http://127.0.0.1:8787/dashboard/
-echo  - Overlay (dua vao LIVE Studio, 1080x1920): http://127.0.0.1:8787/overlay/
+echo  - Overlay (dua vao LIVE Studio, 1080x1920): http://127.0.0.1:8787/overlay/?role=program
+echo  - Tab xem thu: http://127.0.0.1:8787/overlay/
 echo  - Ma quan tri da duoc CHEP SAN vao clipboard: bam Ctrl+V o o dang nhap Dashboard.
 echo  - DUNG TAT cua so nay trong luc LIVE. Tat cua so = tat game.
 echo.
