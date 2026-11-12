@@ -1,7 +1,7 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T10:15:10+07:00",
+  "heartbeat": "2026-11-12T10:59:00+07:00",
   "state": "working",
   "task": "C-0112",
   "note": "Đang dựng công cụ question_bank.py và kiểm tra API/DB; server 127.0.0.1:8787 đang hoạt động nên sẽ ưu tiên API, không ghi DB trực tiếp.",
@@ -17,6 +17,7 @@
     102,
     104,
     105,
-    106
+    106,
+    112
   ]
 }
