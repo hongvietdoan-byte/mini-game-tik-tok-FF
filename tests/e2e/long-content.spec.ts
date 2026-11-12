@@ -1,20 +1,26 @@
 import { expect, test, type Page } from '@playwright/test';
-import { QUESTION_LIMITS, type PublicSnapshot } from '@quiz/contracts';
+import type { PublicSnapshot } from '@quiz/contracts';
 import { sanitizeDisplayName } from '@quiz/quiz-core';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
 
+const DISPLAY_LIMITS = { prompt: 160, option: 45, name: 16 } as const;
 const playerName = sanitizeDisplayName('TênNgườiChơi'.repeat(40));
+const graphemes = Array.from(
+  new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(playerName),
+  ({ segment }) => segment,
+);
+const visiblePlayerName = `${graphemes.slice(0, DISPLAY_LIMITS.name - 1).join('')}…`;
 const OPTION_IDS = ['A', 'B', 'C', 'D'] as const;
 const questionPrompt = repeatWordsToLength(
   'Trong Battle Royale đội của bạn phối hợp theo dõi vùng an toàn và hoàn thành mục tiêu chiến thắng của trận đấu',
-  QUESTION_LIMITS.promptMax,
+  DISPLAY_LIMITS.prompt,
 );
 const optionTexts = [
   'Đáp án A mô tả một nhóm đồng đội phối hợp để hoàn thành mục tiêu chính trong trận đấu',
   'Đáp án B mô tả một nhóm khán giả cùng theo dõi và cổ vũ trận đấu đang diễn ra',
   'Đáp án C mô tả một nhóm vật phẩm được sắp xếp và mang theo trong hành trang',
   'Đáp án D mô tả một nhóm nhân vật được hiển thị trong bộ sưu tập cá nhân',
-].map((text) => repeatWordsToLength(text, QUESTION_LIMITS.optionMax));
+].map((text) => repeatWordsToLength(text, DISPLAY_LIMITS.option));
 
 function repeatWordsToLength(seed: string, max: number) {
   const words = seed.split(/\s+/);
@@ -103,6 +109,14 @@ async function expectTextFits(page: Page, selectors: string[]) {
   }
 }
 
+async function expectFontSizeAtLeast(page: Page, selector: string, minimum: number) {
+  const sizes = await page.locator(selector).evaluateAll((elements) => elements.map((element) =>
+    Number.parseFloat(getComputedStyle(element).fontSize),
+  ));
+  expect(sizes.length, `${selector} exists`).toBeGreaterThan(0);
+  for (const size of sizes) expect(size, `${selector} font size stays at least ${minimum}px`).toBeGreaterThanOrEqual(minimum);
+}
+
 async function expectWithinSafeZone(page: Page, stage: ReturnType<Page['locator']>, selectors: string[]) {
   const stageBox = await stage.boundingBox();
   expect(stageBox).not.toBeNull();
@@ -137,21 +151,21 @@ async function expectWithinSafeZone(page: Page, stage: ReturnType<Page['locator'
 }
 
 for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
-  test(`nội dung chạm giới hạn contract không cắt hoặc đè thành phần — ${sceneName}`, async ({ page }) => {
-    if (sceneName !== 'prepare')
-      test.fail(true, 'C-0146: đáp án 90 ký tự tràn cao 2 px; codex2 đang sửa overlay, chờ coordinator báo gỡ expected-fail.');
+  test(`nội dung đến mốc hiển thị 160/45 không cắt hoặc đè thành phần — ${sceneName}`, async ({ page }) => {
     const snapshot = questionSnapshot(sceneName);
-    expect(snapshot.question?.prompt).toHaveLength(QUESTION_LIMITS.promptMax);
+    expect(snapshot.question?.prompt).toHaveLength(DISPLAY_LIMITS.prompt);
     expect(snapshot.question?.options).toHaveLength(4);
-    expect(snapshot.question?.options.every((option) => option.text.length === QUESTION_LIMITS.optionMax)).toBe(true);
+    expect(snapshot.question?.options.every((option) => option.text.length === DISPLAY_LIMITS.option)).toBe(true);
 
     const stage = await openSnapshot(page, snapshot);
     const prompt = stage.getByTestId('question-prompt');
     await expect(prompt).toHaveText(questionPrompt);
     await expectTextFits(page, ['[data-testid="question-prompt"]']);
+    await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 24);
     const optionTextsRendered = stage.locator('[data-testid^="option-"] .v3-option-text');
     await expect(optionTextsRendered).toHaveCount(4);
     await expectTextFits(page, ['[data-testid^="option-"] .v3-option-text']);
+    await expectFontSizeAtLeast(page, '[data-testid^="option-"] .v3-option-text', 20);
 
     const contentBoxes = [prompt, ...await optionTextsRendered.all()];
     const content = await Promise.all(contentBoxes.map((locator) => locator.boundingBox()));
@@ -175,17 +189,18 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
 }
 
 for (const sceneName of ['top10-long-name', 'victory-name-test'] as const) {
-  test(`tên người chơi dài nhất sau chuẩn hóa nằm gọn trong layout — ${sceneName}`, async ({ page }) => {
-    if (sceneName === 'victory-name-test')
-      test.fail(true, 'C-0146: tên Victory 24 grapheme tràn ngang 4 px và bị ellipsis; codex2 đang sửa overlay, chờ coordinator báo gỡ expected-fail.');
-    expect(playerName).toHaveLength(24);
+  test(`tên người chơi quá 16 grapheme hiện ellipsis và không tràn — ${sceneName}`, async ({ page }) => {
+    expect(graphemes.length).toBeGreaterThan(DISPLAY_LIMITS.name);
+    expect(Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(visiblePlayerName))).toHaveLength(DISPLAY_LIMITS.name);
     const snapshot = namesSnapshot(sceneName);
     const stage = await openSnapshot(page, snapshot);
     const selector = sceneName === 'top10-long-name' ? '.v3-full-name-text' : '.v3v-player-name';
     const names = page.locator(selector);
-    await expect(names.first()).toContainText(playerName.slice(0, 12));
     if (sceneName === 'victory-name-test') await page.waitForTimeout(1_000);
+    await expect(names.first()).toHaveText(visiblePlayerName);
+    await expect(names.first()).toContainText('…');
     await expectTextFits(page, [selector]);
+    if (sceneName === 'victory-name-test') await expectFontSizeAtLeast(page, selector, 22);
 
     const safeSelectors = sceneName === 'top10-long-name'
       ? ['[data-testid="leaderboard-row"]', selector]
