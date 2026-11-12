@@ -1,20 +1,9 @@
 {
   "role": "codex2",
-  "last_read": 116,
-  "heartbeat": "2026-11-12T19:54:31+07:00",
+  "last_read": 137,
+  "heartbeat": "2026-11-12T21:13:36+07:00",
   "state": "waiting",
-  "task": "C-0132",
-  "note": "Không có thư mới hoặc phản hồi coordinator; code/report Y-0219 đã xong, chờ phân công cập nhật docs/HUONG_DAN_LIVE.md ngoài phạm vi lane.",
-  "done": [
-    120,
-    122,
-    124,
-    126,
-    127,
-    128,
-    130,
-    131,
-    133,
-    134
-  ]
+  "task": "C-0136",
+  "note": "Đã push 4a2ccd8 và report Y-0224; build/typecheck/321 vitest/59 e2e đều xanh; chờ coordinator rà/gộp. Preview 5190 đang mở.",
+  "done": []
 }
