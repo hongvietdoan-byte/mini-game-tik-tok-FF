@@ -48,11 +48,11 @@ function watchPageErrors(page: Page) {
     const pathname = new URL(response.url()).pathname;
     const optionalMcManifest = pathname === '/assets/mc/kelly/manifest.json';
     const optionalArenaAsset = pathname.startsWith('/assets/arena/');
-    const optionalAudioAsset = pathname.startsWith('/assets/audio/');
+    const optionalAudioAssetMissing = pathname.startsWith('/assets/audio/') && response.status() === 404;
     const optionalEventLogo = pathname === '/assets/brand/logo.png' && !hasLocalEventLogo;
     const optionalVictoryBackground = pathname === '/assets/victory/bg-redraw.jpg' && !hasLocalVictoryRedraw;
     const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset;
-    if (optionalMcManifest || optionalArenaAsset || optionalAudioAsset || optionalEventLogo || optionalVictoryBackground || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
+    if (optionalMcManifest || optionalArenaAsset || optionalAudioAssetMissing || optionalEventLogo || optionalVictoryBackground || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
     errors.push(`http ${response.status()}: ${pathname}`);
   });
   return errors;
@@ -697,7 +697,7 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   await page.addInitScript(() => {
     const testWindow = window as typeof window & { __audioProbe?: { contexts: number; oscillatorStarts: number; bufferStarts: number } };
     testWindow.__audioProbe = { contexts: 0, oscillatorStarts: 0, bufferStarts: 0 };
-    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
+    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
     class FakeAudioContext {
       state: AudioContextState = 'suspended';
       currentTime = 0;
@@ -713,7 +713,9 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
           stop() {}, onended: null,
         } as unknown as OscillatorNode;
       }
-      createBufferSource() { return { buffer: null, connect() {}, start: () => { testWindow.__audioProbe!.bufferStarts += 1; }, stop() {}, loop: false } as unknown as AudioBufferSourceNode; }
+      createBufferSource() { return { buffer: null, connect() {}, start: () => { testWindow.__audioProbe!.bufferStarts += 1; }, stop() {}, loop: false, onended: null } as unknown as AudioBufferSourceNode; }
+      createBuffer(_channels: number, length: number, sampleRate: number) { return { duration: length / sampleRate, getChannelData: () => new Float32Array(length) } as unknown as AudioBuffer; }
+      createBiquadFilter() { return { type: 'lowpass', frequency: param(), Q: param(), connect() {} } as unknown as BiquadFilterNode; }
       decodeAudioData() { return Promise.resolve({ duration: 0.2 } as AudioBuffer); }
       resume() { this.state = 'running'; this.onstatechange?.call(this as unknown as BaseAudioContext, new Event('statechange')); return Promise.resolve(); }
       close() { this.state = 'closed'; return Promise.resolve(); }
@@ -740,7 +742,7 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
     expect(cues.filter((value) => value === cue)).toHaveLength(1);
   const probe = await page.evaluate(() => (window as typeof window & { __audioProbe: { contexts: number; oscillatorStarts: number; bufferStarts: number } }).__audioProbe);
   expect(probe.contexts).toBe(1);
-  expect(probe.bufferStarts).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __audioProbe: { bufferStarts: number } }).__audioProbe.bufferStarts)).toBe(2);
   expect(probe.oscillatorStarts).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });

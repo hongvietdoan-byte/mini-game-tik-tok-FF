@@ -13,8 +13,8 @@ export const AUDIO_CUES = [
 export type AudioCue = typeof AUDIO_CUES[number];
 export type AudioSlot = AudioCue | 'bgm';
 export type VisualCue = 'question' | 'reveal' | 'top10' | 'victory' | 'transition';
-
 export type AudioMix = { volume: number; sfx: number; bgm: number };
+export type CountdownPulse = { offsetMs: number; frequency: number; duration: number };
 
 function level(params: URLSearchParams, key: string, fallback: number) {
   const raw = params.get(key);
@@ -30,6 +30,19 @@ export function parseAudioMix(search: string): AudioMix {
     sfx: level(params, 'sfx', 0.6),
     bgm: level(params, 'bgm', 0),
   };
+}
+
+/** More pulses fit into each remaining second as the deadline approaches. */
+export function countdownTickPattern(remainingSeconds: number): CountdownPulse[] {
+  const wholeSeconds = Number.isFinite(remainingSeconds) ? Math.trunc(remainingSeconds) : 5;
+  const seconds = Math.max(1, Math.min(5, wholeSeconds));
+  const pulseCount = 6 - seconds;
+  const intervalMs = 720 / pulseCount;
+  return Array.from({ length: pulseCount }, (_, index) => ({
+    offsetMs: index * intervalMs,
+    frequency: 650 + (5 - seconds) * 65 + index * 24,
+    duration: Math.max(0.045, 0.09 - (5 - seconds) * 0.008),
+  }));
 }
 
 export function mcDuckingGain(snapshot: Pick<PublicSnapshot, 'state' | 'mc'>): number {

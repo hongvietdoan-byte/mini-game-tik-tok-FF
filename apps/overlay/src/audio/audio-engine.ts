@@ -1,9 +1,8 @@
-import type { AudioCue, AudioMix, AudioSlot } from './audio-cues';
+import { countdownTickPattern, type AudioCue, type AudioMix, type AudioSlot } from './audio-cues';
 
 export type AudioEngineState = 'disabled' | 'running' | 'suspended' | 'unavailable';
 
 type StateListener = (state: AudioEngineState) => void;
-
 const AUDIO_FILE_EXTENSIONS = ['mp3', 'ogg'] as const;
 
 /** WebAudio playback with generated cues as the always-available fallback. */
@@ -13,10 +12,9 @@ export class OverlayAudioEngine {
   private readonly sfx: GainNode | null;
   private readonly bgm: GainNode | null;
   private readonly buffers = new Map<AudioSlot, Promise<AudioBuffer | null>>();
-  private readonly activeOscillators = new Set<OscillatorNode>();
-  private bgmSource: AudioBufferSourceNode | null = null;
-  private ducking = 1;
+  private readonly activeSources = new Set<AudioScheduledSourceNode>();
   private destroyed = false;
+  private ducking = 1;
 
   constructor(private readonly mix: AudioMix, private readonly onState: StateListener) {
     if (mix.volume <= 0 || (mix.sfx <= 0 && mix.bgm <= 0)) {
@@ -78,7 +76,7 @@ export class OverlayAudioEngine {
       this.sfx.gain.setTargetAtTime(this.mix.sfx * this.ducking, this.context.currentTime, 0.035);
   }
 
-  async play(cue: AudioCue) {
+  async play(cue: AudioCue, remainingSecond = 0) {
     const context = this.context;
     if (!context || !this.sfx || this.mix.sfx <= 0 || this.destroyed) return;
     if (context.state !== 'running') {
@@ -92,10 +90,12 @@ export class OverlayAudioEngine {
       const source = context.createBufferSource();
       source.buffer = file;
       source.connect(this.sfx);
+      source.onended = () => this.activeSources.delete(source);
+      this.activeSources.add(source);
       source.start();
       return;
     }
-    this.synthesize(cue);
+    this.synthesize(cue, remainingSecond);
   }
 
   private loadFile(slot: AudioSlot): Promise<AudioBuffer | null> {
@@ -119,6 +119,11 @@ export class OverlayAudioEngine {
     return request;
   }
 
+  private track(source: AudioScheduledSourceNode) {
+    source.onended = () => this.activeSources.delete(source);
+    this.activeSources.add(source);
+  }
+
   private tone(frequency: number, duration: number, peak: number, startAt: number, type: OscillatorType = 'sine', endFrequency?: number) {
     const context = this.context;
     if (!context || !this.sfx) return;
@@ -132,22 +137,79 @@ export class OverlayAudioEngine {
     envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
     oscillator.connect(envelope);
     envelope.connect(this.sfx);
-    oscillator.onended = () => this.activeOscillators.delete(oscillator);
-    this.activeOscillators.add(oscillator);
+    this.track(oscillator);
     oscillator.start(startAt);
     oscillator.stop(startAt + duration + 0.02);
   }
 
-  private synthesize(cue: AudioCue) {
-    if (!this.context) return;
-    const now = this.context.currentTime + 0.012;
+  private crowdCheer(startAt: number) {
+    const context = this.context;
+    if (!context || !this.sfx) return;
+    const duration = 1.1;
+    const frames = Math.ceil(context.sampleRate * duration);
+    const buffer = context.createBuffer(1, frames, context.sampleRate);
+    const channel = buffer.getChannelData(0);
+    let seed = 31_337;
+    for (let index = 0; index < frames; index += 1) {
+      seed = (seed * 16_807) % 2_147_483_647;
+      const noise = (seed / 1_073_741_823.5) - 1;
+      const phase = index / (frames - 1);
+      const swell = Math.pow(Math.sin(Math.PI * phase), 0.65);
+      const syllables = 0.62 + 0.38 * Math.sin(2 * Math.PI * 3.1 * phase);
+      channel[index] = noise * swell * syllables * 0.24;
+    }
+
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const envelope = context.createGain();
+    source.buffer = buffer;
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1_250, startAt);
+    filter.Q.setValueAtTime(0.7, startAt);
+    envelope.gain.setValueAtTime(0.0001, startAt);
+    envelope.gain.linearRampToValueAtTime(0.34, startAt + 0.14);
+    envelope.gain.linearRampToValueAtTime(0.16, startAt + 0.76);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+    source.connect(filter);
+    filter.connect(envelope);
+    envelope.connect(this.sfx);
+    this.track(source);
+    source.start(startAt);
+    source.stop(startAt + duration + 0.02);
+  }
+
+  private createBgmLoop() {
+    const context = this.context;
+    if (!context) return null;
+    const seconds = 6;
+    const frames = Math.ceil(context.sampleRate * seconds);
+    const buffer = context.createBuffer(1, frames, context.sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < frames; index += 1) {
+      const time = index / context.sampleRate;
+      const swell = 0.62 + 0.18 * Math.sin((2 * Math.PI * time) / 3);
+      channel[index] = swell * (
+        0.012 * Math.sin(2 * Math.PI * 110 * time) +
+        0.008 * Math.sin(2 * Math.PI * 165 * time) +
+        0.004 * Math.sin(2 * Math.PI * 220 * time)
+      );
+    }
+    return buffer;
+  }
+
+  private synthesize(cue: AudioCue, remainingSecond: number) {
+    const context = this.context;
+    if (!context) return;
+    const now = context.currentTime + 0.012;
     switch (cue) {
       case 'question-enter':
         this.tone(720, 0.32, 0.11, now, 'triangle', 170);
         this.tone(130, 0.13, 0.14, now + 0.13, 'sine', 70);
         break;
       case 'countdown-tick':
-        this.tone(880, 0.07, 0.08, now, 'square', 640);
+        for (const pulse of countdownTickPattern(remainingSecond)) {
+          this.tone(pulse.frequency, pulse.duration, 0.07, now + pulse.offsetMs / 1_000, 'square', pulse.frequency * 0.78);
+        }
         break;
       case 'timeout':
         this.tone(392, 0.16, 0.1, now, 'triangle', 300);
@@ -162,6 +224,7 @@ export class OverlayAudioEngine {
       case 'victory':
         [523, 659, 784, 1_047].forEach((note, index) => this.tone(note, 0.38, 0.085, now + index * 0.13, 'triangle'));
         [587, 698, 880, 988].forEach((note, index) => this.tone(note, 0.3, 0.025, now + 0.42 + index * 0.045, 'square'));
+        this.crowdCheer(now + 0.48);
         break;
       case 'transition':
         this.tone(440, 0.16, 0.055, now);
@@ -173,35 +236,21 @@ export class OverlayAudioEngine {
   private startBgm() {
     void this.loadFile('bgm').then((file) => {
       const context = this.context;
-      if (!context || !this.bgm || this.destroyed || this.mix.bgm <= 0) return;
-      if (file) {
-        const source = context.createBufferSource();
-        source.buffer = file;
-        source.loop = true;
-        source.connect(this.bgm);
-        source.start();
-        this.bgmSource = source;
-        return;
-      }
-      // Soft, steady two-note pad; the volume is intentionally far below SFX.
-      for (const [frequency, level] of [[110, 0.018], [164.81, 0.012], [220, 0.008]] as const) {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = 'sine';
-        oscillator.frequency.value = frequency;
-        gain.gain.value = level;
-        oscillator.connect(gain);
-        gain.connect(this.bgm);
-        oscillator.start();
-        this.activeOscillators.add(oscillator);
-      }
+      const bus = this.bgm;
+      if (!context || !bus || this.destroyed || this.mix.bgm <= 0) return;
+      const source = context.createBufferSource();
+      source.buffer = file ?? this.createBgmLoop();
+      if (!source.buffer) return;
+      source.loop = true;
+      source.connect(bus);
+      this.track(source);
+      source.start();
     });
   }
 
   destroy() {
     this.destroyed = true;
     this.context?.close().catch(() => undefined);
-    this.bgmSource = null;
-    this.activeOscillators.clear();
+    this.activeSources.clear();
   }
 }

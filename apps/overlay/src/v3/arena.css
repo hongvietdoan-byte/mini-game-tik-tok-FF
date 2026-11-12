@@ -1359,3 +1359,6 @@
 .v3-aux-timer { width: 210px; height: 210px; margin-top: 24px; }
 .v3-aux-timer strong { font-size: 44px; }
 .v3-connection-lost { top: 520px; }
+
+.v3-timer.is-urgent b { color: var(--pink); text-shadow: 0 0 15px rgba(255,79,114,.72); }
+.v3-timer.is-urgent .v3-timer-arc { filter: drop-shadow(0 0 11px rgba(255,79,114,.95)); }

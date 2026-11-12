@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeMockSnapshot } from '../mock/snapshots';
-import { AudioCueTracker, mcDuckingGain, parseAudioMix } from './audio-cues';
+import { AudioCueTracker, countdownTickPattern, mcDuckingGain, parseAudioMix } from './audio-cues';
 
 function mock(name: string) {
   const snapshot = makeMockSnapshot(name);
@@ -15,6 +15,18 @@ describe('overlay audio cues', () => {
     expect(parseAudioMix('?sfx=nope&bgm=0.25').sfx).toBe(0.6);
   });
 
+  it('accelerates the synthetic tick pattern toward zero', () => {
+    const fiveSeconds = countdownTickPattern(5);
+    const fourSeconds = countdownTickPattern(4);
+    const oneSecond = countdownTickPattern(1);
+    expect(fiveSeconds).toHaveLength(1);
+    expect(fourSeconds).toHaveLength(2);
+    expect(oneSecond).toHaveLength(5);
+    const oneSecondInterval = oneSecond[1]!.offsetMs - oneSecond[0]!.offsetMs;
+    const fourSecondInterval = fourSeconds[1]!.offsetMs - fourSeconds[0]!.offsetMs;
+    expect(oneSecondInterval).toBeLessThan(fourSecondInterval);
+    expect(oneSecond[0]!.frequency).toBeGreaterThan(fiveSeconds[0]!.frequency);
+  });
   it('plays a question-entry cue once across repeated snapshots and reading phase', () => {
     const tracker = new AudioCueTracker();
     expect(tracker.consume(mock('lobby'), 30_000).cues).toEqual([]);

@@ -193,7 +193,6 @@ h1 span, h2 span { color: var(--gold); }
 .audio-unlock-hint { position: fixed; z-index: 110; left: 16px; bottom: 16px; padding: 9px 14px; border: 1px solid rgba(220,210,255,.6); border-radius: 999px; background: rgba(20,13,55,.9); box-shadow: 0 0 18px rgba(112,73,245,.42); color: #fff; font: 700 13px/1.2 "Segoe UI", "Be Vietnam Pro", sans-serif; cursor: pointer; }
 .audio-unlock-hint:hover { background: rgba(50,32,118,.96); }
 .audio-unlock-hint:focus-visible { outline: 2px solid #ffcc58; outline-offset: 3px; }
-.overlay-fx-layer.is-low .overlay-fx-particle:nth-child(n+5) { display: none; }
 #stage.fx-low .v3-timer.is-urgent { animation: none; }
 #stage.fx-low .v3-full-row { animation-duration: .18s; }
 @media (prefers-reduced-motion: reduce) {
@@ -201,3 +200,13 @@ h1 span, h2 span { color: var(--gold); }
   .overlay-fx-particle, .overlay-fx-confetti { display: none !important; }
 }
 .overlay-fx-layer.is-reduced-motion .overlay-fx-particle, .overlay-fx-layer.is-reduced-motion .overlay-fx-confetti { display: none; }
+
+/* Brief jagged lightning on phase changes and a slow victory beam sweep. */
+.overlay-fx-bolt { position: absolute; top: 7%; left: 85%; width: 12%; height: 62%; opacity: 0; overflow: visible; mix-blend-mode: screen; filter: drop-shadow(0 0 7px rgba(226,247,255,1)) drop-shadow(0 0 16px rgba(73,194,255,.95)) drop-shadow(0 0 26px rgba(147,102,255,.8)); }
+.overlay-fx-layer[data-visual-cue="question"] .overlay-fx-bolt,
+.overlay-fx-layer[data-visual-cue="reveal"] .overlay-fx-bolt { animation: overlay-bolt-flash .52s steps(5,end) both; }
+@keyframes overlay-bolt-flash { 0%,100% { opacity: 0; } 9% { opacity: .82; } 18% { opacity: .08; } 30% { opacity: .64; } 42% { opacity: .12; } 54% { opacity: 0; } }
+.overlay-fx-victory-beam { position: absolute; top: -35%; bottom: -35%; left: -34vw; width: 34vw; opacity: 0; transform: skewX(-22deg); background: linear-gradient(90deg, transparent, rgba(190,220,255,.1) 26%, rgba(220,232,255,.58) 50%, rgba(160,125,255,.2) 72%, transparent); filter: blur(8px); }
+.overlay-fx-layer[data-scene="VICTORY"] .overlay-fx-victory-beam { opacity: .85; animation: overlay-victory-beam-sweep 6.8s ease-in-out infinite; }
+@keyframes overlay-victory-beam-sweep { 0%, 10% { transform: translateX(-8vw) skewX(-22deg); } 90%, 100% { transform: translateX(150vw) skewX(-22deg); } }
+.overlay-fx-layer.is-low .overlay-fx-victory-beam { animation-duration: 12s; opacity: .48; }.overlay-fx-layer.is-reduced-motion .overlay-fx-victory-beam { opacity: 0; animation: none; }

@@ -48,7 +48,7 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs }
     audio?.setDucking(mcDuckingGain(snapshot));
     const decision = tracker.current.consume(snapshot, second * 1_000);
     if (decision.cues.length) {
-      for (const cue of decision.cues) void audio?.play(cue);
+      for (const cue of decision.cues) void audio?.play(cue, second);
       setCues((previous) => [...previous, ...decision.cues].slice(-32));
     }
     if (decision.visualCue) {
@@ -73,10 +73,16 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs }
     <div
       className={`overlay-fx-layer ${FX_LOW ? 'is-low' : ''} ${reducedMotion ? 'is-reduced-motion' : ''}`}
       data-testid="overlay-fx"
+      data-scene={snapshot.scene}
       data-visual-cue={visualCue ?? ''}
       aria-hidden="true"
     >
       <div key={visualVersion} className={`overlay-fx-flash ${visualCue ? `is-${visualCue}` : ''}`} />
+      <svg key={`bolt-${visualVersion}`} className="overlay-fx-bolt" viewBox="0 0 100 100" aria-hidden="true">
+        <defs><linearGradient id="overlay-bolt-gradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#ffffff" /><stop offset="44%" stopColor="#8be7ff" /><stop offset="100%" stopColor="#c19aff" /></linearGradient></defs>
+        <path d="M62 0 28 43h24L16 100l16-45H10L42 0z" fill="url(#overlay-bolt-gradient)" />
+      </svg>
+      <div className="overlay-fx-victory-beam" />
       {Array.from({ length: particleCount }, (_, index) => {
         const style = {
           '--particle-x': `${(index * 67 + 9) % 100}%`,

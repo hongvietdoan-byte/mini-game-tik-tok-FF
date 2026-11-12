@@ -537,14 +537,19 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
 
   expect(consoleErrors).toEqual([]);
   const missingKellyManifestUrl = `${new URL(running.overlayUrl).origin}/assets/mc/kelly/manifest.json`;
-  const uniqueAsset404s = [...asset404s].sort();
   const optionalManifest404s = response404s.filter((url) => url === missingKellyManifestUrl);
-  const unexpected404s = response404s.filter((url) => url !== missingKellyManifestUrl);
+  const optionalAudio404s = response404s.filter((url) => {
+    const pathname = new URL(url).pathname;
+    return /^\/assets\/audio\/(question-enter|countdown-tick|timeout|correct-answer|top10|victory|transition|bgm)\.(mp3|ogg)$/.test(pathname);
+  });
+  const unexpected404s = response404s.filter((url) => url !== missingKellyManifestUrl && !optionalAudio404s.includes(url));
+  const uniqueAsset404s = [...asset404s].sort();
+  const expected404Assets = [...new Set([...(optionalManifest404s.length ? [missingKellyManifestUrl] : []), ...optionalAudio404s])].sort();
   // Có hai document overlay vì bài test ngắt rồi mở lại page; mỗi module/document chỉ tải manifest một lần.
   expect(assetManifestRequests, 'Mỗi document overlay chỉ được yêu cầu manifest MC một lần').toHaveLength(2);
-  expect(unexpected404s, 'Không được có 404 ngoài manifest MC tuỳ chọn').toEqual([]);
+  expect(unexpected404s, 'Chỉ chấp nhận 404 cho manifest MC và các khe audio tuỳ chọn không có file').toEqual([]);
   expect(optionalManifest404s.length).toBe(asset404s.has(missingKellyManifestUrl) ? assetManifestRequests.length : 0);
-  expect(resource404Messages, 'Console 404 chỉ được phát sinh từ manifest MC tuỳ chọn, tối đa một lần mỗi document').toHaveLength(optionalManifest404s.length);
-  expect(uniqueAsset404s).toEqual(optionalManifest404s.length ? [missingKellyManifestUrl] : []);
+  expect(resource404Messages, 'Mỗi resource 404 tuỳ chọn có một console resource error').toHaveLength(optionalManifest404s.length + optionalAudio404s.length);
+  expect(uniqueAsset404s).toEqual(expected404Assets);
   console.log(`C-0062 hoàn tất vòng 10 câu; FPS trung bình=${fps.averageFps.toFixed(1)}; manifestRequests=${assetManifestRequests.length}; asset404=${JSON.stringify(uniqueAsset404s)}; DB scratch=${running.dbPath}.`);
 });
