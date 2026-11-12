@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -34,11 +35,18 @@ class BlockedTikTokAdapter extends ReadyTikTokAdapter {
 type Harness = { quiz: QuizApp; store: Store; tempRoot: string; scheduler: ManualScheduler; port: number; sockets: WebSocket[] };
 const opened: Harness[] = [];
 
-async function createWebRoots(root: string, completeAssets = true) {
+async function createWebRoots(root: string, completeAssets = true, staleBuilds = false) {
   const assets = join(root, 'assets');
   const dashboard = join(root, 'dashboard-dist');
   const overlay = join(root, 'overlay-dist');
   await Promise.all([mkdir(dashboard, { recursive: true }), mkdir(overlay, { recursive: true })]);
+  const buildHash = staleBuilds
+    ? 'invalid-build-hash'
+    : execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).trim();
+  await Promise.all([
+    writeFile(join(dashboard, '.build-commit'), `${buildHash}\n`),
+    writeFile(join(overlay, '.build-commit'), `${buildHash}\n`),
+  ]);
   if (completeAssets) {
     for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
       const path = join(assets, relative);
@@ -66,7 +74,7 @@ async function makeHarness(options: {
   }));
   store.seedQuestions({ id: 'preflight', name: 'Preflight' }, questions, scheduler.now());
   const tempRoot = await mkdtemp(join(tmpdir(), 'quiz-preflight-'));
-  const webRoots = await createWebRoots(tempRoot, options.completeAssets ?? true);
+  const webRoots = await createWebRoots(tempRoot, options.completeAssets ?? true, options.staleBuilds ?? false);
   if (options.staleBuilds) {
     const epoch = new Date(0);
     await Promise.all([utimes(webRoots.dashboard, epoch, epoch), utimes(webRoots.overlay, epoch, epoch)]);
