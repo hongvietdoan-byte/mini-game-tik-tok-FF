@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T14:44:15+07:00",
-  "state": "waiting",
-  "task": "C-0085",
-  "note": "C-0121 đã report X-0201 và done; còn 10 integration fixture failures báo coordinator ở report. C-0085 vẫn khóa, chờ thư mở khóa hoặc việc mới.",
+  "heartbeat": "2026-11-12T14:48:18+07:00",
+  "state": "working",
+  "task": "C-0121",
+  "note": "Áp dụng C-0123: cập nhật helper scenario LIVE/OBS ở tests/integration trên nhánh C-0121 và chạy full suite.",
   "done": [
     86,
     88,
