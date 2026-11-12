@@ -50,6 +50,7 @@ if errorlevel 1 goto verify_build_error
 :backup
 echo [2/3] Dang sao luu DB va assets-local truoc khi mo server...
 py -3 tools\backup.py create --root "%ROOT%"
+if errorlevel 2 goto backup_full
 if errorlevel 1 goto backup_error
 
 :run
@@ -82,6 +83,16 @@ exit /b 1
 
 :backup_error
 echo LOI: backup truoc khi mo server that bai; server khong duoc mo.
+pause
+exit /b 1
+
+:backup_full
+echo !!! CANH BAO: O DIA GAN DAY HOAC KHONG DU CHO CHO BAN BACKUP MOI.
+echo !!! Co the tiep tuc chay game ma khong co backup moi, du lieu co nguy co neu may gap su co.
+set "QUIZ_CONTINUE="
+set /p "QUIZ_CONTINUE=Ban co muon tiep tuc khong co backup moi? [Y/N]: "
+if /i "%QUIZ_CONTINUE%"=="Y" goto run
+echo Da dung theo lua chon; server chua duoc mo.
 pause
 exit /b 1
 
