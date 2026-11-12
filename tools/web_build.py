@@ -25,8 +25,8 @@ def head_timestamp(root: Path) -> float:
 def build_state(root: Path) -> tuple[bool, list[str]]:
     try:
         head = head_timestamp(root)
-    except (OSError, subprocess.CalledProcessError, ValueError) as error:
-        raise RuntimeError(f"Không đọc được commit HEAD: {error}") from error
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return False, ["Không có Git/HEAD để xác minh dist; luôn build lại."]
 
     stale: list[str] = []
     for relative in WEB_BUILDS:
@@ -54,6 +54,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    if args.action == "verify":
+        missing = [f"{relative}/index.html thiếu" for relative in WEB_BUILDS if not (root / relative / "index.html").is_file()]
+        if missing:
+            for item in missing:
+                print(f"[web] cần build lại: {item}")
+            return 1
+        try:
+            head_timestamp(root)
+        except (OSError, subprocess.CalledProcessError, ValueError):
+            print("[web] verify PASS: dist tồn tại; không có Git nên lần khởi động sau sẽ build lại.")
+            return 0
     try:
         fresh, stale = build_state(root)
     except RuntimeError as error:
