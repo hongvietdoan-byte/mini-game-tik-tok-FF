@@ -1,9 +1,9 @@
 {
   "role": "cloud",
   "last_read": 99,
-  "heartbeat": "2026-11-11T23:55:28+00:00",
-  "state": "waiting",
+  "heartbeat": "2026-11-12T02:11:21+00:00",
+  "state": "working",
   "task": null,
-  "note": "C-0099 đã report; chờ task",
+  "note": "C-0107 soạn câu đề xuất",
   "done": []
 }
