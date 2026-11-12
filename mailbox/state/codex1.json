@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T15:10:52+07:00",
+  "heartbeat": "2026-11-12T15:30:00+07:00",
   "state": "waiting",
   "task": "C-0085",
-  "note": "Đã merge origin/main vào nhánh C-0121, test 301/301 PASS, report X-0206 và done C-0125; C-0085 vẫn khóa.",
+  "note": "C-0085 vẫn xếp hàng; chờ coordinator xác nhận đã gộp C-0080/C-0082 để bắt đầu.",
   "done": [
     86,
     88,
