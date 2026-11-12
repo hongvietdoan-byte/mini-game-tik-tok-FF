@@ -148,7 +148,7 @@ async function connectOverlay(h: Awaited<ReturnType<typeof bootReplay>>) {
       let message: { type?: string; stateVersion?: number; seq?: number };
       try { message = JSON.parse(String(data)) as typeof message; } catch { return; }
       if (message.type !== 'STATE_SNAPSHOT' || typeof message.stateVersion !== 'number') return;
-      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, seq: message.seq }));
+      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, seq: message.seq, role: 'program' }));
       clearTimeout(timeout);
       resolve();
     });

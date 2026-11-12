@@ -322,6 +322,23 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/brand/logo.png | logo.png | PNG | 1089×1125 | có | Logo chính thức “Bá Vương Đại Chiến — Ai là nhà vua bá khí”; dùng nguyên ảnh, giữ tỉ lệ, glow và tagline. | SỬ DỤNG ĐƯỢC — C-0049 | Header + Victory |
 | assets-local/cards/the-chien-dau-ffvn-kelly.png | the-chien-dau-ffvn-kelly.png | PNG | 1107×1421 | có | Thẻ Kelly chỉ làm visual reference cho viền neon và dải tên chéo. | THAM CHIẾU — C-0050, không runtime | Top 3/nameplates |
 
+### Âm thanh tùy chọn
+
+Các file âm thanh có thể đặt trong `assets-local/audio/`; mỗi slot hỗ trợ `.mp3` hoặc `.ogg` và thay thế âm tổng hợp có cùng tên.
+
+| Slot | File tùy chọn | Sự kiện |
+|---|---|---|
+| `question-enter` | `question-enter.mp3` / `.ogg` | Câu hỏi mới xuất hiện |
+| `countdown-tick` | `countdown-tick.mp3` / `.ogg` | Mỗi giây trong 5 giây cuối |
+| `timeout` | `timeout.mp3` / `.ogg` | Hết thời gian trả lời |
+| `correct-answer` | `correct-answer.mp3` / `.ogg` | Công bố đáp án đúng |
+| `top10` | `top10.mp3` / `.ogg` | Mở bảng Top 10 |
+| `victory` | `victory.mp3` / `.ogg` | Vinh danh chiến thắng |
+| `transition` | `transition.mp3` / `.ogg` | Chuyển cảnh chung |
+| `bgm` | `bgm.mp3` / `.ogg` | Nhạc nền lặp, mặc định tắt |
+
+Điều khiển URL overlay: `sfx=0..1`, `bgm=0..1`, `volume=0..1` (master; SFX mặc định 0.6, BGM 0).
+
 ## Tài nguyên phụ trợ không phải ảnh
 
 | Đường dẫn | Dạng | Vai trò | Trạng thái |

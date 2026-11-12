@@ -29,6 +29,7 @@ import {
   formatTimeAgo,
   hasSilentAcceptingWarning,
   overlayUrlFromLocation,
+  overlayUrlForRole,
   type DashboardAction,
 } from './logic';
 import './style.css';
@@ -45,6 +46,7 @@ function App() {
   const desktopBridge = window.stormArena;
   const isDesktop = desktopBridge !== undefined;
   const [overlayUrl, setOverlayUrl] = useState(() => overlayUrlFromLocation(location.href));
+  const programOverlayUrl = useMemo(() => overlayUrlForRole(overlayUrl, 'program'), [overlayUrl]);
   const [desktopInfo, setDesktopInfo] = useState<StormArenaInfo | null>(null);
   const [wizardOpen, setWizardOpen] = useState(() => {
     try { return !isSetupComplete(localStorage); } catch { return true; }
@@ -426,7 +428,8 @@ function App() {
       isMock={isMock}
       desktopInfo={desktopInfo}
       overlayUrl={overlayUrl}
-      obsGuide={<ObsGuidePage overlayClients={snapshot?.overlay.clients ?? 0} overlayUrl={overlayUrl} desktopInfo={desktopInfo} />}
+      programOverlayUrl={programOverlayUrl}
+      obsGuide={<ObsGuidePage client={client} token={token.trim()} overlayClients={snapshot?.overlay.clients ?? 0} overlayUrl={overlayUrl} programOverlayUrl={programOverlayUrl} desktopInfo={desktopInfo} />}
       onConnectToken={connectWizardToken}
       onFinish={completeSetupWizard}
       onDismiss={() => setWizardOpen(false)}
@@ -538,7 +541,7 @@ function App() {
         </aside>
       </div> : page === 'checks'
         ? <ConnectionChecksPage client={client} token={token.trim()} />
-        : <ObsGuidePage overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} desktopInfo={desktopInfo} />}
+        : <ObsGuidePage client={client} token={token.trim()} overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} programOverlayUrl={programOverlayUrl} desktopInfo={desktopInfo} />}
     </> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : <section className="entry-layout">
       <div className="entry-card">
         <span className="eyebrow">TIKTOK LIVE QUIZ</span><h1>{needsSession ? (createMode === 'MOCK' ? 'Tạo phiên MOCK' : 'Tạo phiên TikTok LIVE') : 'Kết nối điều khiển'}</h1>
@@ -635,13 +638,40 @@ function ConnectionChecksPage({ client, token }: { client: DashboardClient; toke
   </section>;
 }
 
-function ObsGuidePage({ overlayClients, overlayUrl, desktopInfo }: { overlayClients: number; overlayUrl: string; desktopInfo: StormArenaInfo | null }) {
+function ObsGuidePage({ client, token, overlayClients, overlayUrl, programOverlayUrl, desktopInfo }: { client: DashboardClient; token: string; overlayClients: number; overlayUrl: string; programOverlayUrl: string; desktopInfo: StormArenaInfo | null }) {
   const [copyMessage, setCopyMessage] = useState('');
+  const [programAudio, setProgramAudio] = useState<{ audioState: 'disabled' | 'running' | 'suspended' | 'unavailable' | null; updatedAtMs: number } | null>(null);
+  const [audioRequestFailed, setAudioRequestFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let timer: number | undefined;
+    const refreshAudioState = async () => {
+      try {
+        const checks = await client.getSystemChecks(token);
+        if (active) {
+          setProgramAudio({ audioState: checks.overlay.audioState ?? null, updatedAtMs: Date.now() });
+          setAudioRequestFailed(false);
+        }
+      } catch {
+        if (active) {
+          setProgramAudio(null);
+          setAudioRequestFailed(true);
+        }
+      }
+      if (active) timer = window.setTimeout(() => void refreshAudioState(), 5_000);
+    };
+    void refreshAudioState();
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [client, token]);
 
   async function copyUrl() {
     try {
-      await navigator.clipboard.writeText(overlayUrl);
-      setCopyMessage('Đã sao chép Overlay URL.');
+      await navigator.clipboard.writeText(programOverlayUrl);
+      setCopyMessage('Đã sao chép URL nguồn LIVE.');
     } catch {
       setCopyMessage('Không thể sao chép tự động. Hãy chọn và sao chép URL.');
     }
@@ -650,8 +680,11 @@ function ObsGuidePage({ overlayClients, overlayUrl, desktopInfo }: { overlayClie
   return <div className="page-content obs-page" data-testid="obs-guide-page">
     <section className="panel overlay-url-panel">
       <div className="page-heading"><div><span className="eyebrow">V3.1 · PHÁT HÌNH</span><h2>Phát lên OBS / TikTok LIVE Studio</h2><p>Overlay chạy riêng để giữ hình ảnh trò chơi và trạng thái kết nối.</p></div></div>
-      <div className="overlay-url-row"><label>Overlay URL<code>{overlayUrl}</code></label><button className="secondary-button" type="button" onClick={() => void copyUrl()}>Copy</button><a className="primary-button preview-link" href={overlayUrl} target="_blank" rel="noreferrer">Xem trước ↗</a></div>
+      <div className="overlay-url-row"><label>Overlay URL · nguồn LIVE<code>{programOverlayUrl}</code></label><button className="secondary-button" type="button" onClick={() => void copyUrl()}>Copy URL nguồn LIVE</button><a className="primary-button preview-link" href={overlayUrl} target="_blank" rel="noreferrer">Xem trước ↗</a></div>
       {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
+      <div className={`program-audio-status ${programAudio?.audioState === 'suspended' || programAudio?.audioState === 'unavailable' ? 'is-warning' : ''}`} role="status" data-testid="program-audio-status" data-audio-state={programAudio?.audioState ?? 'waiting'}>
+        {!programAudio ? audioRequestFailed ? 'Không đọc được trạng thái âm thanh từ server; sẽ thử lại.' : 'Đang đọc trạng thái âm thanh từ server…' : programAudio.audioState === null ? 'Đang chờ trạng thái âm thanh từ nguồn program…' : programAudio.audioState === 'suspended' ? 'Âm thanh nguồn phát đang bị trình duyệt chặn. Kiểm tra quyền tự phát trong phần mềm phát.' : programAudio.audioState === 'unavailable' ? 'Phần mềm phát không cung cấp Web Audio; âm thanh hiệu ứng có thể không phát.' : programAudio.audioState === 'disabled' ? 'Âm thanh hiệu ứng đang tắt trong cấu hình.' : `Âm thanh nguồn phát sẵn sàng · ${new Date(programAudio.updatedAtMs).toLocaleTimeString('vi-VN')}`}
+      </div>
       {desktopInfo && <div className="desktop-app-info" data-testid="desktop-app-info">
         <span>Phiên bản ứng dụng <b>{desktopInfo.version}</b></span>
         <span>Thư mục dữ liệu <code>{desktopInfo.dataDir}</code></span>
@@ -661,7 +694,7 @@ function ObsGuidePage({ overlayClients, overlayUrl, desktopInfo }: { overlayClie
     </section>
     <section className="panel obs-steps">
       <span className="eyebrow">HƯỚNG DẪN CÀI ĐẶT</span><h2>Thêm nguồn hình</h2>
-      <article><span>01</span><div><b>OBS Browser Source</b><p>Trong Sources chọn + → Browser. Dán Overlay URL ở trên và đặt kích thước <b>1080 × 1920</b>.</p><p>Nếu cần giữ kết nối khi source bị ẩn, bỏ chọn “Shutdown source when not visible”.</p></div></article>
+      <article><span>01</span><div><b>OBS Browser Source</b><p>Trong Sources chọn + → Browser. Dán URL nguồn LIVE ở trên và đặt kích thước <b>1080 × 1920</b>.</p><p>Nếu cần giữ kết nối khi source bị ẩn, bỏ chọn “Shutdown source when not visible”.</p></div></article>
       <article><span>02</span><div><b>Window Capture dự phòng</b><p>Nếu Browser Source gặp trục trặc, dùng Window Capture để lấy cửa sổ overlay; giữ canvas ở tỉ lệ dọc 1080 × 1920.</p></div></article>
       <article><span>03</span><div><b>TikTok LIVE Studio</b><p>Có thể thử thêm nguồn trình duyệt hoặc nguồn cửa sổ. Khả năng hỗ trợ và thao tác cần kiểm tra trên máy thật.</p></div></article>
     </section>

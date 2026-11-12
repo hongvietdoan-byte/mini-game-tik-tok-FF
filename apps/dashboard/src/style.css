@@ -426,3 +426,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--violet); box-sha
   .review-bulk-row { align-items: start; flex-direction: column; }
   .review-bulk-row button { width: 100%; }
 }
+
+.program-audio-status { margin: 12px 0; padding: 11px 13px; border: 1px solid rgba(140,200,251,.2); border-radius: 8px; color: var(--muted); background: rgba(140,200,251,.05); font-size: 12px; line-height: 1.45; }
+.program-audio-status.is-warning { border-color: rgba(255,180,80,.45); color: #ffd28a; background: rgba(255,180,80,.08); }

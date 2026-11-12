@@ -623,7 +623,7 @@ export type LiveSourceHealth = {
 // Kiểm tra hệ thống (V3.1 mục E)
 // ---------------------------------------------------------------------------
 
-export const CheckStatusSchema = z.enum(['PASS', 'FAIL', 'NOT_TESTED']);
+export const CheckStatusSchema = z.enum(['PASS', 'FAIL', 'WARN', 'NOT_TESTED']);
 export type CheckStatus = z.infer<typeof CheckStatusSchema>;
 export const SYSTEM_CHECK_IDS = [
   'backend',
@@ -694,10 +694,17 @@ export const ClientHelloSchema = z.object({
 export type ClientHello = z.infer<typeof ClientHelloSchema>;
 
 /** Overlay báo đã render tới stateVersion nào (dùng cho Connection Test bước 9). */
+export const OverlayAudioStateSchema = z.enum(['disabled', 'running', 'suspended', 'unavailable']);
+export type OverlayAudioState = z.infer<typeof OverlayAudioStateSchema>;
+
 export const ClientAckSchema = z.object({
   type: z.literal('ACK'),
   stateVersion: z.number().int().min(0),
   seq: z.number().int().min(0).optional(),
+  /** Nguồn overlay đã render; client cũ không gửi role được xem là preview. */
+  role: z.enum(['program', 'preview']).default('preview'),
+  /** Trạng thái Web Audio của phiên overlay; client cũ không gửi field này vẫn hợp lệ. */
+  audioState: OverlayAudioStateSchema.optional(),
 });
 export type ClientAck = z.infer<typeof ClientAckSchema>;
 

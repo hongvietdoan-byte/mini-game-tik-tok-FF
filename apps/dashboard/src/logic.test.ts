@@ -11,6 +11,7 @@ import {
   formatTimeAgo,
   hasSilentAcceptingWarning,
   overlayUrlFromLocation,
+  overlayUrlForRole,
   shouldAcceptSnapshotSeq,
 } from './logic';
 
@@ -95,5 +96,10 @@ describe('dashboard command logic', () => {
   it('builds overlay URLs from the current app origin for dev and packaged routes', () => {
     expect(overlayUrlFromLocation('http://127.0.0.1:5173/?mock=1')).toBe('http://127.0.0.1:5174/');
     expect(overlayUrlFromLocation('http://127.0.0.1:8787/dashboard/?tab=obs')).toBe('http://127.0.0.1:8787/overlay/');
+  });
+
+  it('adds a program role for the live source and keeps preview as the default URL', () => {
+    expect(overlayUrlForRole('http://127.0.0.1:8787/overlay/', 'program')).toBe('http://127.0.0.1:8787/overlay/?role=program');
+    expect(overlayUrlForRole('http://127.0.0.1:8787/overlay/?role=program', 'preview')).toBe('http://127.0.0.1:8787/overlay/');
   });
 });

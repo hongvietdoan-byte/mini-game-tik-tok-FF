@@ -4,6 +4,7 @@ import type { DashboardClient, HealthResponse, SelfTestResponse, SystemChecksRes
 import {
   healthSetupStatus,
   INITIAL_SETUP_STATUSES,
+  applyProgramAckStatus,
   nextSetupStep,
   overlaySetupStatus,
   overlayStatusAfterAction,
@@ -25,6 +26,7 @@ type SetupWizardProps = {
   isMock: boolean;
   desktopInfo: StormArenaInfo | null;
   overlayUrl: string;
+  programOverlayUrl: string;
   obsGuide: React.ReactNode;
   onConnectToken: (token: string) => Promise<void>;
   onFinish: () => void;
@@ -38,7 +40,7 @@ const stepCopy: Record<SetupStepId, { eyebrow: string; title: string; descriptio
   tiktokConnector: { eyebrow: 'BƯỚC 04 · NGUỒN COMMENT', title: 'TikTok LIVE Connector', description: 'Nhập username để điền sẵn khi tạo phiên TikTok. Bước này không kết nối hoặc tạo phiên.' },
   mock: { eyebrow: 'BƯỚC 05 · MOCK', title: 'Kiểm tra bằng Mock', description: 'Chạy pipeline tự kiểm trên database tạm; không tác động phiên LIVE.' },
   obs: { eyebrow: 'BƯỚC 06 · PHÁT HÌNH', title: 'OBS / TikTok LIVE Studio', description: 'Xem URL overlay và cách thêm nguồn hình vào phần mềm phát.' },
-  overlay: { eyebrow: 'BƯỚC 07 · OVERLAY', title: 'Kiểm tra Overlay', description: 'Mở overlay trong cửa sổ riêng. Wizard tự kiểm tra kết nối và ACK render mỗi 2 giây.' },
+  overlay: { eyebrow: 'BƯỚC 07 · OVERLAY', title: 'Kiểm tra Overlay', description: 'Mở nguồn program trong phần mềm phát; dùng tab riêng để xem thử giao diện.' },
   summary: { eyebrow: 'BƯỚC 08 · SẴN SÀNG', title: 'Hoàn tất thiết lập', description: 'Xem lại trạng thái từng bước. Hoàn tất wizard không đồng nghĩa TikTok đã kết nối hoặc đang phát LIVE.' },
 };
 
@@ -69,6 +71,7 @@ export function SetupWizard({
   isMock,
   desktopInfo,
   overlayUrl,
+  programOverlayUrl,
   obsGuide,
   onConnectToken,
   onFinish,
@@ -106,7 +109,15 @@ export function SetupWizard({
     checksBusy.current = true;
     setChecksLoading(true);
     try {
-      const result = await client.getSystemChecks(authToken);
+      const systemChecks = await client.getSystemChecks(authToken);
+      let result = systemChecks;
+      if (overlayCheckActive.current) {
+        try {
+          result = applyProgramAckStatus(systemChecks, await client.getPreflight(authToken));
+        } catch (cause) {
+          result = applyProgramAckStatus(systemChecks, null, errorText(cause));
+        }
+      }
       setChecks(result);
       setChecksError('');
       setStepStatus('database', systemCheckStatus(result.checks, 'database'));
@@ -294,7 +305,7 @@ export function SetupWizard({
         {currentStep === 'obs' && <div className="setup-obs-guide" data-testid="setup-step-obs">{obsGuide}</div>}
 
         {currentStep === 'overlay' && <div className="setup-check-panel" data-testid="setup-step-overlay">
-          <div className="setup-overlay-actions"><a className="primary-button" href={overlayUrl} target="_blank" rel="noreferrer">Mở Overlay URL ↗</a><button className="secondary-button" type="button" disabled={checksLoading} onClick={() => void refreshChecks()}>{checksLoading ? 'Đang kiểm tra…' : 'Làm mới ngay'}</button></div>
+          <div className="setup-overlay-actions"><a className="primary-button" href={programOverlayUrl} target="_blank" rel="noreferrer">Mở Overlay URL ↗</a><a className="secondary-button" href={overlayUrl} target="_blank" rel="noreferrer">Mở tab xem thử ↗</a><button className="secondary-button" type="button" disabled={checksLoading} onClick={() => void refreshChecks()}>{checksLoading ? 'Đang kiểm tra…' : 'Làm mới ngay'}</button></div>
           <div className="setup-check-grid">
             <CheckDetail status={overlayStatus} label="Overlay hiển thị" detail={overlayCheck?.detail ?? (checksError || 'Đang đợi overlay kết nối.')} />
             <CheckDetail status={overlayUpdatedStatus} label="Overlay cập nhật đúng" detail={overlayUpdatedCheck?.detail ?? (checksError || 'Đang đợi ACK sau khi overlay render.')} />

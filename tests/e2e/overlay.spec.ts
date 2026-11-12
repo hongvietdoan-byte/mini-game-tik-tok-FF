@@ -5,10 +5,13 @@ import { expect, test, type Page } from '@playwright/test';
 const scenes = [
   { name: 'lobby', scene: 'LOBBY' },
   { name: 'prepare', scene: 'QUESTION' },
+  { name: 'reading', scene: 'QUESTION' },
+  { name: 'reading-longest', scene: 'QUESTION' },
   { name: 'question', scene: 'QUESTION' },
   { name: 'reveal', scene: 'REVEAL' },
   { name: 'top10', scene: 'INTERIM_TOP10' },
   { name: 'top10-short', scene: 'INTERIM_TOP10' },
+  { name: 'top10-long-name', scene: 'INTERIM_TOP10' },
   { name: 'round-winner', scene: 'ROUND_WINNER' },
   { name: 'victory', scene: 'VICTORY' },
   { name: 'victory-tie', scene: 'VICTORY' },
@@ -22,7 +25,8 @@ mkdirSync(screenshotDirectory, { recursive: true });
 const localAssetDirectory = resolve(process.cwd(), '../../../assets-local');
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
-const hasLocalBrandLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
+const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
+const hasLocalVictoryBackground = existsSync(join(localAssetDirectory, 'victory', 'bg-user-cover.jpg'));
 
 let closestSafeMargin = Number.POSITIVE_INFINITY;
 let closestSafeScene = '';
@@ -43,8 +47,12 @@ function watchPageErrors(page: Page) {
     if (response.status() < 400) return;
     const pathname = new URL(response.url()).pathname;
     const optionalMcManifest = pathname === '/assets/mc/kelly/manifest.json';
-    const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset || !hasLocalBrandLogo;
-    if (optionalMcManifest || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
+    const optionalArenaAsset = pathname.startsWith('/assets/arena/');
+    const optionalAudioAssetMissing = pathname.startsWith('/assets/audio/') && response.status() === 404;
+    const optionalEventLogo = pathname === '/assets/brand/logo.png' && !hasLocalEventLogo;
+    const optionalVictoryBackground = pathname === '/assets/victory/bg-user-cover.jpg' && !hasLocalVictoryBackground;
+    const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset;
+    if (optionalMcManifest || optionalArenaAsset || optionalAudioAssetMissing || optionalEventLogo || optionalVictoryBackground || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
     errors.push(`http ${response.status()}: ${pathname}`);
   });
   return errors;
@@ -53,7 +61,6 @@ function watchPageErrors(page: Page) {
 async function openScene(page: Page, sceneName: string, expectedScene: string) {
   const errors = watchPageErrors(page);
   const query = new URLSearchParams({ mock: sceneName });
-  if (sceneName === 'victory' || sceneName === 'victory-tie') query.set('safeBottom', '544');
   await page.goto(`/?${query.toString()}`, { waitUntil: 'domcontentloaded' });
   const stage = page.locator(`[data-testid="stage"][data-scene="${expectedScene}"]`);
   await expect(stage).toBeVisible();
@@ -93,8 +100,8 @@ async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator'
     '[data-testid^="option-"]',
     '[data-testid="timer"]',
     '[data-testid="leaderboard-row"]',
-    '[data-testid^="podium-slot-"] .nameplate',
   ];
+  if (sceneName !== 'victory' && sceneName !== 'victory-tie') selectors.push('[data-testid^="podium-slot-"] .nameplate');
   for (const selector of selectors) {
     const locators = page.locator(selector);
     for (let index = 0; index < await locators.count(); index += 1) {
@@ -108,7 +115,10 @@ async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator'
         box.y - edges.top,
         edges.bottom - (box.y + box.height),
       ];
-      const margin = Math.min(...margins);
+      const top10RowsMayExtendTo73Percent = sceneName.toLowerCase().startsWith('top10') && selector === '[data-testid="leaderboard-row"]';
+      const bottomLimit = top10RowsMayExtendTo73Percent ? stageBox.y + stageBox.height * 0.73 : edges.bottom;
+      const safeMargins = [...margins.slice(0, 3), bottomLimit - (box.y + box.height)];
+      const margin = Math.min(...safeMargins);
       if (margin < closestSafeMargin) {
         closestSafeMargin = margin;
         closestSafeScene = sceneName;
@@ -121,11 +131,19 @@ async function expectInsideSafeZone(page: Page, stage: ReturnType<Page['locator'
 for (const { name, scene } of scenes) {
   test(`mock scene: ${name}`, async ({ page }) => {
     if (name === 'question') await page.setViewportSize({ width: 921, height: 2000 });
+    if (name === 'victory' || name === 'victory-tie') await page.setViewportSize({ width: 1080, height: 1920 });
     const { stage, errors } = await openScene(page, name, scene);
-    await expect(stage.getByText('ĐẤU TRƯỜNG BÃO TỐ', { exact: true })).toHaveCount(0);
+    if (name === 'victory' || name === 'victory-tie' || name === 'round-winner') {
+      await expect(stage.getByTestId('victory-background')).toBeVisible();
+      if (hasLocalEventLogo) await expect(stage.getByTestId('v3v-event-logo')).toBeVisible();
+      else await expect(stage.locator('.v3v-logo-fallback .v3-title')).toBeVisible();
+      await expect(stage.locator('.v3v-trophy, .v3v-trophy-glow, .v3v-side-lightning')).toHaveCount(0);
+    } else {
+      await expect(stage.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
+    }
     await expectInsideSafeZone(page, stage, name);
-    if (name === 'victory' || name === 'victory-tie') {
-      await page.addStyleTag({ content: '.v3v-figure, .v3v-nameplate, .v3v-trophy { animation: none !important; opacity: 1 !important; transform: none !important; }' });
+    if (name === 'victory' || name === 'victory-tie' || name === 'round-winner') {
+      await page.waitForTimeout(8_100);
     }
     if (name === 'question') console.log(`Ảnh nghiệm thu: ${join(screenshotDirectory, 'question.png')}`);
     await page.screenshot({ path: join(screenshotDirectory, `${name}.png`), animations: 'disabled' });
@@ -135,14 +153,124 @@ for (const { name, scene } of scenes) {
   });
 }
 
-test('prepare and question do not expose the correct answer', async ({ page }) => {
-  for (const name of ['prepare', 'question']) {
+test('prepare, reading and question do not expose the correct answer', async ({ page }) => {
+  for (const name of ['prepare', 'reading', 'question']) {
     const { errors } = await openScene(page, name, 'QUESTION');
     const html = await page.locator('body').innerHTML();
     expect(html).not.toContain('correctOptionId');
     expect(await page.locator('[data-testid^="option-"][class*="correct"], [data-testid^="option-"][data-correct]').count()).toBe(0);
     expect(errors, `${name}: no console or page errors`).toEqual([]);
   }
+});
+
+test('READING shows the question and four answers without starting the answer countdown', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'reading', 'QUESTION');
+  await expect(stage.getByTestId('question-prompt')).toBeVisible();
+  await expect(stage.locator('[data-testid^="option-"]:not([data-testid="option-list"])')).toHaveCount(4);
+  await expect(stage.getByTestId('reading-status')).toHaveText('MC ĐANG ĐỌC');
+  await expect(stage.getByTestId('timer')).toHaveCount(0);
+  await expect(stage.getByTestId('answer-count')).toHaveCount(0);
+  const askAnimation = await stage.locator('.v3-mc-figure').evaluate((element) => getComputedStyle(element).animationName);
+  expect(askAnimation).toBe('v3-mc-ask');
+  expect(errors).toEqual([]);
+});
+
+test('longest DEMO question remains readable while Kelly reads it', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'reading-longest', 'QUESTION');
+  const prompt = stage.getByTestId('question-prompt');
+  const answers = stage.locator('[data-testid^="option-"] .v3-option-text');
+  await expect(prompt).toContainText('Trong Battle Royale');
+  await expect(stage.getByTestId('reading-status')).toHaveText('MC ĐANG ĐỌC');
+  await expect(stage.getByTestId('timer')).toHaveCount(0);
+  const promptFont = await prompt.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  const answerFonts = await answers.evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
+  expect(promptFont, 'long READING prompt must scale down inside its fixed card').toBeGreaterThanOrEqual(20);
+  expect(answerFonts.every((fontSize) => fontSize >= 14), 'READING choices must stay readable in fixed cards').toBe(true);
+  const fits = await prompt.evaluate((element) => element.scrollHeight <= element.clientHeight);
+  expect(fits, 'long READING prompt must remain inside its fixed card').toBe(true);
+  const kelly = stage.locator('.v3-mc-figure img.mc-sequence');
+  await expect(kelly).toBeVisible();
+  await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await page.waitForTimeout(8_100);
+  await page.screenshot({ path: join(screenshotDirectory, 'reading-longest.png'), animations: 'disabled' });
+  expect(errors).toEqual([]);
+});
+
+test('longest DEMO question stays clear of the timer and fully inside its frame', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'question-longest', 'QUESTION');
+  const prompt = stage.getByTestId('question-prompt');
+  await expect(prompt).toHaveText('Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?');
+  const layout = await page.evaluate(() => {
+    const prompt = document.querySelector<HTMLElement>('[data-testid="question-prompt"]')!;
+    const timer = document.querySelector<HTMLElement>('[data-testid="timer"]')!;
+    const p = prompt.getBoundingClientRect();
+    const t = timer.getBoundingClientRect();
+    const textRange = document.createRange();
+    textRange.selectNodeContents(prompt);
+    return {
+      overlapsTimer: p.left < t.right && p.right > t.left && p.top < t.bottom && p.bottom > t.top,
+      contentFits: prompt.scrollHeight <= prompt.clientHeight,
+      renderedLines: textRange.getClientRects().length,
+      promptHeight: prompt.clientHeight,
+      fontSize: Number.parseFloat(getComputedStyle(prompt).fontSize),
+    };
+  });
+  expect(layout.overlapsTimer, 'timer must sit above the question copy').toBe(false);
+  expect(layout.contentFits, 'longest DEMO prompt must not overflow its card').toBe(true);
+  expect(layout.renderedLines).toBeGreaterThan(1);
+  expect(layout.fontSize, 'longest DEMO prompt must scale down inside its fixed card').toBeGreaterThanOrEqual(20);
+  const answerFonts = await stage.locator('[data-testid^="option-"] .v3-option-text').evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
+  expect(answerFonts.every((fontSize) => fontSize >= 14), 'question choices must stay readable in fixed cards').toBe(true);
+  const kelly = stage.locator('.v3-mc-figure img.mc-sequence');
+  await expect(kelly).toBeVisible();
+  await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await page.waitForTimeout(8_100);
+  await page.screenshot({ path: join(screenshotDirectory, 'question-longest.png'), animations: 'disabled' });
+  expect(errors).toEqual([]);
+});
+
+test('longest DEMO answer scales inside the same fixed two-column cards in ACCEPTING', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'question-long-answer', 'QUESTION');
+  const answers = stage.locator('[data-testid^="option-"] .v3-option-text');
+  await expect(stage.getByTestId('option-list')).toHaveClass(/has-long-option/);
+  await expect(answers).toHaveCount(4);
+  const optionBoxes = await page.evaluate(() => ['A', 'B', 'C', 'D'].map((id) => {
+    const box = document.querySelector<HTMLElement>(`[data-testid="option-${id}"]`)!.getBoundingClientRect();
+    return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
+  }));
+  expect(optionBoxes[0]?.y).toBe(optionBoxes[1]?.y);
+  expect(optionBoxes[2]?.y).toBe(optionBoxes[3]?.y);
+  expect(optionBoxes[0]?.x).toBe(optionBoxes[2]?.x);
+  expect(optionBoxes[1]?.x).toBe(optionBoxes[3]?.x);
+  expect(optionBoxes.every((box) => box.height === 64)).toBe(true);
+  await expect(answers.nth(2)).toHaveText('Một nhóm vật phẩm được sắp xếp trong hành trang');
+  await expect(answers.nth(3)).toHaveText('Một nhóm nhân vật được hiển thị trong bộ sưu tập');
+  const measurements = await answers.evaluateAll((elements) => elements.map((element) => {
+    const text = element as HTMLElement;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const textBox = range.getBoundingClientRect();
+    return {
+      lines: range.getClientRects().length,
+      fontSize: Number.parseFloat(getComputedStyle(text).fontSize),
+      textHeight: text.scrollHeight,
+      cardHeight: text.parentElement?.clientHeight ?? 0,
+      textWidth: text.scrollWidth,
+      cardWidth: text.parentElement?.clientWidth ?? 0,
+      textBottom: textBox.bottom,
+      boardBottom: document.querySelector<HTMLElement>('.v3-board')?.getBoundingClientRect().bottom ?? 0,
+    };
+  }));
+  for (const measurement of measurements) {
+    expect(measurement.lines, 'answer must fit in at most four lines').toBeLessThanOrEqual(4);
+    expect(measurement.fontSize, 'long answer must scale down inside its fixed card').toBeGreaterThanOrEqual(14);
+    expect(measurement.textHeight, 'answer text must not overflow vertically').toBeLessThanOrEqual(measurement.cardHeight);
+    expect(measurement.textWidth, 'answer text must not overflow horizontally').toBeLessThanOrEqual(measurement.cardWidth);
+    expect(measurement.textBottom, 'answer text must stay above the question panel edge').toBeLessThanOrEqual(measurement.boardBottom - 8);
+  }
+  await expect(stage.locator('[data-testid^="option-"].is-correct')).toHaveCount(0);
+  await page.screenshot({ path: join(screenshotDirectory, 'question-long-answer.png'), animations: 'disabled' });
+  expect(errors).toEqual([]);
 });
 
 test('mock-only badge stays hidden unless debug is enabled', async ({ page }) => {
@@ -153,6 +281,49 @@ test('mock-only badge stays hidden unless debug is enabled', async ({ page }) =>
   await expect(page.getByTestId('demo-badge')).toBeVisible();
 });
 
+test('Storm Arena header matches the ref hierarchy and MC states animate without a bolt icon', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'question', 'QUESTION');
+  const logo = stage.getByTestId('brand-logo');
+  const eventMark = stage.getByTestId('event-mark');
+  const roundCard = stage.getByTestId('round-card');
+  await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect(eventMark).toBeVisible();
+  await expect(roundCard).toContainText('VÒNG 1');
+  await expect(roundCard).toContainText('57 ĐANG CHƠI');
+  const [logoBox, eventBox, roundBox, boardBox, subtitleBox] = await Promise.all([
+    logo.boundingBox(), eventMark.boundingBox(), roundCard.boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-title-ribbon').boundingBox(),
+  ]);
+  expect(logoBox).not.toBeNull();
+  expect(eventBox).not.toBeNull();
+  expect(roundBox).not.toBeNull();
+  expect(logoBox!.width).toBeGreaterThanOrEqual(210);
+  expect(logoBox!.width).toBeLessThanOrEqual(240);
+  expect(logoBox!.y + logoBox!.height).toBeLessThan(270);
+  expect(eventBox!.x + eventBox!.width).toBeLessThan(logoBox!.x);
+  expect(logoBox!.x + logoBox!.width).toBeLessThan(roundBox!.x);
+  expect(boardBox).not.toBeNull();
+  expect(subtitleBox).not.toBeNull();
+  expect(logoBox!.y + logoBox!.height).toBeLessThan(subtitleBox!.y);
+  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThan(boardBox!.y);
+  expect(await logo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  const [bubbleBox, firstAudienceLabel] = await Promise.all([
+    stage.getByTestId('mc-bubble').boundingBox(), stage.locator('.v3-nametags .v3-seat-name').first().boundingBox(),
+  ]);
+  expect(bubbleBox).not.toBeNull();
+  expect(firstAudienceLabel).not.toBeNull();
+  expect(bubbleBox!.y + bubbleBox!.height).toBeLessThanOrEqual(firstAudienceLabel!.y);
+  await expect(stage.locator('.v3-bubble .v3-bolt')).toHaveCount(0);
+  const idleAnimation = await stage.locator('.v3-mc-figure').evaluate((element) => getComputedStyle(element).animationName);
+  expect(idleAnimation).toBe('v3-mc-breathe');
+
+  const { errors: prepareErrors } = await openScene(page, 'prepare', 'QUESTION');
+  const askAnimation = await page.locator('.v3-mc-figure').evaluate((element) => getComputedStyle(element).animationName);
+  expect(askAnimation).toBe('v3-mc-ask');
+  expect(errors).toEqual([]);
+  expect(prepareErrors).toEqual([]);
+});
+
 test('reveal marks exactly one correct option', async ({ page }) => {
   const { errors } = await openScene(page, 'reveal', 'REVEAL');
   const correctOptions = page.locator('[data-testid^="option-"].is-correct');
@@ -161,8 +332,97 @@ test('reveal marks exactly one correct option', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('question and reveal use the baked-flag background; leaderboard keeps its arena background', async ({ page }) => {
+  const question = await openScene(page, 'question-longest', 'QUESTION');
+  const questionBackground = question.stage.locator('.v3-arena-backdrop-image');
+  await expect(questionBackground).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect(questionBackground).toHaveCSS('object-fit', 'cover');
+  await expect(questionBackground).toHaveCSS('filter', 'none');
+  await expect(question.stage.locator('.v3-arena-flag')).toHaveCount(0);
+
+  const reveal = await openScene(page, 'reveal', 'REVEAL');
+  await expect(reveal.stage.locator('.v3-arena-backdrop-image')).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect(reveal.stage.locator('.v3-arena-flag')).toHaveCount(0);
+
+  const leaderboard = await openScene(page, 'top10', 'INTERIM_TOP10');
+  await expect(leaderboard.stage.locator('.v3-arena-backdrop-image')).toHaveAttribute('src', '/assets/arena/bg.jpg');
+  await expect(leaderboard.stage.locator('.v3-arena-flag')).toHaveCount(8);
+});
+
+test('question frames stay fixed across phases and lengths; the comment cue appears only while accepting', async ({ page }) => {
+  const cases = [
+    { name: 'prepare', scene: 'QUESTION' },
+    { name: 'reading', scene: 'QUESTION' },
+    { name: 'question', scene: 'QUESTION' },
+    { name: 'question-longest', scene: 'QUESTION' },
+    { name: 'question-long-answer', scene: 'QUESTION' },
+    { name: 'reveal', scene: 'REVEAL' },
+  ];
+  let reference: Record<string, unknown> | undefined;
+  for (const { name, scene } of cases) {
+    const { stage } = await openScene(page, name, scene);
+    const geometry = await page.evaluate(() => {
+      const box = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+      };
+      return {
+        board: box('.v3-board'), prompt: box('.v3-question'), options: box('.v3-options'), top10: box('.v3-top10'),
+        mc: box('.v3-mc'), mcFigure: (() => { const element = document.querySelector<HTMLElement>('.v3-mc-figure')!; return { x: element.offsetLeft, y: element.offsetTop, width: element.offsetWidth, height: element.offsetHeight }; })(),
+        mcPlate: box('.v3-mc-plate'), logo: box('[data-testid="brand-logo"]'),
+        answers: ['A', 'B', 'C', 'D'].map((id) => box(`[data-testid="option-${id}"]`)),
+        timer: box('[data-testid="timer"]'),
+        promptFits: document.querySelector<HTMLElement>('.v3-question')!.scrollHeight <= document.querySelector<HTMLElement>('.v3-question')!.clientHeight,
+        blankAnswers: [...document.querySelectorAll<HTMLElement>('.v3-option-text')].every((option) => option.innerText === ''),
+      };
+    });
+    expect(geometry.board, `${name}: fixed board exists`).not.toBeNull();
+    expect(geometry.prompt, `${name}: fixed prompt box exists`).not.toBeNull();
+    expect(geometry.options, `${name}: fixed answer region exists`).not.toBeNull();
+    expect(geometry.answers, `${name}: four answer boxes exist`).toHaveLength(4);
+    expect(geometry.answers.every(Boolean), `${name}: all answer boxes remain in place`).toBe(true);
+    expect(geometry.promptFits, `${name}: prompt fits without enlarging its card`).toBe(true);
+    expect(geometry.mcFigure, `${name}: Kelly has a visible fixed portrait frame`).not.toBeNull();
+    expect(geometry.mcPlate, `${name}: Kelly nameplate has a fixed position`).not.toBeNull();
+    expect(geometry.mcPlate!.y, `${name}: Kelly nameplate sits below the half-body crop`).toBeGreaterThanOrEqual(geometry.mc!.y + geometry.mcFigure!.y + geometry.mcFigure!.height);
+    expect(geometry.logo!.y + geometry.logo!.height, `${name}: logo remains above the baked flags`).toBeLessThanOrEqual(270);
+    expect(geometry.board!.y, `${name}: fixed quiz panel starts below the baked flag row`).toBeGreaterThanOrEqual(614);
+    if (name === 'prepare') expect(geometry.blankAnswers).toBe(true);
+    if (!reference) reference = geometry;
+    else {
+      expect(geometry.board, `${name}: board position and size match`).toEqual(reference.board);
+      expect(geometry.prompt, `${name}: prompt position and size match`).toEqual(reference.prompt);
+      expect(geometry.options, `${name}: answer region position and size match`).toEqual(reference.options);
+      expect(geometry.top10, `${name}: Top 10 position and size match`).toEqual(reference.top10);
+      expect(geometry.mc, `${name}: MC position and size match`).toEqual(reference.mc);
+      expect(geometry.mcFigure, `${name}: Kelly frame position and size match`).toEqual(reference.mcFigure);
+      expect(geometry.mcPlate, `${name}: Kelly plate position and size match`).toEqual(reference.mcPlate);
+      expect(geometry.logo, `${name}: header logo position and size match`).toEqual(reference.logo);
+      expect(geometry.answers, `${name}: all answer card positions and sizes match`).toEqual(reference.answers);
+      if (geometry.timer && reference.timer) expect(geometry.timer, `${name}: timer matches when present`).toEqual(reference.timer);
+    }
+    const cue = stage.getByTestId('mc-bubble');
+    if (name === 'reveal') {
+      await expect(cue).toHaveCount(0);
+    } else {
+      await expect(cue).toBeVisible();
+      if (name === 'question' || name === 'question-longest' || name === 'question-long-answer') await expect(cue).toContainText('comment A, B, C hoặc D');
+      else await expect(cue).not.toContainText('comment A');
+    }
+    const [figureBox, boardBox, top10Box] = await Promise.all([stage.locator('.v3-mc-figure').boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-top10').boundingBox()]);
+    expect(figureBox).not.toBeNull();
+    expect(boardBox).not.toBeNull();
+    expect(top10Box).not.toBeNull();
+    const overlaps = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    expect(overlaps(figureBox!, boardBox!), `${name}: quiz frame does not cover Kelly`).toBe(false);
+    expect(overlaps(figureBox!, top10Box!), `${name}: Top 10 does not cover Kelly`).toBe(false);
+  }
+});
+
 test('XSS shaped names render as text', async ({ page }) => {
-  const { errors } = await openScene(page, 'top10', 'INTERIM_TOP10');
+  const { errors } = await openScene(page, 'top10-xss', 'INTERIM_TOP10');
   await expect(page.locator('.player-name').filter({ hasText: '<script>window.__xss=1</script>' })).toHaveCount(1);
   await expect(page.locator('.player-name').filter({ hasText: '<img src=x onerror="window.__xss=1">' })).toHaveCount(1);
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
@@ -175,8 +435,43 @@ test('XSS shaped names render as text', async ({ page }) => {
   await expect(badge).toBeVisible();
   const boxes = await Promise.all([name.boundingBox(), badge.boundingBox(), score.boundingBox()]);
   expect(boxes.every(Boolean)).toBe(true);
-  expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x);
+  expect(boxes[1]!.y).toBeGreaterThanOrEqual(boxes[0]!.y + boxes[0]!.height - 2);
   expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[2]!.x);
+  expect(errors).toEqual([]);
+});
+
+test('compact Top 10 stays within 45 percent and shows 14-character names beside Kelly', async ({ page }) => {
+  const { errors } = await openScene(page, 'top10-long-name', 'INTERIM_TOP10');
+  const panel = page.getByTestId('v3-top10-large');
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.y).toBeGreaterThanOrEqual(268);
+  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(1120);
+  expect(panelBox!.height).toBeLessThanOrEqual(864);
+  const rows = panel.locator('[data-testid="leaderboard-row"]');
+  await expect(rows).toHaveCount(10);
+  const [firstRow, lastRow] = await Promise.all([rows.first().boundingBox(), rows.last().boundingBox()]);
+  expect(firstRow).not.toBeNull();
+  expect(lastRow).not.toBeNull();
+  expect(lastRow!.y + lastRow!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height - 40);
+  const name = rows.first().locator('.v3-full-name-text');
+  const badge = rows.first().locator('[data-testid="top1-badge"]');
+  await expect(name).toHaveText('StormKingAlpha');
+  await expect(badge).toHaveText('x3');
+  const [nameBox, badgeBox] = await Promise.all([name.boundingBox(), badge.boundingBox()]);
+  expect(nameBox).not.toBeNull();
+  expect(badgeBox).not.toBeNull();
+  expect(badgeBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 2);
+  expect(await name.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const guide = page.getByTestId('top10-guide');
+  await expect(guide).toBeVisible();
+  await expect(guide.getByTestId('mc-bubble')).toBeVisible();
+  const [figureBox, bubbleBox] = await Promise.all([guide.locator('.v3-mc-figure').boundingBox(), guide.getByTestId('mc-bubble').boundingBox()]);
+  expect(figureBox).not.toBeNull();
+  expect(bubbleBox).not.toBeNull();
+  expect(bubbleBox!.y).toBeGreaterThanOrEqual(figureBox!.y + figureBox!.height - 2);
+  await page.waitForTimeout(8_100);
+  await page.screenshot({ path: join(screenshotDirectory, 'top10.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
 });
 
@@ -190,26 +485,39 @@ test('top10-short shows only its three real entries', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('question scene loads the approved Kelly and chibi assets when the local asset bank is present', async ({ page }) => {
-  test.skip(!hasLocalCharacterAssets || !hasLocalKellyAsset || !hasLocalBrandLogo, 'Local assets are excluded from Git; validate when the asset bank is available.');
+test('question scene uses the official logo, approved Kelly/chibi assets and arena background', async ({ page }) => {
+  test.skip(!hasLocalCharacterAssets || !hasLocalKellyAsset, 'Local character assets are excluded from Git; validate when the asset bank is available.');
   const { errors } = await openScene(page, 'question', 'QUESTION');
-  const stormBackdrop = page.locator('.v3-arena-backdrop');
-  await expect(stormBackdrop).toHaveAttribute('src', '/assets/victory/bg.jpg');
-  await expect.poll(() => stormBackdrop.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await expect(page.locator('.v3-arena-backdrop')).toHaveCount(0);
+  const background = page.locator('.v3-arena-backdrop-image');
+  await expect(background).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect(background).toHaveCSS('filter', 'none');
+  await expect(page.locator('.v3-arena-environment')).toBeHidden();
+  await expect(page.locator('.v3-arena-flag')).toHaveCount(0);
   const brandLogo = page.getByTestId('brand-logo');
   await expect(brandLogo).toBeVisible();
-  await expect(brandLogo).toHaveAttribute('src', '/assets/brand/logo.png');
-  await expect.poll(() => brandLogo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  if (hasLocalEventLogo) {
+    await expect(brandLogo).toHaveAttribute('src', '/assets/brand/logo.png');
+    expect(await brandLogo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    await expect(page.locator('.v3-title-tagline')).toHaveCount(0);
+  } else {
+    await expect(brandLogo).toContainText('BÁ VƯƠNG');
+    await expect(brandLogo).toContainText('ĐẠI CHIẾN');
+  }
+  await expect(page.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
   const kelly = page.locator('.v3-mc-figure img.mc-sequence');
   await expect(kelly).toBeVisible();
   await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   const mcCrop = await kelly.evaluate((image: HTMLImageElement) => ({
     parentHeight: image.parentElement?.clientHeight ?? 0,
-    imageHeight: image.getBoundingClientRect().height,
+    imageHeight: image.offsetHeight,
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
-  expect(mcCrop.imageHeight).toBeGreaterThan(mcCrop.parentHeight);
+  expect(mcCrop.parentHeight).toBe(390);
+  expect(mcCrop.imageHeight).toBe(mcCrop.parentHeight);
+  expect(await kelly.evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover');
+  expect(await kelly.evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');
 
   const chibis = page.locator('.v3-chibi-img img');
   await expect(chibis).toHaveCount(35);
@@ -223,8 +531,20 @@ test('question scene loads the approved Kelly and chibi assets when the local as
   expect(errors).toEqual([]);
 });
 
+test('header falls back to BrandMark when the official logo asset is missing', async ({ page }) => {
+  await page.route('**/assets/brand/logo.png', (route) => route.fulfill({ status: 404, body: 'missing logo' }));
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
+  await expect(stage).toBeVisible();
+  await expect(stage.locator('.v3-title img[data-testid="brand-logo"]')).toHaveCount(0);
+  const fallback = stage.locator('.v3-title-main[data-testid="brand-logo"]');
+  await expect(fallback).toContainText('BÁ VƯƠNG');
+  await expect(fallback).toContainText('ĐẠI CHIẾN');
+  await expect(stage.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
+});
+
 test('question crowd labels stay clear of the quiz and Top 1 badge fits its score column', async ({ page }) => {
-  const { errors } = await openScene(page, 'question', 'QUESTION');
+  const { errors } = await openScene(page, 'question-long-name', 'QUESTION');
   const top10 = page.locator('[data-testid="v3-top10"]');
   const mcFigure = page.locator('.v3-mc-figure');
   const [top10Box, mcBox] = await Promise.all([top10.boundingBox(), mcFigure.boundingBox()]);
@@ -293,7 +613,7 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
     clipped: element.scrollWidth > element.clientWidth,
     overflow: getComputedStyle(element).textOverflow,
   }))).toEqual({ clipped: true, overflow: 'ellipsis' });
-  await expect(score).toHaveText('21.000');
+  await expect(score).toHaveText('1.500');
   expect(errors).toEqual([]);
 });
 
@@ -327,10 +647,8 @@ test('TikTok HUD overlays the same quiz layout while critical quiz content stays
   const logoBox = await page.getByTestId('brand-logo').boundingBox();
   expect(stageBox).not.toBeNull();
   expect(logoBox).not.toBeNull();
-  expect(logoBox!.width / stageBox!.width).toBeGreaterThanOrEqual(0.22);
-  expect(logoBox!.width / stageBox!.width).toBeLessThanOrEqual(0.26);
-  expect(logoBox!.height / stageBox!.height).toBeGreaterThanOrEqual(0.1);
-  expect(logoBox!.height / stageBox!.height).toBeLessThanOrEqual(0.12);
+  expect(logoBox!.width / stageBox!.width).toBeGreaterThanOrEqual(0.19);
+  expect(logoBox!.width / stageBox!.width).toBeLessThanOrEqual(0.22);
 
   const overlap = await page.evaluate(() => {
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -349,11 +667,11 @@ test('TikTok HUD overlays the same quiz layout while critical quiz content stays
   expect(overlap).toEqual({ bannerCoversTimerText: false, commentsCoverQuiz: false });
 });
 
-test('Storm Arena shows stadium layers, shield ranks and the three-line MC bubble', async ({ page }) => {
+test('question uses the baked stadium, audience ranks and the accepting instruction', async ({ page }) => {
   await openScene(page, 'question', 'QUESTION');
-  await expect(page.locator('.v3-env-arc')).toBeVisible();
-  await expect(page.locator('.v3-env-stands')).toBeVisible();
-  await expect(page.locator('.v3-env-floodlights rect')).toHaveCount(4);
+  await expect(page.locator('.v3-bg--question-user .v3-arena-backdrop-image')).toBeVisible();
+  await expect(page.locator('.v3-arena-flag')).toHaveCount(0);
+  await expect(page.locator('.v3-env-wrap')).toBeHidden();
   const steps = page.locator('.v3-step');
   await expect(steps).toHaveCount(7);
   const [backRow, frontRow] = await Promise.all([steps.first().boundingBox(), steps.last().boundingBox()]);
@@ -371,6 +689,12 @@ test('Storm Arena shows stadium layers, shield ranks and the three-line MC bubbl
   await expect(bubble).toContainText('để tham gia ngay!');
   expect(await bubble.evaluate((element) => getComputedStyle(element, '::before').content)).not.toBe('none');
   expect(await bubble.locator('p').evaluate((element) => getComputedStyle(element).whiteSpace)).toBe('pre-line');
+  const instructionBox = await bubble.boundingBox();
+  const boardBox = await page.locator('.v3-board').boundingBox();
+  expect(instructionBox).not.toBeNull();
+  expect(boardBox).not.toBeNull();
+  expect(instructionBox!.x).toBeGreaterThanOrEqual(boardBox!.x);
+  expect(instructionBox!.y + instructionBox!.height).toBeLessThan(await page.locator('.v3-question').evaluate((element) => element.getBoundingClientRect().top));
 });
 
 test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ page }) => {
@@ -482,10 +806,126 @@ test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) 
   expect(errors).toEqual([]);
 });
 
+test('audio creates WebAudio and dispatches one cue per mock phase transition', async ({ page }) => {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & { __audioProbe?: { contexts: number; oscillatorStarts: number; bufferStarts: number } };
+    testWindow.__audioProbe = { contexts: 0, oscillatorStarts: 0, bufferStarts: 0 };
+    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
+    class FakeAudioContext {
+      state: AudioContextState = 'suspended';
+      currentTime = 0;
+      sampleRate = 44_100;
+      destination = {} as AudioDestinationNode;
+      onstatechange: ((this: BaseAudioContext, ev: Event) => unknown) | null = null;
+      constructor() { testWindow.__audioProbe!.contexts += 1; }
+      createGain() { return { gain: param(), connect() {} } as unknown as GainNode; }
+      createOscillator() {
+        return {
+          type: 'sine', frequency: param(), connect() {},
+          start: () => { testWindow.__audioProbe!.oscillatorStarts += 1; },
+          stop() {}, onended: null,
+        } as unknown as OscillatorNode;
+      }
+      createBufferSource() { return { buffer: null, connect() {}, start: () => { testWindow.__audioProbe!.bufferStarts += 1; }, stop() {}, loop: false, onended: null } as unknown as AudioBufferSourceNode; }
+      createBuffer(_channels: number, length: number, sampleRate: number) { return { duration: length / sampleRate, getChannelData: () => new Float32Array(length) } as unknown as AudioBuffer; }
+      createBiquadFilter() { return { type: 'lowpass', frequency: param(), Q: param(), connect() {} } as unknown as BiquadFilterNode; }
+      decodeAudioData() { return Promise.resolve({ duration: 0.2 } as AudioBuffer); }
+      resume() { this.state = 'running'; this.onstatechange?.call(this as unknown as BaseAudioContext, new Event('statechange')); return Promise.resolve(); }
+      close() { this.state = 'closed'; return Promise.resolve(); }
+    }
+    (window as typeof window & { AudioContext: typeof AudioContext }).AudioContext = FakeAudioContext as unknown as typeof AudioContext;
+  });
+  await page.route('**/assets/audio/**', (route) => route.fulfill({ status: 404, body: 'optional audio absent' }));
+  await page.route('**/assets/audio/question-enter.mp3', (route) => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: 'mock audio file' }));
+  const errors = watchPageErrors(page);
+  await page.goto('/?mock=cycle&cycleMs=250&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
+  const runtime = page.getByTestId('overlay-audio-runtime');
+  await expect(runtime).toHaveAttribute('data-audio-state', 'running');
+  await expect(runtime).toHaveAttribute('data-bgm', '0');
+  await expect(page.getByTestId('stage')).toHaveAttribute('data-fx-level', 'low');
+  await expect(page.locator('.overlay-fx-particle')).toHaveCount(4);
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('question-enter');
+  await expect(page.getByTestId('stage')).toHaveAttribute('data-state', 'READING');
+  await expect(runtime).toHaveAttribute('data-cues', 'question-enter');
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('correct-answer');
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('top10');
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('victory');
+  const cues = (await runtime.getAttribute('data-cues'))?.split(',') ?? [];
+  for (const cue of ['question-enter', 'correct-answer', 'top10', 'victory'])
+    expect(cues.filter((value) => value === cue)).toHaveLength(1);
+  const probe = await page.evaluate(() => (window as typeof window & { __audioProbe: { contexts: number; oscillatorStarts: number; bufferStarts: number } }).__audioProbe);
+  expect(probe.contexts).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __audioProbe: { bufferStarts: number } }).__audioProbe.bufferStarts)).toBe(2);
+  expect(probe.oscillatorStarts).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test('reduced motion removes ambient FX and audio unlock hint is browser-only', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(() => {
+    class SuspendedAudioContext {
+      state: AudioContextState = 'suspended';
+      currentTime = 0;
+      destination = {} as AudioDestinationNode;
+      onstatechange: ((this: BaseAudioContext, ev: Event) => unknown) | null = null;
+      private resumes = 0;
+      createGain() {
+        return { gain: { value: 0, setTargetAtTime() {} }, connect() {} } as unknown as GainNode;
+      }
+      resume() {
+        this.resumes += 1;
+        if (this.resumes < 2) return Promise.reject(new Error('gesture required'));
+        this.state = 'running';
+        this.onstatechange?.call(this as unknown as BaseAudioContext, new Event('statechange'));
+        return Promise.resolve();
+      }
+      close() { this.state = 'closed'; return Promise.resolve(); }
+    }
+    (window as typeof window & { AudioContext: typeof AudioContext }).AudioContext = SuspendedAudioContext as unknown as typeof AudioContext;
+  });
+  await page.goto('/?mock=victory&sfx=0.6&fx=low&source=1', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.overlay-fx-particle')).toHaveCount(0);
+  await expect(page.locator('.overlay-fx-confetti')).toHaveCount(0);
+  await expect(page.getByTestId('audio-unlock')).toHaveCount(0);
+
+  await page.goto('/?mock=victory&sfx=0.6&fx=low', { waitUntil: 'domcontentloaded' });
+  const unlock = page.getByTestId('audio-unlock');
+  await expect(unlock).toBeVisible();
+  await unlock.click();
+  await expect(unlock).toHaveCount(0);
+});
+
 test('victory-tie labels the tie and orders podium slots by x coordinate', async ({ page }) => {
   const { errors } = await openScene(page, 'victory-tie', 'VICTORY');
+  await expect(page.getByTestId('victory-background')).toHaveAttribute('src', '/assets/victory/bg-user-cover.jpg');
+  await expect(page.getByTestId('victory-background')).toHaveCSS('object-fit', 'cover');
+  await expect(page.getByTestId('victory-background')).toHaveCSS('filter', 'none');
+  await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+  await page.waitForTimeout(2_000);
   await expect(page.getByText('ĐỒNG HẠNG').first()).toBeVisible();
+  await expect(page.getByTestId('podium-slot-2').locator('.v3v-player-name')).toHaveText('StormKing');
   const champion = page.getByTestId('podium-slot-1');
+  await expect(champion.locator('.v3v-player-name')).toHaveText('FFVN.Kelly');
+  const runnerUp = page.getByTestId('podium-slot-2');
+  const third = page.getByTestId('podium-slot-3');
+  await expect(champion).toHaveAttribute('data-rank', '1');
+  await expect(runnerUp).toHaveAttribute('data-rank', '1');
+  await expect(champion).toHaveAttribute('data-score', '1500');
+  await expect(runnerUp).toHaveAttribute('data-score', '1500');
+  await expect(champion.getByTestId('podium-rank')).toHaveText('TOP 1');
+  await expect(runnerUp.getByTestId('podium-rank')).toHaveText('TOP 1');
+  await expect(third).toHaveAttribute('data-rank', '3');
+  await expect(third.getByTestId('podium-rank')).toHaveText('TOP 3');
+  await expect(runnerUp.getByText('ĐỒNG HẠNG')).toBeVisible();
+  const [firstSlotBox, secondSlotBox, firstNameplate, secondNameplate, firstColor, secondColor] = await Promise.all([
+    champion.boundingBox(), runnerUp.boundingBox(),
+    champion.locator('.v3v-nameplate').boundingBox(), runnerUp.locator('.v3v-nameplate').boundingBox(),
+    champion.locator('.v3v-nameplate').evaluate((el) => getComputedStyle(el).getPropertyValue('--rank-color').trim()),
+    runnerUp.locator('.v3v-nameplate').evaluate((el) => getComputedStyle(el).getPropertyValue('--rank-color').trim()),
+  ]);
+  expect(firstSlotBox?.y).toBe(secondSlotBox?.y);
+  expect(firstNameplate?.y).toBe(secondNameplate?.y);
+  expect(firstColor).toBe(secondColor);
   const badge = champion.locator('[data-testid="top1-badge"]').first();
   const name = champion.locator('.v3v-player-name').first();
   await expect(badge).toHaveText('x3');
@@ -502,26 +942,89 @@ test('victory-tie labels the tie and orders podium slots by x coordinate', async
   }
   expect(xCoordinates[0]).toBeLessThan(xCoordinates[1]!);
   expect(xCoordinates[1]).toBeLessThan(xCoordinates[2]!);
+  await page.screenshot({ path: join(screenshotDirectory, 'victory-tie-approved-layout.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
 });
 
-test('Victory keeps full-body characters on the 66% podium and nameplates above TikTok comments', async ({ page }) => {
+test('Victory keeps 16-character podium names readable at the same size in tied and regular plates', async ({ page }) => {
+  const { errors } = await openScene(page, 'victory-name-test', 'VICTORY');
+  await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+  await page.waitForTimeout(2_000);
+
+  const tiedName = page.getByTestId('podium-slot-1').locator('.v3v-player-name');
+  const regularName = page.getByTestId('podium-slot-3').locator('.v3v-player-name').first();
+  const truncatedName = page.getByTestId('podium-slot-3').locator('.v3v-player-name').nth(1);
+  await expect(tiedName).toHaveText('BVD.Championship');
+  await expect(regularName).toHaveText('BVD.Championship');
+  await expect(truncatedName).toHaveText('BVD.ChampionshipX…');
+  const [tiedStyle, regularStyle, fits] = await Promise.all([
+    tiedName.evaluate((element) => getComputedStyle(element).fontSize),
+    regularName.evaluate((element) => getComputedStyle(element).fontSize),
+    Promise.all([tiedName, regularName].map((locator) => locator.evaluate((element) => element.scrollWidth <= element.clientWidth))),
+  ]);
+  expect(tiedStyle).toBe(regularStyle);
+  expect(fits).toEqual([true, true]);
+  expect(errors).toEqual([]);
+});
+
+test('question uses baked-in flags while Top 10 keeps eight optional logo flags', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const { stage } = await openScene(page, 'question', 'QUESTION');
+  const flags = stage.locator('[data-testid^="arena-flag-"]');
+  await expect(flags).toHaveCount(0);
+  const background = stage.locator('.v3-arena-backdrop-image');
+  await expect(background).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect(background).toHaveCSS('object-fit', 'cover');
+  await expect.poll(() => background.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(1080);
+  await expect.poll(() => background.evaluate((image) => (image as HTMLImageElement).naturalHeight)).toBe(1920);
+  const plateBox = await stage.locator('[data-layer="kelly"] .v3-mc-plate').boundingBox();
+  expect(plateBox).not.toBeNull();
+  const nameTags = stage.locator('.v3-nametags .v3-seat-name');
+  for (let i = 0; i < await nameTags.count(); i += 1) {
+    const tagBox = await nameTags.nth(i).boundingBox();
+    if (!tagBox || !plateBox) continue;
+    const overlaps = plateBox.x < tagBox.x + tagBox.width && plateBox.x + plateBox.width > tagBox.x && plateBox.y < tagBox.y + tagBox.height && plateBox.y + plateBox.height > tagBox.y;
+    expect(overlaps, `MC plate overlaps audience name tag ${i + 1}`).toBe(false);
+  }
+  await page.screenshot({ path: join(screenshotDirectory, 'arena-question.png'), animations: 'disabled' });
+
+  const top10 = await openScene(page, 'top10', 'INTERIM_TOP10');
+  const panel = top10.stage.getByTestId('v3-top10-large');
+  const panelBox = await panel.boundingBox();
+  expect(panelBox?.height).toBeLessThanOrEqual(864);
+  const top10Logo = top10.stage.getByTestId('brand-logo');
+  const top10LogoBox = await top10Logo.boundingBox();
+  expect(top10LogoBox).not.toBeNull();
+  expect(top10LogoBox!.width).toBeGreaterThanOrEqual(432);
+  expect(top10LogoBox!.y + top10LogoBox!.height).toBeLessThan(panelBox!.y);
+  await expect(top10.stage.getByTestId('top10-guide')).toBeVisible();
+  await expect(top10.stage.locator('.v3-arena-backdrop-image')).toHaveAttribute('src', '/assets/arena/bg.jpg');
+  const bubble = top10.stage.getByTestId('mc-bubble');
+  await expect(bubble).toContainText('BXH trực tiếp');
+  await expect(bubble).not.toContainText('comment A');
+  const bubbleFont = await bubble.locator('p').evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+  expect(bubbleFont).toBeGreaterThanOrEqual(16);
+  await expect(top10.stage.locator('[data-testid^="arena-flag-"]')).toHaveCount(8);
+  await page.screenshot({ path: join(screenshotDirectory, 'arena-top10.png'), animations: 'disabled' });
+});
+
+test('Victory uses the selected background unchanged and keeps podium labels on adjustable anchors', async ({ page }) => {
   const errors = watchPageErrors(page);
-  await page.setViewportSize({ width: 921, height: 2000 });
-  await page.goto('/?mock=victory&hud=1', { waitUntil: 'domcontentloaded' });
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.goto('/?mock=victory', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('[data-testid="stage"][data-scene="VICTORY"]')).toBeVisible();
   await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
-  await page.addStyleTag({ content: '.v3v-figure, .v3v-nameplate, .v3v-trophy { animation: none !important; opacity: 1 !important; transform: none !important; }' });
+  await page.waitForTimeout(8_100);
 
   const geometry = await page.evaluate(() => {
     const stage = document.querySelector<HTMLElement>('[data-testid="stage"]')?.getBoundingClientRect();
-    const comments = document.querySelector<HTMLElement>('.tiktok-hud-comments')?.getBoundingClientRect();
     const scale = stage ? stage.height / 1920 : 1;
     const slots = [1, 2, 3].map((place) => {
       const slot = document.querySelector<HTMLElement>(`[data-testid="podium-slot-${place}"]`);
       const figure = slot?.querySelector<HTMLElement>('.v3v-figure')?.getBoundingClientRect();
       const image = slot?.querySelector<HTMLImageElement>('.v3v-figure img')?.getBoundingClientRect();
-      const plate = slot?.querySelector<HTMLElement>('.v3v-nameplate')?.getBoundingClientRect();
+      const plateElement = slot?.querySelector<HTMLElement>('.v3v-nameplate');
+      const plate = plateElement?.getBoundingClientRect();
       return {
         footY: stage && figure ? (figure.bottom - stage.top) / scale : 0,
         figureHeight: figure ? figure.height / scale : 0,
@@ -530,41 +1033,59 @@ test('Victory keeps full-body characters on the 66% podium and nameplates above 
         plateBottom: stage && plate ? (plate.bottom - stage.top) / scale : 0,
         plateLeft: stage && plate ? (plate.left - stage.left) / scale : 0,
         plateRight: stage && plate ? (plate.right - stage.left) / scale : 0,
+        plateWidth: plate ? plate.width / scale : 0,
+        plateReflection: plateElement ? getComputedStyle(plateElement).getPropertyValue('-webkit-box-reflect') : '',
+        place,
+        centerX: stage && slot ? ((slot.getBoundingClientRect().left + slot.getBoundingClientRect().width / 2) - stage.left) / scale : 0,
         plateText: slot?.querySelector<HTMLElement>('.v3v-nameplate')?.innerText ?? '',
-        plateIntersectsComments: !!plate && !!comments && plate.left < comments.right && plate.right > comments.left && plate.top < comments.bottom && plate.bottom > comments.top,
       };
     });
-    const platformTop = document.querySelector<HTMLElement>('[data-testid="victory-platform"]')?.getBoundingClientRect().top;
-    const platformTopUnits = stage && platformTop !== undefined ? (platformTop - stage.top) / scale : 0;
-    const trophy = document.querySelector<HTMLElement>('[data-layer="trophy"]')?.getBoundingClientRect();
-    const trophyTopUnits = stage && trophy ? (trophy.top - stage.top) / scale : 0;
-    const trophyBottomUnits = stage && trophy ? (trophy.bottom - stage.top) / scale : 0;
-    const logo = document.querySelector<HTMLElement>('.v3v-header .v3-brand-logo')?.getBoundingClientRect();
+    const background = document.querySelector<HTMLImageElement>('[data-testid="victory-background"]');
+    const logo = document.querySelector<HTMLElement>('.v3v-event-logo, .v3v-logo-fallback .v3-title')?.getBoundingClientRect();
     const logoWidthRatio = stage && logo ? logo.width / stage.width : 0;
     const logoHeightRatio = stage && logo ? logo.height / stage.height : 0;
-    return { slots, platformTopUnits, trophyTopUnits, trophyBottomUnits, logoWidthRatio, logoHeightRatio };
+    const logoTopRatio = stage && logo ? (logo.top - stage.top) / stage.height : 0;
+    return { slots, logoTopRatio, logoWidthRatio, logoHeightRatio, background: background ? {
+      src: new URL(background.currentSrc || background.src).pathname,
+      naturalWidth: background.naturalWidth,
+      naturalHeight: background.naturalHeight,
+      filter: getComputedStyle(background).filter,
+      objectFit: getComputedStyle(background).objectFit,
+    } : null };
   });
   expect(geometry.slots).toHaveLength(3);
   for (const slot of geometry.slots) {
-    expect(slot.footY).toBeGreaterThanOrEqual(1276);
-    expect(slot.footY).toBeLessThanOrEqual(1284);
-    expect(slot.figureHeight).toBeGreaterThanOrEqual(470);
-    expect(slot.figureHeight).toBeLessThanOrEqual(500);
-    expect(slot.imageHeight).toBeCloseTo(slot.figureHeight, 0);
-    expect(slot.plateTop).toBeGreaterThan(slot.footY);
-    expect(slot.plateBottom).toBeLessThanOrEqual(1376);
-    expect(slot.plateLeft).toBeGreaterThanOrEqual(98);
-    expect(slot.plateRight).toBeLessThanOrEqual(950);
+    const center = slot.place === 1;
+    expect(slot.centerX).toBeGreaterThanOrEqual(center ? 536 : slot.place === 2 ? 152 : 918);
+    expect(slot.centerX).toBeLessThanOrEqual(center ? 544 : slot.place === 2 ? 162 : 928);
+    expect(slot.footY).toBeGreaterThanOrEqual(1195);
+    expect(slot.footY).toBeLessThanOrEqual(1205);
+    expect(slot.figureHeight).toBeGreaterThanOrEqual(375);
+    expect(slot.figureHeight).toBeLessThanOrEqual(390);
+    expect(slot.imageHeight).toBeGreaterThanOrEqual(375);
+    expect(slot.imageHeight).toBeLessThanOrEqual(415);
+    expect(slot.plateTop).toBeGreaterThanOrEqual(1200);
+    expect(slot.plateTop).toBeLessThanOrEqual(1225);
+    expect(slot.plateBottom).toBeLessThanOrEqual(1345);
+    expect(slot.plateLeft).toBeGreaterThanOrEqual(0);
+    expect(slot.plateRight).toBeLessThanOrEqual(1080);
+    expect(slot.plateWidth).toBe(slot.place === 1 ? 320 : 280);
     expect(slot.plateText).toContain('PTS');
-    expect(slot.plateIntersectsComments).toBe(false);
+    expect(slot.plateReflection).toBe('none');
   }
-  expect(geometry.platformTopUnits).toBeCloseTo(1278, 0);
-  expect(geometry.trophyTopUnits / 1920).toBeGreaterThanOrEqual(0.22);
-  expect(geometry.trophyTopUnits / 1920).toBeLessThanOrEqual(0.24);
-  expect(geometry.trophyBottomUnits / 1920).toBeLessThanOrEqual(0.58);
-  expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.27);
-  expect(geometry.logoHeightRatio).toBeGreaterThanOrEqual(0.13);
-  await expect(page.locator('.v3v-caption')).toContainText('VINH DANH TOP 3');
-  await expect(page.locator('.v3v-header')).not.toContainText('FREE FIRE');
+  expect(geometry.background?.src).toBe('/assets/victory/bg-user-cover.jpg');
+  expect(geometry.background?.filter).toBe('none');
+  expect(geometry.background?.objectFit).toBe('cover');
+  if (hasLocalVictoryBackground) expect([geometry.background?.naturalWidth, geometry.background?.naturalHeight]).toEqual([1080, 1920]);
+  await expect(page.locator('.v3v .v3-mc-portrait')).toHaveCount(0);
+  await expect(page.locator('.v3v-medal')).toHaveCount(0);
+  await expect(page.locator('.v3v-score-reflection, .v3v-nameplate-reflection')).toHaveCount(0);
+  await expect(page.locator('.v3v-trophy, .v3v-trophy-stage, .v3v-bg-dim, .v3v-fan-lights, .v3v-side-lightning')).toHaveCount(0);
+  expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.339);
+  expect(geometry.logoWidthRatio).toBeLessThanOrEqual(0.35);
+  expect(geometry.logoTopRatio).toBeGreaterThanOrEqual(0.014);
+  expect(geometry.logoTopRatio + geometry.logoHeightRatio).toBeLessThanOrEqual(0.19);
+  await expect(page.locator('.v3v-header')).not.toContainText('VINH DANH TOP 3');
+  await page.screenshot({ path: join(screenshotDirectory, 'victory-approved-layout.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
 });

@@ -133,7 +133,7 @@ async function connectAndAck(h: Harness) {
       let message: { type?: string; stateVersion?: number };
       try { message = JSON.parse(String(data)) as typeof message; } catch { return; }
       if (message.type !== 'STATE_SNAPSHOT' || typeof message.stateVersion !== 'number') return;
-      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion }));
+      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, role: 'program' }));
       clearTimeout(timeout);
       resolve();
     });
