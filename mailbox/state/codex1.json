@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T11:46:05+07:00",
-  "state": "working",
-  "task": "C-0117",
-  "note": "Đã ack X-0188; đang đối chiếu F6, F8–F12 với main và giới hạn làn để chọn sửa/test an toàn.",
+  "heartbeat": "2026-11-12T11:46:26+07:00",
+  "state": "waiting",
+  "task": "C-0085",
+  "note": "C-0117 đã report X-0189 và done; chờ coordinator mở khóa C-0085 sau khi gộp C-0080/C-0082.",
   "done": [
     86,
     88,
