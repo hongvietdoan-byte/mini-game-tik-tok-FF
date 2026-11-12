@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T11:56:57+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-12T12:51:09+07:00",
+  "state": "waiting",
   "task": "C-0109",
-  "note": "Đã push và báo cáo C-0116/C-0113; bắt đầu âm thanh và hiệu ứng overlay theo C-0109",
+  "note": "Đã push a27c451 và report Y-0197; chờ coordinator/codex1 bổ sung MIME audio cho /assets (mp3/ogg) để kiểm tra khe file trước khi đóng task; preview đang chạy ở :5186",
   "done": [
     110,
     111,
