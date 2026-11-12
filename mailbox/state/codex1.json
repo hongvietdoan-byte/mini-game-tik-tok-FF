@@ -1,7 +1,7 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T07:16:43+07:00",
+  "heartbeat": "2026-11-12T07:38:15+07:00",
   "state": "working",
   "task": "C-0100",
   "note": "Đã commit F1/F2/F3; đang triển khai marker build .build-commit và kiểm tra nguồn theo F4",
@@ -12,6 +12,7 @@
     92,
     95,
     96,
-    97
+    97,
+    100
   ]
 }
