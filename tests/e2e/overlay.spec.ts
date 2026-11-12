@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { getE2eAssetDirectory } from './assets';
 
 const scenes = [
   { name: 'lobby', scene: 'LOBBY' },
@@ -22,7 +23,7 @@ const scenes = [
 
 const screenshotDirectory = join(process.cwd(), 'test-results', 'e2e', 'screenshots');
 mkdirSync(screenshotDirectory, { recursive: true });
-const localAssetDirectory = resolve(process.cwd(), '../../../assets-local');
+const localAssetDirectory = getE2eAssetDirectory();
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
 const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));

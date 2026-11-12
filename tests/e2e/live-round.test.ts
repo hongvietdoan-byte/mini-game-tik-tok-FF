@@ -9,6 +9,7 @@ import { buildApp, type QuizApp } from '@quiz/server';
 import type { PublicSnapshot } from '@quiz/contracts';
 import { expect, test, type Page } from '@playwright/test';
 import { makeQuestions, TOKEN } from '../integration/helpers';
+import { getE2eAssetDirectory, usesE2ePlaceholderAssets } from './assets';
 
 type Replay = {
   questionsPerRound: 10;
@@ -39,7 +40,7 @@ const replay = JSON.parse(readFileSync(
   new URL('../../fixtures/replay/tiktok-comments-round.json', import.meta.url),
   'utf8',
 )) as Replay;
-const assetDirectory = resolve(process.cwd(), '../../../assets-local');
+const assetDirectory = getE2eAssetDirectory();
 const kellyManifest = join(assetDirectory, 'mc', 'kelly', 'manifest.json');
 const adminToken = TOKEN;
 const cleanup: (() => Promise<void>)[] = [];
@@ -332,6 +333,7 @@ function normalized(value: string) {
 }
 
 test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và replay giả', async ({ page }) => {
+  test.skip(usesE2ePlaceholderAssets(), 'TIKTOK cần assets-local thật; bộ giữ chỗ chỉ dùng cho UI/CI MOCK.');
   test.setTimeout(240_000);
   const running = await boot();
   const frames: SnapshotFrame[] = [];

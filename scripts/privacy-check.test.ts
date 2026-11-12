@@ -34,15 +34,17 @@ describe('checkFiles', () => {
     expect(violations.some((violation) => violation.includes('__screenshots__/baseline.gif'))).toBe(false);
   });
 
-  it('chỉ cho ảnh giữ chỗ trong đúng thư mục fixtures và giới hạn mỗi ảnh 4 KB', () => {
+  it('chỉ cho ảnh giữ chỗ trong fixtures, với ngoại lệ kích thước nền và manifest chibi', () => {
     expect(checkFiles([
       { path: 'fixtures/assets-placeholder/chibi/chibi-01.png', sizeBytes: 4_096 },
+      { path: 'fixtures/assets-placeholder/arena/bg.jpg', sizeBytes: 16_384 },
+      { path: 'fixtures/assets-placeholder/chibi/manifest.json', content: '{"ids":["chibi-01"]}' },
       { path: 'fixtures/assets-placeholder/README.md', content: 'ảnh giữ chỗ DEMO' },
     ])).toEqual([]);
 
     expect(checkFiles([
-      { path: 'fixtures/assets-placeholder/victory/bg.jpg', sizeBytes: 4_097 },
-    ])).toContain('fixtures/assets-placeholder/victory/bg.jpg: ảnh giữ chỗ vượt quá 4 KB');
+      { path: 'fixtures/assets-placeholder/arena/bg.jpg', sizeBytes: 16_385 },
+    ])).toContain('fixtures/assets-placeholder/arena/bg.jpg: ảnh giữ chỗ vượt quá 16 KB');
     expect(checkFiles([
       { path: 'fixtures/assets-placeholder/chibi/chibi-01.png' },
     ])).toContain('fixtures/assets-placeholder/chibi/chibi-01.png: không xác minh được kích thước ảnh giữ chỗ');
@@ -54,7 +56,7 @@ describe('checkFiles', () => {
     ])).toContain('fixtures/assets-placeholder-copy/chibi/demo.png: ảnh nằm ngoài thư mục được phép');
     expect(checkFiles([
       { path: 'fixtures/assets-placeholder/extra.bin', sizeBytes: 12 },
-    ])).toContain('fixtures/assets-placeholder/extra.bin: chỉ cho ảnh giữ chỗ và README.md trong thư mục này');
+    ])).toContain('fixtures/assets-placeholder/extra.bin: chỉ cho ảnh giữ chỗ, manifest chibi và README.md trong thư mục này');
     expect(checkFiles([
       { path: 'fixtures/assets-placeholder/chibi/new-small-image.png', sizeBytes: 12 },
     ])).toContain('fixtures/assets-placeholder/chibi/new-small-image.png: ảnh nằm ngoài thư mục được phép');

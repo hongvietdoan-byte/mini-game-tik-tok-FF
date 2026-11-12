@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import { resolve } from 'node:path';
+import { getE2eAssetDirectory } from './tests/e2e/assets';
 
-const localAssetDirectory = resolve(process.cwd(), '../../../assets-local');
+const localAssetDirectory = getE2eAssetDirectory();
 const serverPort = Number(process.env.PLAYWRIGHT_SERVER_PORT ?? 18787);
 const overlayPort = Number(process.env.PLAYWRIGHT_OVERLAY_PORT ?? 15176);
 if (!Number.isInteger(serverPort) || !Number.isInteger(overlayPort) || serverPort === overlayPort)
@@ -18,7 +19,6 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: overlayUrl,
-    channel: 'msedge',
     viewport: { width: 1080, height: 1920 },
     deviceScaleFactor: 1,
   },
