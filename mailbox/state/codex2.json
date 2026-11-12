@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T09:45:03+07:00",
+  "heartbeat": "2026-11-12T09:46:32+07:00",
   "state": "working",
-  "task": "C-0101",
-  "note": "Đã ACK C-0101/C-0103; rà ref và triển khai UI sân đấu, cờ, Top10, Victory, đồng hạng trên worktree codex2/c0068-victory-ref.",
+  "task": "C-0109",
+  "note": "Đang khảo sát luồng phase/audio trong worktree codex2/c0109-sound-fx",
   "done": []
 }
