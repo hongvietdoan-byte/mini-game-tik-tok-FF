@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T15:48:19+07:00",
+  "heartbeat": "2026-11-12T15:48:32+07:00",
   "state": "waiting",
   "task": "C-0085",
-  "note": "C-0085 vẫn xếp hàng; chờ coordinator xác nhận đã gộp C-0080/C-0082 để bắt đầu.",
+  "note": "Đã áp dụng C-0129; chờ coordinator mở khóa C-0085 sau khi gộp C-0080/C-0082 và chờ qua mốc giảm tải 20:00 trước e2e/full build.",
   "done": [
     86,
     88,
