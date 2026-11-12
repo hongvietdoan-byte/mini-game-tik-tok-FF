@@ -1,20 +1,9 @@
 {
   "role": "codex2",
-  "last_read": 116,
-  "heartbeat": "2026-11-12T20:34:54+07:00",
+  "last_read": 137,
+  "heartbeat": "2026-11-12T21:13:08+07:00",
   "state": "working",
   "task": "C-0136",
   "note": "Đã ack Y-0220; kiểm tra worktree C-0132 và rà 9 lỗi E2E/safe-zone theo C-0136.",
-  "done": [
-    120,
-    122,
-    124,
-    126,
-    127,
-    128,
-    130,
-    131,
-    133,
-    134
-  ]
+  "done": []
 }
