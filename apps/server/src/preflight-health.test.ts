@@ -19,7 +19,7 @@ describe('preflight health', () => {
   });
 
   it('F9: cảnh báo trong lúc ACK trễ ngắn hạn, chỉ fail sau grace period', () => {
-    const pending = { clients: 1, ackVersion: 2, expectedVersion: 3, pendingSinceMs: 1_000, nowMs: 2_999 };
+    const pending = { clients: 1, programClients: 1, ackVersion: 2, expectedVersion: 3, pendingSinceMs: 1_000, nowMs: 2_999 };
     expect(overlayAckPreflight(pending).status).toBe('WARN');
     expect(overlayAckPreflight({ ...pending, nowMs: 3_000 }).status).toBe('FAIL');
     expect(overlayAckPreflight({ ...pending, ackVersion: 3 }).status).toBe('PASS');

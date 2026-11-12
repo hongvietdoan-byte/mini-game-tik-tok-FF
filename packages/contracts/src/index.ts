@@ -698,6 +698,8 @@ export const ClientAckSchema = z.object({
   type: z.literal('ACK'),
   stateVersion: z.number().int().min(0),
   seq: z.number().int().min(0).optional(),
+  /** Nguồn overlay đã render; client cũ không gửi role được xem là preview. */
+  role: z.enum(['program', 'preview']).default('preview'),
 });
 export type ClientAck = z.infer<typeof ClientAckSchema>;
 

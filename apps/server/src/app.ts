@@ -32,6 +32,13 @@ import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile,
 import { McVoiceService } from './voice/service';
 import { preflightAssets } from './preflight-assets';
 import { commentSourcePreflight, overlayAckPreflight } from './preflight-health';
+import {
+  recordOverlayAck,
+  registerOverlaySession,
+  removeOverlaySession,
+  summarizeOverlaySessions,
+  type OverlaySession,
+} from './overlay-sessions';
 
 export const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
@@ -136,6 +143,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
 
   let rt: SessionRuntime | null = null;
   const overlayClients = new Set<WebSocket>();
+  const overlaySessions = new Map<WebSocket, OverlaySession>();
   const adminClients = new Set<WebSocket>();
   let unsub: (() => void) | null = null;
   let lastAck: { stateVersion: number; atMs: number } | null = null;
@@ -154,6 +162,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     rt?.dispose();
     rt = next;
     lastAck = null;
+    for (const session of overlaySessions.values()) session.ack = null;
     observedStateVersion = next.engine.stateVersion;
     ackPendingSinceMs = scheduler.now();
     pushOverlayInfo();
@@ -282,9 +291,11 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       check('overlayAck', 'Overlay đã ACK', 'WARN', 'Chưa có phiên mở để đối chiếu ACK với stateVersion.');
       check('commentSource', 'Nguồn comment', 'WARN', 'Chưa có phiên để xác định MOCK/TIKTOK.');
     } else {
+      const overlaySummary = summarizeOverlaySessions(overlaySessions);
       const ack = overlayAckPreflight({
         clients: overlayClients.size,
-        ackVersion: lastAck?.stateVersion ?? null,
+        programClients: overlaySummary.programClients,
+        ackVersion: overlaySummary.programAckStateVersion,
         expectedVersion: session.engine.stateVersion,
         nowMs: scheduler.now(),
         pendingSinceMs: ackPendingSinceMs,
@@ -755,9 +766,22 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       if (role) {
         // Sau HELLO chỉ nhận ACK từ overlay (Connection Test bước 9); mọi thứ khác bị bỏ qua.
         const ack = role === 'overlay' ? ClientAckSchema.safeParse(msg) : null;
-        if (ack?.success && (!lastAck || ack.data.stateVersion >= lastAck.stateVersion)) {
-          lastAck = { stateVersion: ack.data.stateVersion, atMs: scheduler.now() };
-          pushOverlayInfo();
+        if (ack?.success) {
+          const atMs = scheduler.now();
+          const programClientsBefore = summarizeOverlaySessions(overlaySessions).programClients;
+          const accepted = recordOverlayAck(overlaySessions, socket, ack.data, atMs);
+          const overlaySummary = summarizeOverlaySessions(overlaySessions);
+          if (
+            accepted
+            && programClientsBefore === 0
+            && overlaySummary.programClients > 0
+            && overlaySummary.programAckStateVersion !== null
+            && overlaySummary.programAckStateVersion < (rt?.engine.stateVersion ?? 0)
+          ) ackPendingSinceMs = atMs;
+          if (accepted && (!lastAck || ack.data.stateVersion >= lastAck.stateVersion)) {
+            lastAck = { stateVersion: ack.data.stateVersion, atMs };
+            pushOverlayInfo();
+          }
         }
         return;
       }
@@ -779,6 +803,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         role = 'overlay';
         if (overlayClients.size === 0) ackPendingSinceMs = scheduler.now();
         overlayClients.add(socket);
+        registerOverlaySession(overlaySessions, socket);
         pushOverlayInfo();
         if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', rt.publicSnapshot())));
       }
@@ -786,6 +811,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     socket.on('close', () => {
       clearTimeout(helloTimer);
       overlayClients.delete(socket);
+      removeOverlaySession(overlaySessions, socket);
       adminClients.delete(socket);
       pushOverlayInfo();
     });

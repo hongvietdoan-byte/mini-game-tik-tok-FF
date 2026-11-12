@@ -36,6 +36,7 @@ export function commentSourcePreflight(
 
 export function overlayAckPreflight(input: {
   clients: number;
+  programClients: number;
   ackVersion: number | null;
   expectedVersion: number;
   nowMs: number;
@@ -43,6 +44,9 @@ export function overlayAckPreflight(input: {
   graceMs?: number;
 }): { status: PreflightHealthStatus; reason: string } {
   if (input.clients < 1) return { status: 'FAIL', reason: 'Chưa có overlay kết nối.' };
+  if (input.programClients < 1) {
+    return { status: 'WARN', reason: 'Chỉ thấy tab xem thử, chưa thấy nguồn trong LIVE Studio.' };
+  }
   if (input.ackVersion !== null && input.ackVersion >= input.expectedVersion) {
     return {
       status: 'PASS',
