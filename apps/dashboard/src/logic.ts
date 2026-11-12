@@ -103,6 +103,13 @@ export function overlayUrlFromLocation(href: string): string {
   return url.toString();
 }
 
+export function overlayUrlForRole(overlayUrl: string, role: 'preview' | 'program'): string {
+  const url = new URL(overlayUrl);
+  if (role === 'program') url.searchParams.set('role', 'program');
+  else url.searchParams.delete('role');
+  return url.toString();
+}
+
 export const dangerousActions: DashboardAction[] = [
   { type: 'SKIP_QUESTION', label: 'Bỏ qua câu', danger: true },
   { type: 'VOID_QUESTION', label: 'Huỷ câu', danger: true },

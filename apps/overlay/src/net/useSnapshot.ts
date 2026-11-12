@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { PublicSnapshot, WsMessage } from '@quiz/contracts';
 import { selectNewestSnapshot, shouldAcceptSnapshotSeq } from '../overlayLogic';
 import { makeMockSnapshot } from '../mock/snapshots';
+import type { OverlayRole } from '../overlayRole';
+import type { AudioEngineState } from '../audio/audio-engine';
 
 export type SnapshotConnection = 'connecting' | 'connected' | 'reconnecting';
 
@@ -35,7 +37,7 @@ export function applyAnswerCounts(
   };
 }
 
-export function useSnapshot(mockScene: string | null) {
+export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, audioState: AudioEngineState) {
   const [snapshot, setSnapshot] = useState<PublicSnapshot | null>(null);
   const [connection, setConnection] = useState<SnapshotConnection>('connecting');
   const [serverTimeMs, setServerTimeMs] = useState(Date.now());
@@ -136,8 +138,8 @@ export function useSnapshot(mockScene: string | null) {
     if (mockScene || !snapshot) return;
     const socket = activeSocket.current;
     if (socket?.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify({ type: 'ACK', stateVersion: snapshot.stateVersion }));
-  }, [mockScene, snapshot]);
+    socket.send(JSON.stringify({ type: 'ACK', stateVersion: snapshot.stateVersion, role: overlayRole, audioState }));
+  }, [mockScene, snapshot, overlayRole, audioState]);
 
   return { snapshot, connection, serverTimeMs, clockOffsetMs };
 }

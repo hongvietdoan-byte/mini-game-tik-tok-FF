@@ -225,6 +225,10 @@ class MockDashboardClient implements DashboardClient {
     return { checks: SYSTEM_CHECK_IDS.map((id) => byId[id]), live: this.liveHealth(), overlay: { clients: 0, lastAck: null } };
   }
 
+  async getPreflight() {
+    return { checks: [{ id: 'overlayAck', label: 'Overlay đã ACK', status: 'WARN' as const, reason: 'MOCK không xác nhận nguồn overlay program.' }] };
+  }
+
   async runSystemSelfTest(_token: string): Promise<SelfTestResponse> {
     this.selfTestResult = { ok: true, mockComment: true, engineRecorded: true, detail: 'MOCK: pipeline giả lập đã ghi nhận đáp án vào sổ điểm.', durationMs: 5 };
     return this.selfTestResult;

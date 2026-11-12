@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { PublicSnapshot } from '@quiz/contracts';
 import { AudioCueTracker, mcDuckingGain, parseAudioMix, type AudioCue, type VisualCue } from '../audio/audio-cues';
@@ -6,6 +6,7 @@ import { OverlayAudioEngine, type AudioEngineState } from '../audio/audio-engine
 
 const MIX = parseAudioMix(location.search);
 const SOURCE_MODE = new URLSearchParams(location.search).get('source') === '1' || 'obsstudio' in window;
+const PROGRAM_MODE = new URLSearchParams(location.search).get('role') === 'program';
 const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
 
 function useReducedMotion() {
@@ -19,7 +20,7 @@ function useReducedMotion() {
   return reduced;
 }
 
-export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
+export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, onAudioStateChange }: { snapshot: PublicSnapshot; remainingMs: number; onAudioStateChange?: (state: AudioEngineState) => void }) {
   const tracker = useRef(new AudioCueTracker());
   const engine = useRef<OverlayAudioEngine | null>(null);
   const cleanupTimer = useRef<number | null>(null);
@@ -29,10 +30,14 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs }
   const [visualCue, setVisualCue] = useState<VisualCue | null>(null);
   const [visualVersion, setVisualVersion] = useState(0);
   const second = Math.max(0, Math.ceil(remainingMs / 1_000));
+  const publishAudioState = useCallback((state: AudioEngineState) => {
+    setAudioState(state);
+    onAudioStateChange?.(state);
+  }, [onAudioStateChange]);
 
   useEffect(() => {
     if (cleanupTimer.current !== null) window.clearTimeout(cleanupTimer.current);
-    const instance = engine.current ?? new OverlayAudioEngine(MIX, setAudioState);
+    const instance = engine.current ?? new OverlayAudioEngine(MIX, publishAudioState);
     engine.current = instance;
     return () => {
       cleanupTimer.current = window.setTimeout(() => {
@@ -41,7 +46,7 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs }
         cleanupTimer.current = null;
       }, 0);
     };
-  }, []);
+  }, [publishAudioState]);
 
   useEffect(() => {
     const audio = engine.current;
@@ -65,7 +70,7 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs }
     snapshot.round?.roundNumber,
   ]);
 
-  const hintVisible = !SOURCE_MODE && audioState === 'suspended' && MIX.volume > 0 && (MIX.sfx > 0 || MIX.bgm > 0);
+  const hintVisible = !PROGRAM_MODE && !SOURCE_MODE && audioState === 'suspended' && MIX.volume > 0 && (MIX.sfx > 0 || MIX.bgm > 0);
   const particleCount = reducedMotion ? 0 : FX_LOW ? 4 : 16;
   const confettiCount = snapshot.scene === 'VICTORY' && !reducedMotion && !FX_LOW ? 20 : 0;
 
@@ -116,4 +121,4 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs }
       data-volume={MIX.volume}
     />
   </>;
-}, (previous, next) => previous.snapshot === next.snapshot && Math.ceil(previous.remainingMs / 1_000) === Math.ceil(next.remainingMs / 1_000));
+}, (previous, next) => previous.snapshot === next.snapshot && previous.onAudioStateChange === next.onAudioStateChange && Math.ceil(previous.remainingMs / 1_000) === Math.ceil(next.remainingMs / 1_000));

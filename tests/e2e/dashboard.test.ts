@@ -59,6 +59,10 @@ async function installWizardApi(page: Page, overlay: 'PASS' | 'FAIL' | 'NOT_TEST
     }));
     await route.fulfill({ json: { checks, live: null, overlay: { clients: 0, lastAck: null } } });
   });
+  await page.route('**/api/preflight', async (route) => {
+    const status = updated === 'PASS' || updated === 'FAIL' ? updated : 'WARN';
+    await route.fulfill({ json: { checks: [{ id: 'overlayAck', label: 'Overlay đã ACK', status, reason: `ACK program: ${status}` }] } });
+  });
 }
 
 async function goToOverlayStep(page: Page) {
@@ -125,6 +129,9 @@ for (const scenario of [
     expect(page.url()).not.toContain(adminToken);
     const overlayHref = await overlayStep.getByRole('link', { name: /Mở Overlay URL/ }).getAttribute('href');
     expect(overlayHref).not.toContain(adminToken);
+    expect(overlayHref).toContain('role=program');
+    const previewHref = await overlayStep.getByRole('link', { name: /Mở tab xem thử/ }).getAttribute('href');
+    expect(previewHref).not.toContain('role=program');
 
     await page.getByTestId('setup-wizard').getByRole('button', { name: 'Tiếp', exact: true }).click();
     const summary = page.getByTestId('setup-step-summary');

@@ -8,6 +8,8 @@ import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
 import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
 import { AudioFxLayer } from './v3/AudioFxLayer';
+import { overlayRoleFromSearch } from './overlayRole';
+import type { AudioEngineState } from './audio/audio-engine';
 import './style.css';
 
 function useStageScale() {
@@ -210,9 +212,11 @@ function App() {
   const requestedCycleMs = Number(query.get('cycleMs'));
   const cycleIntervalMs = Number.isFinite(requestedCycleMs) && requestedCycleMs >= 100 && requestedCycleMs <= 10_000 ? requestedCycleMs : 3_000;
   const fxLow = query.get('fx') === 'low';
+  const overlayRole = overlayRoleFromSearch(location.search);
+  const [audioState, setAudioState] = useState<AudioEngineState>('disabled');
   const [cycleScene, setCycleScene] = useState('lobby');
   const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
-  const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene);
+  const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene, overlayRole, audioState);
   useEffect(() => {
     if (requestedMock !== 'cycle') return;
     const available = MOCK_SCENES.filter((scene) => scene !== 'paused');
@@ -222,6 +226,12 @@ function App() {
     }), cycleIntervalMs);
     return () => window.clearInterval(timer);
   }, [requestedMock, cycleIntervalMs]);
+  useEffect(() => {
+    if (overlayRole !== 'program' || typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel('quiz-overlay-audio-status');
+    channel.postMessage({ type: 'OVERLAY_AUDIO_STATUS', role: overlayRole, audioState, updatedAtMs: Date.now() });
+    channel.close();
+  }, [overlayRole, audioState]);
   const snapshot = networkSnapshot;
   const debug = query.get('debug') === '1';
   const remainingMs = useTimer(snapshot ?? ({ timer: null } as PublicSnapshot), serverTimeMs, clockOffsetMs);
@@ -258,7 +268,7 @@ function App() {
       {hud && <TikTokHudSimulator debug={debug} />}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
-    {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} />}
+    {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} onAudioStateChange={setAudioState} />}
   </main>;
 }
 
