@@ -32,6 +32,7 @@ import {
   currentQuestionInstanceId,
   decideComment,
   effectiveState,
+  formatDifficultyCounts,
   isEligible,
   isInterimLeaderboard,
   mcFor,
@@ -715,8 +716,14 @@ export class SessionRuntime {
       allowDemo: this.config.mode === 'MOCK' && this.config.allowDemoQuestions,
       allowReuse,
       nowMs: now,
+      selectionMode: this.config.questionSelectionMode,
+      difficultyTargets: this.config.difficultyTargets,
+      difficultyTolerance: this.config.difficultyTolerance,
       onWarning: ({ questionIds }) => this.deps.warn?.(
         `[quiz] TOO_LONG: dùng ${questionIds.length} câu vượt ngưỡng vì thiếu câu ngắn (id: ${questionIds.join(', ')}).`,
+      ),
+      onDistribution: ({ counts, targetCounts, tolerance }) => this.deps.warn?.(
+        `[quiz] Phân bố độ khó: ${formatDifficultyCounts(counts)} (mục tiêu ${formatDifficultyCounts(targetCounts)} ±${tolerance}).`,
       ),
     });
     if (!sel.ok) return { ok: false, eligible: sel.eligible, unused: sel.unused, required: sel.required };

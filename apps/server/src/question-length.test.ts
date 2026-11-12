@@ -163,4 +163,60 @@ describe('Question length warnings API', () => {
       warning.mockRestore();
     }
   });
+
+  it('preflight dự báo quota 7/5/3, báo số vòng còn đủ và log phân bố thực tế khi bật DIFFICULTY', async () => {
+    const { quiz, scheduler } = await boot();
+    const created = await quiz.app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: { authorization: `Bearer ${TOKEN}` },
+      payload: {
+        name: 'Difficulty selection test',
+        config: {
+          mode: 'MOCK', packId: 'demo', allowDemoQuestions: true,
+          questionsPerRound: 15, questionSelectionMode: 'DIFFICULTY', seed: 42,
+        },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const sessionId = created.json().sessionId as string;
+
+    const preflight = await quiz.app.inject({
+      method: 'GET', url: '/api/preflight', headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    const distribution = preflight.json().checks.find((check: { id: string }) => check.id === 'difficultyDistribution');
+    expect(distribution).toMatchObject({
+      status: 'WARN',
+      reason: expect.stringContaining('7 dễ / 5 vừa / 3 khó'),
+    });
+    expect(distribution.reason).toContain('Còn đủ 2 vòng × 15 câu');
+    expect(distribution.reason).toContain('6 vòng cần 90');
+
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const command = async (type: 'OPEN_LOBBY' | 'START_ROUND') => {
+      const session = quiz.runtime();
+      if (!session) throw new Error('Thiếu runtime test.');
+      return quiz.app.inject({
+        method: 'POST',
+        url: `/api/sessions/${sessionId}/commands`,
+        headers: { authorization: `Bearer ${TOKEN}` },
+        payload: {
+          commandId: randomUUID(),
+          expectedStateVersion: session.engine.stateVersion,
+          operatorId: 'test',
+          requestedAtMs: scheduler.now(),
+          command: { type },
+        },
+      });
+    };
+    try {
+      expect((await command('OPEN_LOBBY')).statusCode).toBe(200);
+      expect((await command('START_ROUND')).statusCode).toBe(200);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining(
+        '[quiz] Phân bố độ khó: 7 dễ / 5 vừa / 3 khó',
+      ));
+    } finally {
+      warning.mockRestore();
+    }
+  });
 });
