@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 116,
-  "heartbeat": "2026-11-12T17:53:27+07:00",
+  "heartbeat": "2026-11-12T18:05:47+07:00",
   "state": "working",
   "task": "C-0132",
-  "note": "Đã push 2f23182 và gửi report Y-0218; chờ C-0135 audioState và cập nhật docs ngoài phạm vi lane; tab preview program vẫn chạy ở :5196",
+  "note": "Đã push d582b9b, dashboard đọc audioState từ server mỗi 5 giây; report Y-0219 đã gửi. Chờ coordinator phân công cập nhật docs/HUONG_DAN_LIVE.md ngoài phạm vi lane.",
   "done": [
     120,
     122,
