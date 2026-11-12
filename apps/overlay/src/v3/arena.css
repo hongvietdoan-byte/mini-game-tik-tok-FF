@@ -845,6 +845,18 @@
 .v3v-empty { z-index: 7; top: 1120px; }
 .v3v-tie-note { display: none; }
 
+/* C-0101/C-0103: ảnh sân 9:16 đã bỏ cờ baked, logo cờ rời nằm hai mép sân. */
+.v3-arena-backdrop-image { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(1.08) contrast(1.03); }
+.v3v-fan-lights { position: absolute; z-index: 2; inset: 8% -20% 27%; background: repeating-conic-gradient(from 184deg at 50% 54%, rgba(255, 238, 171, .19) 0deg 1.7deg, rgba(140, 164, 255, .16) 1.8deg 3deg, transparent 3.2deg 9deg); mask-image: radial-gradient(ellipse 78% 72% at 50% 52%, #000 0%, rgba(0,0,0,.8) 45%, transparent 78%); mix-blend-mode: screen; pointer-events: none; }
+.v3v-side-lightning { position: absolute; z-index: 2; inset: 17% 0 29%; pointer-events: none; }
+.v3v-side-lightning i { position: absolute; top: 0; bottom: 0; left: 0; width: 92px; clip-path: polygon(55% 0, 100% 0, 66% 25%, 93% 25%, 37% 56%, 67% 56%, 13% 100%, 36% 64%, 6% 64%, 43% 37%); background: linear-gradient(180deg, #67eaff, #975bff 48%, #ff68e8); opacity: .78; filter: drop-shadow(0 0 11px #65dfff); }
+.v3v-side-lightning i + i { left: auto; right: 0; transform: scaleX(-1); background: linear-gradient(180deg, #ff68e8, #835cff 52%, #67eaff); }
+.v3v-trophy-glow { background: radial-gradient(ellipse, rgba(255, 221, 92, .57), rgba(220, 88, 255, .4) 30%, rgba(48, 96, 255, .3) 54%, transparent 76%); filter: blur(22px); }
+.v3v-trophy-glow::before { opacity: .92; }
+.v3v-trophy-glow::after { content: ''; position: absolute; inset: 13% 17%; border-radius: 50%; background: radial-gradient(ellipse, rgba(255, 231, 126, .38), rgba(255, 190, 75, .1) 44%, transparent 75%); filter: blur(12px); }
+.v3v-trophy::after { content: ''; position: absolute; z-index: 2; left: 8%; right: 8%; top: 57%; height: 6px; border-radius: 8px; background: linear-gradient(90deg, transparent, #42dfff 10%, #da61ff 34%, #fff3a0 50%, #d44cff 70%, #5be8ff 90%, transparent); box-shadow: 0 0 8px #fff, 0 0 22px #bd4dff, 0 0 42px #5c8dff; opacity: .95; }
+.v3v-rank-label { color: var(--rank-color); font-size: 15px; font-weight: 950; letter-spacing: 2px; line-height: 1; text-shadow: 0 0 9px currentColor; }
+
 /* Ánh sáng bão theo ref: lõi xanh sáng, sét cyan/magenta rõ ở hai biên, giữ vùng chữ sạch. */
 .v3-bg::before {
   background:
@@ -1157,3 +1169,47 @@
   .v3-mc-react .v3-mc-figure,
   .v3-mc-celebrate .v3-mc-figure { animation: none; }
 }
+
+/* Các hiệu chỉnh cuối sau lớp CSS lịch sử của màn V3. */
+.v3-env-wrap { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
+.v3-env-wrap .v3-arena-environment { position: absolute; inset: 0; }
+.v3-bg--arena::before { z-index: 1; background: linear-gradient(180deg, rgba(13, 13, 68, .48), rgba(20, 10, 70, .43) 42%, rgba(13, 9, 52, .57) 100%); }
+.v3-arena-flags { position: absolute; z-index: 4; inset: 0; pointer-events: none; }
+.v3-arena-flag { position: absolute; display: block; width: 58px; filter: drop-shadow(0 0 9px rgba(182, 102, 255, .58)); }
+.v3-arena-flag img { display: block; width: 100%; height: auto; }
+.v3-arena-flag-1, .v3-arena-flag-8 { width: 70px; }
+.v3-arena-flag-left { left: 8px; }
+.v3-arena-flag-right { right: 8px; }
+.v3-arena-flag-1, .v3-arena-flag-5 { top: 284px; }
+.v3-arena-flag-2, .v3-arena-flag-6 { top: 455px; }
+.v3-arena-flag-3, .v3-arena-flag-7 { top: 626px; }
+.v3-arena-flag-4, .v3-arena-flag-8 { top: 797px; }
+.v3-arena-flag-fallback { display: none; width: 100%; height: 148px; place-items: center; clip-path: polygon(5% 0, 95% 0, 92% 78%, 50% 100%, 8% 78%); border: 2px solid #ffc84b; background: linear-gradient(180deg, #5636b9, #25136b 68%, #f4a24d); color: #ffe495; font-size: 30px; font-weight: 950; font-style: normal; }
+.v3-arena-flag.is-fallback .v3-arena-flag-fallback { display: grid; }
+.v3-mc-plate { top: 238px; }
+.v3-leaderboard-full { top: 270px; left: 112px; width: 856px; height: 850px; padding: 22px 24px 26px; }
+.v3-full-heading { min-height: 128px; padding-bottom: 15px; }
+.v3-full-heading h1 { font-size: 52px; }
+.v3-full-heading .eyebrow { font-size: 18px; }
+.v3-full-round { font-size: 19px; }
+.v3-full-list { height: 580px; margin-top: 16px; gap: 10px 14px; }
+.v3-full-row { padding: 8px 10px; grid-template-columns: 40px minmax(0, 1fr) 90px; gap: 7px; border-radius: 12px; }
+.v3-full-rank { width: 36px; height: 40px; font-size: 22px; }
+.v3-full-name { font-size: 22px; gap: 5px; }
+.v3-full-name .v3-top1-badge { min-width: 34px; height: 21px; font-size: 12px; }
+.v3-full-score { width: 90px; font-size: 23px; }
+.v3-full-score small { font-size: 12px; }
+.v3-top10-guide { top: 1160px; right: 98px; }
+.v3-top10-guide .v3-bubble p { font-size: 17px; }
+.v3v-bg-image { filter: brightness(1.34) saturate(1.82) contrast(1.03); }
+.v3v-bg-dim { height: 42%; background: linear-gradient(180deg, rgba(4, 5, 33, .08), rgba(7, 7, 43, .04) 72%, transparent); }
+.v3v-place-1.is-tied, .v3v-place-2.is-tied { top: 905px; }
+.v3v-slot.is-tied .v3v-figure { height: 340px; }
+.v3v-slot.is-tied .v3v-figure img { width: 178px; }
+.v3v-slot.is-tied .v3v-nameplate { --rank-color: #ffc84b; }
+.v3v-names { gap: 4px; }
+.v3v-names i { font-size: 23px; }
+.v3v-names .tie-label { font-size: 13px; }
+.v3v-nameplate.is-tied .v3v-names b { font-size: 21px; }
+.v3v-trophy-stage { filter: brightness(1.19) saturate(1.22) drop-shadow(0 14px 24px rgba(4, 4, 28, .3)) !important; }
+.v3v-confetti i { opacity: 1; }

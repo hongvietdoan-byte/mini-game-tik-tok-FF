@@ -25,7 +25,7 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
   const lead = slot.entries[0]!;
   const tied = slot.tied || (tieAcross && slot.entries.length > 1);
   return (
-    <div className={`v3v-slot v3v-place-${slot.place}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place}>
+    <div className={`v3v-slot v3v-place-${slot.place}${tied ? ' is-tied' : ''}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} data-rank={slot.rank} data-score={lead.score}>
       <div className="v3v-figure">
         <Chibi entry={lead} />
         <span className="v3v-shadow" aria-hidden="true" />
@@ -41,6 +41,7 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
           <svg viewBox="0 0 60 42"><path d="M4 11 15 21 25 5 30 22 41 5 47 21 56 11 52 35 8 35Z" /></svg>
         </span>
         <div className="v3v-names">
+          <span className="v3v-rank-label" data-testid="podium-rank">TOP {slot.rank}</span>
           {slot.entries.slice(0, 2).map((entry) => (
             <b className="v3v-player-row" key={entry.playerId}>
               <span className="v3v-player-name">{shortName(entry.displayName, 22)}</span>
@@ -84,6 +85,29 @@ function VictoryConfetti() {
     { top: '66%', left: '5%', size: 13, color: '#ffd76d', rotate: 50 },
     { top: '78%', left: '58%', size: 10, color: '#e578ff', rotate: 14 },
     { top: '39%', left: '55%', size: 12, color: '#ffd76d', rotate: 82 },
+    { top: '14%', left: '4%', size: 12, color: '#48dfff', rotate: 15 },
+    { top: '22%', left: '11%', size: 9, color: '#ff68cf', rotate: 72 },
+    { top: '4%', left: '22%', size: 14, color: '#75a4ff', rotate: 31 },
+    { top: '29%', left: '32%', size: 13, color: '#a9ff83', rotate: 59 },
+    { top: '10%', left: '39%', size: 11, color: '#fff5e7', rotate: 25 },
+    { top: '21%', left: '53%', size: 14, color: '#48dfff', rotate: 66 },
+    { top: '6%', left: '68%', size: 10, color: '#ff68cf', rotate: 44 },
+    { top: '28%', left: '82%', size: 13, color: '#75a4ff', rotate: 83 },
+    { top: '14%', left: '96%', size: 10, color: '#a9ff83', rotate: 19 },
+    { top: '39%', left: '9%', size: 11, color: '#fff5e7', rotate: 36 },
+    { top: '55%', left: '29%', size: 14, color: '#48dfff', rotate: 8 },
+    { top: '71%', left: '38%', size: 9, color: '#ff68cf', rotate: 73 },
+    { top: '48%', left: '60%', size: 13, color: '#75a4ff', rotate: 29 },
+    { top: '64%', left: '89%', size: 11, color: '#a9ff83', rotate: 57 },
+    { top: '79%', left: '3%', size: 14, color: '#fff5e7', rotate: 12 },
+    { top: '82%', left: '45%', size: 10, color: '#48dfff', rotate: 46 },
+    { top: '75%', left: '73%', size: 13, color: '#ff68cf', rotate: 21 },
+    { top: '35%', left: '98%', size: 9, color: '#75a4ff', rotate: 63 },
+    { top: '18%', left: '61%', size: 12, color: '#a9ff83', rotate: 34 },
+    { top: '57%', left: '2%', size: 10, color: '#fff5e7', rotate: 48 },
+    { top: '45%', left: '44%', size: 14, color: '#48dfff', rotate: 27 },
+    { top: '67%', left: '56%', size: 11, color: '#ff68cf', rotate: 80 },
+    { top: '31%', left: '72%', size: 13, color: '#75a4ff', rotate: 17 },
   ];
   return <div className="v3v-confetti" aria-hidden="true">
     {particles.map((particle, index) => (
@@ -109,6 +133,8 @@ export function VictoryStage({ snapshot }: { snapshot: PublicSnapshot }) {
     <div className="v3-stage v3v" data-scene={snapshot.scene}>
       <img className="v3v-bg-image" src={`${ASSET}/victory/bg.jpg`} alt="" draggable={false} decoding="async" data-testid="victory-background" />
       <div className="v3v-bg-dim" aria-hidden="true" />
+      <div className="v3v-fan-lights" aria-hidden="true" />
+      <div className="v3v-side-lightning" aria-hidden="true"><i /><i /></div>
       <div className="v3v-trophy-glow" aria-hidden="true" />
       <div className="v3v-floor-reflection" aria-hidden="true" />
       <VictoryConfetti />

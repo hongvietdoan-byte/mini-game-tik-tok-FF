@@ -45,8 +45,9 @@ function watchPageErrors(page: Page) {
     if (response.status() < 400) return;
     const pathname = new URL(response.url()).pathname;
     const optionalMcManifest = pathname === '/assets/mc/kelly/manifest.json';
+    const optionalArenaAsset = pathname.startsWith('/assets/arena/');
     const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset;
-    if (optionalMcManifest || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
+    if (optionalMcManifest || optionalArenaAsset || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
     errors.push(`http ${response.status()}: ${pathname}`);
   });
   return errors;
@@ -319,14 +320,14 @@ test('XSS shaped names render as text', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('full Top 10 fills the reference height and shows 14-character names beside Kelly', async ({ page }) => {
+test('compact Top 10 stays within 45 percent and shows 14-character names beside Kelly', async ({ page }) => {
   const { errors } = await openScene(page, 'top10-long-name', 'INTERIM_TOP10');
   const panel = page.getByTestId('v3-top10-large');
   const panelBox = await panel.boundingBox();
   expect(panelBox).not.toBeNull();
   expect(panelBox!.y).toBeGreaterThanOrEqual(268);
-  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(1403);
-  expect(panelBox!.height).toBeGreaterThanOrEqual(1120);
+  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(1120);
+  expect(panelBox!.height).toBeLessThanOrEqual(864);
   const rows = panel.locator('[data-testid="leaderboard-row"]');
   await expect(rows).toHaveCount(10);
   const [firstRow, lastRow] = await Promise.all([rows.first().boundingBox(), rows.last().boundingBox()]);
@@ -659,6 +660,26 @@ test('victory-tie labels the tie and orders podium slots by x coordinate', async
   await expect(page.getByTestId('podium-slot-2').locator('.v3v-player-name')).toHaveText('StormKing');
   const champion = page.getByTestId('podium-slot-1');
   await expect(champion.locator('.v3v-player-name')).toHaveText('FFVN.Kelly');
+  const runnerUp = page.getByTestId('podium-slot-2');
+  const third = page.getByTestId('podium-slot-3');
+  await expect(champion).toHaveAttribute('data-rank', '1');
+  await expect(runnerUp).toHaveAttribute('data-rank', '1');
+  await expect(champion).toHaveAttribute('data-score', '1500');
+  await expect(runnerUp).toHaveAttribute('data-score', '1500');
+  await expect(champion.getByTestId('podium-rank')).toHaveText('TOP 1');
+  await expect(runnerUp.getByTestId('podium-rank')).toHaveText('TOP 1');
+  await expect(third).toHaveAttribute('data-rank', '3');
+  await expect(third.getByTestId('podium-rank')).toHaveText('TOP 3');
+  await expect(runnerUp.getByText('ĐỒNG HẠNG')).toBeVisible();
+  const [firstSlotBox, secondSlotBox, firstNameplate, secondNameplate, firstColor, secondColor] = await Promise.all([
+    champion.boundingBox(), runnerUp.boundingBox(),
+    champion.locator('.v3v-nameplate').boundingBox(), runnerUp.locator('.v3v-nameplate').boundingBox(),
+    champion.locator('.v3v-nameplate').evaluate((el) => getComputedStyle(el).getPropertyValue('--rank-color').trim()),
+    runnerUp.locator('.v3v-nameplate').evaluate((el) => getComputedStyle(el).getPropertyValue('--rank-color').trim()),
+  ]);
+  expect(firstSlotBox?.y).toBe(secondSlotBox?.y);
+  expect(firstNameplate?.y).toBe(secondNameplate?.y);
+  expect(firstColor).toBe(secondColor);
   const badge = champion.locator('[data-testid="top1-badge"]').first();
   const name = champion.locator('.v3v-player-name').first();
   await expect(badge).toHaveText('x3');
@@ -676,6 +697,49 @@ test('victory-tie labels the tie and orders podium slots by x coordinate', async
   expect(xCoordinates[0]).toBeLessThan(xCoordinates[1]!);
   expect(xCoordinates[1]).toBeLessThan(xCoordinates[2]!);
   expect(errors).toEqual([]);
+});
+
+test('question arena and Top 10 keep eight optional logo flags in the side rails', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const { stage } = await openScene(page, 'question', 'QUESTION');
+  const flags = stage.locator('[data-testid^="arena-flag-"]');
+  await expect(flags).toHaveCount(8);
+  const boxes = [];
+  for (let i = 0; i < 8; i += 1) {
+    const flag = flags.nth(i);
+    await expect(flag).toBeVisible();
+    boxes.push(await flag.boundingBox());
+  }
+  expect(boxes.every(Boolean)).toBe(true);
+  for (const [index, box] of boxes.entries()) {
+    expect(box!.y).toBeGreaterThanOrEqual(260);
+    expect(box!.y + box!.height).toBeLessThan(1100);
+    if (index < 4) expect(box!.x + box!.width).toBeLessThan(90);
+    else expect(box!.x).toBeGreaterThan(990);
+  }
+  const plateBox = await stage.locator('[data-layer="kelly"] .v3-mc-plate').boundingBox();
+  expect(plateBox).not.toBeNull();
+  const nameTags = stage.locator('.v3-nametags .v3-seat-name');
+  for (let i = 0; i < await nameTags.count(); i += 1) {
+    const tagBox = await nameTags.nth(i).boundingBox();
+    if (!tagBox || !plateBox) continue;
+    const overlaps = plateBox.x < tagBox.x + tagBox.width && plateBox.x + plateBox.width > tagBox.x && plateBox.y < tagBox.y + tagBox.height && plateBox.y + plateBox.height > tagBox.y;
+    expect(overlaps, `MC plate overlaps audience name tag ${i + 1}`).toBe(false);
+  }
+  await page.screenshot({ path: join(screenshotDirectory, 'arena-question.png'), animations: 'disabled' });
+
+  const top10 = await openScene(page, 'top10', 'INTERIM_TOP10');
+  const panel = top10.stage.getByTestId('v3-top10-large');
+  const panelBox = await panel.boundingBox();
+  expect(panelBox?.height).toBeLessThanOrEqual(864);
+  await expect(top10.stage.getByTestId('top10-guide')).toBeVisible();
+  const bubble = top10.stage.getByTestId('mc-bubble');
+  await expect(bubble).toContainText('BXH trực tiếp');
+  await expect(bubble).not.toContainText('comment A');
+  const bubbleFont = await bubble.locator('p').evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+  expect(bubbleFont).toBeGreaterThanOrEqual(16);
+  await expect(top10.stage.locator('[data-testid^="arena-flag-"]')).toHaveCount(8);
+  await page.screenshot({ path: join(screenshotDirectory, 'arena-top10.png'), animations: 'disabled' });
 });
 
 test('Victory matches the approved 1080×1920 asset layout and keeps podium labels readable', async ({ page }) => {

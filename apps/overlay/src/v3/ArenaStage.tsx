@@ -3,6 +3,7 @@ import type { AudienceSeatView, LeaderboardEntry, PublicSnapshot } from '@quiz/c
 import { shortName, splitBubble } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 import { McSequence } from './mc/mc-sequence-player';
+import { ArenaBackdrop } from './ArenaBackdrop';
 import './arena.css';
 
 /**
@@ -145,8 +146,8 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   );
 }
 
-export function McKelly({ snapshot }: { snapshot: PublicSnapshot }) {
-  const bubble = snapshot.mc.bubble.replace(
+export function McKelly({ snapshot, bubbleOverride }: { snapshot: PublicSnapshot; bubbleOverride?: string }) {
+  const bubble = (bubbleOverride ?? snapshot.mc.bubble).replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
   );
@@ -268,11 +269,8 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
   const stageClasses = ['v3-stage', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
-      <div className="v3-bg" data-layer="background-storm" aria-hidden="true">
-        <span className="v3-storm" />
-        <span className="v3-bolt-l" />
-        <span className="v3-bolt-r" />
-        <span className="v3-lights" />
+      <ArenaBackdrop arena />
+      <div className="v3-env-wrap" data-layer="arena-geometry" aria-hidden="true">
         <svg className="v3-arena-environment" viewBox="0 0 1080 1920" preserveAspectRatio="none">
           <defs>
             <linearGradient id="arena-steel" x1="0" y1="0" x2="0.9" y2="1">

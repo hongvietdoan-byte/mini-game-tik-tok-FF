@@ -1,16 +1,8 @@
 import React from 'react';
 import type { LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { BrandHeader, McKelly } from './ArenaStage';
+import { ArenaBackdrop } from './ArenaBackdrop';
 import './arena.css';
-
-function V3Backdrop() {
-  return <div className="v3-bg" data-layer="background-storm" aria-hidden="true">
-    <span className="v3-storm" />
-    <span className="v3-bolt-l" />
-    <span className="v3-bolt-r" />
-    <span className="v3-lights" />
-  </div>;
-}
 
 function FullLeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
   return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row">
@@ -27,7 +19,7 @@ function FullLeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
 export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const entries = snapshot.leaderboard?.entries ?? [];
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <V3Backdrop />
+    <ArenaBackdrop arena />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-leaderboard-full" data-layer="leaderboard-full" data-testid="v3-top10-large">
       <header className="v3-full-heading">
@@ -40,7 +32,7 @@ export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
       <p className="v3-full-footnote">TÍCH LŨY ĐIỂM · TIẾP TỤC CHIẾN ĐẤU</p>
     </section>
     <div className="v3-top10-guide" data-testid="top10-guide">
-      <McKelly snapshot={snapshot} />
+      <McKelly snapshot={snapshot} bubbleOverride="BXH trực tiếp! Cùng xem ai đang dẫn đầu và bám sát Top 10 nhé." />
     </div>
   </div>;
 }
@@ -63,7 +55,7 @@ function FullTimer({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remain
 
 export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <V3Backdrop />
+    <ArenaBackdrop />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-intermission" data-layer="intermission" data-testid="intermission-message">
       <span className="v3-scene-kicker">HẾT VÒNG {snapshot.round?.roundNumber ?? 1}</span>
@@ -78,7 +70,7 @@ export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicS
 export function ConnectionLostStage({ snapshot }: { snapshot: PublicSnapshot }) {
   const failed = snapshot.state === 'ERROR';
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <V3Backdrop />
+    <ArenaBackdrop />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-connection-lost" data-layer="connection-lost" data-testid="connection-lost-message">
       <div className="v3-connection-emblem" aria-hidden="true"><span /><i /></div>
