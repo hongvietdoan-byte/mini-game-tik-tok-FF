@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T07:05:32+07:00",
+  "heartbeat": "2026-11-12T07:16:43+07:00",
   "state": "working",
   "task": "C-0100",
-  "note": "Đã ACK; tạo worktree riêng, xử lý F1/F2/F3/F4/F5/F7 theo thứ tự và kiểm thử từng mục",
+  "note": "Đã commit F1/F2/F3; đang triển khai marker build .build-commit và kiểm tra nguồn theo F4",
   "done": [
     86,
     88,
