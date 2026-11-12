@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T09:31:08+07:00",
-  "state": "working",
-  "task": "C-0105",
-  "note": "Đang triển khai chọn câu theo độ khó; đã áp dụng note C-0106, C-0102 đã gộp main; tạo nhánh C-0105 từ main mới nhất.",
+  "heartbeat": "2026-11-12T09:32:14+07:00",
+  "state": "waiting",
+  "task": "C-0085",
+  "note": "C-0105 hoàn tất, report X-0175 đã gửi; C-0085 chờ xác nhận C-0080/C-0082 đã gộp. DP1/DP2 đã xong.",
   "done": [
     86,
     88,
