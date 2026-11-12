@@ -4,8 +4,8 @@ import { BrandHeader, McKelly } from './ArenaStage';
 import { ArenaBackdrop } from './ArenaBackdrop';
 import './arena.css';
 
-function FullLeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
-  return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row">
+function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: number }) {
+  return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row" style={{ '--row-index': index } as React.CSSProperties}>
     <span className="v3-full-rank">{entry.rank}</span>
     <span className="v3-full-name">
       <span className="v3-full-name-text player-name" title={entry.displayName}>{entry.displayName}</span>
@@ -27,7 +27,7 @@ export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
         <h1>TOP <b>10</b></h1>
         <span className="v3-full-round">SAU CÂU {String((snapshot.round?.questionIndex ?? 0) + 1).padStart(2, '0')}</span>
       </header>
-      <ol className="v3-full-list">{entries.slice(0, 10).map((entry) => <FullLeaderboardRow key={entry.playerId} entry={entry} />)}</ol>
+      <ol className="v3-full-list">{entries.slice(0, 10).map((entry, index) => <FullLeaderboardRow key={entry.playerId} entry={entry} index={index} />)}</ol>
       {entries.length === 0 && <p className="v3-full-empty">Chưa có người chơi</p>}
       <p className="v3-full-footnote">TÍCH LŨY ĐIỂM · TIẾP TỤC CHIẾN ĐẤU</p>
     </section>

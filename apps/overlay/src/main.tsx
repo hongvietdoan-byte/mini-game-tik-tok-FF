@@ -7,6 +7,7 @@ import { MOCK_SCENES } from './mock/snapshots';
 import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
 import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
+import { AudioFxLayer } from './v3/AudioFxLayer';
 import './style.css';
 
 function useStageScale() {
@@ -206,6 +207,9 @@ function App() {
   const hud = query.get('hud') === '1';
   const scale = useStageScale();
   const requestedMock = query.get('mock');
+  const requestedCycleMs = Number(query.get('cycleMs'));
+  const cycleIntervalMs = Number.isFinite(requestedCycleMs) && requestedCycleMs >= 100 && requestedCycleMs <= 10_000 ? requestedCycleMs : 3_000;
+  const fxLow = query.get('fx') === 'low';
   const [cycleScene, setCycleScene] = useState('lobby');
   const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
   const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene);
@@ -215,9 +219,9 @@ function App() {
     const timer = window.setInterval(() => setCycleScene((current) => {
       const index = available.indexOf(current);
       return available[(index + 1) % available.length] ?? 'lobby';
-    }), 3_000);
+    }), cycleIntervalMs);
     return () => window.clearInterval(timer);
-  }, [requestedMock]);
+  }, [requestedMock, cycleIntervalMs]);
   const snapshot = networkSnapshot;
   const debug = query.get('debug') === '1';
   const remainingMs = useTimer(snapshot ?? ({ timer: null } as PublicSnapshot), serverTimeMs, clockOffsetMs);
@@ -232,7 +236,7 @@ function App() {
   } : undefined;
 
   return <main className="viewport">
-    {snapshot ? <div id="stage" data-testid="stage" data-scene={snapshot.scene} style={{
+    {snapshot ? <div id="stage" className={fxLow ? 'fx-low' : undefined} data-testid="stage" data-scene={snapshot.scene} data-state={snapshot.state} data-fx-level={fxLow ? 'low' : 'full'} style={{
       transform: `translate(-50%, -50%) scale(${scale})`,
       '--safe-top': `${safeZone!.top}px`,
       '--safe-bottom': `${safeZone!.bottom}px`,
@@ -254,6 +258,7 @@ function App() {
       {hud && <TikTokHudSimulator debug={debug} />}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
+    {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} />}
   </main>;
 }
 

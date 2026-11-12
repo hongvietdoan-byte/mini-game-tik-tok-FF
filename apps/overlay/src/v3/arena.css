@@ -1213,3 +1213,18 @@
 .v3v-nameplate.is-tied .v3v-names b { font-size: 21px; }
 .v3v-trophy-stage { filter: brightness(1.19) saturate(1.22) drop-shadow(0 14px 24px rgba(4, 4, 28, .3)) !important; }
 .v3v-confetti i { opacity: 1; }
+
+/* C-0109: brief answer feedback, urgent timer pulse, and staggered Top 10 entrance. */
+.v3-timer.is-urgent { animation: v3-timer-beat .72s ease-in-out infinite alternate; }
+@keyframes v3-timer-beat { from { transform: scale(1); } to { transform: scale(1.035); } }
+.v3-option.is-correct { animation: v3-answer-correct 680ms ease-out 1; }
+@keyframes v3-answer-correct { 0% { transform: translateX(0); } 28% { transform: translateX(-3px); filter: drop-shadow(0 0 20px rgba(255,204,88,.95)); } 58% { transform: translateX(3px); } 100% { transform: translateX(0); } }
+.v3-option.is-dim { transition: opacity 420ms ease, filter 420ms ease; }
+.v3-option-count { transition: color 350ms ease, transform 350ms ease; }
+.v3-option-meter { position: absolute; left: 16px; right: 16px; bottom: 5px; height: 3px; overflow: hidden; border-radius: 3px; background: rgba(220,214,255,.16); }
+.v3-option-meter i { display: block; width: var(--answer-share, 0%); height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--sky), var(--gold)); box-shadow: 0 0 8px rgba(255,204,88,.56); transition: width 700ms cubic-bezier(.2,.72,.2,1); }
+.v3-option.is-correct .v3-option-meter i { background: linear-gradient(90deg, #ffd85f, #fff0ad); }
+.v3-full-row { animation: v3-full-row-in 320ms cubic-bezier(.2,.75,.25,1) both; animation-delay: calc(var(--row-index, 0) * 45ms); }
+@keyframes v3-full-row-in { from { opacity: 0; transform: translateX(-22px); } to { opacity: 1; transform: translateX(0); } }
+#stage.fx-low .v3-timer.is-urgent { animation-duration: .01ms; animation-iteration-count: 1; }
+#stage.fx-low .v3-full-row { animation-duration: 100ms; animation-delay: 0ms; }

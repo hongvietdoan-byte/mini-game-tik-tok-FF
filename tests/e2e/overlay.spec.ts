@@ -46,8 +46,9 @@ function watchPageErrors(page: Page) {
     const pathname = new URL(response.url()).pathname;
     const optionalMcManifest = pathname === '/assets/mc/kelly/manifest.json';
     const optionalArenaAsset = pathname.startsWith('/assets/arena/');
+    const optionalAudioAsset = pathname.startsWith('/assets/audio/');
     const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset;
-    if (optionalMcManifest || optionalArenaAsset || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
+    if (optionalMcManifest || optionalArenaAsset || optionalAudioAsset || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
     errors.push(`http ${response.status()}: ${pathname}`);
   });
   return errors;
@@ -652,6 +653,93 @@ test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) 
   expect(renderStats.averageFps).toBeGreaterThanOrEqual(55);
   expect(renderStats.p5Fps).toBeGreaterThanOrEqual(55);
   expect(errors).toEqual([]);
+});
+
+test('audio creates WebAudio and dispatches one cue per mock phase transition', async ({ page }) => {
+  await page.addInitScript(() => {
+    const testWindow = window as typeof window & { __audioProbe?: { contexts: number; oscillatorStarts: number; bufferStarts: number } };
+    testWindow.__audioProbe = { contexts: 0, oscillatorStarts: 0, bufferStarts: 0 };
+    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
+    class FakeAudioContext {
+      state: AudioContextState = 'suspended';
+      currentTime = 0;
+      sampleRate = 44_100;
+      destination = {} as AudioDestinationNode;
+      onstatechange: ((this: BaseAudioContext, ev: Event) => unknown) | null = null;
+      constructor() { testWindow.__audioProbe!.contexts += 1; }
+      createGain() { return { gain: param(), connect() {} } as unknown as GainNode; }
+      createOscillator() {
+        return {
+          type: 'sine', frequency: param(), connect() {},
+          start: () => { testWindow.__audioProbe!.oscillatorStarts += 1; },
+          stop() {}, onended: null,
+        } as unknown as OscillatorNode;
+      }
+      createBufferSource() { return { buffer: null, connect() {}, start: () => { testWindow.__audioProbe!.bufferStarts += 1; }, stop() {}, loop: false } as unknown as AudioBufferSourceNode; }
+      decodeAudioData() { return Promise.resolve({ duration: 0.2 } as AudioBuffer); }
+      resume() { this.state = 'running'; this.onstatechange?.call(this as unknown as BaseAudioContext, new Event('statechange')); return Promise.resolve(); }
+      close() { this.state = 'closed'; return Promise.resolve(); }
+    }
+    (window as typeof window & { AudioContext: typeof AudioContext }).AudioContext = FakeAudioContext as unknown as typeof AudioContext;
+  });
+  await page.route('**/assets/audio/**', (route) => route.fulfill({ status: 404, body: 'optional audio absent' }));
+  await page.route('**/assets/audio/question-enter.mp3', (route) => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: 'mock audio file' }));
+  const errors = watchPageErrors(page);
+  await page.goto('/?mock=cycle&cycleMs=250&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
+  const runtime = page.getByTestId('overlay-audio-runtime');
+  await expect(runtime).toHaveAttribute('data-audio-state', 'running');
+  await expect(runtime).toHaveAttribute('data-bgm', '0');
+  await expect(page.getByTestId('stage')).toHaveAttribute('data-fx-level', 'low');
+  await expect(page.locator('.overlay-fx-particle')).toHaveCount(4);
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('question-enter');
+  await expect(page.getByTestId('stage')).toHaveAttribute('data-state', 'READING');
+  await expect(runtime).toHaveAttribute('data-cues', 'question-enter');
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('correct-answer');
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('top10');
+  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('victory');
+  const cues = (await runtime.getAttribute('data-cues'))?.split(',') ?? [];
+  for (const cue of ['question-enter', 'correct-answer', 'top10', 'victory'])
+    expect(cues.filter((value) => value === cue)).toHaveLength(1);
+  const probe = await page.evaluate(() => (window as typeof window & { __audioProbe: { contexts: number; oscillatorStarts: number; bufferStarts: number } }).__audioProbe);
+  expect(probe.contexts).toBe(1);
+  expect(probe.bufferStarts).toBe(1);
+  expect(probe.oscillatorStarts).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test('reduced motion removes ambient FX and audio unlock hint is browser-only', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(() => {
+    class SuspendedAudioContext {
+      state: AudioContextState = 'suspended';
+      currentTime = 0;
+      destination = {} as AudioDestinationNode;
+      onstatechange: ((this: BaseAudioContext, ev: Event) => unknown) | null = null;
+      private resumes = 0;
+      createGain() {
+        return { gain: { value: 0, setTargetAtTime() {} }, connect() {} } as unknown as GainNode;
+      }
+      resume() {
+        this.resumes += 1;
+        if (this.resumes < 2) return Promise.reject(new Error('gesture required'));
+        this.state = 'running';
+        this.onstatechange?.call(this as unknown as BaseAudioContext, new Event('statechange'));
+        return Promise.resolve();
+      }
+      close() { this.state = 'closed'; return Promise.resolve(); }
+    }
+    (window as typeof window & { AudioContext: typeof AudioContext }).AudioContext = SuspendedAudioContext as unknown as typeof AudioContext;
+  });
+  await page.goto('/?mock=victory&sfx=0.6&fx=low&source=1', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.overlay-fx-particle')).toHaveCount(0);
+  await expect(page.locator('.overlay-fx-confetti')).toHaveCount(0);
+  await expect(page.getByTestId('audio-unlock')).toHaveCount(0);
+
+  await page.goto('/?mock=victory&sfx=0.6&fx=low', { waitUntil: 'domcontentloaded' });
+  const unlock = page.getByTestId('audio-unlock');
+  await expect(unlock).toBeVisible();
+  await unlock.click();
+  await expect(unlock).toHaveCount(0);
 });
 
 test('victory-tie labels the tie and orders podium slots by x coordinate', async ({ page }) => {

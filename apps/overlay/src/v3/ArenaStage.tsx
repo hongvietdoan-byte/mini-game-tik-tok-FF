@@ -120,17 +120,20 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
             const opt = optionsVisible ? q?.options.find((o) => o.id === id) : undefined;
             const correct = !!reveal && reveal.correctOptionId === id;
             const count = reveal?.optionCounts[id] ?? 0;
+            const share = totalAnswers ? count / totalAnswers : 0;
             return (
               <div
                 key={id}
                 className={`v3-option ${opt ? '' : 'is-hidden'} ${correct ? 'is-correct' : ''} ${reveal && !correct ? 'is-dim' : ''}`}
                 data-testid={`option-${id}`}
+                style={{ '--answer-share': `${share * 100}%` } as React.CSSProperties}
               >
                 <span className="v3-letter">{id}</span>
                 <span className={`v3-option-text ${optionSize(opt?.text)}`}>{opt?.text ?? ''}</span>
                 {reveal && (
                   <span className="v3-option-count">{totalAnswers ? Math.round((count / totalAnswers) * 100) : 0}%</span>
                 )}
+                {reveal && <span className="v3-option-meter" aria-hidden="true"><i /></span>}
               </div>
             );
           })}
