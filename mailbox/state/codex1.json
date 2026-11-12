@@ -1,7 +1,7 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T14:28:04+07:00",
+  "heartbeat": "2026-11-12T14:43:55+07:00",
   "state": "working",
   "task": "C-0121",
   "note": "Thêm handshake role overlay program/preview phía contract và server, kèm test; không sửa UI.",
@@ -20,6 +20,7 @@
     106,
     112,
     117,
-    119
+    119,
+    121
   ]
 }
