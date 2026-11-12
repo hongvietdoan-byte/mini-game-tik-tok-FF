@@ -1387,6 +1387,30 @@
 .v3-stage--question-user .v3-board-tab { left: 32px; padding-left: 40px; }
 .v3v-header { top: -4px; height: 26.1%; }
 .v3v-header .v3v-event-logo { width: 46.5%; height: 100%; max-height: none; object-fit: contain; }
+
+/* C-0133: align the question HUD with the Top 10 band and give Kelly's phase text its own fixed panel. */
+.v3-stage--question-user .v3-top10 { top: 345px; }
+.v3-stage--question-user .v3-board { top: 345px; height: 470px !important; }
+.v3-stage--question-user .v3-mc,
+.v3-stage--question-user.has-long-prompt .v3-mc,
+.v3-stage--question-user.has-long-options .v3-mc,
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-mc { top: 760px; left: 0; right: 0; height: 470px; }
+.v3-stage--question-user .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-prompt .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-options .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-mc .v3-bubble {
+  display: grid;
+  left: 410px;
+  right: auto;
+  top: 84px;
+  width: 580px;
+  height: 220px;
+  min-height: 0;
+  max-height: none;
+  box-sizing: border-box;
+  padding: 0 34px;
+}
+.v3-stage--question-user .v3-mc .v3-bubble p { max-width: 500px; font-size: 30px; line-height: 1.15; }
 .v3-top10 { height: 462px; }
 .v3-leaderboard-full { top: 500px; height: 620px; padding: 18px 22px 20px; }
 .v3-full-heading { min-height: 90px; padding-bottom: 10px; }

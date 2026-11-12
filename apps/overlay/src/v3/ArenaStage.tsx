@@ -102,19 +102,11 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const optionsVisible = !!q?.optionsVisible && !isPrepare;
   const hasLongOption = !!q?.options.some((option) => option.text.length > 45);
   const totalAnswers = reveal ? Object.values(reveal.optionCounts).reduce((a, b) => a + b, 0) : 0;
-  const instruction = snapshot.state === 'ACCEPTING'
-    ? <>Trả lời bằng cách{'\n'}comment <em>A, B, C hoặc D</em>{'\n'}để tham gia ngay!</>
-    : isReading
-      ? 'Cùng nghe câu hỏi và bốn đáp án nhé!'
-      : isPrepare
-        ? 'Sẵn sàng cho câu hỏi tiếp theo!'
-        : null;
   return (
     <section className="v3-board" data-layer="quiz-hud">
       <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'SẮP BẮT ĐẦU' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
       {snapshot.timer && !isLobby && !isReading && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
       {isReading && <div className="v3-reading-status" data-testid="reading-status">MC ĐANG ĐỌC</div>}
-      {instruction && <div className="v3-answer-instruction v3-bubble" data-testid="mc-bubble"><p>{instruction}</p></div>}
       <div className={`v3-question ${promptClass}`} data-testid="question-prompt">
         {isLobby ? (
           <>Bình luận <em>A, B, C</em> hoặc <em>D</em> để trả lời câu hỏi về Free Fire!</>
@@ -281,6 +273,7 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
 
 export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
   const questionBackground = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
+  const questionBubble = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL' ? snapshot.mc.bubble : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
   const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
@@ -384,7 +377,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
       <BrandHeader snapshot={snapshot} />
       <Top10 entries={snapshot.leaderboard?.entries ?? []} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
-      <McKelly snapshot={snapshot} />
+      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} />
       <Audience snapshot={snapshot} />
     </div>
   );

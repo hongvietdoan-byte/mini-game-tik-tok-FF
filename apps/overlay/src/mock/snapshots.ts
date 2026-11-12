@@ -180,8 +180,10 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
       state: name === 'prepare' || name === 'reading' || name === 'reading-longest' ? 'ask' : isReveal ? 'react' : 'idle',
-      bubble: name === 'reading' || name === 'reading-longest'
-        ? 'Cùng nghe câu hỏi và bốn đáp án nhé!'
+      bubble: isReveal
+        ? 'Chính xác! Đáp án B. Cùng xem bảng xếp hạng nhé!'
+        : name === 'reading' || name === 'reading-longest'
+          ? 'Cùng nghe câu hỏi và bốn đáp án nhé!'
         : name === 'prepare'
           ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
           : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
