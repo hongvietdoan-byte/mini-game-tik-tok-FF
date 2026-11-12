@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T11:02:19+07:00",
-  "state": "waiting",
-  "task": "C-0085",
-  "note": "Đã gửi câu hỏi X-0186 xác nhận C-0080/C-0082 đã gộp và C-0085 được mở khóa; chờ coordinator phản hồi.",
+  "heartbeat": "2026-11-12T11:22:09+07:00",
+  "state": "working",
+  "task": "C-0117",
+  "note": "Đã ack X-0188; đang đối chiếu F6, F8–F12 với main và giới hạn làn để chọn sửa/test an toàn.",
   "done": [
     86,
     88,
