@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { questionLengthWarnings } from '@quiz/contracts';
 import { RealScheduler } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, loadOrCreateAdminToken } from './app';
@@ -29,6 +30,13 @@ try {
   };
   const added = store.seedQuestions(fx.DEMO_PACK, fx.DEMO_QUESTIONS, scheduler.now());
   console.log(`[quiz] câu hỏi DEMO: thêm ${added} câu (gói ${fx.DEMO_PACK.id})`);
+  const approvedTooLong = store.listQuestions(fx.DEMO_PACK.id)
+    .filter((question) => question.approvalStatus === 'APPROVED' && questionLengthWarnings(question).length > 0);
+  if (approvedTooLong.length > 0) {
+    console.warn(
+      `[quiz] import TOO_LONG: ${approvedTooLong.length} câu APPROVED vượt ngưỡng khuyến nghị (id: ${approvedTooLong.map((question) => question.id).join(', ')}).`,
+    );
+  }
 } catch (err) {
   console.warn(`[quiz] chưa nạp được fixtures DEMO: ${(err as Error).message}`);
 }

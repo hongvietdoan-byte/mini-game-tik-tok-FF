@@ -1,4 +1,4 @@
-import { OPTION_IDS, type OptionId, type Question, type QuestionSnapshot } from '@quiz/contracts';
+import { OPTION_IDS, questionLengthWarnings, type OptionId, type Question, type QuestionSnapshot } from '@quiz/contracts';
 
 /** PRNG tất định (mulberry32). Cùng seed → cùng chuỗi. */
 export function createPrng(seed: number): () => number {
@@ -44,6 +44,8 @@ export type SelectionRequest = {
   /** Operator CHỦ ĐỘNG cho phép lặp lại khi thiếu câu. Không bao giờ lặp âm thầm. */
   allowReuse: boolean;
   nowMs: number;
+  /** Được gọi khi phải lấy câu vượt ngưỡng nội dung vì pool câu ngắn không đủ. */
+  onWarning?: (warning: { code: 'TOO_LONG'; questionIds: string[] }) => void;
 };
 
 export type SelectionResult =
@@ -57,21 +59,33 @@ export type SelectionResult =
  */
 export function selectRound(req: SelectionRequest): SelectionResult {
   const rnd = createPrng(req.seed);
+  const isTooLong = (question: Question) => questionLengthWarnings(question).length > 0;
   // sắp xếp theo id trước khi xáo để kết quả không phụ thuộc thứ tự đầu vào
   const eligible = req.pool
     .filter((q) => isEligible(q, { allowDemo: req.allowDemo, nowMs: req.nowMs }))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const unused = eligible.filter((q) => !req.usedInSession.has(q.id));
+  const shortUnused = unused.filter((question) => !isTooLong(question));
+  const longUnused = unused.filter(isTooLong);
 
   let chosen: Question[];
   let reused: Question[] = [];
   if (unused.length >= req.count) {
-    chosen = shuffleInPlace([...unused], rnd).slice(0, req.count);
+    if (shortUnused.length >= req.count) {
+      chosen = shuffleInPlace([...shortUnused], rnd).slice(0, req.count);
+    } else {
+      const selectedShort = shuffleInPlace([...shortUnused], rnd);
+      const selectedLong = shuffleInPlace([...longUnused], rnd).slice(0, req.count - selectedShort.length);
+      chosen = shuffleInPlace([...selectedShort, ...selectedLong], rnd);
+    }
   } else if (req.allowReuse && eligible.length >= req.count) {
+    const compareReuse = (a: Question, b: Question) =>
+      (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0) || (a.id < b.id ? -1 : 1);
     const used = eligible.filter((q) => req.usedInSession.has(q.id));
-    // ưu tiên câu chưa dùng, phần thiếu lấy câu ít dùng gần đây nhất
-    used.sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0) || (a.id < b.id ? -1 : 1));
-    reused = used.slice(0, req.count - unused.length);
+    // Giữ câu chưa dùng trước; phần cần lặp lấy câu ngắn trước, ít dùng gần đây nhất.
+    const shortUsed = used.filter((question) => !isTooLong(question)).sort(compareReuse);
+    const longUsed = used.filter(isTooLong).sort(compareReuse);
+    reused = [...shortUsed, ...longUsed].slice(0, req.count - unused.length);
     chosen = shuffleInPlace([...unused, ...reused], rnd);
   } else {
     return {
@@ -83,6 +97,8 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     };
   }
 
+  const longQuestionIds = chosen.filter(isTooLong).map((question) => question.id);
+  if (longQuestionIds.length > 0) req.onWarning?.({ code: 'TOO_LONG', questionIds: longQuestionIds });
   const snapshots = chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd));
   return { ok: true, seed: req.seed, snapshots, reusedQuestionIds: reused.map((q) => q.id) };
 }

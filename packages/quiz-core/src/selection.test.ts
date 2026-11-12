@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { QuestionSchema, type Question } from '@quiz/contracts';
 import { createPrng, isEligible, selectRound, snapshotQuestion } from './selection';
 
@@ -82,6 +82,42 @@ describe('selectRound', () => {
       expect(new Set(result.snapshots.map((item) => item.questionId)).size).toBe(4);
       expect(result.snapshots.every((item) => !['q001', 'q002', 'q003', 'q004'].includes(item.questionId))).toBe(true);
     }
+  });
+
+  it('ưu tiên câu trong ngưỡng và cảnh báo TOO_LONG khi phải lấy câu dài', () => {
+    const pool = [
+      question(1),
+      question(2),
+      question(3, { prompt: 'x'.repeat(111) }),
+      question(4, { options: [
+        { id: 'o1', text: 'y'.repeat(29) },
+        { id: 'o2', text: 'Đáp án hai' },
+        { id: 'o3', text: 'Đáp án ba' },
+        { id: 'o4', text: 'Đáp án bốn' },
+      ] }),
+    ];
+    const onWarning = vi.fn();
+    const result = selectRound(request(pool, { count: 3, onWarning }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const ids = result.snapshots.map((snapshot) => snapshot.questionId);
+      expect(ids).toContain('q001');
+      expect(ids).toContain('q002');
+      const selectedLong = ids.filter((id) => id === 'q003' || id === 'q004');
+      expect(selectedLong).toHaveLength(1);
+      expect(onWarning).toHaveBeenCalledWith({ code: 'TOO_LONG', questionIds: selectedLong });
+    }
+  });
+
+  it('không dùng câu dài khi đã đủ câu ngắn', () => {
+    const pool = [question(1), question(2), question(3), question(4, { prompt: 'x'.repeat(111) })];
+    const onWarning = vi.fn();
+    const result = selectRound(request(pool, { count: 3, onWarning }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.snapshots.every((snapshot) => snapshot.questionId !== 'q004')).toBe(true);
+    expect(onWarning).not.toHaveBeenCalled();
   });
 
   it('trả đủ eligible/unused/required khi thiếu câu và reuse không được phép', () => {
