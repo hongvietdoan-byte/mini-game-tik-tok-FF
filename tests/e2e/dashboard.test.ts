@@ -57,7 +57,7 @@ async function installWizardApi(page: Page, overlay: 'PASS' | 'FAIL' | 'NOT_TEST
       detail: `Kiểm tra ${id}: ${status}`,
       checkedAtMs: Date.now(),
     }));
-    await route.fulfill({ json: { checks, live: null, overlay: { clients: 0, lastAck: null } } });
+    await route.fulfill({ json: { checks, live: null, overlay: { clients: 0, lastAck: null, audioState: 'suspended' } } });
   });
   await page.route('**/api/preflight', async (route) => {
     const status = updated === 'PASS' || updated === 'FAIL' ? updated : 'WARN';
@@ -81,6 +81,8 @@ async function goToOverlayStep(page: Page) {
   await expect(page.getByTestId('setup-step-mock')).toBeVisible();
   await next();
   await expect(page.getByTestId('setup-step-obs')).toBeVisible();
+  await expect(page.getByTestId('program-audio-status')).toHaveAttribute('data-audio-state', 'suspended');
+  await expect(page.getByTestId('program-audio-status')).toContainText('trình duyệt chặn');
   await next();
   await expect(page.getByTestId('setup-step-overlay')).toBeVisible();
 }

@@ -222,7 +222,7 @@ class MockDashboardClient implements DashboardClient {
       engineRecorded: check('engineRecorded', 'Quiz Engine ghi nhận câu trả lời', selfTest ? (selfTest.engineRecorded ? 'PASS' : 'FAIL') : 'NOT_TESTED', selfTest?.detail ?? 'Bấm "Chạy tự kiểm"'),
       overlayUpdated: check('overlayUpdated', 'Overlay cập nhật đúng', 'NOT_TESTED', 'Mock dashboard không có overlay ACK'),
     };
-    return { checks: SYSTEM_CHECK_IDS.map((id) => byId[id]), live: this.liveHealth(), overlay: { clients: 0, lastAck: null } };
+    return { checks: SYSTEM_CHECK_IDS.map((id) => byId[id]), live: this.liveHealth(), overlay: { clients: 0, lastAck: null, audioState: null } };
   }
 
   async getPreflight() {

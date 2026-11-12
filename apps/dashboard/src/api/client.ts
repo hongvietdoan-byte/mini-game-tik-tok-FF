@@ -4,6 +4,7 @@ import type {
   CommandResult,
   CreateSessionRequest,
   LiveSourceHealth,
+  OverlayAudioState,
   Question,
   QuestionReview,
   SimulatorRequest,
@@ -17,7 +18,7 @@ export type SourceControlAction = 'CONNECT' | 'DISCONNECT' | 'RECONNECT';
 export type SystemChecksResponse = {
   checks: SystemCheck[];
   live: LiveSourceHealth | null;
-  overlay: { clients: number; lastAck: { stateVersion: number; atMs: number } | null };
+  overlay: { clients: number; lastAck: { stateVersion: number; atMs: number } | null; audioState?: OverlayAudioState | null };
 };
 export type PreflightResponse = {
   checks: Array<{ id: string; label: string; status: 'PASS' | 'FAIL' | 'WARN'; reason: string }>;

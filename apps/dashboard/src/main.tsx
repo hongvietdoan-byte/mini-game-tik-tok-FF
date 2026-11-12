@@ -429,7 +429,7 @@ function App() {
       desktopInfo={desktopInfo}
       overlayUrl={overlayUrl}
       programOverlayUrl={programOverlayUrl}
-      obsGuide={<ObsGuidePage overlayClients={snapshot?.overlay.clients ?? 0} overlayUrl={overlayUrl} programOverlayUrl={programOverlayUrl} desktopInfo={desktopInfo} />}
+      obsGuide={<ObsGuidePage client={client} token={token.trim()} overlayClients={snapshot?.overlay.clients ?? 0} overlayUrl={overlayUrl} programOverlayUrl={programOverlayUrl} desktopInfo={desktopInfo} />}
       onConnectToken={connectWizardToken}
       onFinish={completeSetupWizard}
       onDismiss={() => setWizardOpen(false)}
@@ -541,7 +541,7 @@ function App() {
         </aside>
       </div> : page === 'checks'
         ? <ConnectionChecksPage client={client} token={token.trim()} />
-        : <ObsGuidePage overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} programOverlayUrl={programOverlayUrl} desktopInfo={desktopInfo} />}
+        : <ObsGuidePage client={client} token={token.trim()} overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} programOverlayUrl={programOverlayUrl} desktopInfo={desktopInfo} />}
     </> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : <section className="entry-layout">
       <div className="entry-card">
         <span className="eyebrow">TIKTOK LIVE QUIZ</span><h1>{needsSession ? (createMode === 'MOCK' ? 'Tạo phiên MOCK' : 'Tạo phiên TikTok LIVE') : 'Kết nối điều khiển'}</h1>
@@ -638,23 +638,35 @@ function ConnectionChecksPage({ client, token }: { client: DashboardClient; toke
   </section>;
 }
 
-function ObsGuidePage({ overlayClients, overlayUrl, programOverlayUrl, desktopInfo }: { overlayClients: number; overlayUrl: string; programOverlayUrl: string; desktopInfo: StormArenaInfo | null }) {
+function ObsGuidePage({ client, token, overlayClients, overlayUrl, programOverlayUrl, desktopInfo }: { client: DashboardClient; token: string; overlayClients: number; overlayUrl: string; programOverlayUrl: string; desktopInfo: StormArenaInfo | null }) {
   const [copyMessage, setCopyMessage] = useState('');
-  const [programAudio, setProgramAudio] = useState<{ audioState: 'disabled' | 'running' | 'suspended' | 'unavailable'; updatedAtMs: number } | null>(null);
+  const [programAudio, setProgramAudio] = useState<{ audioState: 'disabled' | 'running' | 'suspended' | 'unavailable' | null; updatedAtMs: number } | null>(null);
+  const [audioRequestFailed, setAudioRequestFailed] = useState(false);
 
   useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return;
-    const channel = new BroadcastChannel('quiz-overlay-audio-status');
-    channel.onmessage = (event: MessageEvent<unknown>) => {
-      if (!event.data || typeof event.data !== 'object') return;
-      const data = event.data as Record<string, unknown>;
-      if (data.type !== 'OVERLAY_AUDIO_STATUS' || data.role !== 'program') return;
-      if (!['disabled', 'running', 'suspended', 'unavailable'].includes(String(data.audioState))) return;
-      if (typeof data.updatedAtMs !== 'number') return;
-      setProgramAudio({ audioState: data.audioState as 'disabled' | 'running' | 'suspended' | 'unavailable', updatedAtMs: data.updatedAtMs });
+    let active = true;
+    let timer: number | undefined;
+    const refreshAudioState = async () => {
+      try {
+        const checks = await client.getSystemChecks(token);
+        if (active) {
+          setProgramAudio({ audioState: checks.overlay.audioState ?? null, updatedAtMs: Date.now() });
+          setAudioRequestFailed(false);
+        }
+      } catch {
+        if (active) {
+          setProgramAudio(null);
+          setAudioRequestFailed(true);
+        }
+      }
+      if (active) timer = window.setTimeout(() => void refreshAudioState(), 5_000);
     };
-    return () => channel.close();
-  }, []);
+    void refreshAudioState();
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [client, token]);
 
   async function copyUrl() {
     try {
@@ -671,7 +683,7 @@ function ObsGuidePage({ overlayClients, overlayUrl, programOverlayUrl, desktopIn
       <div className="overlay-url-row"><label>Overlay URL · nguồn LIVE<code>{programOverlayUrl}</code></label><button className="secondary-button" type="button" onClick={() => void copyUrl()}>Copy URL nguồn LIVE</button><a className="primary-button preview-link" href={overlayUrl} target="_blank" rel="noreferrer">Xem trước ↗</a></div>
       {copyMessage && <p className="copy-message" role="status">{copyMessage}</p>}
       <div className={`program-audio-status ${programAudio?.audioState === 'suspended' || programAudio?.audioState === 'unavailable' ? 'is-warning' : ''}`} role="status" data-testid="program-audio-status" data-audio-state={programAudio?.audioState ?? 'waiting'}>
-        {!programAudio ? 'Đang chờ trạng thái âm thanh từ nguồn program…' : programAudio.audioState === 'suspended' ? 'Âm thanh nguồn phát đang bị trình duyệt chặn. Kiểm tra quyền tự phát trong phần mềm phát.' : programAudio.audioState === 'unavailable' ? 'Phần mềm phát không cung cấp Web Audio; âm thanh hiệu ứng có thể không phát.' : programAudio.audioState === 'disabled' ? 'Âm thanh hiệu ứng đang tắt trong cấu hình.' : `Âm thanh nguồn phát sẵn sàng · ${new Date(programAudio.updatedAtMs).toLocaleTimeString('vi-VN')}`}
+        {!programAudio ? audioRequestFailed ? 'Không đọc được trạng thái âm thanh từ server; sẽ thử lại.' : 'Đang đọc trạng thái âm thanh từ server…' : programAudio.audioState === null ? 'Đang chờ trạng thái âm thanh từ nguồn program…' : programAudio.audioState === 'suspended' ? 'Âm thanh nguồn phát đang bị trình duyệt chặn. Kiểm tra quyền tự phát trong phần mềm phát.' : programAudio.audioState === 'unavailable' ? 'Phần mềm phát không cung cấp Web Audio; âm thanh hiệu ứng có thể không phát.' : programAudio.audioState === 'disabled' ? 'Âm thanh hiệu ứng đang tắt trong cấu hình.' : `Âm thanh nguồn phát sẵn sàng · ${new Date(programAudio.updatedAtMs).toLocaleTimeString('vi-VN')}`}
       </div>
       {desktopInfo && <div className="desktop-app-info" data-testid="desktop-app-info">
         <span>Phiên bản ứng dụng <b>{desktopInfo.version}</b></span>
