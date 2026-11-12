@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T14:51:23+07:00",
-  "state": "waiting",
-  "task": "C-0085",
-  "note": "C-0123 đã report X-0203/done; đã báo rảnh X-0204. C-0085 vẫn khóa, chờ thư mở khóa; server branch chờ C-0118 overlay trước khi gộp.",
+  "heartbeat": "2026-11-12T15:08:07+07:00",
+  "state": "working",
+  "task": "C-0125",
+  "note": "Đồng bộ origin/main vào nhánh còn dùng codex1/c0121-overlay-role trước lần push tới; giữ nguyên trigger CI của main.",
   "done": [
     86,
     88,
