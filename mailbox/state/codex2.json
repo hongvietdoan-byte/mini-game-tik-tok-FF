@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 116,
-  "heartbeat": "2026-11-12T16:36:49+07:00",
+  "heartbeat": "2026-11-12T16:39:12+07:00",
   "state": "waiting",
   "task": "C-0118",
-  "note": "C-0131 đã report và push; chờ mốc 20:00 theo C-0130 rồi tiếp tục C-0118 ưu tiên thấp",
+  "note": "C-0118 đã ACK trước đó; đang chờ mốc 20:00 theo giới hạn giảm tải C-0130",
   "done": [
     120,
     122,
