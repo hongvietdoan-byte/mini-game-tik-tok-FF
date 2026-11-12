@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T14:50:36+07:00",
-  "state": "working",
-  "task": "C-0121",
-  "note": "Áp dụng C-0123: cập nhật helper scenario LIVE/OBS ở tests/integration trên nhánh C-0121 và chạy full suite.",
+  "heartbeat": "2026-11-12T14:51:23+07:00",
+  "state": "waiting",
+  "task": "C-0085",
+  "note": "C-0123 đã report X-0203/done; đã báo rảnh X-0204. C-0085 vẫn khóa, chờ thư mở khóa; server branch chờ C-0118 overlay trước khi gộp.",
   "done": [
     86,
     88,
