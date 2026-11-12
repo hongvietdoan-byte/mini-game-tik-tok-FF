@@ -1,12 +1,12 @@
 name: CI
 
 on:
-  # Thư hòm thư/tài liệu được push liên tục: không chạy CI cho chúng để khỏi spam mail báo lỗi.
+  # Người dùng không muốn mail báo lỗi (12/11): chỉ chạy CI khi push main hoặc bấm tay.
+  # Nhánh codex1/codex2 do coordinator chạy test cục bộ trước khi gộp.
   push:
-    branches: [main, "codex1/**", "codex2/**"]
+    branches: [main]
     paths-ignore: ["mailbox/**", "docs/**", "**/*.md"]
-  pull_request:
-    paths-ignore: ["mailbox/**", "docs/**", "**/*.md"]
+  workflow_dispatch:
 
 jobs:
   verify:
