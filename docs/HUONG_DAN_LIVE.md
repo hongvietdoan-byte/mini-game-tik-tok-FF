@@ -74,3 +74,27 @@ Mở `BO_CAU_HOI.xlsx`, chỉ sửa dữ liệu trong sheet `TAT_CA`, rồi lưu
 | “Failed to retrieve Room ID” | Kênh chưa LIVE hoặc connector lỗi: tạm dừng và làm theo mục 4. |
 | Overlay đứng hình | Trong LIVE Studio, bấm chuột phải vào nguồn rồi Refresh/Reload; chờ overlay ACK trước khi bắt đầu. |
 | Quên mã quản trị | Mở `data/admin-token.txt` trên máy chạy source-run. |
+
+## Chạy thử offline
+
+`tools/mock_round_check.ts` tạo một phiên MOCK trên server đang chạy, in preflight, thời gian các pha, số đáp án được nhận và Top 3; cuối lượt script dừng simulator và phiên. Câu hỏi DEMO được bật riêng trong phiên này, trạng thái duyệt câu không bị đổi.
+
+Để tách dữ liệu kiểm tra khỏi DB thường dùng, mở PowerShell ở thư mục repo, chọn thư mục tạm và cổng chưa dùng (ví dụ `18878`), rồi chạy server:
+
+```powershell
+$testData = Join-Path $env:TEMP 'quiz-mock-round-check'
+New-Item -ItemType Directory -Force $testData | Out-Null
+$env:QUIZ_DATA_DIR = $testData
+$env:QUIZ_HOST = '127.0.0.1'
+$env:QUIZ_PORT = '18878'
+corepack pnpm --filter @quiz/server exec tsx src/main.ts
+```
+
+Trong cửa sổ PowerShell khác, dùng cùng thư mục dữ liệu và cổng để chạy vòng ngắn 10 câu (giới hạn nhỏ nhất server chấp nhận):
+
+```powershell
+$testData = Join-Path $env:TEMP 'quiz-mock-round-check'
+corepack pnpm exec tsx tools/mock_round_check.ts --base http://127.0.0.1:18878 --data-dir $testData --questions 10
+```
+
+Token được đọc từ `<data-dir>/admin-token.txt`, chỉ gửi trong header Authorization và không in ra. Dừng server bằng Ctrl+C sau khi script kết thúc. Không trỏ `--data-dir` vào thư mục dữ liệu của buổi LIVE khi muốn giữ bài kiểm tra cô lập.
