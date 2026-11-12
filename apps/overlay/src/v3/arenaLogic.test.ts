@@ -11,6 +11,7 @@ describe('V3 arena logic', () => {
   it('rút gọn tên theo grapheme, không cắt đôi emoji ghép', () => {
     expect(shortName('StormKing', 13)).toBe('StormKing');
     expect(shortName('TEENHAYQUAYCUOPNHE', 13)).toBe('TEENHAYQUAYC…');
+    expect(shortName('TênNgườiChơi'.repeat(4), 16)).toBe('TênNgườiChơiTên…');
     const family = '👨‍👩‍👧‍👦';
     expect(shortName(`abcdefghijkl${family}xyz`, 13)).toBe('abcdefghijkl…');
     expect(shortName(`abcdefghijk${family}`, 13)).toBe(`abcdefghijk${family}`);

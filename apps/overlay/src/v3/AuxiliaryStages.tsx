@@ -2,13 +2,14 @@ import React from 'react';
 import type { LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { BrandHeader, McKelly } from './ArenaStage';
 import { ArenaBackdrop } from './ArenaBackdrop';
+import { shortName } from './arenaLogic';
 import './arena.css';
 
 function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: number }) {
   return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row" style={{ '--row-index': index } as React.CSSProperties}>
     <span className="v3-full-rank">{entry.rank}</span>
     <span className="v3-full-name">
-      <span className="v3-full-name-text player-name" title={entry.displayName}>{entry.displayName}</span>
+      <span className="v3-full-name-text player-name" title={entry.displayName}>{shortName(entry.displayName, 16)}</span>
       {(entry.top1Streak ?? 0) >= 2 && <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${entry.top1Streak} lần`}>x{entry.top1Streak}</b>}
       {entry.tied && <small>ĐỒNG HẠNG</small>}
     </span>
