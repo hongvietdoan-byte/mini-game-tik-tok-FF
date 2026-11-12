@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 98,
-  "heartbeat": "2026-11-12T08:14:53+07:00",
-  "state": "waiting",
-  "task": "C-0098",
-  "note": "Không có thư mới hoặc câu hỏi đã được trả lời cho codex2; chưa có task dự phòng khả thi. Chờ việc mới.",
+  "heartbeat": "2026-11-12T08:35:35+07:00",
+  "state": "working",
+  "task": "C-0101",
+  "note": "Đã ACK C-0101/C-0103; rà ref và triển khai UI sân đấu, cờ, Top10, Victory, đồng hạng trên worktree codex2/c0068-victory-ref.",
   "done": []
 }
