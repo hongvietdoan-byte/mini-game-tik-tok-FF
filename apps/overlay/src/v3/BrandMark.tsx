@@ -5,7 +5,17 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
 
   return (
     <div className={`v3-title${wide ? ' is-wide' : ''}`} aria-label="Bá Vương Đại Chiến — Ai là nhà vua bá khí">
-      {wide ? (
+      {wide && logoAvailable ? (
+        <img
+          className="v3-brand-logo"
+          data-testid="brand-logo"
+          src="/assets/brand/logo.png"
+          alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí"
+          draggable={false}
+          decoding="async"
+          onError={() => setLogoAvailable(false)}
+        />
+      ) : wide ? (
         <>
           <svg className="v3-crown" viewBox="0 0 120 60" aria-hidden="true">
             <path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" />

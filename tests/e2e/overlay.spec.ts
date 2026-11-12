@@ -25,6 +25,8 @@ mkdirSync(screenshotDirectory, { recursive: true });
 const localAssetDirectory = resolve(process.cwd(), '../../../assets-local');
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
+const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
+const hasLocalVictoryRedraw = existsSync(join(localAssetDirectory, 'victory', 'bg-redraw.jpg'));
 
 let closestSafeMargin = Number.POSITIVE_INFINITY;
 let closestSafeScene = '';
@@ -47,8 +49,10 @@ function watchPageErrors(page: Page) {
     const optionalMcManifest = pathname === '/assets/mc/kelly/manifest.json';
     const optionalArenaAsset = pathname.startsWith('/assets/arena/');
     const optionalAudioAsset = pathname.startsWith('/assets/audio/');
+    const optionalEventLogo = pathname === '/assets/brand/logo.png' && !hasLocalEventLogo;
+    const optionalVictoryBackground = pathname === '/assets/victory/bg-redraw.jpg' && !hasLocalVictoryRedraw;
     const absentLocalAssetBank = !hasLocalCharacterAssets || !hasLocalKellyAsset;
-    if (optionalMcManifest || optionalArenaAsset || optionalAudioAsset || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
+    if (optionalMcManifest || optionalArenaAsset || optionalAudioAsset || optionalEventLogo || optionalVictoryBackground || (absentLocalAssetBank && pathname.startsWith('/assets/'))) return;
     errors.push(`http ${response.status()}: ${pathname}`);
   });
   return errors;
@@ -130,9 +134,10 @@ for (const { name, scene } of scenes) {
     if (name === 'victory' || name === 'victory-tie') await page.setViewportSize({ width: 1080, height: 1920 });
     const { stage, errors } = await openScene(page, name, scene);
     if (name === 'victory' || name === 'victory-tie' || name === 'round-winner') {
-      await expect(stage.locator('.v3-brand-logo')).toBeVisible();
       await expect(stage.getByTestId('victory-background')).toBeVisible();
-      await expect(stage.getByTestId('victory-trophy-stage')).toBeVisible();
+      if (hasLocalEventLogo) await expect(stage.getByTestId('v3v-event-logo')).toBeVisible();
+      else await expect(stage.locator('.v3v-logo-fallback .v3-title')).toBeVisible();
+      await expect(stage.locator('.v3v-trophy, .v3v-trophy-glow, .v3v-side-lightning')).toHaveCount(0);
     } else {
       await expect(stage.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
     }
@@ -273,16 +278,30 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   const eventMark = stage.getByTestId('event-mark');
   const roundCard = stage.getByTestId('round-card');
   await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute('src', '/assets/brand/logo.png');
   await expect(eventMark).toBeVisible();
   await expect(roundCard).toContainText('VÒNG 1');
   await expect(roundCard).toContainText('57 ĐANG CHƠI');
-  const [logoBox, eventBox, roundBox] = await Promise.all([logo.boundingBox(), eventMark.boundingBox(), roundCard.boundingBox()]);
+  const [logoBox, eventBox, roundBox, boardBox, subtitleBox] = await Promise.all([
+    logo.boundingBox(), eventMark.boundingBox(), roundCard.boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-title-ribbon').boundingBox(),
+  ]);
   expect(logoBox).not.toBeNull();
   expect(eventBox).not.toBeNull();
   expect(roundBox).not.toBeNull();
   expect(logoBox!.width).toBeGreaterThanOrEqual(432);
   expect(eventBox!.x + eventBox!.width).toBeLessThan(logoBox!.x);
   expect(logoBox!.x + logoBox!.width).toBeLessThan(roundBox!.x);
+  expect(boardBox).not.toBeNull();
+  expect(subtitleBox).not.toBeNull();
+  expect(logoBox!.y + logoBox!.height).toBeLessThan(subtitleBox!.y);
+  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThan(boardBox!.y);
+  expect(await logo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  const [bubbleBox, firstAudienceLabel] = await Promise.all([
+    stage.getByTestId('mc-bubble').boundingBox(), stage.locator('.v3-nametags .v3-seat-name').first().boundingBox(),
+  ]);
+  expect(bubbleBox).not.toBeNull();
+  expect(firstAudienceLabel).not.toBeNull();
+  expect(bubbleBox!.y + bubbleBox!.height).toBeLessThanOrEqual(firstAudienceLabel!.y);
   await expect(stage.locator('.v3-bubble .v3-bolt')).toHaveCount(0);
   const idleAnimation = await stage.locator('.v3-mc-figure').evaluate((element) => getComputedStyle(element).animationName);
   expect(idleAnimation).toBe('v3-mc-breathe');
@@ -366,15 +385,22 @@ test('top10-short shows only its three real entries', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('question scene uses the approved Kelly and chibi assets with a CSS/SVG logo and arena background', async ({ page }) => {
+test('question scene uses the official logo, approved Kelly/chibi assets and arena background', async ({ page }) => {
   test.skip(!hasLocalCharacterAssets || !hasLocalKellyAsset, 'Local character assets are excluded from Git; validate when the asset bank is available.');
   const { errors } = await openScene(page, 'question', 'QUESTION');
   await expect(page.locator('.v3-arena-backdrop')).toHaveCount(0);
   await expect(page.locator('.v3-arena-environment')).toBeVisible();
   const brandLogo = page.getByTestId('brand-logo');
-  await expect(brandLogo).toContainText('BÁ VƯƠNG');
-  await expect(brandLogo).toContainText('ĐẠI CHIẾN');
-  await expect(page.locator('img[src="/assets/brand/logo.png"]')).toHaveCount(0);
+  await expect(brandLogo).toBeVisible();
+  if (hasLocalEventLogo) {
+    await expect(brandLogo).toHaveAttribute('src', '/assets/brand/logo.png');
+    expect(await brandLogo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    await expect(page.locator('.v3-title-tagline')).toHaveCount(0);
+  } else {
+    await expect(brandLogo).toContainText('BÁ VƯƠNG');
+    await expect(brandLogo).toContainText('ĐẠI CHIẾN');
+  }
+  await expect(page.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
   const kelly = page.locator('.v3-mc-figure img.mc-sequence');
   await expect(kelly).toBeVisible();
   await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
@@ -396,6 +422,18 @@ test('question scene uses the approved Kelly and chibi assets with a CSS/SVG log
   await expect.poll(() => chibis.first().evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');
   await expect(page.locator('.v3-mc-placeholder, .v3-chibi')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('header falls back to BrandMark when the official logo asset is missing', async ({ page }) => {
+  await page.route('**/assets/brand/logo.png', (route) => route.fulfill({ status: 404, body: 'missing logo' }));
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
+  await expect(stage).toBeVisible();
+  await expect(stage.locator('.v3-title img[data-testid="brand-logo"]')).toHaveCount(0);
+  const fallback = stage.locator('.v3-title-main[data-testid="brand-logo"]');
+  await expect(fallback).toContainText('BÁ VƯƠNG');
+  await expect(fallback).toContainText('ĐẠI CHIẾN');
+  await expect(stage.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
 });
 
 test('question crowd labels stay clear of the quiz and Top 1 badge fits its score column', async ({ page }) => {
@@ -744,6 +782,8 @@ test('reduced motion removes ambient FX and audio unlock hint is browser-only', 
 
 test('victory-tie labels the tie and orders podium slots by x coordinate', async ({ page }) => {
   const { errors } = await openScene(page, 'victory-tie', 'VICTORY');
+  await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+  await page.waitForTimeout(2_000);
   await expect(page.getByText('ĐỒNG HẠNG').first()).toBeVisible();
   await expect(page.getByTestId('podium-slot-2').locator('.v3v-player-name')).toHaveText('StormKing');
   const champion = page.getByTestId('podium-slot-1');
@@ -784,6 +824,28 @@ test('victory-tie labels the tie and orders podium slots by x coordinate', async
   }
   expect(xCoordinates[0]).toBeLessThan(xCoordinates[1]!);
   expect(xCoordinates[1]).toBeLessThan(xCoordinates[2]!);
+  await page.screenshot({ path: join(screenshotDirectory, 'victory-tie-approved-layout.png'), animations: 'disabled' });
+  expect(errors).toEqual([]);
+});
+
+test('Victory keeps 16-character podium names readable at the same size in tied and regular plates', async ({ page }) => {
+  const { errors } = await openScene(page, 'victory-name-test', 'VICTORY');
+  await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
+  await page.waitForTimeout(2_000);
+
+  const tiedName = page.getByTestId('podium-slot-1').locator('.v3v-player-name');
+  const regularName = page.getByTestId('podium-slot-3').locator('.v3v-player-name').first();
+  const truncatedName = page.getByTestId('podium-slot-3').locator('.v3v-player-name').nth(1);
+  await expect(tiedName).toHaveText('BVD.Championship');
+  await expect(regularName).toHaveText('BVD.Championship');
+  await expect(truncatedName).toHaveText('BVD.ChampionshipX…');
+  const [tiedStyle, regularStyle, fits] = await Promise.all([
+    tiedName.evaluate((element) => getComputedStyle(element).fontSize),
+    regularName.evaluate((element) => getComputedStyle(element).fontSize),
+    Promise.all([tiedName, regularName].map((locator) => locator.evaluate((element) => element.scrollWidth <= element.clientWidth))),
+  ]);
+  expect(tiedStyle).toBe(regularStyle);
+  expect(fits).toEqual([true, true]);
   expect(errors).toEqual([]);
 });
 
@@ -820,6 +882,11 @@ test('question arena and Top 10 keep eight optional logo flags in the side rails
   const panel = top10.stage.getByTestId('v3-top10-large');
   const panelBox = await panel.boundingBox();
   expect(panelBox?.height).toBeLessThanOrEqual(864);
+  const top10Logo = top10.stage.getByTestId('brand-logo');
+  const top10LogoBox = await top10Logo.boundingBox();
+  expect(top10LogoBox).not.toBeNull();
+  expect(top10LogoBox!.width).toBeGreaterThanOrEqual(432);
+  expect(top10LogoBox!.y + top10LogoBox!.height).toBeLessThan(panelBox!.y);
   await expect(top10.stage.getByTestId('top10-guide')).toBeVisible();
   const bubble = top10.stage.getByTestId('mc-bubble');
   await expect(bubble).toContainText('BXH trực tiếp');
@@ -830,7 +897,7 @@ test('question arena and Top 10 keep eight optional logo flags in the side rails
   await page.screenshot({ path: join(screenshotDirectory, 'arena-top10.png'), animations: 'disabled' });
 });
 
-test('Victory matches the approved 1080×1920 asset layout and keeps podium labels readable', async ({ page }) => {
+test('Victory uses the redraw background unchanged and keeps podium labels on adjustable anchors', async ({ page }) => {
   const errors = watchPageErrors(page);
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.goto('/?mock=victory', { waitUntil: 'domcontentloaded' });
@@ -845,7 +912,8 @@ test('Victory matches the approved 1080×1920 asset layout and keeps podium labe
       const slot = document.querySelector<HTMLElement>(`[data-testid="podium-slot-${place}"]`);
       const figure = slot?.querySelector<HTMLElement>('.v3v-figure')?.getBoundingClientRect();
       const image = slot?.querySelector<HTMLImageElement>('.v3v-figure img')?.getBoundingClientRect();
-      const plate = slot?.querySelector<HTMLElement>('.v3v-nameplate')?.getBoundingClientRect();
+      const plateElement = slot?.querySelector<HTMLElement>('.v3v-nameplate');
+      const plate = plateElement?.getBoundingClientRect();
       return {
         footY: stage && figure ? (figure.bottom - stage.top) / scale : 0,
         figureHeight: figure ? figure.height / scale : 0,
@@ -855,52 +923,57 @@ test('Victory matches the approved 1080×1920 asset layout and keeps podium labe
         plateLeft: stage && plate ? (plate.left - stage.left) / scale : 0,
         plateRight: stage && plate ? (plate.right - stage.left) / scale : 0,
         plateWidth: plate ? plate.width / scale : 0,
-        scoreReflectionTop: stage && slot?.querySelector<HTMLElement>('.v3v-score-reflection')
-          ? (slot.querySelector<HTMLElement>('.v3v-score-reflection')!.getBoundingClientRect().top - stage.top) / scale
-          : 0,
+        plateReflection: plateElement ? getComputedStyle(plateElement).getPropertyValue('-webkit-box-reflect') : '',
+        place,
+        centerX: stage && slot ? ((slot.getBoundingClientRect().left + slot.getBoundingClientRect().width / 2) - stage.left) / scale : 0,
         plateText: slot?.querySelector<HTMLElement>('.v3v-nameplate')?.innerText ?? '',
       };
     });
-    const trophyStage = document.querySelector<HTMLElement>('[data-testid="victory-trophy-stage"]')?.getBoundingClientRect();
-    const trophyFrame = document.querySelector<HTMLElement>('.v3v-trophy')?.getBoundingClientRect();
-    const trophyTopUnits = stage && trophyFrame ? (trophyFrame.top - stage.top) / scale : 0;
-    const trophyBottomUnits = stage && trophyFrame ? (trophyFrame.bottom - stage.top) / scale : 0;
-    const trophyImageWidthRatio = stage && trophyStage ? trophyStage.width / stage.width : 0;
-    const logo = document.querySelector<HTMLElement>('.v3v-header .v3-brand-logo')?.getBoundingClientRect();
+    const background = document.querySelector<HTMLImageElement>('[data-testid="victory-background"]');
+    const logo = document.querySelector<HTMLElement>('.v3v-event-logo, .v3v-logo-fallback .v3-title')?.getBoundingClientRect();
     const logoWidthRatio = stage && logo ? logo.width / stage.width : 0;
     const logoHeightRatio = stage && logo ? logo.height / stage.height : 0;
-    return { slots, trophyTopUnits, trophyBottomUnits, trophyImageWidthRatio, logoWidthRatio, logoHeightRatio };
+    const logoTopRatio = stage && logo ? (logo.top - stage.top) / stage.height : 0;
+    return { slots, logoTopRatio, logoWidthRatio, logoHeightRatio, background: background ? {
+      src: new URL(background.currentSrc || background.src).pathname,
+      naturalWidth: background.naturalWidth,
+      naturalHeight: background.naturalHeight,
+      filter: getComputedStyle(background).filter,
+      objectFit: getComputedStyle(background).objectFit,
+    } : null };
   });
   expect(geometry.slots).toHaveLength(3);
   for (const slot of geometry.slots) {
-    expect(slot.footY).toBeGreaterThanOrEqual(1308);
-    expect(slot.footY).toBeLessThanOrEqual(1328);
-    expect(slot.figureHeight).toBeGreaterThanOrEqual(380);
-    expect(slot.figureHeight).toBeLessThanOrEqual(420);
-    expect(slot.imageHeight).toBeGreaterThanOrEqual(350);
-    expect(slot.imageHeight).toBeLessThanOrEqual(420);
-    expect(slot.plateTop).toBeGreaterThanOrEqual(1335);
-    expect(slot.plateTop).toBeLessThanOrEqual(1365);
-    expect(slot.plateBottom).toBeLessThanOrEqual(1470);
+    const center = slot.place === 1;
+    expect(slot.centerX).toBeGreaterThanOrEqual(center ? 546 : slot.place === 2 ? 211 : 870);
+    expect(slot.centerX).toBeLessThanOrEqual(center ? 556 : slot.place === 2 ? 221 : 880);
+    expect(slot.footY).toBeGreaterThanOrEqual(1150);
+    expect(slot.footY).toBeLessThanOrEqual(1172);
+    expect(slot.figureHeight).toBeGreaterThanOrEqual(375);
+    expect(slot.figureHeight).toBeLessThanOrEqual(390);
+    expect(slot.imageHeight).toBeGreaterThanOrEqual(375);
+    expect(slot.imageHeight).toBeLessThanOrEqual(415);
+    expect(slot.plateTop).toBeGreaterThanOrEqual(1165);
+    expect(slot.plateTop).toBeLessThanOrEqual(1190);
+    expect(slot.plateBottom).toBeLessThanOrEqual(1325);
     expect(slot.plateLeft).toBeGreaterThanOrEqual(40);
     expect(slot.plateRight).toBeLessThanOrEqual(1040);
-    expect(slot.plateWidth).toBeGreaterThanOrEqual(300);
-    expect(slot.plateWidth).toBeLessThanOrEqual(330);
-    expect(slot.scoreReflectionTop).toBeGreaterThanOrEqual(slot.plateBottom);
-    expect(slot.scoreReflectionTop).toBeLessThanOrEqual(slot.plateBottom + 20);
+    expect(slot.plateWidth).toBe(320);
     expect(slot.plateText).toContain('PTS');
+    expect(slot.plateReflection).toBe('none');
   }
-  expect(geometry.trophyTopUnits / 1920).toBeGreaterThanOrEqual(0.22);
-  expect(geometry.trophyTopUnits / 1920).toBeLessThanOrEqual(0.24);
-  expect(geometry.trophyBottomUnits / 1920).toBeGreaterThanOrEqual(0.69);
-  expect(geometry.trophyBottomUnits / 1920).toBeLessThanOrEqual(0.71);
-  expect(geometry.trophyImageWidthRatio).toBeGreaterThanOrEqual(1.45);
+  expect(geometry.background?.src).toBe('/assets/victory/bg-redraw.jpg');
+  expect(geometry.background?.filter).toBe('none');
+  expect(geometry.background?.objectFit).toBe('fill');
+  if (hasLocalVictoryRedraw) expect([geometry.background?.naturalWidth, geometry.background?.naturalHeight]).toEqual([1080, 1920]);
   await expect(page.locator('.v3v .v3-mc-portrait')).toHaveCount(0);
   await expect(page.locator('.v3v-medal')).toHaveCount(0);
-  await expect(page.locator('.v3v-score-reflection')).toHaveCount(3);
-  expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.27);
-  expect(geometry.logoHeightRatio).toBeGreaterThanOrEqual(0.18);
-  await expect(page.locator('.v3v-caption')).toContainText('VÒNG');
+  await expect(page.locator('.v3v-score-reflection, .v3v-nameplate-reflection')).toHaveCount(0);
+  await expect(page.locator('.v3v-trophy, .v3v-trophy-stage, .v3v-bg-dim, .v3v-fan-lights, .v3v-side-lightning')).toHaveCount(0);
+  expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.339);
+  expect(geometry.logoWidthRatio).toBeLessThanOrEqual(0.35);
+  expect(geometry.logoTopRatio).toBeGreaterThanOrEqual(0.014);
+  expect(geometry.logoTopRatio + geometry.logoHeightRatio).toBeLessThanOrEqual(0.19);
   await expect(page.locator('.v3v-header')).not.toContainText('VINH DANH TOP 3');
   await page.screenshot({ path: join(screenshotDirectory, 'victory-approved-layout.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
