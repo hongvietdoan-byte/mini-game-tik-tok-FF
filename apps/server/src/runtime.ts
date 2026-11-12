@@ -110,6 +110,7 @@ export type RuntimeDeps = {
   preflight?: (runtime: SessionRuntime) => {
     checks: { id: string; status: 'PASS' | 'FAIL' | 'WARN'; reason: string }[];
   };
+  warn?: (message: string) => void;
   /** Kho nhân vật mặc định (vd đọc từ assets-local/chibi/manifest.json); phiên có characterPool riêng thì dùng của phiên. */
   characterPool?: readonly string[];
 };
@@ -714,6 +715,9 @@ export class SessionRuntime {
       allowDemo: this.config.mode === 'MOCK' && this.config.allowDemoQuestions,
       allowReuse,
       nowMs: now,
+      onWarning: ({ questionIds }) => this.deps.warn?.(
+        `[quiz] TOO_LONG: dùng ${questionIds.length} câu vượt ngưỡng vì thiếu câu ngắn (id: ${questionIds.join(', ')}).`,
+      ),
     });
     if (!sel.ok) return { ok: false, eligible: sel.eligible, unused: sel.unused, required: sel.required };
     return {

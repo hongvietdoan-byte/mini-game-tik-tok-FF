@@ -15,6 +15,7 @@ import {
   McVoiceSettingsUpdateSchema,
   McVoiceTestRequestSchema,
   QuestionReviewSchema,
+  questionLengthWarnings,
   SimulatorRequestSchema,
 } from '@quiz/contracts';
 import { isEligible } from '@quiz/quiz-core';
@@ -338,6 +339,18 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     buildCheck('overlayBuild', 'Build overlay không cũ hơn HEAD', opts.webRoots?.overlay);
     buildCheck('dashboardBuild', 'Build dashboard không cũ hơn HEAD', opts.webRoots?.dashboard);
 
+    const warningPackId = session?.config.packId ?? 'demo';
+    const approvedTooLong = store.listQuestions(warningPackId)
+      .filter((question) => question.approvalStatus === 'APPROVED' && questionLengthWarnings(question).length > 0);
+    check(
+      'questionLength',
+      'Độ dài câu hỏi trong ngưỡng khuyến nghị',
+      approvedTooLong.length === 0 ? 'PASS' : 'WARN',
+      approvedTooLong.length === 0
+        ? 'Không có câu APPROVED vượt ngưỡng độ dài khuyến nghị.'
+        : `${approvedTooLong.length} câu APPROVED vượt ngưỡng; cân nhắc rút gọn trước khi chạy.`,
+    );
+
     return {
       checkedAtMs,
       sessionId: session?.id ?? null,
@@ -533,6 +546,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         characterPool: opts.characterPool,
         adapter: adapterFactory(parsed.data.config.mode, parsed.data.config),
         preflight: (session) => makePreflight(session),
+        warn: (message) => console.warn(message),
       },
       parsed.data,
     );
@@ -595,7 +609,10 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   app.get('/api/questions', async (req, reply) => {
     if (!guard(req, reply, false)) return reply;
     const packId = rt?.config.packId ?? 'demo';
-    return store.listQuestions(packId);
+    return store.listQuestions(packId).map((question) => ({
+      ...question,
+      warnings: questionLengthWarnings(question),
+    }));
   });
 
   /** Người dùng duyệt / từ chối câu hỏi (BOARD #13). Câu đã dùng trong vòng giữ snapshot cũ — không đổi kết quả cũ. */
@@ -605,7 +622,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!parsed.success) return badRequest(reply, parsed.error);
     const q = store.reviewQuestion(req.params.id, parsed.data.decision, parsed.data.operatorId, Math.floor(scheduler.now()));
     if (!q) return reply.code(404).send({ ok: false, code: 'NOT_FOUND', message: 'Không có câu hỏi' });
-    return { ok: true, question: q };
+    return { ok: true, question: q, warnings: questionLengthWarnings(q) };
   });
 
   app.get('/api/diagnostics', async (req, reply) => {
@@ -776,6 +793,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
           characterPool: opts.characterPool,
           adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config),
           preflight: (session) => makePreflight(session),
+          warn: (message) => console.warn(message),
         },
         row,
       );

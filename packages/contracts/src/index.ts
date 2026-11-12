@@ -202,6 +202,50 @@ export const QuestionSchema = z
   });
 export type Question = z.infer<typeof QuestionSchema>;
 
+/** Ngưỡng nội dung khuyến nghị cho overlay; vượt ngưỡng chỉ cảnh báo, không từ chối câu. */
+export const QUESTION_WARNING_LIMITS = { promptMax: 110, optionMax: 28 } as const;
+
+export type QuestionLengthWarning = {
+  code: 'TOO_LONG';
+  field: 'prompt' | 'option';
+  characterCount: number;
+  limit: number;
+  optionId?: string;
+};
+
+function questionCharacterCount(value: string): number {
+  return Array.from(value.trim()).length;
+}
+
+/** Trả về cảnh báo cho từng trường vượt ngưỡng; không biến cảnh báo thành lỗi validation. */
+export function questionLengthWarnings(
+  question: Pick<Question, 'prompt' | 'options'>,
+): QuestionLengthWarning[] {
+  const warnings: QuestionLengthWarning[] = [];
+  const promptLength = questionCharacterCount(question.prompt);
+  if (promptLength > QUESTION_WARNING_LIMITS.promptMax) {
+    warnings.push({
+      code: 'TOO_LONG',
+      field: 'prompt',
+      characterCount: promptLength,
+      limit: QUESTION_WARNING_LIMITS.promptMax,
+    });
+  }
+  for (const option of question.options) {
+    const optionLength = questionCharacterCount(option.text);
+    if (optionLength > QUESTION_WARNING_LIMITS.optionMax) {
+      warnings.push({
+        code: 'TOO_LONG',
+        field: 'option',
+        optionId: option.id,
+        characterCount: optionLength,
+        limit: QUESTION_WARNING_LIMITS.optionMax,
+      });
+    }
+  }
+  return warnings;
+}
+
 /** Ảnh chụp bất biến của câu hỏi tại thời điểm tạo vòng (đã xáo đáp án). */
 export type QuestionSnapshot = {
   questionInstanceId: string;
