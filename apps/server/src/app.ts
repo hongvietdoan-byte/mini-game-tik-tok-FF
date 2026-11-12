@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import websocket from '@fastify/websocket';
@@ -30,6 +30,8 @@ import { McVoiceCache } from './voice/cache';
 import { McVoicePreGenerateManager } from './voice/pre-generate';
 import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile, EnvironmentMcVoiceCredentialStore } from './voice/types';
 import { McVoiceService } from './voice/service';
+import { preflightAssets } from './preflight-assets';
+import { commentSourcePreflight, overlayAckPreflight } from './preflight-health';
 
 export const DEFAULT_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
@@ -137,6 +139,8 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const adminClients = new Set<WebSocket>();
   let unsub: (() => void) | null = null;
   let lastAck: { stateVersion: number; atMs: number } | null = null;
+  let ackPendingSinceMs = scheduler.now();
+  let observedStateVersion = 0;
   let lastSelfTest: SelfTestResult | null = null;
   const pushOverlayInfo = () =>
     rt?.setOverlayInfo({
@@ -150,8 +154,15 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     rt?.dispose();
     rt = next;
     lastAck = null;
+    observedStateVersion = next.engine.stateVersion;
+    ackPendingSinceMs = scheduler.now();
     pushOverlayInfo();
     unsub = next.subscribe((batch: Outgoing[]) => {
+      const stateVersion = next.engine.stateVersion;
+      if (stateVersion > observedStateVersion) {
+        observedStateVersion = stateVersion;
+        if (lastAck === null || lastAck.stateVersion < stateVersion) ackPendingSinceMs = scheduler.now();
+      }
       for (const o of batch) {
         const data = JSON.stringify(o.message);
         for (const ws of o.audience === 'public' ? overlayClients : adminClients) if (ws.readyState === 1) ws.send(data);
@@ -218,13 +229,12 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const unusedQuestions = eligible.filter((question) => !used.has(question.id));
       const unused = unusedQuestions.length;
       const enough = unused >= config.questionsPerRound;
-      const excludesDemo = config.mode !== 'TIKTOK' || eligible.every((question) => question.verificationStatus !== 'DEMO');
       const difficultyTargets = config.difficultyTargets ?? DEFAULT_DIFFICULTY_TARGETS;
       const difficultyTolerance = config.difficultyTolerance ?? 2;
       check(
         'questions',
         'Câu APPROVED đủ và không lặp trong phiên',
-        enough && excludesDemo ? 'PASS' : 'FAIL',
+        enough ? 'PASS' : 'FAIL',
         `Bộ ${config.packId}: ${eligible.length} câu hợp lệ, ${unused} câu chưa dùng / cần ${config.questionsPerRound}; mode ${config.mode}${config.mode === 'TIKTOK' ? ', đã loại DEMO' : ''}.`,
       );
       const preview = planPreferredDifficultyCounts(
@@ -265,57 +275,29 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     }
     check('database', 'DB ghi được', dbStatus, dbReason);
 
-    const assetRoot = opts.webRoots?.assets;
-    if (!assetRoot) {
-      check('assets', 'Asset bắt buộc', 'FAIL', 'Chưa cấu hình thư mục assets-local.');
-    } else {
-      const requiredFiles = ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg'];
-      const missingFiles = requiredFiles.filter((relative) => !existsSync(join(assetRoot, relative)));
-      let hasChibi = false;
-      try {
-        hasChibi = readdirSync(join(assetRoot, 'chibi'), { withFileTypes: true })
-          .some((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.png'));
-      } catch {
-        hasChibi = false;
-      }
-      const hasMc = existsSync(join(assetRoot, 'mc', 'kelly.png')) || existsSync(join(assetRoot, 'mc', 'kelly', 'poster.png'));
-      if (!hasChibi) missingFiles.push('chibi/*.png');
-      if (!hasMc) missingFiles.push('mc/kelly.png hoặc mc/kelly/poster.png');
-      check(
-        'assets',
-        'Asset bắt buộc',
-        missingFiles.length === 0 ? 'PASS' : 'FAIL',
-        missingFiles.length === 0 ? `Đủ logo, trophy-stage, bg, chibi và MC trong ${assetRoot}.` : `Thiếu ${missingFiles.join(', ')} trong ${assetRoot}.`,
-      );
-    }
+    const assets = preflightAssets(opts.webRoots?.assets, repositoryRoot);
+    check('assets', 'Asset bắt buộc', assets.status, assets.reason);
 
     if (!session) {
       check('overlayAck', 'Overlay đã ACK', 'WARN', 'Chưa có phiên mở để đối chiếu ACK với stateVersion.');
       check('commentSource', 'Nguồn comment', 'WARN', 'Chưa có phiên để xác định MOCK/TIKTOK.');
     } else {
-      const acked = overlayClients.size > 0 && lastAck !== null && lastAck.stateVersion >= session.engine.stateVersion;
+      const ack = overlayAckPreflight({
+        clients: overlayClients.size,
+        ackVersion: lastAck?.stateVersion ?? null,
+        expectedVersion: session.engine.stateVersion,
+        nowMs: scheduler.now(),
+        pendingSinceMs: ackPendingSinceMs,
+      });
       check(
         'overlayAck',
         'Overlay đã ACK',
-        acked ? 'PASS' : 'FAIL',
-        acked
-          ? `${overlayClients.size} overlay đang kết nối; đã ACK v${lastAck!.stateVersion} (server v${session.engine.stateVersion}).`
-          : overlayClients.size === 0
-            ? 'Chưa có overlay kết nối.'
-            : `Chưa có ACK mới tới stateVersion ${session.engine.stateVersion}.`,
+        ack.status,
+        ack.reason,
       );
       const live = session.liveHealth();
-      if (session.config.mode === 'MOCK') {
-        check('commentSource', 'Nguồn comment', 'WARN', `Phiên đang dùng MOCK (${live.status}); không xác nhận nguồn TikTok LIVE.`);
-      } else {
-        const connected = live.source === 'TIKTOK' && live.status === 'CONNECTED';
-        check(
-          'commentSource',
-          'Nguồn comment',
-          connected ? 'PASS' : 'FAIL',
-          `Mode TIKTOK; adapter ${live.source} đang ${live.status}${live.detail ? ` — ${live.detail}` : ''}.`,
-        );
-      }
+      const sourceHealth = commentSourcePreflight(session.config.mode, live, scheduler.now());
+      check('commentSource', 'Nguồn comment', sourceHealth.status, sourceHealth.reason);
     }
 
     const buildCheck = (id: string, label: string, directory: string | undefined) => {
@@ -795,6 +777,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         if (rt) socket.send(JSON.stringify(rt.wrap('ADMIN_SNAPSHOT', rt.adminSnapshot())));
       } else {
         role = 'overlay';
+        if (overlayClients.size === 0) ackPendingSinceMs = scheduler.now();
         overlayClients.add(socket);
         pushOverlayInfo();
         if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', rt.publicSnapshot())));

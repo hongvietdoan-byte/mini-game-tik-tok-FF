@@ -114,7 +114,7 @@ def verify_backup(backup: Path, *, quiet: bool = False) -> tuple[bool, list[str]
 
 
 def sqlite_backup(source_path: Path, destination_path: Path) -> None:
-    """Gọi Store.backup(), dùng SQLite Online Backup API để gồm cả WAL đã commit."""
+    """Dùng SQLite Online Backup API qua connection readonly, gồm cả WAL đã commit."""
     if not source_path.is_file():
         raise BackupError(f"Không tìm thấy database: {source_path}")
     destination_path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,7 +127,7 @@ def sqlite_backup(source_path: Path, destination_path: Path) -> None:
             check=True,
         )
     except (OSError, subprocess.CalledProcessError) as error:
-        raise BackupError(f"Store.backup() không hoàn tất: {error}") from error
+        raise BackupError(f"Sao lưu SQLite không hoàn tất: {error}") from error
     if not destination_path.is_file():
         raise BackupError(f"SQLite không tạo được bản sao: {destination_path}")
 
@@ -304,7 +304,48 @@ def restore_database(source: Path, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def restore_backup(backup: Path, root: Path, assume_yes: bool, *, port: int = 8787) -> None:
+def prune_extra_assets(root: Path, manifest: dict) -> int:
+    """Xóa asset không có trong manifest, không đi xuyên symlink hay thư mục bị loại trừ."""
+    assets_root = root / "assets-local"
+    if not assets_root.is_dir():
+        return 0
+    if assets_root.is_symlink():
+        raise BackupError("Từ chối mirror assets-local vì thư mục đích là symlink.")
+    expected = {
+        relative_path(record["path"]).parts[1:]
+        for record in manifest["files"]
+        if isinstance(record, dict) and isinstance(record.get("path"), str)
+        and relative_path(record["path"]).parts[0] == "assets-local"
+    }
+    removed = 0
+    for directory, names, filenames in os.walk(assets_root, topdown=True, followlinks=False):
+        names[:] = [
+            name for name in names
+            if name.lower() not in BACKUP_EXCLUDES and not (Path(directory) / name).is_symlink()
+        ]
+        for filename in filenames:
+            candidate = Path(directory) / filename
+            rel = candidate.relative_to(assets_root).parts
+            if rel in expected:
+                continue
+            try:
+                candidate.unlink()
+                removed += 1
+            except FileNotFoundError:
+                pass
+
+    for directory, names, _ in os.walk(assets_root, topdown=False, followlinks=False):
+        candidate = Path(directory)
+        if candidate == assets_root or candidate.name.lower() in BACKUP_EXCLUDES or candidate.is_symlink():
+            continue
+        try:
+            candidate.rmdir()
+        except OSError:
+            pass
+    return removed
+
+
+def restore_backup(backup: Path, root: Path, assume_yes: bool, *, port: int = 8787, mirror: bool = False) -> None:
     backup = backup.resolve()
     root = root.resolve()
     valid, errors = verify_backup(backup, quiet=True)
@@ -324,6 +365,9 @@ def restore_backup(backup: Path, root: Path, assume_yes: bool, *, port: int = 87
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
         restored += 1
+    removed = prune_extra_assets(root, manifest) if mirror else 0
+    if mirror:
+        print(f"restore mirror: đã xóa {removed} asset ngoài manifest (giữ _backup/ và review/).")
     print(f"restore PASS: {restored} tệp → {root}")
 
 
@@ -343,6 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("--from", dest="backup", type=Path, required=True, help="Thư mục backup đã verify.")
     restore.add_argument("--root", type=Path, default=Path.cwd(), help="Đích checkout (mặc định: thư mục hiện tại).")
     restore.add_argument("--yes", action="store_true", help="Xác nhận có chủ đích cho chạy tự động/kiểm thử.")
+    restore.add_argument("--mirror", action="store_true", help="Xóa asset-local ngoài manifest; giữ thư mục _backup/ và review/.")
     return parser
 
 
@@ -358,7 +403,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "verify":
             return 0 if verify_backup(args.backup)[0] else 1
         if args.command == "restore":
-            restore_backup(args.backup, args.root, args.yes)
+            restore_backup(args.backup, args.root, args.yes, mirror=args.mirror)
             return 0
     except InsufficientSpaceError as error:
         print(f"backup FAIL: {error}", file=sys.stderr)

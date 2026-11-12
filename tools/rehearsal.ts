@@ -395,9 +395,13 @@ function p95(samples: number[]) {
   return sorted[Math.ceil(sorted.length * 0.95) - 1]!;
 }
 
+export function rehearsalStatusLabel(passed: boolean) {
+  return passed ? 'CODE_REHEARSAL_PASSED' : 'CODE_REHEARSAL_FAILED';
+}
+
 function markdownReport() {
   const passed = gates.every((gate) => gate.status === 'PASS');
-  const title = passed ? 'MOCK_REHEARSAL_PASSED' : 'MOCK_REHEARSAL_FAILED';
+  const title = rehearsalStatusLabel(passed);
   const lines = [
     `# Biên bản tổng duyệt MOCK — ${REPORT_DATE}`,
     '',
@@ -427,7 +431,7 @@ function markdownReport() {
     '',
     '## Ghi chú ngoài phạm vi gate',
     '',
-    '- `MockSimulator` reset bộ đếm event ID khi tạo instance mới; STOP/START trong cùng nguồn có thể phát lại `sim-1`, `sim-2`… và bị runtime đánh dấu `DUPLICATE_EVENT`. Lần chạy thăm dò trước khi chuyển sang tải HTTP ghi nhận 5.778 duplicate event. Regression nằm ở `packages/live-adapters/src/simulator.test.ts` dưới dạng `it.fails`; chưa sửa runtime ngoài phạm vi P0-D. Tải 6 vòng trong biên bản dùng event ID duy nhất qua HTTP và không gọi lại simulator giữa phiên.',
+    '- Đây là tổng duyệt source-code dùng `MockAdapter`; kết quả không thay cho operator rehearsal V4 P0.5 trên TikTok LIVE thật. `MockSimulator` hiện có test hồi quy bình thường trong `packages/live-adapters/src/simulator.test.ts`, xác nhận event ID không trùng sau restart.',
     '- Tất cả dữ liệu/ảnh/câu hỏi dùng trong rehearsal là synthetic và được tạo ở thư mục tạm; không ghi vào DB của repo.',
     '',
   ];
@@ -622,11 +626,13 @@ async function main() {
   }
 
   const passed = gates.every((gate) => gate.status === 'PASS');
-  console.log(`${passed ? 'MOCK_REHEARSAL_PASSED' : 'MOCK_REHEARSAL_FAILED'} — ${roundMetrics.length}/6 vòng; biên bản: ${reportPath}`);
+  console.log(`${rehearsalStatusLabel(passed)} — ${roundMetrics.length}/6 vòng; biên bản: ${reportPath}`);
   if (!passed) process.exitCode = 1;
 }
 
-void main().catch((error) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  void main().catch((error) => {
+    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    process.exitCode = 1;
+  });
+}
