@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T11:06:30+07:00",
+  "heartbeat": "2026-11-12T11:27:09+07:00",
   "state": "working",
   "task": "C-0116",
-  "note": "Đang chỉnh Victory theo ref trong worktree codex2/c0068-victory-ref",
+  "note": "C-0116: ảnh REF | RENDER đã ghép; đang chạy full validation",
   "done": [
     110,
     111,
