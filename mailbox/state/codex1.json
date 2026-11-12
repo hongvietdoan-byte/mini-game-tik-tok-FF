@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T06:45:24+07:00",
-  "state": "waiting",
-  "task": "C-0085",
-  "note": "Đang chờ coordinator xác nhận C-0080/C-0082 đã gộp; không có việc khả thi khác",
+  "heartbeat": "2026-11-12T07:05:32+07:00",
+  "state": "working",
+  "task": "C-0100",
+  "note": "Đã ACK; tạo worktree riêng, xử lý F1/F2/F3/F4/F5/F7 theo thứ tự và kiểm thử từng mục",
   "done": [
     86,
     88,
