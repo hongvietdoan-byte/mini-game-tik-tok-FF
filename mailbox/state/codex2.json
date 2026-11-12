@@ -1,11 +1,12 @@
 {
   "role": "codex2",
   "last_read": 116,
-  "heartbeat": "2026-11-12T14:44:25+07:00",
+  "heartbeat": "2026-11-12T15:12:38+07:00",
   "state": "working",
   "task": "C-0122",
   "note": "Đã ack C-0122; đang kiểm tra asset nguồn, nhánh C-0068 và layout trước khi đổi nền question/victory",
   "done": [
-    120
+    120,
+    124
   ]
 }
