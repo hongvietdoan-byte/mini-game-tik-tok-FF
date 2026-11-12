@@ -70,6 +70,7 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'round-winner': { scene: 'ROUND_WINNER', state: 'ROUND_END' },
   victory: { scene: 'VICTORY', state: 'VICTORY' },
   'victory-tie': { scene: 'VICTORY', state: 'VICTORY' },
+  'victory-name-test': { scene: 'VICTORY', state: 'VICTORY' },
   intermission: { scene: 'INTERMISSION', state: 'INTERMISSION' },
   'connection-lost': { scene: 'CONNECTION_LOST', state: 'CONNECTION_INTERRUPTED' },
   paused: { scene: 'QUESTION', state: 'PAUSED' },
@@ -86,6 +87,22 @@ function podium(tied: boolean): Podium {
       { place: 1, rank: 1, tied, entries: [{ ...first, rank: 1, tied }] },
       { place: 3, rank: 3, tied: false, entries: [third] },
     ],
+  };
+}
+
+function victoryNameTestPodium(): Podium {
+  const demo = podium(true);
+  return {
+    ...demo,
+    slots: demo.slots.map((slot) => {
+      const entries = slot.entries.map((entry) => ({ ...entry, displayName: 'BVD.Championship' }));
+      return {
+        ...slot,
+        entries: slot.place === 3
+          ? [...entries, { ...entries[0]!, playerId: 'demo-player-long-name', displayName: 'BVD.ChampionshipXYZ' }]
+          : entries,
+      };
+    }),
   };
 }
 
@@ -155,7 +172,11 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
       : ['top10', 'top10-short', 'top10-long-name', 'top10-xss', 'round-winner', 'victory', 'victory-tie'].includes(name)
         ? { kind: name === 'top10' || name === 'top10-short' || name === 'top10-long-name' || name === 'top10-xss' ? 'FULL' : 'COMPACT', entries: short ? visibleLeaderboard.slice(0, 3) : visibleLeaderboard.slice(0, name === 'round-winner' ? 3 : 10) }
         : null,
-    podium: name === 'victory' || name === 'victory-tie' ? podium(name === 'victory-tie') : null,
+    podium: name === 'victory-name-test'
+      ? victoryNameTestPodium()
+      : name === 'victory' || name === 'victory-tie'
+        ? podium(name === 'victory-tie')
+        : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
       state: name === 'prepare' || name === 'reading' || name === 'reading-longest' ? 'ask' : isReveal ? 'react' : 'idle',

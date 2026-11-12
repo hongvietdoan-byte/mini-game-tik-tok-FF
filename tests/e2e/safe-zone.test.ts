@@ -23,7 +23,8 @@ const importantElements = [
   { label: 'Top10 row', selector: '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]' },
   { label: 'round label', selector: '.v3-full-round, .v3-scene-kicker, .v3v-caption' },
   { label: 'top meta', selector: '[data-testid="round-card"]' },
-  { label: 'brand logo', selector: '.v3-title img, .v3-title-main, .v3-crown, .v3-title-ribbon, [data-testid="event-mark"], .v3v-event-logo' },
+  { label: 'brand logo', selector: '.v3-title img[data-testid="brand-logo"], .v3-title-main, .v3-crown, .v3v-event-logo' },
+  { label: 'event subtitle', selector: '.v3-title-ribbon' },
   { label: 'podium name', selector: '[data-testid^="podium-slot-"] .v3v-nameplate' },
   { label: 'MC figure', selector: '[data-layer="kelly"] .v3-mc-figure' },
   { label: 'MC plate', selector: '[data-layer="kelly"] .v3-mc-plate' },
@@ -83,15 +84,20 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
         report.push(`${row.element} | ${row.rule} | ${row.x} | ${row.y}`);
       };
       const isBrandLogo = item.label.startsWith('brand logo');
+      const isEventSubtitle = item.label.startsWith('event subtitle');
       const isTopMeta = item.label.startsWith('top meta');
       const decorativeBleed = item.label === 'trophy';
       const approvedVictoryNameplate = isVictoryScene && item.label.startsWith('podium name');
       if (!decorativeBleed && !approvedVictoryNameplate && !isBrandLogo && (p.x1 < 8.9 || p.x2 > 91.1)) add('crop-fill: phải nằm trong x=9–91%');
       if (isBrandLogo) {
-        const logoTopMin = isVictoryScene ? 1.5 : 0.8;
-        const logoTopMax = isVictoryScene ? 3 : 12.1;
-        const logoBottomLimit = isVictoryScene ? 26 : 12.1;
-        if (p.y1 < logoTopMin || p.y1 > logoTopMax || p.y2 > logoBottomLimit) add(`logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
+        const logoTopMin = isVictoryScene ? 1.4 : 0.8;
+        const logoTopMax = isVictoryScene ? 3 : 5.5;
+        const logoBottomLimit = isVictoryScene ? 19.1 : 25.5;
+        if (p.y1 < logoTopMin || p.y1 > logoTopMax || p.y2 > logoBottomLimit) add(isVictoryScene
+          ? `logo: giữ khoảng hở với đỉnh cúp (y≈${logoTopMin}–${logoBottomLimit}%)`
+          : `logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
+      } else if (isEventSubtitle) {
+        if (p.y1 < 24 || p.y2 > 28) add('dòng phụ phải nằm ngay dưới logo trong vùng header');
       } else if (isTopMeta) {
         if (p.y1 < 0.8 || p.y2 > 12.1) add('thông tin vòng phải nằm trong dải header theo ref');
       } else if (p.y1 < 14) add('HUD trên: y bắt đầu từ 14%');

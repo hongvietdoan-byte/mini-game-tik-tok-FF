@@ -7,14 +7,14 @@ import { BrandMark } from './BrandMark';
 const ASSET = '/assets';
 const VICTORY_BACKGROUND = `${ASSET}/victory/bg-redraw.jpg`;
 const VICTORY_LAYOUT = {
-  '--v3v-place-2-x': '21%',
+  '--v3v-place-2-x': '20%',
   '--v3v-place-1-x': '51%',
-  '--v3v-place-3-x': '78%',
-  '--v3v-place-2-feet': '71%',
-  '--v3v-place-1-feet': '71.5%',
-  '--v3v-place-3-feet': '71%',
-  '--v3v-side-height': '399px',
-  '--v3v-center-height': '459px',
+  '--v3v-place-3-x': '81%',
+  '--v3v-place-2-feet': '60.5%',
+  '--v3v-place-1-feet': '60.5%',
+  '--v3v-place-3-feet': '60.5%',
+  '--v3v-side-height': '384px',
+  '--v3v-center-height': '384px',
   '--v3v-side-width': '210px',
   '--v3v-center-width': '242px',
 } as CSSProperties;
@@ -41,6 +41,11 @@ function Chibi({ entry }: { entry: LeaderboardEntry }) {
   );
 }
 
+function podiumNameSize(name: string): number {
+  const length = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name)).length;
+  return Math.max(22, Math.min(34, 38 - length * 0.9));
+}
+
 function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
   const lead = slot.entries[0]!;
   const tied = slot.tied || (tieAcross && slot.entries.length > 1);
@@ -62,12 +67,15 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
         </span>
         <div className="v3v-names">
           <span className="v3v-rank-label" data-testid="podium-rank">TOP {slot.rank}</span>
-          {slot.entries.slice(0, 2).map((entry) => (
-            <b className="v3v-player-row" key={entry.playerId}>
-              <span className="v3v-player-name">{shortName(entry.displayName, 22)}</span>
-              {(entry.top1Streak ?? 0) >= 2 && <span className="v3-top1-badge" data-testid="top1-badge">x{entry.top1Streak}</span>}
-            </b>
-          ))}
+          {slot.entries.slice(0, 2).map((entry) => {
+            const displayName = shortName(entry.displayName, 18);
+            return (
+              <b className="v3v-player-row" key={entry.playerId}>
+                <span className="v3v-player-name" style={{ fontSize: `${podiumNameSize(displayName)}px` }}>{displayName}</span>
+                {(entry.top1Streak ?? 0) >= 2 && <span className="v3-top1-badge" data-testid="top1-badge">x{entry.top1Streak}</span>}
+              </b>
+            );
+          })}
           {slot.entries.length > 2 && <small>+{slot.entries.length - 2} người</small>}
           <i>{lead.score.toLocaleString('vi-VN')} PTS</i>
           {tied && <strong className="tie-label">ĐỒNG HẠNG</strong>}
