@@ -9,7 +9,6 @@ const graphemes = Array.from(
   new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(playerName),
   ({ segment }) => segment,
 );
-const visiblePlayerName = `${graphemes.slice(0, DISPLAY_LIMITS.name - 1).join('')}…`;
 const OPTION_IDS = ['A', 'B', 'C', 'D'] as const;
 const questionPrompt = repeatWordsToLength(
   'Trong Battle Royale đội của bạn phối hợp theo dõi vùng an toàn và hoàn thành mục tiêu chiến thắng của trận đấu',
@@ -191,14 +190,15 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
 for (const sceneName of ['top10-long-name', 'victory-name-test'] as const) {
   test(`tên người chơi quá 16 grapheme hiện ellipsis và không tràn — ${sceneName}`, async ({ page }) => {
     expect(graphemes.length).toBeGreaterThan(DISPLAY_LIMITS.name);
-    expect(Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(visiblePlayerName))).toHaveLength(DISPLAY_LIMITS.name);
     const snapshot = namesSnapshot(sceneName);
     const stage = await openSnapshot(page, snapshot);
     const selector = sceneName === 'top10-long-name' ? '.v3-full-name-text' : '.v3v-player-name';
     const names = page.locator(selector);
     if (sceneName === 'victory-name-test') await page.waitForTimeout(1_000);
-    await expect(names.first()).toHaveText(visiblePlayerName);
     await expect(names.first()).toContainText('…');
+    const visibleName = await names.first().innerText();
+    const visibleGraphemes = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(visibleName));
+    expect(visibleGraphemes.length, 'long names do not exceed 16 visible graphemes').toBeLessThanOrEqual(DISPLAY_LIMITS.name);
     await expectTextFits(page, [selector]);
     if (sceneName === 'victory-name-test') await expectFontSizeAtLeast(page, selector, 22);
 

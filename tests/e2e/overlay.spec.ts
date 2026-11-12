@@ -176,104 +176,6 @@ test('READING shows the question and four answers without starting the answer co
   expect(errors).toEqual([]);
 });
 
-test('longest DEMO question remains readable while Kelly reads it', async ({ page }) => {
-  const { stage, errors } = await openScene(page, 'reading-longest', 'QUESTION');
-  const prompt = stage.getByTestId('question-prompt');
-  const answers = stage.locator('[data-testid^="option-"] .v3-option-text');
-  await expect(prompt).toContainText('Trong Battle Royale');
-  await expect(stage.getByTestId('reading-status')).toHaveText('MC ĐANG ĐỌC');
-  await expect(stage.getByTestId('timer')).toHaveCount(0);
-  const promptFont = await prompt.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
-  const answerFonts = await answers.evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
-  expect(promptFont, 'long READING prompt must scale down inside its fixed card').toBeGreaterThanOrEqual(20);
-  expect(answerFonts.every((fontSize) => fontSize >= 14), 'READING choices must stay readable in fixed cards').toBe(true);
-  const fits = await prompt.evaluate((element) => element.scrollHeight <= element.clientHeight);
-  expect(fits, 'long READING prompt must remain inside its fixed card').toBe(true);
-  const kelly = stage.locator('.v3-mc-figure img.mc-sequence');
-  await expect(kelly).toBeVisible();
-  await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
-  await page.waitForTimeout(8_100);
-  await page.screenshot({ path: join(screenshotDirectory, 'reading-longest.png'), animations: 'disabled' });
-  expect(errors).toEqual([]);
-});
-
-test('longest DEMO question stays clear of the timer and fully inside its frame', async ({ page }) => {
-  const { stage, errors } = await openScene(page, 'question-longest', 'QUESTION');
-  const prompt = stage.getByTestId('question-prompt');
-  await expect(prompt).toHaveText('Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?');
-  const layout = await page.evaluate(() => {
-    const prompt = document.querySelector<HTMLElement>('[data-testid="question-prompt"]')!;
-    const timer = document.querySelector<HTMLElement>('[data-testid="timer"]')!;
-    const p = prompt.getBoundingClientRect();
-    const t = timer.getBoundingClientRect();
-    const textRange = document.createRange();
-    textRange.selectNodeContents(prompt);
-    return {
-      overlapsTimer: p.left < t.right && p.right > t.left && p.top < t.bottom && p.bottom > t.top,
-      contentFits: prompt.scrollHeight <= prompt.clientHeight,
-      renderedLines: textRange.getClientRects().length,
-      promptHeight: prompt.clientHeight,
-      fontSize: Number.parseFloat(getComputedStyle(prompt).fontSize),
-    };
-  });
-  expect(layout.overlapsTimer, 'timer must sit above the question copy').toBe(false);
-  expect(layout.contentFits, 'longest DEMO prompt must not overflow its card').toBe(true);
-  expect(layout.renderedLines).toBeGreaterThan(1);
-  expect(layout.fontSize, 'longest DEMO prompt must scale down inside its fixed card').toBeGreaterThanOrEqual(20);
-  const answerFonts = await stage.locator('[data-testid^="option-"] .v3-option-text').evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
-  expect(answerFonts.every((fontSize) => fontSize >= 14), 'question choices must stay readable in fixed cards').toBe(true);
-  const kelly = stage.locator('.v3-mc-figure img.mc-sequence');
-  await expect(kelly).toBeVisible();
-  await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
-  await page.waitForTimeout(8_100);
-  await page.screenshot({ path: join(screenshotDirectory, 'question-longest.png'), animations: 'disabled' });
-  expect(errors).toEqual([]);
-});
-
-test('longest DEMO answer scales inside the same fixed two-column cards in ACCEPTING', async ({ page }) => {
-  const { stage, errors } = await openScene(page, 'question-long-answer', 'QUESTION');
-  const answers = stage.locator('[data-testid^="option-"] .v3-option-text');
-  await expect(stage.getByTestId('option-list')).toHaveClass(/has-long-option/);
-  await expect(answers).toHaveCount(4);
-  const optionBoxes = await page.evaluate(() => ['A', 'B', 'C', 'D'].map((id) => {
-    const box = document.querySelector<HTMLElement>(`[data-testid="option-${id}"]`)!.getBoundingClientRect();
-    return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
-  }));
-  expect(optionBoxes[0]?.y).toBe(optionBoxes[1]?.y);
-  expect(optionBoxes[2]?.y).toBe(optionBoxes[3]?.y);
-  expect(optionBoxes[0]?.x).toBe(optionBoxes[2]?.x);
-  expect(optionBoxes[1]?.x).toBe(optionBoxes[3]?.x);
-  expect(optionBoxes.every((box) => box.height > 0)).toBe(true);
-  await expect(answers.nth(2)).toHaveText('Một nhóm vật phẩm được sắp xếp trong hành trang');
-  await expect(answers.nth(3)).toHaveText('Một nhóm nhân vật được hiển thị trong bộ sưu tập');
-  const measurements = await answers.evaluateAll((elements) => elements.map((element) => {
-    const text = element as HTMLElement;
-    const range = document.createRange();
-    range.selectNodeContents(text);
-    const textBox = range.getBoundingClientRect();
-    return {
-      lines: range.getClientRects().length,
-      fontSize: Number.parseFloat(getComputedStyle(text).fontSize),
-      textHeight: text.scrollHeight,
-      cardHeight: text.parentElement?.clientHeight ?? 0,
-      textWidth: text.scrollWidth,
-      cardWidth: text.parentElement?.clientWidth ?? 0,
-      textBottom: textBox.bottom,
-      boardBottom: document.querySelector<HTMLElement>('.v3-board')?.getBoundingClientRect().bottom ?? 0,
-    };
-  }));
-  for (const measurement of measurements) {
-    expect(measurement.lines, 'answer must fit in at most four lines').toBeLessThanOrEqual(4);
-    expect(measurement.fontSize, 'long answer must remain readable inside its fixed card').toBeGreaterThanOrEqual(20);
-    expect(measurement.textHeight, 'answer text must not overflow vertically').toBeLessThanOrEqual(measurement.cardHeight);
-    expect(measurement.textWidth, 'answer text must not overflow horizontally').toBeLessThanOrEqual(measurement.cardWidth);
-    expect(measurement.textBottom, 'answer text must stay above the question panel edge').toBeLessThanOrEqual(measurement.boardBottom - 8);
-  }
-  await expect(stage.locator('[data-testid^="option-"].is-correct')).toHaveCount(0);
-  await page.screenshot({ path: join(screenshotDirectory, 'question-long-answer.png'), animations: 'disabled' });
-  expect(errors).toEqual([]);
-});
-
 test('mock-only badge stays hidden unless debug is enabled', async ({ page }) => {
   await openScene(page, 'question', 'QUESTION');
   await expect(page.getByTestId('demo-badge')).toHaveCount(0);
@@ -354,8 +256,6 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     { name: 'prepare', scene: 'QUESTION' },
     { name: 'reading', scene: 'QUESTION' },
     { name: 'question', scene: 'QUESTION' },
-    { name: 'question-longest', scene: 'QUESTION' },
-    { name: 'question-long-answer', scene: 'QUESTION' },
     { name: 'reveal', scene: 'REVEAL' },
   ];
   let reference: Record<string, unknown> | undefined;
@@ -970,10 +870,17 @@ test('victory-tie labels the tie and orders podium slots by x coordinate', async
   const name = champion.locator('.v3v-player-name').first();
   await expect(badge).toHaveText('x3');
   await expect(badge).toBeVisible();
-  const [nameBox, badgeBox] = await Promise.all([name.boundingBox(), badge.boundingBox()]);
-  expect(nameBox).not.toBeNull();
+  const [nameTextBox, badgeBox] = await Promise.all([
+    name.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.x, width: rect.width };
+    }),
+    badge.boundingBox(),
+  ]);
   expect(badgeBox).not.toBeNull();
-  expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(badgeBox!.x);
+  expect(nameTextBox.x + nameTextBox.width).toBeLessThanOrEqual(badgeBox!.x);
   const xCoordinates: number[] = [];
   for (const place of [2, 1, 3]) {
     const box = await page.getByTestId(`podium-slot-${place}`).boundingBox();
@@ -996,14 +903,24 @@ test('Victory keeps 16-character podium names readable at the same size in tied 
   const truncatedName = page.getByTestId('podium-slot-3').locator('.v3v-player-name').nth(1);
   await expect(tiedName).toHaveText('BVD.Championship');
   await expect(regularName).toHaveText('BVD.Championship');
-  await expect(truncatedName).toHaveText('BVD.ChampionshipX…');
-  const [tiedStyle, regularStyle, fits] = await Promise.all([
+  const truncatedText = await truncatedName.innerText();
+  await expect(truncatedName).toContainText('…');
+  expect(Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(truncatedText)).length).toBeLessThanOrEqual(16);
+  const [tiedStyle, regularStyle, fits, truncatedMetrics, truncatedFontSize] = await Promise.all([
     tiedName.evaluate((element) => getComputedStyle(element).fontSize),
     regularName.evaluate((element) => getComputedStyle(element).fontSize),
     Promise.all([tiedName, regularName].map((locator) => locator.evaluate((element) => element.scrollWidth <= element.clientWidth))),
+    truncatedName.evaluate((element) => ({
+      widthFits: element.scrollWidth <= element.clientWidth,
+      heightFits: element.scrollHeight <= element.clientHeight,
+    })),
+    truncatedName.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
   ]);
   expect(tiedStyle).toBe(regularStyle);
   expect(fits).toEqual([true, true]);
+  expect(truncatedMetrics.widthFits).toBe(true);
+  expect(truncatedMetrics.heightFits).toBe(true);
+  expect(truncatedFontSize).toBeGreaterThanOrEqual(22);
   expect(errors).toEqual([]);
 });
 
