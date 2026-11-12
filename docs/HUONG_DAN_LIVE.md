@@ -61,6 +61,10 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
 - [ ] Với TikTok: tài khoản có quyền LIVE; bấm Go LIVE trước khi tạo phiên TikTok.
 - [ ] Câu hỏi cho TikTok đã APPROVED, không DEMO; preflight không còn FAIL.
 
+## Sửa câu hỏi
+
+Mở `BO_CAU_HOI.xlsx`, chỉ sửa dữ liệu trong sheet `TAT_CA`, rồi lưu file. Chạy `py tools\question_bank.py import --from BO_CAU_HOI.xlsx --dry-run` để xem lỗi trước; khi đã kiểm tra, chạy lại bỏ `--dry-run` để sao lưu DB và nhập các dòng hợp lệ. `Dùng = KHÔNG` lưu câu ở trạng thái ARCHIVED, không xóa câu hay lịch sử; workbook được tạo bằng `py tools\question_bank.py export --out BO_CAU_HOI.xlsx` và không đưa vào Git.
+
 ## Sự cố thường gặp
 
 | Hiện tượng | Cách xử lý |
