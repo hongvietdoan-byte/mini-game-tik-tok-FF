@@ -126,8 +126,11 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
           ? `logo: giữ khoảng hở với đỉnh cúp (y≈${logoTopMin}–${logoBottomLimit}%)`
           : `logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
       } else if (isEventSubtitle) {
-        const subtitleTop = compactQuestionHeader ? 12.5 : 24;
-        const subtitleBottom = compactQuestionHeader ? 15.5 : 28;
+        // Tỉ lệ logo giữ chỗ và asset thật khác nhau nên flex header có thể làm
+        // ribbon dịch dọc. Giữ ribbon trong dải trên của từng layout:
+        // 8.5–16.5% cho header câu hỏi, 16–27% cho header thường.
+        const subtitleTop = compactQuestionHeader ? 8.5 : 16;
+        const subtitleBottom = compactQuestionHeader ? 16.5 : 27;
         if (p.y1 < subtitleTop || p.y2 > subtitleBottom) add('dòng phụ phải nằm ngay dưới logo trong vùng header');
       } else if (isTopMeta) {
         if (p.y1 < 0.8 || p.y2 > 12.1) add('thông tin vòng phải nằm trong dải header theo ref');

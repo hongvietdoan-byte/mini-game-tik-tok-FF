@@ -18,6 +18,7 @@ const ASSET_APPROVALS_PATH = 'assets/ASSET_APPROVALS.json';
 const LOCAL_EXTRA_PATTERNS_PATH = 'assets-local/privacy-patterns.txt';
 const PLACEHOLDER_ASSET_PREFIX = 'fixtures/assets-placeholder/';
 const MAX_PLACEHOLDER_IMAGE_BYTES = 4 * 1024;
+const MAX_PLACEHOLDER_BACKGROUND_BYTES = 16 * 1024;
 const PLACEHOLDER_IMAGE_PATHS = new Set([
   'fixtures/assets-placeholder/brand/logo.png',
   'fixtures/assets-placeholder/chibi/chibi-01.png',
@@ -53,7 +54,10 @@ const PLACEHOLDER_IMAGE_PATHS = new Set([
   'fixtures/assets-placeholder/chibi/chibi-021-kapella.png',
   'fixtures/assets-placeholder/chibi/chibi-022-kassie.png',
   'fixtures/assets-placeholder/mc/kelly.png',
+  'fixtures/assets-placeholder/arena/bg.jpg',
+  'fixtures/assets-placeholder/arena/bg-question-user.jpg',
   'fixtures/assets-placeholder/victory/bg.jpg',
+  'fixtures/assets-placeholder/victory/bg-user-cover.jpg',
   'fixtures/assets-placeholder/victory/trophy-stage.png',
 ].map((path) => path.toLowerCase()));
 
@@ -162,15 +166,23 @@ export function checkFiles(files, extraPatterns = []) {
     if (normalized.startsWith(PLACEHOLDER_ASSET_PREFIX)) {
       const isPlaceholderImage = IMAGE_EXTENSIONS.has(ext);
       const isPlaceholderReadme = normalized === `${PLACEHOLDER_ASSET_PREFIX}readme.md`;
-      if (!isPlaceholderImage && !isPlaceholderReadme) {
-        violations.push(`${path}: chỉ cho ảnh giữ chỗ và README.md trong thư mục này`);
+      const isPlaceholderManifest = normalized === `${PLACEHOLDER_ASSET_PREFIX}chibi/manifest.json`;
+      if (!isPlaceholderImage && !isPlaceholderReadme && !isPlaceholderManifest) {
+        violations.push(`${path}: chỉ cho ảnh giữ chỗ, manifest chibi và README.md trong thư mục này`);
       }
       if (isPlaceholderImage && file.isSymlink) violations.push(`${path}: ảnh giữ chỗ không được là symlink`);
       if (isPlaceholderImage) {
         if (!Number.isInteger(file.sizeBytes) || file.sizeBytes < 0) {
           violations.push(`${path}: không xác minh được kích thước ảnh giữ chỗ`);
-        } else if (file.sizeBytes > MAX_PLACEHOLDER_IMAGE_BYTES) {
-          violations.push(`${path}: ảnh giữ chỗ vượt quá 4 KB`);
+        } else {
+          const isFullSizeBackground = normalized.startsWith(`${PLACEHOLDER_ASSET_PREFIX}arena/`)
+            || normalized === `${PLACEHOLDER_ASSET_PREFIX}victory/bg-user-cover.jpg`;
+          const maxBytes = isFullSizeBackground
+            ? MAX_PLACEHOLDER_BACKGROUND_BYTES
+            : MAX_PLACEHOLDER_IMAGE_BYTES;
+          if (file.sizeBytes > maxBytes) {
+            violations.push(`${path}: ảnh giữ chỗ vượt quá ${Math.round(maxBytes / 1024)} KB`);
+          }
         }
       }
     }
