@@ -140,12 +140,13 @@ def asset_files(assets_root: Path) -> list[tuple[Path, str]]:
     return sorted(files, key=lambda pair: pair[1])
 
 
-def make_backup(root: Path, output_dir: Path | None = None) -> Path:
+def make_backup(root: Path, output_dir: Path | None = None) -> Path | None:
     root = root.resolve()
     database = root / "data" / "quiz.db"
     assets_root = root / "assets-local"
     if not database.is_file():
-        raise BackupError(f"Không tìm thấy database source-run: {database}")
+        print(f"backup SKIP: chưa có database source-run: {database}; bỏ qua backup ở lần khởi động đầu.")
+        return None
     if not assets_root.is_dir():
         raise BackupError(f"Không tìm thấy thư mục asset cục bộ: {assets_root}")
 
