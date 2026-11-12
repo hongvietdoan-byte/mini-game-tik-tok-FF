@@ -332,6 +332,14 @@ function normalized(value: string) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function overlayDisplayName(name: string) {
+  const graphemes = Array.from(
+    new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name),
+    ({ segment }) => segment,
+  );
+  return graphemes.length <= 16 ? name : `${graphemes.slice(0, 15).join('')}…`;
+}
+
 test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và replay giả', async ({ page }) => {
   test.skip(usesE2ePlaceholderAssets(), 'TIKTOK cần assets-local thật; bộ giữ chỗ chỉ dùng cho UI/CI MOCK.');
   test.setTimeout(240_000);
@@ -506,9 +514,14 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
       await expect(overlayRows).toHaveCount(entries.length);
       for (let index = 0; index < entries.length; index += 1) {
         const entry = entries[index]!;
-        const rowText = normalized(await overlayRows.nth(index).innerText());
+        const row = overlayRows.nth(index);
+        const rowText = normalized(await row.innerText());
+        const overlayName = row.locator('.v3-full-name-text');
+        const displayName = overlayDisplayName(entry.displayName);
         expect(rowText).toContain(String(entry.rank));
-        expect(rowText).toContain(entry.displayName);
+        await expect(overlayName).toHaveAttribute('title', entry.displayName);
+        await expect(overlayName).toHaveText(displayName);
+        expect(rowText).toContain(displayName);
         expect(rowText).toContain(entry.score.toLocaleString('vi-VN'));
       }
 

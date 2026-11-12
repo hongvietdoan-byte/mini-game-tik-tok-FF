@@ -303,7 +303,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.bubble, `${name}: fixed speech bubble exists`).not.toBeNull();
     expect(Math.abs(geometry.bubble!.x - 410), `${name}: bubble x matches C-0133`).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.bubble!.y - 844), `${name}: bubble y matches C-0133`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.width - 580), `${name}: bubble width matches C-0133`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.bubble!.width - 568), `${name}: bubble width matches the approved C-0133 review`).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.bubble!.height - 220), `${name}: bubble height matches C-0133`).toBeLessThanOrEqual(2);
     expect(geometry.promptFits, `${name}: prompt fits without enlarging its card`).toBe(true);
     expect(geometry.mcFigure, `${name}: Kelly has a visible fixed portrait frame`).not.toBeNull();
@@ -362,8 +362,10 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
 
 test('XSS shaped names render as text', async ({ page }) => {
   const { errors } = await openScene(page, 'top10-xss', 'INTERIM_TOP10');
-  await expect(page.locator('.player-name').filter({ hasText: '<script>window.__xss=1</script>' })).toHaveCount(1);
-  await expect(page.locator('.player-name').filter({ hasText: '<img src=x onerror="window.__xss=1">' })).toHaveCount(1);
+  const nameTitles = await page.locator('.player-name').evaluateAll((elements) => elements.map((element) => element.getAttribute('title')));
+  expect(nameTitles).toContain('<script>window.__xss=1</script>');
+  expect(nameTitles).toContain('<img src=x onerror="window.__xss=1">');
+  await expect(page.locator('.player-name script, .player-name img')).toHaveCount(0);
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
   expect(await page.evaluate(() => (window as Window & { __xss?: number }).__xss)).toBeUndefined();
   const firstRow = page.locator('[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]').first();
@@ -548,10 +550,18 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(boxes.every(Boolean)).toBe(true);
   expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x);
   expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[2]!.x);
-  expect(await name.evaluate((element) => ({
+  const nameLayout = await name.evaluate((element) => ({
+    visibleName: element.textContent?.trim() ?? '',
+    fullName: element.getAttribute('title') ?? element.textContent?.trim() ?? '',
     clipped: element.scrollWidth > element.clientWidth,
     overflow: getComputedStyle(element).textOverflow,
-  }))).toEqual({ clipped: true, overflow: 'ellipsis' });
+  }));
+  const visibleGraphemeCount = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(nameLayout.visibleName)).length;
+  const fullGraphemeCount = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(nameLayout.fullName)).length;
+  expect(visibleGraphemeCount).toBeLessThanOrEqual(16);
+  if (fullGraphemeCount > 16) expect(nameLayout.visibleName).toContain('…');
+  if (nameLayout.clipped) expect(nameLayout.overflow).toBe('ellipsis');
+  else if (fullGraphemeCount > 16) expect(nameLayout.visibleName).toContain('…');
   await expect(score).toHaveText('1.500');
   expect(errors).toEqual([]);
 });
