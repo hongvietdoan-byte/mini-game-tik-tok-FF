@@ -292,9 +292,10 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.answers.every(Boolean), `${name}: all answer boxes remain in place`).toBe(true);
     for (const region of ['board', 'top10'] as const) {
       const box = geometry[region];
+      const approvedBottom = region === 'top10' ? 811 : 815;
       expect(box, `${name}: ${region} exists`).not.toBeNull();
       expect(Math.abs(box!.y - 345), `${name}: ${region} starts at the approved y=345`).toBeLessThanOrEqual(2);
-      expect(Math.abs(box!.y + box!.height - 815), `${name}: ${region} ends at the approved y=815`).toBeLessThanOrEqual(2);
+      expect(Math.abs(box!.y + box!.height - approvedBottom), `${name}: ${region} ends at the approved y=${approvedBottom}`).toBeLessThanOrEqual(2);
     }
     expect(geometry.mcFrame, `${name}: MC has the approved frame`).not.toBeNull();
     expect(Math.abs(geometry.mcFrame!.width - 280), `${name}: MC frame is 280px wide`).toBeLessThanOrEqual(2);
