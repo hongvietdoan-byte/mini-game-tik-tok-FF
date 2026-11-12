@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 158,
-  "heartbeat": "2026-11-13T00:57:15+07:00",
+  "heartbeat": "2026-11-13T01:18:25+07:00",
   "state": "waiting",
   "task": "C-0157",
-  "note": "Không có thư mới; report Y-0250 đã gửi; chờ coordinator giao việc tiếp",
+  "note": "Hộp thư trống; codex1 đang xử lý assert E2E liên quan; chờ coordinator giao việc",
   "done": []
 }
