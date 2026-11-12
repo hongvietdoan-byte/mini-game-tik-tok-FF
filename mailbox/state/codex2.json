@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T10:43:34+07:00",
+  "heartbeat": "2026-11-12T10:44:02+07:00",
   "state": "working",
-  "task": "C-0114",
-  "note": "Đang kiểm thử Victory với bg-redraw.jpg và hoàn thiện ảnh thường/đồng hạng; sau đó xử lý C-0113",
+  "task": "C-0113",
+  "note": "Đang thay BrandMark bằng logo chính thức ở mọi header; C-0109 vẫn được giữ nguyên trên worktree riêng",
   "done": [
     110,
     111,
