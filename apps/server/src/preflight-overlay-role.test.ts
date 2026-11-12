@@ -35,7 +35,7 @@ async function makeHarness(): Promise<Harness> {
   return harness;
 }
 
-async function connectOverlay(harness: Harness, role?: 'program' | 'preview') {
+async function connectOverlay(harness: Harness, role?: 'program' | 'preview', audioState?: 'disabled' | 'running' | 'suspended' | 'unavailable') {
   const socket = new WebSocket(`ws://127.0.0.1:${harness.port}/ws`);
   harness.sockets.push(socket);
   await new Promise<void>((resolve, reject) => {
@@ -45,7 +45,12 @@ async function connectOverlay(harness: Harness, role?: 'program' | 'preview') {
     socket.on('message', (data) => {
       const message = JSON.parse(String(data)) as { type?: string; stateVersion?: number };
       if (message.type !== 'STATE_SNAPSHOT' || typeof message.stateVersion !== 'number') return;
-      socket.send(JSON.stringify({ type: 'ACK', stateVersion: message.stateVersion, ...(role ? { role } : {}) }));
+      socket.send(JSON.stringify({
+        type: 'ACK',
+        stateVersion: message.stateVersion,
+        ...(role ? { role } : {}),
+        ...(audioState ? { audioState } : {}),
+      }));
       clearTimeout(timer);
       resolve();
     });
@@ -66,6 +71,15 @@ async function waitForOverlayStatus(harness: Harness, status: string) {
   for (let attempt = 0; attempt < 50 && current.status !== status; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 10));
     current = await overlayPreflight(harness);
+  }
+  return current;
+}
+
+async function waitForSystemAudioState(harness: Harness, audioState: string) {
+  let current = await harness.quiz.app.inject({ method: 'GET', url: '/api/system/checks', headers: AUTH });
+  for (let attempt = 0; attempt < 50 && current.json().overlay.audioState !== audioState; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    current = await harness.quiz.app.inject({ method: 'GET', url: '/api/system/checks', headers: AUTH });
   }
   return current;
 }
@@ -100,5 +114,48 @@ describe('preflight role program/preview qua WebSocket', () => {
     expect(disconnected.status).toBe('WARN');
     expect(disconnected.reason.toLowerCase()).toContain('chỉ thấy tab xem thử, chưa thấy nguồn trong live studio');
     legacyPreview.close();
+  });
+
+  it('chỉ audioState của program xuất hiện ở preflight/system checks và trạng thái lỗi thành WARN', async () => {
+    const harness = await makeHarness();
+    await connectOverlay(harness, 'preview', 'suspended');
+
+    const previewChecks = await harness.quiz.app.inject({ method: 'GET', url: '/api/system/checks', headers: AUTH });
+    expect(previewChecks.json().overlay.audioState).toBeNull();
+    expect((previewChecks.json().checks as { id: string; status: string }[]).find((item) => item.id === 'overlay')?.status).toBe('PASS');
+
+    await connectOverlay(harness, 'program', 'suspended');
+    await waitForSystemAudioState(harness, 'suspended');
+    const preflight = await harness.quiz.app.inject({ method: 'GET', url: '/api/preflight', headers: AUTH });
+    const audioCheck = (preflight.json().checks as { id: string; status: string; reason: string; audioState?: string | null }[])
+      .find((item) => item.id === 'overlayAudio');
+    expect(audioCheck).toMatchObject({ status: 'WARN', reason: 'Nguồn phát trong LIVE Studio chưa phát được âm thanh (trình duyệt chặn tự phát)', audioState: 'suspended' });
+
+    const system = await harness.quiz.app.inject({ method: 'GET', url: '/api/system/checks', headers: AUTH });
+    expect(system.json().overlay.audioState).toBe('suspended');
+    const overlayCheck = (system.json().checks as { id: string; status: string; detail: string }[])
+      .find((item) => item.id === 'overlay');
+    expect(overlayCheck).toMatchObject({
+      status: 'WARN',
+      detail: 'Nguồn phát trong LIVE Studio chưa phát được âm thanh (trình duyệt chặn tự phát)',
+    });
+  });
+
+  it('cảnh báo khi program báo unavailable và PASS khi program báo running', async () => {
+    const unavailableHarness = await makeHarness();
+    await connectOverlay(unavailableHarness, 'program', 'unavailable');
+    await waitForSystemAudioState(unavailableHarness, 'unavailable');
+    const unavailable = await unavailableHarness.quiz.app.inject({ method: 'GET', url: '/api/preflight', headers: AUTH });
+    expect((unavailable.json().checks as { id: string; status: string }[]).find((item) => item.id === 'overlayAudio')?.status).toBe('WARN');
+    const unavailableSystem = await unavailableHarness.quiz.app.inject({ method: 'GET', url: '/api/system/checks', headers: AUTH });
+    expect(unavailableSystem.json().overlay.audioState).toBe('unavailable');
+    expect((unavailableSystem.json().checks as { id: string; status: string }[]).find((item) => item.id === 'overlay')?.status).toBe('WARN');
+
+    const runningHarness = await makeHarness();
+    await connectOverlay(runningHarness, 'program', 'running');
+    await waitForSystemAudioState(runningHarness, 'running');
+    const running = await runningHarness.quiz.app.inject({ method: 'GET', url: '/api/preflight', headers: AUTH });
+    expect((running.json().checks as { id: string; status: string; audioState?: string | null }[])
+      .find((item) => item.id === 'overlayAudio')).toMatchObject({ status: 'PASS', audioState: 'running' });
   });
 });
