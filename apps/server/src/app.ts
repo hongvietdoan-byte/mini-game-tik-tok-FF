@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import websocket from '@fastify/websocket';
@@ -45,7 +45,7 @@ export type AppOptions = {
   adapterFactory?: (mode: 'MOCK' | 'TIKTOK', config: SessionConfig) => LiveAdapter;
   logger?: boolean;
   startedAtMs?: number;
-  /** Gốc checkout để đối chiếu thời điểm commit với các bản build web. */
+  /** Gốc checkout để đối chiếu hash source với các bản build web. */
   repositoryRoot?: string;
   /** Thư mục bản build (vite build) để phục vụ cùng origin: /dashboard/ và /overlay/ (bộ cài Windows, OBS). */
   webRoots?: { dashboard?: string; overlay?: string; assets?: string };
@@ -111,16 +111,15 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
           }));
   const startedAtMs = opts.startedAtMs ?? scheduler.now();
   const repositoryRoot = opts.repositoryRoot ?? process.cwd();
-  let headCommitAtMs: number | null = null;
-  try {
-    const epoch = execFileSync('git', ['-C', repositoryRoot, 'log', '-1', '--format=%ct', 'HEAD'], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    const parsed = Number(epoch);
-    if (Number.isFinite(parsed) && parsed > 0) headCommitAtMs = parsed * 1000;
-  } catch {
-    // Repo không có Git (ví dụ bản đóng gói): preflight sẽ ghi WARN cho độ mới build.
-  }
+  const currentHeadHash = () => {
+    try {
+      return execFileSync('git', ['-C', repositoryRoot, 'rev-parse', '--verify', 'HEAD'], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null;
+    } catch {
+      return null;
+    }
+  };
   const voiceCredentials = opts.mcVoice?.credentials ?? new EnvironmentMcVoiceCredentialStore();
   const voiceService = opts.mcVoice?.service ?? null;
   const voiceProfile = opts.mcVoice?.profile ?? null;
@@ -200,6 +199,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   type PreflightCheck = { id: string; label: string; status: PreflightStatus; reason: string };
   function makePreflight(session: SessionRuntime | null = rt) {
     const checkedAtMs = Math.floor(scheduler.now());
+    const headHash = currentHeadHash();
     const checks: PreflightCheck[] = [];
     const check = (id: string, label: string, status: PreflightStatus, reason: string) =>
       checks.push({ id, label, status, reason });
@@ -298,19 +298,41 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         check(id, label, 'FAIL', `Không tìm thấy ${directory}; cần build lại web.`);
         return;
       }
-      let distMtime = 0;
+      const marker = join(directory, '.build-commit');
+      let buildHash = '';
       try {
-        distMtime = statSync(directory).mtimeMs;
+        buildHash = readFileSync(marker, 'utf8').trim();
       } catch {
-        check(id, label, 'FAIL', `Không đọc được mtime của ${directory}.`);
+        check(id, label, 'FAIL', `Không tìm thấy ${marker}; cần build lại web.`);
         return;
       }
-      if (headCommitAtMs === null) {
-        check(id, label, 'WARN', `Không đọc được thời điểm commit HEAD để đối chiếu ${directory}.`);
-      } else if (distMtime < headCommitAtMs) {
-        check(id, label, 'FAIL', `Bản build ${directory} cũ hơn HEAD (${new Date(headCommitAtMs).toISOString()}); cần build lại.`);
-      } else {
-        check(id, label, 'PASS', `mtime ${new Date(distMtime).toISOString()} không cũ hơn HEAD ${new Date(headCommitAtMs).toISOString()}.`);
+      if (!buildHash) {
+        check(id, label, 'FAIL', `Hash build trong ${marker} rỗng; cần build lại.`);
+        return;
+      }
+      if (headHash === null) {
+        check(id, label, 'WARN', `Không có Git để đối chiếu ${marker}; launcher phải build lại ở mỗi lần khởi động.`);
+        return;
+      }
+      if (buildHash === headHash) {
+        check(id, label, 'PASS', `Bản build khớp HEAD ${headHash}.`);
+        return;
+      }
+      try {
+        execFileSync('git', [
+          '-C', repositoryRoot, 'diff', '--quiet', buildHash, headHash, '--', 'apps', 'packages', 'pnpm-lock.yaml',
+        ], { stdio: 'ignore' });
+        check(id, label, 'PASS', `Từ hash build ${buildHash} tới HEAD ${headHash} không đổi apps/packages/pnpm-lock.yaml.`);
+      } catch (error) {
+        const status = error && typeof error === 'object' && 'status' in error ? error.status : null;
+        check(
+          id,
+          label,
+          'FAIL',
+          status === 1
+            ? `apps/packages/pnpm-lock.yaml đã đổi sau hash build ${buildHash}; cần build lại.`
+            : `Không đối chiếu được hash build ${buildHash} với HEAD ${headHash}; cần build lại.`,
+        );
       }
     };
     buildCheck('overlayBuild', 'Build overlay không cũ hơn HEAD', opts.webRoots?.overlay);
@@ -505,7 +527,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         sessionId: rt.id,
       });
     const runtime = await SessionRuntime.create(
-      { store, scheduler, characterPool: opts.characterPool, adapter: adapterFactory(parsed.data.config.mode, parsed.data.config) },
+      {
+        store,
+        scheduler,
+        characterPool: opts.characterPool,
+        adapter: adapterFactory(parsed.data.config.mode, parsed.data.config),
+        preflight: (session) => makePreflight(session),
+      },
       parsed.data,
     );
     attachRuntime(runtime);
@@ -526,18 +554,6 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!guard(req, reply, true)) return reply;
     const s = sessionOr404(req.params.id, reply);
     if (!s) return reply;
-    const requestedCommand = (req.body as { command?: { type?: unknown } } | null)?.command?.type;
-    if (s.config.mode === 'TIKTOK' && requestedCommand === 'START_ROUND') {
-      const preflight = makePreflight(s);
-      const failures = preflight.checks.filter((item) => item.status === 'FAIL');
-      if (failures.length > 0)
-        return reply.code(422).send({
-          ok: false,
-          code: 'PREFLIGHT_FAILED',
-          message: 'Không thể bắt đầu vòng TIKTOK khi preflight còn mục FAIL.',
-          details: failures,
-        });
-    }
     const out = s.dispatch(req.body);
     return reply.code(out.status).send(out.result);
   });
@@ -754,7 +770,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const row = store.latestOpenSession();
       if (!row) return null;
       const r = await SessionRuntime.recover(
-        { store, scheduler, characterPool: opts.characterPool, adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config) },
+        {
+          store,
+          scheduler,
+          characterPool: opts.characterPool,
+          adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config),
+          preflight: (session) => makePreflight(session),
+        },
         row,
       );
       attachRuntime(r);

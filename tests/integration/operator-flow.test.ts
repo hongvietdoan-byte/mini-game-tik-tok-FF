@@ -8,7 +8,7 @@ import { DEFAULT_TIMINGS } from '@quiz/contracts';
 import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
-import { AUTH, TOKEN, ledgerSums, makeQuestions, referenceScores, storedScores, tempDbPath } from './helpers';
+import { AUTH, TOKEN, ledgerSums, makeQuestions, markCurrentWebBuild, referenceScores, storedScores, tempDbPath } from './helpers';
 
 const FAST_TIMINGS = {
   ...DEFAULT_TIMINGS,
@@ -78,6 +78,7 @@ async function bootServer(opts: { dbPath?: string; seedQuestions?: boolean; ques
   const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-operator-preflight-'));
   const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
   for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
+  markCurrentWebBuild(webRoots.dashboard, webRoots.overlay);
   for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
     const path = join(webRoots.assets, relative);
     mkdirSync(join(path, '..'), { recursive: true });

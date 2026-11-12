@@ -9,7 +9,10 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
+import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -21,6 +24,10 @@ BACKUP_EXCLUDES = {"_backup", "review"}
 
 
 class BackupError(RuntimeError):
+    pass
+
+
+class InsufficientSpaceError(BackupError):
     pass
 
 
@@ -140,16 +147,51 @@ def asset_files(assets_root: Path) -> list[tuple[Path, str]]:
     return sorted(files, key=lambda pair: pair[1])
 
 
-def make_backup(root: Path, output_dir: Path | None = None) -> Path:
+def prune_backups(backup_base: Path, keep: int = 10) -> int:
+    if keep < 1:
+        raise BackupError("Số bản backup cần giữ phải từ 1 trở lên.")
+    if not backup_base.is_dir():
+        return 0
+    valid_name = re.compile(r"^\d{8}-\d{6}(?:-\d+)?$")
+    candidates = [
+        path for path in backup_base.iterdir()
+        if valid_name.fullmatch(path.name) and path.is_dir() and not path.is_symlink()
+    ]
+    candidates.sort(key=lambda path: (path.stat().st_mtime_ns, path.name))
+    removed = 0
+    for stale in candidates[:-keep]:
+        shutil.rmtree(stale)
+        removed += 1
+    return removed
+
+
+def make_backup(root: Path, output_dir: Path | None = None, *, keep: int = 10) -> Path | None:
     root = root.resolve()
     database = root / "data" / "quiz.db"
     assets_root = root / "assets-local"
     if not database.is_file():
-        raise BackupError(f"Không tìm thấy database source-run: {database}")
+        print(f"backup SKIP: chưa có database source-run: {database}; bỏ qua backup ở lần khởi động đầu.")
+        return None
     if not assets_root.is_dir():
         raise BackupError(f"Không tìm thấy thư mục asset cục bộ: {assets_root}")
+    if keep < 1:
+        raise BackupError("Số bản backup cần giữ phải từ 1 trở lên.")
 
     backup_base = (output_dir or (root / "backups")).resolve()
+    backup_base.mkdir(parents=True, exist_ok=True)
+    assets = asset_files(assets_root)
+    required_bytes = database.stat().st_size + 64 * 1024
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(database) + suffix)
+        if sidecar.is_file():
+            required_bytes += sidecar.stat().st_size
+    required_bytes += sum(source.stat().st_size for source, _ in assets)
+    free_bytes = shutil.disk_usage(backup_base).free
+    if free_bytes < required_bytes:
+        raise InsufficientSpaceError(
+            f"Không đủ dung lượng trống: cần khoảng {required_bytes} byte, còn {free_bytes} byte."
+        )
+
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     destination = backup_base / stamp
     suffix = 1
@@ -168,7 +210,7 @@ def make_backup(root: Path, output_dir: Path | None = None) -> Path:
             "sha256": sha256_file(db_copy),
         })
 
-        for source, relative in asset_files(assets_root):
+        for source, relative in assets:
             rel = relative_path(relative)
             target = resolved_child(destination, rel)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -182,6 +224,10 @@ def make_backup(root: Path, output_dir: Path | None = None) -> Path:
             "files": records,
         }
         (destination / MANIFEST_NAME).write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        try:
+            prune_backups(backup_base, keep)
+        except OSError as error:
+            print(f"backup WARN: không dọn được bản cũ trong {backup_base}: {error}", file=sys.stderr)
         print(f"backup PASS: {len(records)} tệp → {destination}")
         return destination
     except (BackupError, OSError, subprocess.SubprocessError):
@@ -203,6 +249,44 @@ def confirm_restore(backup: Path, root: Path, assume_yes: bool) -> None:
         raise BackupError("Đã huỷ khôi phục; chưa thay đổi dữ liệu.")
 
 
+def server_is_listening(port: int = 8787) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+            return True
+    except ConnectionRefusedError:
+        return False
+    except OSError as error:
+        # Không thể xác minh trạng thái thì fail closed để tránh restore khi server còn hoạt động.
+        raise BackupError(f"Không xác minh được cổng {port}; hãy đóng server rồi thử lại: {error}") from error
+
+
+def database_is_locked(database: Path) -> bool:
+    if not database.is_file():
+        return False
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(database.as_uri() + "?mode=rw", uri=True, timeout=0)
+        connection.execute("BEGIN EXCLUSIVE")
+        connection.rollback()
+        return False
+    except sqlite3.OperationalError as error:
+        message = str(error).lower()
+        if "locked" in message or "busy" in message:
+            return True
+        raise BackupError(f"Không xác minh được trạng thái khóa của DB {database}: {error}") from error
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def ensure_restore_safe(root: Path, port: int = 8787) -> None:
+    if server_is_listening(port):
+        raise BackupError(f"Cổng {port} đang mở; hãy tắt CHAY_GAME/server trước khi restore.")
+    database = root / "data" / "quiz.db"
+    if database_is_locked(database):
+        raise BackupError(f"Database đang bị khóa: {database}; hãy đóng chương trình đang dùng DB trước khi restore.")
+
+
 def restore_database(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix="quiz-restore-", suffix=".db", dir=destination.parent)
@@ -220,12 +304,13 @@ def restore_database(source: Path, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def restore_backup(backup: Path, root: Path, assume_yes: bool) -> None:
+def restore_backup(backup: Path, root: Path, assume_yes: bool, *, port: int = 8787) -> None:
     backup = backup.resolve()
     root = root.resolve()
     valid, errors = verify_backup(backup, quiet=True)
     if not valid:
         raise BackupError("Backup không hợp lệ; từ chối restore: " + "; ".join(errors))
+    ensure_restore_safe(root, port)
     confirm_restore(backup, root, assume_yes)
     manifest = read_manifest(backup)
     restored = 0
@@ -249,6 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
     create = subparsers.add_parser("create", help="Tạo backup có manifest SHA-256.")
     create.add_argument("--root", type=Path, default=Path.cwd(), help="Checkout có data/ và assets-local/ (mặc định: thư mục hiện tại).")
     create.add_argument("--output-dir", type=Path, help="Thư mục chứa backup (mặc định: <root>/backups; hữu ích cho kiểm thử).")
+    create.add_argument("--keep", type=int, default=10, help="Số bản backup gần nhất cần giữ (mặc định: 10).")
 
     verify = subparsers.add_parser("verify", help="Đối chiếu size/SHA-256 theo manifest.")
     verify.add_argument("--from", dest="backup", type=Path, required=True, help="Thư mục backup.")
@@ -267,13 +353,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "create":
-            make_backup(args.root, args.output_dir)
+            make_backup(args.root, args.output_dir, keep=args.keep)
             return 0
         if args.command == "verify":
             return 0 if verify_backup(args.backup)[0] else 1
         if args.command == "restore":
             restore_backup(args.backup, args.root, args.yes)
             return 0
+    except InsufficientSpaceError as error:
+        print(f"backup FAIL: {error}", file=sys.stderr)
+        return 2
     except (BackupError, OSError, subprocess.SubprocessError) as error:
         print(f"backup FAIL: {error}", file=sys.stderr)
         return 1

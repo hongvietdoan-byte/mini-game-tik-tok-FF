@@ -8,7 +8,7 @@ import WebSocket from 'ws';
 import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
-import { AUTH, TOKEN, makeQuestions, tempDbPath } from './helpers';
+import { AUTH, TOKEN, makeQuestions, markCurrentWebBuild, tempDbPath } from './helpers';
 
 type RoundReplay = {
   questionsPerRound: 10;
@@ -79,6 +79,7 @@ async function bootReplay(connections: ReplayConnection[]) {
   const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-replay-preflight-'));
   const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
   for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
+  markCurrentWebBuild(webRoots.dashboard, webRoots.overlay);
   for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
     const path = join(webRoots.assets, relative);
     mkdirSync(join(path, '..'), { recursive: true });
