@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T11:48:53+07:00",
-  "state": "waiting",
-  "task": "C-0085",
-  "note": "Không có task khả thi ngoài C-0085 đang khóa; đã báo rảnh với coordinator qua X-0190.",
+  "heartbeat": "2026-11-12T12:08:38+07:00",
+  "state": "working",
+  "task": "C-0119",
+  "note": "Tạo worktree từ origin/main; chạy rehearsal và restore --mirror/verify trên dữ liệu tạm.",
   "done": [
     86,
     88,
