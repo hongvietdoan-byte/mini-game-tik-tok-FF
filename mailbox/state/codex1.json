@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T08:45:04+07:00",
+  "heartbeat": "2026-11-12T09:02:08+07:00",
   "state": "working",
   "task": "C-0102",
-  "note": "Đã gửi ack X-0167 và hỏi coordinator về phạm vi source qua X-0168; đang lập CAU_HOI_QUA_DAI.md theo fixtures/questions.ts.",
+  "note": "Đã triển khai ngưỡng TOO_LONG, kết quả review/preflight, ưu tiên câu ngắn và CAU_HOI_QUA_DAI.md; 43/277 test, typecheck, privacy đều PASS. Đang rà diff trước commit.",
   "done": [
     86,
     88,
