@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 116,
-  "heartbeat": "2026-11-12T14:42:54+07:00",
+  "heartbeat": "2026-11-12T14:44:25+07:00",
   "state": "working",
-  "task": "C-0109",
-  "note": "C-0120 cho phép sửa static.ts và test riêng trong nhánh C-0109; đang kiểm tra C-0111 và đồng bộ origin/main trước khi triển khai MIME/giới hạn 5MB",
+  "task": "C-0122",
+  "note": "Đã ack C-0122; đang kiểm tra asset nguồn, nhánh C-0068 và layout trước khi đổi nền question/victory",
   "done": [
     120
   ]
