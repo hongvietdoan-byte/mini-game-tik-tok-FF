@@ -56,18 +56,13 @@ async function boot() {
   return { quiz, store, scheduler };
 }
 
-function selectionQuestion(index: number, prompt: string) {
+function selectionQuestion(index: number, prompt: string, optionTexts = ['Option one', 'Option two', 'Option three', 'Option four']) {
   return {
     id: `selection-${String(index).padStart(2, '0')}`,
     packId: 'length-test',
     subtopicId: 'general',
     prompt,
-    options: [
-      { id: 'o1', text: 'Option one' },
-      { id: 'o2', text: 'Option two' },
-      { id: 'o3', text: 'Option three' },
-      { id: 'o4', text: 'Option four' },
-    ],
+    options: optionTexts.map((text, optionIndex) => ({ id: `o${optionIndex + 1}`, text })),
     correctOptionId: 'o1',
     explanation: '',
     difficulty: 'EASY',
@@ -105,7 +100,42 @@ describe('Question length warnings API', () => {
     });
   });
 
-  it('hiện WARN đếm câu APPROVED vượt ngưỡng trong preflight', async () => {
+  it('hiện WARN liệt kê ID câu APPROVED vượt 160/45 trong preflight mà không chặn', async () => {
+    const { quiz, store, scheduler } = await boot();
+    const exactLengthOption = 'a'.repeat(45);
+    const questions = [
+      { ...selectionQuestion(1, 'p'.repeat(161)), id: 'preflight-long-prompt' },
+      { ...selectionQuestion(2, 'Câu ngắn', ['o'.repeat(46), 'b', 'c', 'd']), id: 'preflight-long-option' },
+      { ...selectionQuestion(3, 'p'.repeat(160), [exactLengthOption, 'b'.repeat(45), 'c'.repeat(45), 'd'.repeat(45)]), id: 'preflight-at-limit' },
+      ...Array.from({ length: 7 }, (_, index) => selectionQuestion(index + 4, `Câu ngắn ${index + 4}`)),
+    ];
+    store.seedQuestions({ id: 'length-test', name: 'Preflight display limits' }, questions, scheduler.now());
+    const created = await quiz.app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: { authorization: `Bearer ${TOKEN}` },
+      payload: {
+        name: 'Preflight display limits',
+        config: { mode: 'MOCK', packId: 'length-test', allowDemoQuestions: true, questionsPerRound: 10, seed: 42 },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const response = await quiz.app.inject({
+      method: 'GET', url: '/api/preflight', headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(response.statusCode).toBe(200);
+    const lengthCheck = response.json().checks.find((check: { id: string }) => check.id === 'questionLength');
+    expect(lengthCheck).toMatchObject({
+      status: 'WARN',
+      reason: expect.stringContaining('2 câu APPROVED vượt ngưỡng 160/45 ký tự'),
+    });
+    expect(lengthCheck.reason).toContain('preflight-long-prompt');
+    expect(lengthCheck.reason).toContain('preflight-long-option');
+    expect(lengthCheck.reason).not.toContain('preflight-at-limit');
+    expect(lengthCheck.status).toBe('WARN');
+  });
+
+  it('không biến WARN độ dài câu DEMO thành cổng chặn phiên', async () => {
     const { quiz } = await boot();
     const response = await quiz.app.inject({
       method: 'GET', url: '/api/preflight', headers: { authorization: `Bearer ${TOKEN}` },
@@ -113,7 +143,6 @@ describe('Question length warnings API', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().checks.find((check: { id: string }) => check.id === 'questionLength')).toMatchObject({
       status: 'WARN',
-      reason: expect.stringContaining('15 câu APPROVED'),
     });
     expect(response.json().canStartTikTok).toBe(true);
   });
@@ -122,7 +151,7 @@ describe('Question length warnings API', () => {
     const { quiz, store, scheduler } = await boot();
     const allQuestions = [
       ...Array.from({ length: 10 }, (_, index) => selectionQuestion(index + 1, `Câu ngắn ${index + 1}?`)),
-      ...Array.from({ length: 10 }, (_, index) => selectionQuestion(index + 11, `Câu dài ${index + 11}: ${'nội dung '.repeat(15)}`)),
+      ...Array.from({ length: 10 }, (_, index) => selectionQuestion(index + 11, `Câu dài ${index + 11}: ${'nội dung '.repeat(18)}`)),
     ];
     store.seedQuestions({ id: 'length-test', name: 'Question length test' }, allQuestions, scheduler.now());
     const created = await quiz.app.inject({

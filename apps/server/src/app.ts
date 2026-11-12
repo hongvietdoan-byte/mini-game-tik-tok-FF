@@ -17,6 +17,7 @@ import {
   QuestionReviewSchema,
   DEFAULT_DIFFICULTY_TARGETS,
   questionLengthWarnings,
+  QUESTION_DISPLAY_LIMITS,
   SimulatorRequestSchema,
   type OverlayAudioState,
 } from '@quiz/contracts';
@@ -366,14 +367,15 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
 
     const warningPackId = session?.config.packId ?? 'demo';
     const approvedTooLong = store.listQuestions(warningPackId)
-      .filter((question) => question.approvalStatus === 'APPROVED' && questionLengthWarnings(question).length > 0);
+      .filter((question) => question.approvalStatus === 'APPROVED'
+        && questionLengthWarnings(question, QUESTION_DISPLAY_LIMITS).length > 0);
     check(
       'questionLength',
       'Độ dài câu hỏi trong ngưỡng khuyến nghị',
       approvedTooLong.length === 0 ? 'PASS' : 'WARN',
       approvedTooLong.length === 0
         ? 'Không có câu APPROVED vượt ngưỡng độ dài khuyến nghị.'
-        : `${approvedTooLong.length} câu APPROVED vượt ngưỡng; cân nhắc rút gọn trước khi chạy.`,
+        : `${approvedTooLong.length} câu APPROVED vượt ngưỡng ${QUESTION_DISPLAY_LIMITS.promptMax}/${QUESTION_DISPLAY_LIMITS.optionMax} ký tự (id: ${approvedTooLong.map((question) => question.id).join(', ')}); cân nhắc rút gọn trước khi chạy.`,
     );
 
     return {
