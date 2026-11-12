@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 84,
-  "heartbeat": "2026-11-12T17:47:56+07:00",
+  "heartbeat": "2026-11-12T18:07:52+07:00",
   "state": "waiting",
   "task": "C-0085",
-  "note": "C-0085 vẫn xếp hàng, chưa có xác nhận gộp C-0080/C-0082; chờ coordinator và giữ máy nhẹ đến 20:00 theo C-0129.",
+  "note": "C-0085 chưa mở khóa; chờ coordinator xác nhận đã gộp C-0080/C-0082. Chưa chạy kiểm thử nặng trước 20:00 theo C-0129.",
   "done": [
     86,
     88,
