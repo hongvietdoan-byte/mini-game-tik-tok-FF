@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 103,
-  "heartbeat": "2026-11-12T11:27:09+07:00",
+  "heartbeat": "2026-11-12T11:36:57+07:00",
   "state": "working",
-  "task": "C-0116",
-  "note": "C-0116: ảnh REF | RENDER đã ghép; đang chạy full validation",
+  "task": "C-0113",
+  "note": "C-0116 đạt kiểm thử riêng; đang xử lý 4 lỗi e2e ở cảnh header/Top 10 trên cùng worktree",
   "done": [
     110,
     111,
