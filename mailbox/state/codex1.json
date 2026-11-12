@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 156,
-  "heartbeat": "2026-11-13T00:10:11+07:00",
+  "heartbeat": "2026-11-13T00:30:03+07:00",
   "state": "waiting",
   "task": "C-0156",
-  "note": "Không có thư mới; chờ Codex2 đọc và hoàn tất C-0157 rồi sẽ chạy lại full Edge E2E hai bộ assets theo C-0156",
+  "note": "Chưa có thư/report C-0157 từ Codex2; tiếp tục chờ để chạy lại full Edge E2E theo chỉ dẫn C-0156",
   "done": []
 }
