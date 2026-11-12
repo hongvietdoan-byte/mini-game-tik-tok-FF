@@ -116,7 +116,12 @@ async function expectFontSizeAtLeast(page: Page, selector: string, minimum: numb
   for (const size of sizes) expect(size, `${selector} font size stays at least ${minimum}px`).toBeGreaterThanOrEqual(minimum);
 }
 
-async function expectWithinSafeZone(page: Page, stage: ReturnType<Page['locator']>, selectors: string[]) {
+async function expectWithinSafeZone(
+  page: Page,
+  stage: ReturnType<Page['locator']>,
+  selectors: string[],
+  approvedVictoryNameplateSelectors: string[] = [],
+) {
   const stageBox = await stage.boundingBox();
   expect(stageBox).not.toBeNull();
   if (!stageBox) return;
@@ -137,6 +142,11 @@ async function expectWithinSafeZone(page: Page, stage: ReturnType<Page['locator'
     for (let index = 0; index < await elements.count(); index += 1) {
       const box = await elements.nth(index).boundingBox();
       if (!box) continue;
+      if (approvedVictoryNameplateSelectors.includes(selector)) {
+        // Hình học đã duyệt C-0131: safe-zone.test.ts miễn podium nameplate khỏi dải crop-fill chung và chỉ giới hạn đáy ở 92.5%.
+        expect(box.y + box.height, `${selector} stays above the shared 92.5% HUD limit`).toBeLessThanOrEqual(stageBox.y + stageBox.height * 0.925 + 1);
+        continue;
+      }
       const reachesRightBand = box.y + box.height > stageBox.y + safe.rightFromY * scaleY;
       const rightEdge = reachesRightBand
         ? stageBox.x + (1080 - safe.right) * scaleX
@@ -204,8 +214,11 @@ for (const sceneName of ['top10-long-name', 'victory-name-test'] as const) {
 
     const safeSelectors = sceneName === 'top10-long-name'
       ? ['[data-testid="leaderboard-row"]', selector]
-      : ['[data-testid^="podium-slot-"] .v3v-nameplate', selector];
-    await expectWithinSafeZone(page, stage, safeSelectors);
+      : ['[data-testid^="podium-slot-"] .v3v-nameplate'];
+    const approvedVictoryNameplateSelectors = sceneName === 'victory-name-test'
+      ? ['[data-testid^="podium-slot-"] .v3v-nameplate']
+      : [];
+    await expectWithinSafeZone(page, stage, safeSelectors, approvedVictoryNameplateSelectors);
 
     const logoLocator = stage.locator('.v3-title');
     const logo = await logoLocator.count() ? await logoLocator.first().boundingBox() : null;
