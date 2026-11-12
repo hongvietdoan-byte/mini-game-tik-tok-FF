@@ -11,6 +11,8 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -247,6 +249,44 @@ def confirm_restore(backup: Path, root: Path, assume_yes: bool) -> None:
         raise BackupError("Đã huỷ khôi phục; chưa thay đổi dữ liệu.")
 
 
+def server_is_listening(port: int = 8787) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+            return True
+    except ConnectionRefusedError:
+        return False
+    except OSError as error:
+        # Không thể xác minh trạng thái thì fail closed để tránh restore khi server còn hoạt động.
+        raise BackupError(f"Không xác minh được cổng {port}; hãy đóng server rồi thử lại: {error}") from error
+
+
+def database_is_locked(database: Path) -> bool:
+    if not database.is_file():
+        return False
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(database.as_uri() + "?mode=rw", uri=True, timeout=0)
+        connection.execute("BEGIN EXCLUSIVE")
+        connection.rollback()
+        return False
+    except sqlite3.OperationalError as error:
+        message = str(error).lower()
+        if "locked" in message or "busy" in message:
+            return True
+        raise BackupError(f"Không xác minh được trạng thái khóa của DB {database}: {error}") from error
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def ensure_restore_safe(root: Path, port: int = 8787) -> None:
+    if server_is_listening(port):
+        raise BackupError(f"Cổng {port} đang mở; hãy tắt CHAY_GAME/server trước khi restore.")
+    database = root / "data" / "quiz.db"
+    if database_is_locked(database):
+        raise BackupError(f"Database đang bị khóa: {database}; hãy đóng chương trình đang dùng DB trước khi restore.")
+
+
 def restore_database(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix="quiz-restore-", suffix=".db", dir=destination.parent)
@@ -264,12 +304,13 @@ def restore_database(source: Path, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def restore_backup(backup: Path, root: Path, assume_yes: bool) -> None:
+def restore_backup(backup: Path, root: Path, assume_yes: bool, *, port: int = 8787) -> None:
     backup = backup.resolve()
     root = root.resolve()
     valid, errors = verify_backup(backup, quiet=True)
     if not valid:
         raise BackupError("Backup không hợp lệ; từ chối restore: " + "; ".join(errors))
+    ensure_restore_safe(root, port)
     confirm_restore(backup, root, assume_yes)
     manifest = read_manifest(backup)
     restored = 0

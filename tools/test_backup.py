@@ -4,6 +4,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import os
 from pathlib import Path
+import socket
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -72,6 +74,53 @@ class BackupRetentionTests(unittest.TestCase):
             self.assertEqual(result, 2)
             self.assertIn("Không đủ dung lượng trống", stderr.getvalue())
             sqlite_copy.assert_not_called()
+
+
+class RestoreSafetyTests(unittest.TestCase):
+    def _create_backup(self, root: Path) -> Path:
+        database = root / "data" / "quiz.db"
+        database.parent.mkdir(parents=True)
+        connection = sqlite3.connect(database)
+        try:
+            connection.execute("CREATE TABLE sample (value TEXT)")
+            connection.execute("INSERT INTO sample VALUES ('backup')")
+            connection.commit()
+        finally:
+            connection.close()
+        assets = root / "assets-local"
+        assets.mkdir()
+        (assets / "logo.txt").write_text("asset", encoding="utf-8")
+        output_dir = root / "backup-store"
+        with patch.object(backup, "sqlite_backup", side_effect=lambda source, target: (target.parent.mkdir(parents=True, exist_ok=True), target.write_bytes(source.read_bytes()))), redirect_stdout(StringIO()):
+            result = make_backup(root, output_dir)
+        assert result is not None
+        return result
+
+    def test_refuses_restore_when_server_port_is_open(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="quiz-restore-port-") as temp:
+            root = Path(temp)
+            backup_dir = self._create_backup(root)
+            with socket.socket() as listener:
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                listener.bind(("127.0.0.1", 0))
+                listener.listen(1)
+                port = listener.getsockname()[1]
+                with self.assertRaisesRegex(backup.BackupError, f"Cổng {port} đang mở"):
+                    backup.restore_backup(backup_dir, root, assume_yes=True, port=port)
+
+    def test_refuses_restore_when_database_is_locked(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="quiz-restore-lock-") as temp:
+            root = Path(temp)
+            backup_dir = self._create_backup(root)
+            connection = sqlite3.connect(root / "data" / "quiz.db", timeout=0)
+            try:
+                connection.execute("BEGIN EXCLUSIVE")
+                with patch.object(backup, "server_is_listening", return_value=False):
+                    with self.assertRaisesRegex(backup.BackupError, "Database đang bị khóa"):
+                        backup.restore_backup(backup_dir, root, assume_yes=True)
+            finally:
+                connection.rollback()
+                connection.close()
 
 
 
