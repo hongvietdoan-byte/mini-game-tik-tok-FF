@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { hudImageUrl } from './hudText';
+import { ArenaLoopVideo } from './ArenaLoopVideo';
 
 function ArenaFlag({ index }: { index: number }) {
   const [available, setAvailable] = useState(true);
@@ -40,7 +41,10 @@ export function ArenaBackdrop({
   const backgroundClass = questionBackground ? ' v3-bg--question-user' : '';
   return (
     <div className={`v3-bg${arena ? ' v3-bg--arena' : ''}${backgroundClass}`} data-layer="background-storm" aria-hidden="true">
-      {arena && <img className={`v3-arena-backdrop-image${questionBackground && !useCustomBackground ? ' v3-arena-backdrop-image--user' : ''}`} data-testid="arena-background" src={backgroundSrc} alt="" draggable={false} decoding="async" onError={() => { if (useCustomBackground && backgroundId) setFailedBackground(backgroundId); }} />}
+      {arena && <>
+        <img className={`v3-arena-backdrop-image${questionBackground && !useCustomBackground ? ' v3-arena-backdrop-image--user' : ''}`} data-testid="arena-background" src={backgroundSrc} alt="" draggable={false} decoding="async" onError={() => { if (useCustomBackground && backgroundId) setFailedBackground(backgroundId); }} />
+        {questionBackground && <ArenaLoopVideo poster={backgroundSrc} className="v3-arena-backdrop-video" testId="arena-background-video" />}
+      </>}
       <span className="v3-storm" />
       <span className="v3-bolt-l" />
       <span className="v3-bolt-r" />

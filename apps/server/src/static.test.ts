@@ -6,6 +6,7 @@ import { serveAssets } from './static';
 import { testTempRoot } from '../../../tests/support/tempRoot';
 
 const MAX_AUDIO_ASSET_BYTES = 5 * 1024 * 1024;
+const MAX_ARENA_VIDEO_ASSET_BYTES = 30 * 1024 * 1024;
 
 describe('serveAssets audio slots', () => {
   let tempRoot: string;
@@ -16,6 +17,7 @@ describe('serveAssets audio slots', () => {
     tempRoot = testTempRoot('quiz-static-assets-');
     assetsRoot = join(tempRoot, 'assets');
     mkdirSync(join(assetsRoot, 'audio'), { recursive: true });
+    mkdirSync(join(assetsRoot, 'arena'), { recursive: true });
     app = Fastify({ logger: false });
     serveAssets(app, '/assets', assetsRoot);
   });
@@ -67,6 +69,34 @@ describe('serveAssets audio slots', () => {
 
     expect(maximum.statusCode).toBe(200);
     expect(maximum.rawPayload).toHaveLength(MAX_AUDIO_ASSET_BYTES);
+    expect(oversized.statusCode).toBe(413);
+  });
+
+  it.each([
+    { extension: 'webm', contentType: 'video/webm' },
+    { extension: 'mp4', contentType: 'video/mp4' },
+  ])('serves .$extension arena loops with $contentType', async ({ extension, contentType }) => {
+    const bytes = Buffer.from('short test video');
+    writeFileSync(join(assetsRoot, 'arena', `bg-loop.${extension}`), bytes);
+
+    const response = await app.inject({ url: `/assets/arena/bg-loop.${extension}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe(contentType);
+    expect(response.rawPayload).toEqual(bytes);
+  });
+
+  it('restricts video extensions to /assets/arena and enforces a 30 MB size limit', async () => {
+    writeFileSync(join(assetsRoot, 'arena', 'unsupported.mov'), 'not accepted');
+    writeFileSync(join(assetsRoot, 'bg-loop.webm'), 'video outside arena');
+    writeFileSync(join(assetsRoot, 'arena', 'oversized.webm'), Buffer.alloc(MAX_ARENA_VIDEO_ASSET_BYTES + 1));
+
+    const unsupportedExtension = await app.inject({ url: '/assets/arena/unsupported.mov' });
+    const outsideArenaDirectory = await app.inject({ url: '/assets/bg-loop.webm' });
+    const oversized = await app.inject({ url: '/assets/arena/oversized.webm' });
+
+    expect(unsupportedExtension.statusCode).toBe(415);
+    expect(outsideArenaDirectory.statusCode).toBe(415);
     expect(oversized.statusCode).toBe(413);
   });
 });

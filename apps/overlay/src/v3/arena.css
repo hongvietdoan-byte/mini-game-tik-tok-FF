@@ -798,6 +798,12 @@
 /* C-0082: dùng nền và trophy-stage raster được duyệt; overlay chỉ giữ glow, bảng tên, reflection và confetti. */
 .v3v { isolation: isolate; overflow: hidden; background: #080d2b; }
 .v3v-bg-image { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+.v3v-bg-video,
+.v3-arena-backdrop-video { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 420ms ease; pointer-events: none; }
+.v3v-bg-video.is-playing,
+.v3-arena-backdrop-video.is-playing { opacity: 1; }
+.v3-arena-backdrop-video { filter: saturate(1.08) contrast(1.03); }
+.v3-bg--question-user .v3-arena-backdrop-video { filter: none; }
 .v3v-bg-dim { position: absolute; z-index: 1; inset: 0 0 auto; height: 55%; background: linear-gradient(180deg, rgba(4, 5, 33, .58), rgba(7, 7, 43, .4) 70%, transparent); pointer-events: none; }
 .v3v-trophy-glow { position: absolute; z-index: 2; left: 11%; top: 19%; width: 78%; height: 44%; background: radial-gradient(ellipse, rgba(146, 68, 255, .52), rgba(48, 64, 220, .24) 43%, transparent 72%); filter: blur(26px); pointer-events: none; }
 .v3v-trophy-glow::before { content: ''; position: absolute; inset: 0 -14%; background: linear-gradient(154deg, transparent 42%, rgba(213, 202, 255, .08) 46%, rgba(223, 210, 255, .6) 48%, rgba(183, 143, 255, .28) 49%, transparent 53%), linear-gradient(25deg, transparent 40%, rgba(198, 174, 255, .08) 46%, rgba(220, 211, 255, .52) 48%, rgba(183, 143, 255, .26) 49%, transparent 54%); mix-blend-mode: screen; filter: blur(3px); }
