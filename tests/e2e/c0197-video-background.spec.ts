@@ -16,6 +16,8 @@ async function serveLoop(page: Page) {
 
 test('1080x1920 question video loop plays smoothly with 35 seats', async ({ page }) => {
   await serveLoop(page);
+  await page.goto('/?mock=lobby', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('arena-background-video')).toHaveCount(0);
   await page.goto('/?mock=question&hud=1', { waitUntil: 'domcontentloaded' });
   const video = page.getByTestId('arena-background-video');
   await expect(page.getByTestId('arena-background')).toBeVisible();

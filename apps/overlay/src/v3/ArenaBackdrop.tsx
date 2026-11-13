@@ -30,9 +30,10 @@ function ArenaFlag({ index }: { index: number }) {
 export function ArenaBackdrop({
   arena = false,
   questionBackground = false,
+  loopVideo = false,
   showFlags = arena,
   backgroundId = null,
-}: { arena?: boolean; questionBackground?: boolean; showFlags?: boolean; backgroundId?: string | null }) {
+}: { arena?: boolean; questionBackground?: boolean; loopVideo?: boolean; showFlags?: boolean; backgroundId?: string | null }) {
   const [failedBackground, setFailedBackground] = useState<string | null>(null);
   useEffect(() => setFailedBackground(null), [backgroundId]);
   const useCustomBackground = !!backgroundId && failedBackground !== backgroundId;
@@ -43,7 +44,7 @@ export function ArenaBackdrop({
     <div className={`v3-bg${arena ? ' v3-bg--arena' : ''}${backgroundClass}`} data-layer="background-storm" aria-hidden="true">
       {arena && <>
         <img className={`v3-arena-backdrop-image${questionBackground && !useCustomBackground ? ' v3-arena-backdrop-image--user' : ''}`} data-testid="arena-background" src={backgroundSrc} alt="" draggable={false} decoding="async" onError={() => { if (useCustomBackground && backgroundId) setFailedBackground(backgroundId); }} />
-        {questionBackground && <ArenaLoopVideo poster={backgroundSrc} className="v3-arena-backdrop-video" testId="arena-background-video" />}
+        {loopVideo && <ArenaLoopVideo poster={backgroundSrc} className="v3-arena-backdrop-video" testId="arena-background-video" />}
       </>}
       <span className="v3-storm" />
       <span className="v3-bolt-l" />
