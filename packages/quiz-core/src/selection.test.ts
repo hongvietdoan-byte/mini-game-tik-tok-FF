@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { QuestionSchema, type Question } from '@quiz/contracts';
 import { createPrng, isEligible, planPreferredDifficultyCounts, selectRound, snapshotQuestion } from './selection';
 
@@ -84,40 +84,45 @@ describe('selectRound', () => {
     }
   });
 
-  it('ưu tiên câu trong ngưỡng và cảnh báo TOO_LONG khi phải lấy câu dài', () => {
+  it('chỉ chọn câu trong ngưỡng hiển thị 160/45 và loại câu vượt ngưỡng', () => {
     const pool = [
-      question(1),
-      question(2),
-      question(3, { prompt: 'x'.repeat(111) }),
+      question(1, {
+        prompt: 'p'.repeat(160),
+        options: [
+          { id: 'o1', text: 'a'.repeat(45) }, { id: 'o2', text: 'b'.repeat(45) },
+          { id: 'o3', text: 'c'.repeat(45) }, { id: 'o4', text: 'd'.repeat(45) },
+        ],
+      }),
+      question(2, { prompt: 'x'.repeat(161) }),
       question(4, { options: [
-        { id: 'o1', text: 'y'.repeat(29) },
+        { id: 'o1', text: 'y'.repeat(46) },
         { id: 'o2', text: 'Đáp án hai' },
         { id: 'o3', text: 'Đáp án ba' },
         { id: 'o4', text: 'Đáp án bốn' },
       ] }),
+      question(5),
     ];
-    const onWarning = vi.fn();
-    const result = selectRound(request(pool, { count: 3, onWarning }));
+    const result = selectRound(request(pool, { count: 2 }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
       const ids = result.snapshots.map((snapshot) => snapshot.questionId);
       expect(ids).toContain('q001');
-      expect(ids).toContain('q002');
-      const selectedLong = ids.filter((id) => id === 'q003' || id === 'q004');
-      expect(selectedLong).toHaveLength(1);
-      expect(onWarning).toHaveBeenCalledWith({ code: 'TOO_LONG', questionIds: selectedLong });
+      expect(ids).toContain('q005');
+      expect(ids).not.toContain('q002');
+      expect(ids).not.toContain('q004');
     }
+    expect(selectRound(request(pool, { count: 3 }))).toEqual({
+      ok: false, code: 'INSUFFICIENT_QUESTIONS', eligible: 2, unused: 2, required: 3,
+    });
   });
 
   it('không dùng câu dài khi đã đủ câu ngắn', () => {
-    const pool = [question(1), question(2), question(3), question(4, { prompt: 'x'.repeat(111) })];
-    const onWarning = vi.fn();
-    const result = selectRound(request(pool, { count: 3, onWarning }));
+    const pool = [question(1), question(2), question(3), question(4, { prompt: 'x'.repeat(161) })];
+    const result = selectRound(request(pool, { count: 3 }));
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.snapshots.every((snapshot) => snapshot.questionId !== 'q004')).toBe(true);
-    expect(onWarning).not.toHaveBeenCalled();
   });
 
   it('trả đủ eligible/unused/required khi thiếu câu và reuse không được phép', () => {
@@ -187,7 +192,7 @@ describe('selectRound', () => {
   it('giữ thứ tự dễ → vừa → khó, ưu tiên câu ngắn, seed lặp lại cho cùng lựa chọn', () => {
     const pool = [
       ...Array.from({ length: 12 }, (_, index) => question(index + 1, { difficulty: 'EASY' })),
-      question(13, { difficulty: 'EASY', prompt: 'x'.repeat(111) }),
+      question(13, { difficulty: 'EASY', prompt: 'x'.repeat(161) }),
       ...Array.from({ length: 12 }, (_, index) => question(index + 14, { difficulty: 'MEDIUM' })),
       ...Array.from({ length: 12 }, (_, index) => question(index + 26, { difficulty: 'HARD' })),
     ];
@@ -209,13 +214,12 @@ describe('selectRound', () => {
   it('không chọn câu dài nếu câu ngắn ở mức khác đã đủ tổng vòng', () => {
     const pool = [
       ...Array.from({ length: 20 }, (_, index) => question(index + 1, {
-        difficulty: 'EASY', prompt: `Câu dài ${index + 1}: ${'nội dung '.repeat(15)}`,
+        difficulty: 'EASY', prompt: `Câu dài ${index + 1}: ${'nội dung '.repeat(20)}`,
       })),
       ...Array.from({ length: 10 }, (_, index) => question(index + 21, { difficulty: 'MEDIUM' })),
       ...Array.from({ length: 10 }, (_, index) => question(index + 31, { difficulty: 'HARD' })),
     ];
-    const onWarning = vi.fn();
-    const result = selectRound(request(pool, { count: 15, selectionMode: 'DIFFICULTY', onWarning }));
+    const result = selectRound(request(pool, { count: 15, selectionMode: 'DIFFICULTY' }));
     const preview = planPreferredDifficultyCounts(pool, 15);
 
     expect(result.ok).toBe(true);
@@ -223,7 +227,6 @@ describe('selectRound', () => {
       expect(result.snapshots.every((snapshot) => snapshot.difficulty !== 'EASY')).toBe(true);
       expect(result.difficultyCounts).toEqual(preview.counts);
     }
-    expect(onWarning).not.toHaveBeenCalled();
   });
 
   it('không lặp câu trong sáu vòng 15 câu khi kho có đủ 90 câu', () => {
