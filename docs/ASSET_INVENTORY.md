@@ -337,6 +337,8 @@ Các file âm thanh có thể đặt trong `assets-local/audio/`; mỗi slot h�
 | `transition` | `transition.mp3` / `.ogg` | Chuyển cảnh chung |
 | `bgm` | `bgm.mp3` / `.ogg` | Nhạc nền lặp, mặc định tắt |
 
+Hiện trạng xác minh C-0196: `countdown-tick.mp3` và `.ogg` là asset runtime tùy chọn ngoài Git; không có hai file này trong cây mã nguồn. Overlay yêu cầu đúng đường dẫn `/assets/audio/countdown-tick.{mp3,ogg}`, khớp với route `/assets/*` và thư mục `assets-local/audio/`. Nếu file không được cài ở thư mục asset runtime, hai phản hồi 404 là dự kiến; audio engine bỏ qua file thiếu và phát âm tổng hợp. Không cần sửa URL hay thêm file giả.
+
 Điều khiển URL overlay: `sfx=0..1`, `bgm=0..1`, `volume=0..1` (master; SFX mặc định 0.6, BGM 0).
 
 ## Tài nguyên phụ trợ không phải ảnh

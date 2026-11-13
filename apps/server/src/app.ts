@@ -179,6 +179,14 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         for (const ws of o.audience === 'public' ? overlayClients : adminClients) if (ws.readyState === 1) ws.send(data);
       }
     });
+
+    // Existing WebSocket clients survive a session switch. Give each role the new
+    // runtime snapshot immediately instead of leaving the overlay on the old lobby
+    // until another command happens to publish a state event.
+    const publicSnapshot = JSON.stringify(next.wrap('STATE_SNAPSHOT', next.publicSnapshot()));
+    for (const ws of overlayClients) if (ws.readyState === 1) ws.send(publicSnapshot);
+    const adminSnapshot = JSON.stringify(next.wrap('ADMIN_SNAPSHOT', next.adminSnapshot()));
+    for (const ws of adminClients) if (ws.readyState === 1) ws.send(adminSnapshot);
   }
 
   const isAdmin = (req: FastifyRequest) => {

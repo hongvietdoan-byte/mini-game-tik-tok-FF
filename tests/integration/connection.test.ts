@@ -61,6 +61,44 @@ describe('V3.1 — chống trùng comment bền vững', () => {
 });
 
 describe('V3.1 — Connection Manager, kiểm tra hệ thống, ACK overlay', () => {
+  it('overlay đang mở nhận snapshot của phiên mới ngay sau khi phiên cũ STOP', async () => {
+    const h = await session();
+    await h.quiz.app.listen({ host: '127.0.0.1', port: 0 });
+    const port = (h.quiz.app.server.address() as { port: number }).port;
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { origin: `http://localhost:${port}` },
+    });
+    const messages: { type: string; sessionId: string; payload?: { state?: string } }[] = [];
+    socket.on('message', (data) => messages.push(JSON.parse(String(data))));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.once('open', () => {
+          socket.send(JSON.stringify({ type: 'HELLO', role: 'overlay' }));
+          resolve();
+        });
+        socket.once('error', reject);
+      });
+
+      await waitFor(() => messages.some((message) => message.type === 'STATE_SNAPSHOT' && message.sessionId === h.sessionId));
+      await command(h, { type: 'OPEN_LOBBY' });
+      await waitFor(() => messages.some((message) => message.type === 'STATE_SNAPSHOT' && message.payload?.state === 'LOBBY'));
+      await command(h, { type: 'STOP', reason: 'Operator thay phiên MOCK' });
+      await waitFor(() => messages.some((message) => message.type === 'STATE_SNAPSHOT' && message.sessionId === h.sessionId && message.payload?.state === 'IDLE'));
+
+      const previousSessionId = h.sessionId;
+      const messagesBeforeNewSession = messages.length;
+      const next = await createSession(h);
+      h.sessionId = next.sessionId;
+      await waitFor(() => messages.slice(messagesBeforeNewSession).some((message) =>
+        message.type === 'STATE_SNAPSHOT' && message.sessionId === next.sessionId,
+      ));
+      expect(next.sessionId).not.toBe(previousSessionId);
+    } finally {
+      if (socket.readyState < WebSocket.CLOSING) socket.close();
+      await waitFor(() => socket.readyState === WebSocket.CLOSED);
+    }
+  });
+
   it('tình trạng nguồn: comment gần nhất, số comment, reconnect; DISCONNECT giữa câu treo câu hỏi', async () => {
     const h = await session();
     await toAccepting(h);

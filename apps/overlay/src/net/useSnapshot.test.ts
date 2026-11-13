@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PublicSnapshot, WsMessage } from '@quiz/contracts';
-import { applyAnswerCounts } from './useSnapshot';
+import { applyAnswerCounts, applySnapshot } from './useSnapshot';
 
 function snapshot(overrides: Partial<PublicSnapshot> = {}) {
   return {
@@ -30,6 +30,40 @@ function countsMessage(overrides: Partial<WsMessage<'ANSWER_COUNTS'>> = {}): WsM
     ...overrides,
   };
 }
+
+function snapshotMessage(overrides: Partial<WsMessage<'STATE_SNAPSHOT'>> = {}): WsMessage<'STATE_SNAPSHOT'> {
+  return {
+    v: 1,
+    type: 'STATE_SNAPSHOT',
+    seq: 12,
+    sessionId: 'session-1',
+    stateVersion: 7,
+    serverTimeMs: 1_800_000_000_000,
+    payload: snapshot(),
+    ...overrides,
+  };
+}
+
+describe('overlay STATE_SNAPSHOT', () => {
+  it('accepts a new session snapshot even when its sequence and state version restart', () => {
+    const current = snapshot({ stateVersion: 50 });
+    const incoming = snapshot({ sessionId: 'session-2', stateVersion: 1, state: 'IDLE' });
+    const result = applySnapshot(current, 900, false, snapshotMessage({
+      seq: 1,
+      sessionId: 'session-2',
+      stateVersion: 1,
+      payload: incoming,
+    }));
+
+    expect(result).toEqual({ snapshot: incoming, seq: 1 });
+  });
+
+  it('rejects an old sequence from the same session', () => {
+    const current = snapshot();
+    expect(applySnapshot(current, 12, false, snapshotMessage({ seq: 11 })))
+      .toEqual({ snapshot: current, seq: 12 });
+  });
+});
 
 describe('overlay ANSWER_COUNTS', () => {
   it('updates the current question total and participants from a newer frame', () => {
