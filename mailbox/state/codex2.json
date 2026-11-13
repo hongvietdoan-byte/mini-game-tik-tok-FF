@@ -1,14 +1,11 @@
 {
   "role": "codex2",
-  "last_read": 165,
-  "heartbeat": "2026-11-13T18:26:51+07:00",
+  "last_read": 170,
+  "heartbeat": "2026-11-13T18:34:18+07:00",
   "state": "working",
   "task": "C-0183",
   "note": "Nối schema C-0181 và sửa 6 điểm rà soát C-0187 trên codex2/name-moderation; dọn artifact/server theo C-0185",
   "done": [
-    168,
-    169,
-    170,
     174,
     175,
     176,
