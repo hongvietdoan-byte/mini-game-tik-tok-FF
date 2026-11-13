@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 165,
-  "heartbeat": "2026-11-13T15:08:43+07:00",
+  "heartbeat": "2026-11-13T15:09:12+07:00",
   "state": "working",
-  "task": "C-0168",
-  "note": "Đã ACK C-0168; bắt đầu nhánh header riêng theo ảnh ref, C-0166 để sau",
+  "task": "C-0166",
+  "note": "C-0168 đã push xong; chuyển sang C-0166 bỏ nút âm thanh, giữ SFX tự phát và kiểm tra cue/audioState trên nhánh riêng",
   "done": [
     168,
     169,
