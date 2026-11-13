@@ -1,6 +1,20 @@
-# HANDOFF — phiên coordinator (cập nhật 12/11/2026 ~10:25)
+# HANDOFF — phiên coordinator (cập nhật 13/11/2026 ~16:00)
 
-**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 12/11 ~10:25) — ĐÃ NHẬN 12/11 14:20 (phiên mới; thư đến C-0121).**
+**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 13/11 ~16:00) — ĐỌC ĐẦU TIÊN.**
+
+## Mới nhất 13/11 ~16:00 — đọc khối này trước, các khối dưới đã cũ
+- Main `3ce7335`+. Đã gộp hôm nay: C-0167 (CHAY_GAME mở 2 cửa sổ Edge app: Overlay preview có cờ autoplay + Dashboard; preflight WARN khi audio program bị chặn) — typecheck, 325 test, privacy, e2e 63/63 PASS. Quy trình gộp: worktree `.claude/worktrees/coord-merge3`, MERGE không rebase, e2e với `QUIZ_ASSETS_DIR=assets-local` cổng riêng, push `HEAD:main`, rồi ở checkout chính `git merge --ff-only origin/main` + `corepack pnpm build:web` (PowerShell) nếu đổi UI. `git pull` ở checkout chính báo "multiple branches" → dùng `git fetch` + `git merge --ff-only origin/main`.
+- Người dùng nói TIẾNG VIỆT; test không quan tâm nội dung câu hỏi (câu dài tự bỏ/cắt). Logo đã kiểm: không méo ở mọi màn (object-fit contain).
+- **Đang chờ report, CHƯA gộp (UI phải người dùng duyệt ảnh trước):**
+  - codex2 `codex2/c0165-preview-fit` — C-0165 preview contain 9:16 (`?role=preview` contain, program cover, `?fit=`). Ảnh `assets-local/review/c0165/`. Chưa gộp.
+  - codex2 C-0166 — bỏ nút "Bấm để bật âm", SFX tự phát, không nhạc nền. Chưa report.
+  - codex2 `codex2/c0168-header-size` — header B2 (người dùng DUYỆT mockup B2: pill "ĐẤU TRƯỜNG BÃO TỐ" 1 dòng 38px; ô 3 dòng "VÒNG 1" 36 / số 52 vàng / "ĐANG CHƠI" 24; số <10.000 đủ dấu chấm, ≥10.000 rút gọn 10,5K/1,2M). Report Y-0274 có ảnh số lớn vẫn hiện 57 → **C-0174** chụp lại + test; người dùng thêm **C-0175** nới viền (pill ≥40px ngang, Top 10 ≥20px, khung câu hỏi ≥24px, không đè bong bóng MC). Chờ report chung → gửi ảnh người dùng duyệt → gộp.
+- **An toàn tên người chơi + MC Voice** — người dùng DUYỆT đặc tả `docs/STORM_ARENA_PLAYER_NAME_SAFETY_MC_VOICE_SPEC_V1.md` (đọc cả mục quyết định cuối file). Gap Matrix chính: chưa lọc tên trên main; public snapshot Top 10/podium lộ `playerId = TIKTOK:<userId>`; tiktok.ts fallback dùng @uniqueId làm tên; leaderboard_snapshots/outbox lưu tên gốc; MC voice đang tắt hẳn và không template nào có tên nhưng chưa có rào chặn/validator; cache key chưa có voicePolicyVersion. Quiz Engine/scoring không cần sửa (xếp hạng/ghế theo playerId).
+  - codex1 **C-0177** (ưu tiên cao nhất, thay C-0173): dùng tiếp bản dở chưa commit ở `.claude/worktrees/c0173-name-filter` → nhánh `codex1/name-filter`; mức rủi ro, alias `Người chơi <số>` cho HIGH/MANUAL/REVIEW, PARTIAL che phần vi phạm, protected registry (Garena/Free Fire/FF MAX/BTC/admin/moderator/support — KOL/tuyển thủ chờ người dùng gửi), mã công khai mờ, API kiểm duyệt (ẩn/hiện nhiều người, allow, thêm từ/ngoại lệ, audit), McVoiceEvent + validator, test + benchmark.
+  - codex2 **C-0176**: trang "Kiểm duyệt tên" trên dashboard (danh sách cảnh báo, tích chọn nhiều tên để ẩn/hiện khi đang LIVE, ẩn cả tên không cảnh báo, dòng "Đọc tên người chơi: Chưa hỗ trợ"). Làm sau C-0174/C-0175, trước C-0172.
+- **HUD tùy chỉnh** (người dùng yêu cầu: giữ bố cục mockup, đổi được chữ/logo/nền trong cài đặt): codex1 **C-0171** (server `HudConfig`, API, upload ảnh) — lùi sau C-0177; codex2 **C-0172** (trang "Giao diện HUD" + overlay đọc cấu hình) — sau C-0176.
+- Server game offline đã tắt; cổng 8787 trống. Hòm thư coordinator sạch tới X-0275/Y-0277.
+- Việc phía người dùng: tổng duyệt máy LIVE với nguồn `?role=program`; test LIVE thật (comment có che bảng tên Victory không); @username để test đọc comment; tùy chọn: 8 logo đội, tư thế MC, nền Victory nét hơn, danh sách KOL/tuyển thủ cần bảo vệ.
 
 Vòng ngữ cảnh: `.claude/settings.json` (cục bộ) đặt `CLAUDE_CODE_AUTO_COMPACT_WINDOW=350000` + hook SessionStart `py -X utf8 tools/session_handoff.py` → tự nén ở ~70 % rồi nạp lại file này. Khi context ~70 %: cập nhật file này, đổi dòng in đậm trên thành `— ĐỌC ĐẦU TIÊN.`, commit + push. KHÔNG clear/archive/mở phiên mới cho phiên chính.
 
