@@ -1,6 +1,7 @@
 import {
   DEFAULT_DIFFICULTY_TARGETS,
   OPTION_IDS,
+  QUESTION_DISPLAY_LIMITS,
   questionLengthWarnings,
   type Difficulty,
   type DifficultyTargets,
@@ -90,25 +91,23 @@ export function planDifficultyCounts(
   return { counts, targetCounts, availableCounts };
 }
 
-/** Preview khớp selector: dùng hết câu ngắn trước, chỉ bù câu dài nếu câu ngắn không đủ. */
+function isQuestionDisplayable(question: Pick<Question, 'prompt' | 'options'>): boolean {
+  return questionLengthWarnings(question, QUESTION_DISPLAY_LIMITS).length === 0;
+}
+
+/** Preview chỉ tính các câu có thể hiển thị trong giới hạn overlay. */
 export function planPreferredDifficultyCounts(
   pool: readonly Question[],
   count: number,
   targets: DifficultyTargets = DEFAULT_DIFFICULTY_TARGETS,
   tolerance = 2,
 ): { counts: DifficultyCounts; targetCounts: DifficultyCounts; availableCounts: DifficultyCounts } {
-  const shortPool = pool.filter((question) => questionLengthWarnings(question).length === 0);
-  const longPool = pool.filter((question) => questionLengthWarnings(question).length > 0);
-  const shortCount = Math.min(count, shortPool.length);
-  const shortPlan = planDifficultyCounts(shortPool, shortCount, targets, tolerance);
-  const longPlan = planDifficultyCounts(longPool, count - shortCount, targets, tolerance);
-  const counts = emptyDifficultyCounts();
+  const selectablePool = pool.filter(isQuestionDisplayable);
+  const plannedCount = Math.min(count, selectablePool.length);
+  const plan = planDifficultyCounts(selectablePool, plannedCount, targets, tolerance);
   const availableCounts = emptyDifficultyCounts();
-  for (const difficulty of DIFFICULTY_ORDER) {
-    counts[difficulty] = shortPlan.counts[difficulty] + longPlan.counts[difficulty];
-  }
-  for (const question of pool) availableCounts[questionDifficulty(question)] += 1;
-  return { counts, targetCounts: scaleDifficultyTargets(count, targets), availableCounts };
+  for (const question of selectablePool) availableCounts[questionDifficulty(question)] += 1;
+  return { counts: plan.counts, targetCounts: scaleDifficultyTargets(count, targets), availableCounts };
 }
 
 /** PRNG tất định (mulberry32). Cùng seed → cùng chuỗi. */
@@ -159,8 +158,6 @@ export type SelectionRequest = {
   selectionMode?: 'RANDOM' | 'DIFFICULTY';
   difficultyTargets?: DifficultyTargets;
   difficultyTolerance?: number;
-  /** Được gọi khi phải lấy câu vượt ngưỡng nội dung vì pool câu ngắn không đủ. */
-  onWarning?: (warning: { code: 'TOO_LONG'; questionIds: string[] }) => void;
   onDistribution?: (distribution: { counts: DifficultyCounts; targetCounts: DifficultyCounts; tolerance: number }) => void;
 };
 
@@ -182,14 +179,12 @@ export type SelectionResult =
  */
 export function selectRound(req: SelectionRequest): SelectionResult {
   const rnd = createPrng(req.seed);
-  const isTooLong = (question: Question) => questionLengthWarnings(question).length > 0;
   // sắp xếp theo id trước khi xáo để kết quả không phụ thuộc thứ tự đầu vào
   const eligible = req.pool
     .filter((q) => isEligible(q, { allowDemo: req.allowDemo, nowMs: req.nowMs }))
+    .filter(isQuestionDisplayable)
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const unused = eligible.filter((q) => !req.usedInSession.has(q.id));
-  const shortUnused = unused.filter((question) => !isTooLong(question));
-  const longUnused = unused.filter(isTooLong);
 
   let chosen: Question[];
   let reused: Question[] = [];
@@ -213,7 +208,8 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     let targetDifficultyCounts: DifficultyCounts;
     if (unused.length >= req.count) {
       targetDifficultyCounts = scaleDifficultyTargets(req.count, targets);
-      chosen = pickShortFirst(unused, req.count, targets, tolerance, isTooLong, rnd);
+      const plan = planDifficultyCounts(unused, req.count, targets, tolerance);
+      chosen = pickByDifficulty(unused, plan.counts, rnd);
     } else {
       // Nếu bật reuse do operator yêu cầu, giữ mọi câu chưa dùng rồi chỉ bù phần thiếu từ câu đã dùng.
       const reuseCount = req.count - unused.length;
@@ -224,14 +220,9 @@ export function selectRound(req: SelectionRequest): SelectionResult {
         const unusedInDifficulty = shuffleInPlace(
           unused.filter((question) => questionDifficulty(question) === difficulty), rnd,
         );
-        const reusedInDifficulty = pickShortFirst(
-          usedByRecency.filter((question) => questionDifficulty(question) === difficulty),
-          reusePlan.counts[difficulty],
-          targets,
-          tolerance,
-          isTooLong,
-          rnd,
-        );
+        const reusedInDifficulty = shuffleInPlace(
+          usedByRecency.filter((question) => questionDifficulty(question) === difficulty), rnd,
+        ).slice(0, reusePlan.counts[difficulty]);
         chosen.push(...unusedInDifficulty, ...reusedInDifficulty);
       }
       reused = chosen.filter((question) => req.usedInSession.has(question.id));
@@ -250,8 +241,6 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     const difficultyCounts = emptyDifficultyCounts();
     for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
     req.onDistribution?.({ counts: difficultyCounts, targetCounts: targetDifficultyCounts, tolerance });
-    const longQuestionIds = chosen.filter(isTooLong).map((question) => question.id);
-    if (longQuestionIds.length > 0) req.onWarning?.({ code: 'TOO_LONG', questionIds: longQuestionIds });
     const snapshots = chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd));
     return {
       ok: true,
@@ -264,21 +253,13 @@ export function selectRound(req: SelectionRequest): SelectionResult {
   }
 
   if (unused.length >= req.count) {
-    if (shortUnused.length >= req.count) {
-      chosen = shuffleInPlace([...shortUnused], rnd).slice(0, req.count);
-    } else {
-      const selectedShort = shuffleInPlace([...shortUnused], rnd);
-      const selectedLong = shuffleInPlace([...longUnused], rnd).slice(0, req.count - selectedShort.length);
-      chosen = shuffleInPlace([...selectedShort, ...selectedLong], rnd);
-    }
+    chosen = shuffleInPlace([...unused], rnd).slice(0, req.count);
   } else if (req.allowReuse && eligible.length >= req.count) {
     const compareReuse = (a: Question, b: Question) =>
       (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0) || (a.id < b.id ? -1 : 1);
     const used = eligible.filter((q) => req.usedInSession.has(q.id));
-    // Giữ câu chưa dùng trước; phần cần lặp lấy câu ngắn trước, ít dùng gần đây nhất.
-    const shortUsed = used.filter((question) => !isTooLong(question)).sort(compareReuse);
-    const longUsed = used.filter(isTooLong).sort(compareReuse);
-    reused = [...shortUsed, ...longUsed].slice(0, req.count - unused.length);
+    // Chỉ câu trong giới hạn hiển thị mới được dùng lại.
+    reused = used.sort(compareReuse).slice(0, req.count - unused.length);
     chosen = shuffleInPlace([...unused, ...reused], rnd);
   } else {
     return {
@@ -290,8 +271,6 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     };
   }
 
-  const longQuestionIds = chosen.filter(isTooLong).map((question) => question.id);
-  if (longQuestionIds.length > 0) req.onWarning?.({ code: 'TOO_LONG', questionIds: longQuestionIds });
   const difficultyCounts = emptyDifficultyCounts();
   for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
   const snapshots = chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd));
@@ -301,43 +280,14 @@ export function selectRound(req: SelectionRequest): SelectionResult {
 function pickByDifficulty(
   pool: readonly Question[],
   counts: DifficultyCounts,
-  isTooLong: (question: Question) => boolean,
   rnd: () => number,
 ): Question[] {
   const chosen: Question[] = [];
   for (const difficulty of DIFFICULTY_ORDER) {
     const category = pool.filter((question) => questionDifficulty(question) === difficulty);
-    const short = shuffleInPlace(category.filter((question) => !isTooLong(question)), rnd);
-    const long = shuffleInPlace(category.filter(isTooLong), rnd);
-    const takeShort = short.slice(0, counts[difficulty]);
-    const takeLong = long.slice(0, counts[difficulty] - takeShort.length);
-    chosen.push(...takeShort, ...takeLong);
+    chosen.push(...shuffleInPlace(category, rnd).slice(0, counts[difficulty]));
   }
   return chosen;
-}
-
-function pickShortFirst(
-  pool: readonly Question[],
-  count: number,
-  targets: DifficultyTargets,
-  tolerance: number,
-  isTooLong: (question: Question) => boolean,
-  rnd: () => number,
-): Question[] {
-  const shortPool = pool.filter((question) => !isTooLong(question));
-  const longPool = pool.filter(isTooLong);
-  const shortCount = Math.min(count, shortPool.length);
-  const shortPlan = planDifficultyCounts(shortPool, shortCount, targets, tolerance);
-  const selectedShort = pickByDifficulty(shortPool, shortPlan.counts, isTooLong, rnd);
-  const longCount = count - selectedShort.length;
-  const longPlan = planDifficultyCounts(longPool, longCount, targets, tolerance);
-  const selectedLong = pickByDifficulty(longPool, longPlan.counts, isTooLong, rnd);
-
-  // Gộp theo độ khó sau khi ưu tiên câu ngắn toàn cục; trong từng mức vẫn giữ thứ tự và seed.
-  return DIFFICULTY_ORDER.flatMap((difficulty) => [
-    ...selectedShort.filter((question) => questionDifficulty(question) === difficulty),
-    ...selectedLong.filter((question) => questionDifficulty(question) === difficulty),
-  ]);
 }
 
 export function snapshotQuestion(

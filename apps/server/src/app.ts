@@ -235,7 +235,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const config = session.config;
       const allowDemo = config.mode === 'MOCK' && config.allowDemoQuestions;
       const questions = store.listQuestions(config.packId);
-      const eligible = questions.filter((question) => isEligible(question, { allowDemo, nowMs: checkedAtMs }));
+      const eligibleCandidates = questions.filter((question) => isEligible(question, { allowDemo, nowMs: checkedAtMs }));
+      const tooLong = eligibleCandidates.filter((question) =>
+        questionLengthWarnings(question, QUESTION_DISPLAY_LIMITS).length > 0,
+      );
+      const eligible = eligibleCandidates.filter((question) =>
+        questionLengthWarnings(question, QUESTION_DISPLAY_LIMITS).length === 0,
+      );
       const used = store.usedQuestionIdsInSession(session.id);
       const unusedQuestions = eligible.filter((question) => !used.has(question.id));
       const unused = unusedQuestions.length;
@@ -246,7 +252,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         'questions',
         'Câu APPROVED đủ và không lặp trong phiên',
         enough ? 'PASS' : 'FAIL',
-        `Bộ ${config.packId}: ${eligible.length} câu hợp lệ, ${unused} câu chưa dùng / cần ${config.questionsPerRound}; mode ${config.mode}${config.mode === 'TIKTOK' ? ', đã loại DEMO' : ''}.`,
+        `Bộ ${config.packId}: ${eligible.length} câu hợp lệ (đã loại ${tooLong.length} câu dài khỏi lượt chọn), ${unused} câu chưa dùng / cần ${config.questionsPerRound}; mode ${config.mode}${config.mode === 'TIKTOK' ? ', đã loại DEMO' : ''}.`,
       );
       const preview = planPreferredDifficultyCounts(
         unusedQuestions,
@@ -366,16 +372,15 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     buildCheck('dashboardBuild', 'Build dashboard không cũ hơn HEAD', opts.webRoots?.dashboard);
 
     const warningPackId = session?.config.packId ?? 'demo';
+    const allowDemo = session ? session.config.mode === 'MOCK' && session.config.allowDemoQuestions : true;
     const approvedTooLong = store.listQuestions(warningPackId)
-      .filter((question) => question.approvalStatus === 'APPROVED'
+      .filter((question) => isEligible(question, { allowDemo, nowMs: checkedAtMs })
         && questionLengthWarnings(question, QUESTION_DISPLAY_LIMITS).length > 0);
     check(
       'questionLength',
-      'Độ dài câu hỏi trong ngưỡng khuyến nghị',
-      approvedTooLong.length === 0 ? 'PASS' : 'WARN',
-      approvedTooLong.length === 0
-        ? 'Không có câu APPROVED vượt ngưỡng độ dài khuyến nghị.'
-        : `${approvedTooLong.length} câu APPROVED vượt ngưỡng ${QUESTION_DISPLAY_LIMITS.promptMax}/${QUESTION_DISPLAY_LIMITS.optionMax} ký tự (id: ${approvedTooLong.map((question) => question.id).join(', ')}); cân nhắc rút gọn trước khi chạy.`,
+      'Câu dài đã loại khỏi lượt chọn',
+      'PASS',
+      `Đã loại ${approvedTooLong.length} câu dài khỏi lượt chọn.`,
     );
 
     return {

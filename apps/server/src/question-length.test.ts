@@ -100,14 +100,14 @@ describe('Question length warnings API', () => {
     });
   });
 
-  it('hiện WARN liệt kê ID câu APPROVED vượt 160/45 trong preflight mà không chặn', async () => {
+  it('preflight ghi thông tin số câu dài đã loại và vẫn PASS khi còn đủ câu hợp lệ', async () => {
     const { quiz, store, scheduler } = await boot();
     const exactLengthOption = 'a'.repeat(45);
     const questions = [
       { ...selectionQuestion(1, 'p'.repeat(161)), id: 'preflight-long-prompt' },
       { ...selectionQuestion(2, 'Câu ngắn', ['o'.repeat(46), 'b', 'c', 'd']), id: 'preflight-long-option' },
       { ...selectionQuestion(3, 'p'.repeat(160), [exactLengthOption, 'b'.repeat(45), 'c'.repeat(45), 'd'.repeat(45)]), id: 'preflight-at-limit' },
-      ...Array.from({ length: 7 }, (_, index) => selectionQuestion(index + 4, `Câu ngắn ${index + 4}`)),
+      ...Array.from({ length: 9 }, (_, index) => selectionQuestion(index + 4, `Câu ngắn ${index + 4}`)),
     ];
     store.seedQuestions({ id: 'length-test', name: 'Preflight display limits' }, questions, scheduler.now());
     const created = await quiz.app.inject({
@@ -124,30 +124,63 @@ describe('Question length warnings API', () => {
       method: 'GET', url: '/api/preflight', headers: { authorization: `Bearer ${TOKEN}` },
     });
     expect(response.statusCode).toBe(200);
+    const questionsCheck = response.json().checks.find((check: { id: string }) => check.id === 'questions');
+    expect(questionsCheck).toMatchObject({
+      status: 'PASS',
+      reason: expect.stringContaining('10 câu hợp lệ (đã loại 2 câu dài khỏi lượt chọn)'),
+    });
     const lengthCheck = response.json().checks.find((check: { id: string }) => check.id === 'questionLength');
     expect(lengthCheck).toMatchObject({
-      status: 'WARN',
-      reason: expect.stringContaining('2 câu APPROVED vượt ngưỡng 160/45 ký tự'),
+      status: 'PASS',
+      reason: 'Đã loại 2 câu dài khỏi lượt chọn.',
     });
-    expect(lengthCheck.reason).toContain('preflight-long-prompt');
-    expect(lengthCheck.reason).toContain('preflight-long-option');
-    expect(lengthCheck.reason).not.toContain('preflight-at-limit');
-    expect(lengthCheck.status).toBe('WARN');
+    expect(questionsCheck.reason).toContain('10 câu chưa dùng / cần 10');
   });
 
-  it('không biến WARN độ dài câu DEMO thành cổng chặn phiên', async () => {
+  it('FAIL khi số câu hợp lệ sau khi loại câu dài nhỏ hơn questionsPerRound', async () => {
+    const { quiz, store, scheduler } = await boot();
+    const questions = [
+      { ...selectionQuestion(1, 'p'.repeat(161)), id: 'shortage-long-prompt' },
+      { ...selectionQuestion(2, 'Câu ngắn', ['o'.repeat(46), 'b', 'c', 'd']), id: 'shortage-long-option' },
+      ...Array.from({ length: 8 }, (_, index) => selectionQuestion(index + 3, `Câu hợp lệ ${index + 3}`)),
+    ];
+    store.seedQuestions({ id: 'length-test', name: 'Preflight insufficient valid questions' }, questions, scheduler.now());
+    const created = await quiz.app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: { authorization: `Bearer ${TOKEN}` },
+      payload: {
+        name: 'Preflight insufficient valid questions',
+        config: { mode: 'MOCK', packId: 'length-test', allowDemoQuestions: true, questionsPerRound: 10, seed: 42 },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const response = await quiz.app.inject({
+      method: 'GET', url: '/api/preflight', headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    const questionsCheck = response.json().checks.find((check: { id: string }) => check.id === 'questions');
+    expect(questionsCheck).toMatchObject({ status: 'FAIL' });
+    expect(questionsCheck.reason).toContain('8 câu hợp lệ (đã loại 2 câu dài khỏi lượt chọn)');
+    expect(questionsCheck.reason).toContain('8 câu chưa dùng / cần 10');
+    expect(response.json().checks.find((check: { id: string }) => check.id === 'questionLength')).toMatchObject({
+      status: 'PASS', reason: 'Đã loại 2 câu dài khỏi lượt chọn.',
+    });
+  });
+
+  it('thông tin câu dài không tạo cổng chặn phiên', async () => {
     const { quiz } = await boot();
     const response = await quiz.app.inject({
       method: 'GET', url: '/api/preflight', headers: { authorization: `Bearer ${TOKEN}` },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().checks.find((check: { id: string }) => check.id === 'questionLength')).toMatchObject({
-      status: 'WARN',
+      status: 'PASS',
+      reason: expect.stringMatching(/^Đã loại \d+ câu dài khỏi lượt chọn\.$/),
     });
     expect(response.json().canStartTikTok).toBe(true);
   });
 
-  it('ghi log TOO_LONG khi vòng buộc phải chọn câu vượt ngưỡng', async () => {
+  it('không khởi tạo vòng nếu chỉ còn câu dài và không log TOO_LONG', async () => {
     const { quiz, store, scheduler } = await boot();
     const allQuestions = [
       ...Array.from({ length: 10 }, (_, index) => selectionQuestion(index + 1, `Câu ngắn ${index + 1}?`)),
@@ -186,8 +219,14 @@ describe('Question length warnings API', () => {
     };
     try {
       expect((await command('OPEN_LOBBY')).statusCode).toBe(200);
-      expect((await command('START_ROUND')).statusCode).toBe(200);
-      expect(warning).toHaveBeenCalledWith(expect.stringContaining('TOO_LONG: dùng 10 câu vượt ngưỡng'));
+      const startRound = await command('START_ROUND');
+      expect(startRound.statusCode).toBe(422);
+      expect(startRound.json()).toMatchObject({
+        ok: false,
+        code: 'INSUFFICIENT_QUESTIONS',
+        details: { eligible: 10, unused: 10, required: 20 },
+      });
+      expect(warning).not.toHaveBeenCalledWith(expect.stringContaining('TOO_LONG'));
     } finally {
       warning.mockRestore();
     }
