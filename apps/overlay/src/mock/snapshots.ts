@@ -65,6 +65,8 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
   reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
   'reveal-clamp-text': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'fastest-a': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'fastest-b': { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-short': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-long-name': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
@@ -118,7 +120,8 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
   const short = name === 'top10-short';
-  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'paused'].includes(name);
+  const isFastestMock = name === 'fastest-a' || name === 'fastest-b';
+  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'fastest-a', 'fastest-b', 'paused'].includes(name);
   const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
   const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
@@ -143,7 +146,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     { id: 'D' as const, text: 'Bỏ qua vùng an toàn để tiếp tục nhặt thêm trang bị.' },
   ];
   const optionsVisible = name !== 'prepare';
-  const isReveal = name === 'reveal' || name === 'reveal-clamp-text';
+  const isReveal = name === 'reveal' || name === 'reveal-clamp-text' || isFastestMock;
   const visibleLeaderboard = name === 'question-long-name' || name === 'top10-long-name'
     ? leaderboard.map((entry, index) => index === 0
       ? { ...entry, displayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
@@ -212,9 +215,16 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
           ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
           : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
-    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'paused'].includes(name) ? mockAudience(isReveal) : null,
+    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'fastest-a', 'fastest-b', 'paused'].includes(name) ? mockAudience(isReveal) : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
-  };
+    ...({ fastestCorrectAnswer: isFastestMock ? {
+      questionInstanceId: 'demo-question-5',
+      publicPlayerId: leaderboard[1]!.playerId,
+      seatId: mockAudience(true).seats.find((seat) => seat.occupant?.displayName === 'StormKing')?.slotId ?? null,
+      safeDisplayName: 'StormKing',
+      responseMs: 1_240,
+    } : null }),
+  } as PublicSnapshot;
 }
 
 export const MOCK_SCENES = Object.keys(sceneMap);
