@@ -264,6 +264,41 @@ test('reveal marks exactly one correct option', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('cắt câu hỏi và đáp án dài theo grapheme ở QUESTION và REVEAL', async ({ page }) => {
+  const cases = [
+    { name: 'question-clamp-text', scene: 'QUESTION', screenshot: 'c0163-question.png' },
+    { name: 'reveal-clamp-text', scene: 'REVEAL', screenshot: 'c0163-reveal.png' },
+  ];
+  const segmenter = new Intl.Segmenter('vi', { granularity: 'grapheme' });
+  const countGraphemes = (text: string) => Array.from(segmenter.segment(text)).length;
+
+  for (const { name, scene, screenshot } of cases) {
+    const source = makeMockSnapshot(name);
+    if (!source?.question) throw new Error(`Missing ${name} mock question.`);
+    const fullPrompt = source.question.prompt;
+    const fullAnswer = source.question.options.find((option) => option.id === 'B')!.text;
+    expect(countGraphemes(fullPrompt)).toBe(220);
+    expect(countGraphemes(fullAnswer)).toBe(80);
+
+    const { stage, errors } = await openScene(page, name, scene);
+    const displayedPrompt = await stage.getByTestId('question-prompt').innerText();
+    const displayedAnswer = await stage.getByTestId('option-B').locator('.v3-option-text').innerText();
+    if (scene === 'REVEAL') await expect(stage.getByTestId('option-B')).toHaveClass(/is-correct/);
+    for (const [label, fullText, displayedText, max] of [
+      ['question', fullPrompt, displayedPrompt, 160],
+      ['answer', fullAnswer, displayedAnswer, 45],
+    ] as const) {
+      expect(displayedText.endsWith('…'), `${name}: ${label} ends with ellipsis`).toBe(true);
+      expect(countGraphemes(displayedText)).toBeLessThanOrEqual(max + 1);
+      const visibleText = displayedText.slice(0, -1);
+      expect(fullText.startsWith(visibleText), `${name}: ${label} remains a source prefix`).toBe(true);
+      expect(fullText.slice(visibleText.length), `${name}: ${label} ends at a word boundary`).toMatch(/^\s/u);
+    }
+    await page.screenshot({ path: join(screenshotDirectory, screenshot), animations: 'disabled' });
+    expect(errors, `${name}: no console or page errors`).toEqual([]);
+  }
+});
+
 test('Top 10 đủ 10 hàng nằm trên tóc MC ở sảnh và bốn pha câu hỏi', async ({ page }) => {
   const cases = [
     { name: 'lobby', scene: 'LOBBY' },

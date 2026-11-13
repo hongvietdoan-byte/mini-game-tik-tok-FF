@@ -8,10 +8,30 @@ export function characterHue(characterId: string): number {
   return palette[(h >>> 0) % palette.length]!;
 }
 
+function graphemes(text: string): string[] {
+  return Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(text), (part) => part.segment);
+}
+
+function truncatedText(parts: string[], maxGraphemes: number, preferWordBoundary: boolean): string {
+  let visible = parts.slice(0, Math.max(0, maxGraphemes)).join('');
+  if (preferWordBoundary) {
+    const lastWord = visible.match(/\s+\S*$/u);
+    if (lastWord && lastWord.index! > 0) visible = visible.slice(0, lastWord.index);
+  }
+  return `${visible.trimEnd()}…`;
+}
+
+/** Cắt nội dung theo grapheme; tùy chọn lùi về ranh giới từ trước dấu ba chấm. */
+export function truncateGraphemeText(text: string, maxGraphemes: number, preferWordBoundary = false): string {
+  const parts = graphemes(text);
+  return parts.length <= maxGraphemes ? text : truncatedText(parts, maxGraphemes, preferWordBoundary);
+}
+
 /** Rút gọn tên theo grapheme (emoji ghép không bị cắt đôi). */
 export function shortName(name: string, max = 13): string {
-  const g = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name.trim()), (s) => s.segment);
-  return g.length <= max ? g.join('') : `${g.slice(0, max - 1).join('')}…`;
+  const trimmed = name.trim();
+  const parts = graphemes(trimmed);
+  return parts.length <= max ? parts.join('') : truncatedText(parts, max - 1, false);
 }
 
 /** Tách lời MC để tô vàng các chữ cái đáp án A/B/C/D đứng riêng (vd "Bình luận A/B/C/D để tham gia"). */

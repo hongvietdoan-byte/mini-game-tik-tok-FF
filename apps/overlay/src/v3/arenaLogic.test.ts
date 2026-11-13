@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { characterHue, shortName, splitBubble } from './arenaLogic';
+import { characterHue, shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
 
 describe('V3 arena logic', () => {
   it('màu nhân vật giữ chỗ ổn định theo characterId', () => {
@@ -15,6 +15,14 @@ describe('V3 arena logic', () => {
     const family = '👨‍👩‍👧‍👦';
     expect(shortName(`abcdefghijkl${family}xyz`, 13)).toBe('abcdefghijkl…');
     expect(shortName(`abcdefghijk${family}`, 13)).toBe(`abcdefghijk${family}`);
+  });
+
+  it('cắt nội dung theo grapheme và ưu tiên ranh giới từ khi có thể', () => {
+    const family = '👨‍👩‍👧‍👦';
+    expect(truncateGraphemeText(`abc${family}def`, 4)).toBe(`abc${family}…`);
+    expect(truncateGraphemeText('Free Fire có nhiều chiến thuật', 12, true)).toBe('Free Fire…');
+    expect(truncateGraphemeText('khongcocho', 5, true)).toBe('khong…');
+    expect(truncateGraphemeText('Free Fire', 9, true)).toBe('Free Fire');
   });
 
   it('tô vàng đúng các chữ cái đáp án đứng riêng, không tô chữ cái trong từ', () => {
