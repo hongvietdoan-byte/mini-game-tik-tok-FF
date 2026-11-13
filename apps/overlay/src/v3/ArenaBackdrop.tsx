@@ -34,7 +34,6 @@ export function ArenaBackdrop({
   return (
     <div className={`v3-bg${arena ? ' v3-bg--arena' : ''}${backgroundClass}`} data-layer="background-storm" aria-hidden="true">
       {arena && <img className={`v3-arena-backdrop-image${questionBackground ? ' v3-arena-backdrop-image--user' : ''}`} src={questionBackground ? '/assets/arena/bg-question-user.jpg' : '/assets/arena/bg.jpg'} alt="" draggable={false} decoding="async" />}
-      {questionBackground && <span className="v3-question-banner-mask"><img src="/assets/arena/bg-question-user.jpg" alt="" draggable={false} decoding="async" /></span>}
       <span className="v3-storm" />
       <span className="v3-bolt-l" />
       <span className="v3-bolt-r" />

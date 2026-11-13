@@ -1,5 +1,5 @@
 import { createServer as createNetServer } from 'node:net';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
@@ -9,7 +9,7 @@ import { buildApp, type QuizApp } from '@quiz/server';
 import type { PublicSnapshot } from '@quiz/contracts';
 import { expect, test, type Page } from '@playwright/test';
 import { makeQuestions, TOKEN } from '../integration/helpers';
-import { getE2eAssetDirectory, usesE2ePlaceholderAssets } from './assets';
+import { getE2eAssetDirectory, getE2eTempDirectory, usesE2ePlaceholderAssets } from './assets';
 
 type Replay = {
   questionsPerRound: 10;
@@ -134,10 +134,11 @@ async function closeResources(closers: (() => Promise<void>)[]) {
 
 async function boot(): Promise<RunningQuiz> {
   const closers: (() => Promise<void>)[] = [];
+  let scratchDirectory = '';
   try {
-    const resultsDirectory = resolve(process.cwd(), 'test-results/e2e');
+    const resultsDirectory = resolve(getE2eTempDirectory(), 'e2e');
     mkdirSync(resultsDirectory, { recursive: true });
-    const scratchDirectory = mkdtempSync(join(resultsDirectory, 'c0062-'));
+    scratchDirectory = mkdtempSync(join(resultsDirectory, 'c0062-'));
     const dbPath = join(scratchDirectory, 'quiz.sqlite');
     const [backendPort, dashboardPort, overlayPort] = await Promise.all([freePort(), freePort(), freePort()]);
     const backendUrl = 'http://127.0.0.1:' + backendPort;
@@ -192,11 +193,13 @@ async function boot(): Promise<RunningQuiz> {
     };
     cleanup.push(async () => {
       const errors = await closeResources(closers);
+      rmSync(scratchDirectory, { recursive: true, force: true });
       if (errors.length) throw new AggregateError(errors, 'Không đóng sạch được stack live-round.');
     });
     return running;
   } catch (error) {
     await closeResources(closers);
+    if (scratchDirectory) rmSync(scratchDirectory, { recursive: true, force: true });
     throw error;
   }
 }
