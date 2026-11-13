@@ -1,9 +1,13 @@
 {
   "role": "codex2",
   "last_read": 165,
-  "heartbeat": "2026-11-13T14:25:45+07:00",
+  "heartbeat": "2026-11-13T15:08:43+07:00",
   "state": "working",
   "task": "C-0168",
   "note": "Đã ACK C-0168; bắt đầu nhánh header riêng theo ảnh ref, C-0166 để sau",
-  "done": []
+  "done": [
+    168,
+    169,
+    170
+  ]
 }
