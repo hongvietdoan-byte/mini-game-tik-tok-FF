@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 164,
-  "heartbeat": "2026-11-13T14:07:27+07:00",
+  "heartbeat": "2026-11-13T14:08:04+07:00",
   "state": "working",
-  "task": "C-0164",
-  "note": "Đã ack; dựng worktree và điều tra state, asset/animation và thời gian VICTORY trên server thật",
+  "task": "C-0165",
+  "note": "Đã đóng C-0164; bắt đầu sửa scale preview và kiểm chứng bốn khung hình",
   "done": []
 }
