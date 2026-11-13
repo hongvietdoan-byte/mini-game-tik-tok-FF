@@ -1,13 +1,15 @@
 {
   "role": "codex2",
   "last_read": 165,
-  "heartbeat": "2026-11-13T15:24:37+07:00",
+  "heartbeat": "2026-11-13T15:56:05+07:00",
   "state": "working",
   "task": "C-0174",
   "note": "C-0174 và C-0175 acked; đang sửa ảnh participantCount thật và padding các khung trên nhánh codex2/c0168-header-size",
   "done": [
     168,
     169,
-    170
+    170,
+    174,
+    175
   ]
 }
