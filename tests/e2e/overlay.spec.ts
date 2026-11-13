@@ -183,6 +183,39 @@ for (const { name, scene } of scenes) {
   });
 }
 
+test('preview fits the full 9:16 stage in landscape and portrait, while program stays transparent', async ({ page }) => {
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  const viewport = page.locator('.viewport');
+  const stage = page.getByTestId('stage');
+  await expect(stage).toBeVisible();
+
+  for (const size of [
+    { width: 1920, height: 1080 },
+    { width: 1366, height: 768 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(size);
+    await expect.poll(async () => {
+      const box = await stage.boundingBox();
+      return box && box.width <= size.width + 0.5 && box.height <= size.height + 0.5 &&
+        box.x >= -0.5 && box.y >= -0.5 && box.x + box.width <= size.width + 0.5 &&
+        box.y + box.height <= size.height + 0.5;
+    }).toBe(true);
+    await expect(viewport).toHaveAttribute('data-fit', 'contain');
+    await expect(viewport).toHaveAttribute('data-role', 'preview');
+    await expect(viewport).toHaveCSS('background-color', 'rgb(8, 13, 43)');
+  }
+
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.goto('/?mock=question&role=program', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('stage')).toBeVisible();
+  await expect(viewport).toHaveAttribute('data-fit', 'cover');
+  await expect(viewport).toHaveAttribute('data-role', 'program');
+  await expect(viewport).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const programBox = await page.getByTestId('stage').boundingBox();
+  expect(programBox).toMatchObject({ x: 0, y: 0, width: 1080, height: 1920 });
+});
+
 test('prepare, reading and question do not expose the correct answer', async ({ page }) => {
   for (const name of ['prepare', 'reading', 'question']) {
     const { errors } = await openScene(page, name, 'QUESTION');
@@ -760,7 +793,7 @@ test('question uses the baked stadium, audience ranks and the accepting instruct
 test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ page }) => {
   const errors = watchPageErrors(page);
   await page.setViewportSize({ width: 921, height: 2000 });
-  await page.goto('/?mock=question&hud=1&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
+  await page.goto('/?mock=question&hud=1&fit=cover&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
   const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
   await expect(stage).toBeVisible();
   await expect(page.getByTestId('tiktok-hud')).toBeVisible();
