@@ -94,9 +94,9 @@ console.log(`Vòng ${roundId}: ${questionCount} câu, ${snap.public.participantC
 console.log('Chỉ số nhận comment:', JSON.stringify(snap.metrics));
 console.log('\nTop 10:');
 for (const e of snap.public.leaderboard?.entries ?? [])
-  console.log(`  #${String(e.rank).padStart(2)}${e.tied ? '=' : ' '} ${e.displayName.padEnd(16)} ${String(e.score).padStart(5)} điểm  (${e.correctCount} đúng)`);
+  console.log(`  #${String(e.rank).padStart(2)}${e.tied ? '=' : ' '} ${e.safeDisplayName.padEnd(16)} ${String(e.score).padStart(5)} điểm  (${e.correctCount} đúng)`);
 const podium = snap.public.podium!;
-console.log(`\nBục: ${podium.slots.map((s) => `hạng ${s.rank}${s.tied ? ' (ĐỒNG HẠNG)' : ''}: ${s.entries.map((x) => x.displayName).join(', ')}`).join(' | ')}`);
+console.log(`\nBục: ${podium.slots.map((s) => `hạng ${s.rank}${s.tied ? ' (ĐỒNG HẠNG)' : ''}: ${s.entries.map((x) => x.safeDisplayName).join(', ')}`).join(' | ')}`);
 const integrity = rt.verifyIntegrity();
 console.log(`\nToàn vẹn sổ cái: ${integrity ?? 'OK'}`);
 rt.dispose();

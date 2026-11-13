@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
 import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './overlayLogic';
 import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
@@ -44,22 +44,22 @@ function useTimer(snapshot: PublicSnapshot, serverTimeMs: number, clockOffsetMs:
   return interpolateRemainingMs(snapshot.timer.remainingMs, snapshot.timer.running, now + clockOffsetMs - serverTimeMs);
 }
 
-function Leaderboard({ entries, compact = false }: { entries: LeaderboardEntry[]; compact?: boolean }) {
+function Leaderboard({ entries, compact = false }: { entries: PublicLeaderboardEntry[]; compact?: boolean }) {
   return <div className={`leaderboard ${compact ? 'leaderboard-compact' : ''}`}>
     {entries.map((entry) => <div className="leaderboard-row" data-testid="leaderboard-row" key={entry.playerId}>
       <span className="rank">{entry.rank}</span>
-      <span className="player-name" title={entry.displayName}>{entry.displayName}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>
+      <span className="player-name" title={entry.safeDisplayName}>{entry.safeDisplayName}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>
       <span className="score">{entry.score.toLocaleString('vi-VN')}<small>điểm</small></span>
     </div>)}
   </div>;
 }
 
-function Podium({ slots, tied }: { slots: PodiumSlot[]; tied: boolean }) {
+function Podium({ slots, tied }: { slots: PublicPodiumSlot[]; tied: boolean }) {
   return <div className="podium-row">
     {podiumLeftToRight(slots).map((slot) => <div className={`podium-card place-${slot.place}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} key={slot.place}>
       <div className="avatar-silhouette" aria-hidden="true"><span /></div>
       <div className="nameplate">
-        {slot.entries.map((entry) => <div className="podium-name" key={entry.playerId}>{entry.displayName}</div>)}
+        {slot.entries.map((entry) => <div className="podium-name" key={entry.playerId}>{entry.safeDisplayName}</div>)}
         <b>{slot.entries.map((entry) => entry.score.toLocaleString('vi-VN')).join(' · ')} điểm</b>
         {(slot.tied || (tied && slot.entries.length > 1)) && <strong className="tie-label">ĐỒNG HẠNG</strong>}
       </div>

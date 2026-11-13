@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
 import { podiumLeftToRight } from '../overlayLogic';
 import { shortName } from './arenaLogic';
 import { BrandMark } from './BrandMark';
@@ -26,7 +26,7 @@ function VictoryLogo() {
     : <div className="v3v-logo-fallback"><BrandMark /></div>;
 }
 
-function Chibi({ entry }: { entry: LeaderboardEntry }) {
+function Chibi({ entry }: { entry: PublicLeaderboardEntry }) {
   const [ok, setOk] = useState(true);
   return ok && entry.characterId ? (
     <img
@@ -46,7 +46,7 @@ function podiumNameSize(name: string): number {
   return Math.max(22, Math.min(34, 38 - length));
 }
 
-function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
+function Slot({ slot, tieAcross }: { slot: PublicPodiumSlot; tieAcross: boolean }) {
   const lead = slot.entries[0]!;
   const tied = slot.tied || (tieAcross && slot.entries.length > 1);
   return (
@@ -68,7 +68,7 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
         <div className="v3v-names">
           <span className="v3v-rank-label" data-testid="podium-rank">TOP {slot.rank}</span>
           {slot.entries.slice(0, 2).map((entry) => {
-            const displayName = shortName(entry.displayName, 16);
+            const displayName = shortName(entry.safeDisplayName, 16);
             return (
               <b className="v3v-player-row" key={entry.playerId}>
                 <span className="v3v-player-name" style={{ fontSize: `${podiumNameSize(displayName)}px` }}>{displayName}</span>

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { MAX_MC_READING_MS } from '@quiz/contracts';
+import { MAX_MC_READING_MS, MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
 import type { CachedMcVoiceAudio, McVoiceAudio, McVoiceCacheDescriptor } from './types';
 
 const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
@@ -9,6 +9,7 @@ const HASH_RE = /^[a-f0-9]{64}$/;
 
 type CacheMetadata = {
   assetId: string;
+  voicePolicyVersion: number;
   durationMs: number;
   format: 'mp3';
   checksum: string;
@@ -27,8 +28,11 @@ function stableValue(value: unknown): unknown {
 
 /** Hash nội dung đã chuẩn hoá cùng các setting phát; không lưu text/voice key trong metadata. */
 export function mcVoiceCacheKey(input: McVoiceCacheDescriptor): string {
+  if (input.voicePolicyVersion !== MC_VOICE_POLICY_VERSION)
+    throw new Error('Voice policy version MC Voice không được hỗ trợ.');
   const canonical = JSON.stringify({
     text: input.text.normalize('NFC').trim().replace(/\s+/g, ' '),
+    voicePolicyVersion: input.voicePolicyVersion,
     provider: input.provider,
     model: input.model,
     voiceSettings: stableValue(input.voiceSettings),
@@ -72,7 +76,7 @@ export class McVoiceCache {
         metaInfo.isSymbolicLink() || !metaInfo.isFile() || audioInfo.size <= 0 || audioInfo.size > MAX_AUDIO_BYTES) return null;
       const [bytes, rawMetadata] = await Promise.all([readFile(audioPath), readFile(metaPath, 'utf8')]);
       const metadata = JSON.parse(rawMetadata) as CacheMetadata;
-      if (metadata.assetId !== assetId || metadata.format !== 'mp3' || metadata.sizeBytes !== bytes.byteLength ||
+      if (metadata.assetId !== assetId || metadata.voicePolicyVersion !== MC_VOICE_POLICY_VERSION || metadata.format !== 'mp3' || metadata.sizeBytes !== bytes.byteLength ||
         !Number.isSafeInteger(metadata.durationMs) || metadata.durationMs <= 0 || metadata.durationMs > MAX_MC_READING_MS ||
         !HASH_RE.test(metadata.checksum) || checksum(bytes) !== metadata.checksum) return null;
       return { ...metadata, bytes };
@@ -109,6 +113,7 @@ export class McVoiceCache {
 
     const metadata: CacheMetadata = {
       assetId,
+      voicePolicyVersion: MC_VOICE_POLICY_VERSION,
       durationMs: audio.durationMs,
       format: audio.format,
       checksum: checksum(audio.bytes),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
 import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight, selectNewestSnapshot, shouldAcceptSnapshotSeq } from './overlayLogic';
 
 const base = { stateVersion: 4 } as PublicSnapshot;
@@ -27,14 +27,16 @@ describe('overlay logic', () => {
   });
 
   it('paginates only when needed and keeps short leaderboards short', () => {
-    const entries = Array.from({ length: 8 }, (_, i) => ({ playerId: String(i) }) as LeaderboardEntry);
+    const entries = Array.from({ length: 8 }, (_, i) => ({
+      playerId: String(i), safeDisplayName: `P${i}`, rank: i + 1, tied: false, score: 100, correctCount: 1,
+    }) as PublicLeaderboardEntry);
     expect(leaderboardPages(entries).map((page) => page.length)).toEqual([5, 3]);
     expect(leaderboardPages(entries.slice(0, 3))).toHaveLength(1);
     expect(leaderboardPages([])).toEqual([[]]);
   });
 
   it('puts the podium in 2-1-3 order', () => {
-    const slots = ([{ place: 1 }, { place: 3 }, { place: 2 }] as PodiumSlot[]);
+    const slots = ([{ place: 1 }, { place: 3 }, { place: 2 }] as PublicPodiumSlot[]);
     expect(podiumLeftToRight(slots).map((slot) => slot.place)).toEqual([2, 1, 3]);
   });
 });

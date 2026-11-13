@@ -1,59 +1,60 @@
-import type { NameFilterRule } from './index';
+import type { NameFilterRule, ProtectedEntity } from './index';
 
-/** Từ chung, không chứa tên người thật; danh sách này là gợi ý mặc định và có thể nới bằng whitelist. */
+const high = (id: string, term: string, group: NameFilterRule['group'], aliases: string[] = [], separatorInsensitive = false): NameFilterRule => ({
+  id, term, aliases, group, severity: 'HIGH', match: 'word', source: 'SYSTEM', separatorInsensitive,
+});
+const partial = (
+  id: string,
+  term: string,
+  group: NameFilterRule['group'],
+  aliases: string[] = [],
+  separatorInsensitive = false,
+): NameFilterRule => ({
+  id, term, aliases, group, severity: 'PARTIAL', match: 'word', source: 'SYSTEM', separatorInsensitive,
+});
+
+/** Danh sách gợi ý chung, không chứa tên cá nhân/KOL. Không khẳng định phát hiện đủ mọi biến thể. */
 export const DEFAULT_NAME_FILTER_RULES: readonly NameFilterRule[] = [
-  // Tục tĩu tiếng Việt và teencode.
-  { term: 'địt', match: 'word', category: 'PROFANITY' },
-  { term: 'đụ', match: 'word', category: 'PROFANITY' },
-  { term: 'lồn', match: 'word', category: 'PROFANITY' },
-  { term: 'buồi', match: 'word', category: 'PROFANITY' },
-  { term: 'cặc', match: 'word', category: 'PROFANITY' },
-  { term: 'đĩ', match: 'word', category: 'PROFANITY' },
-  { term: 'dm', match: 'word', category: 'PROFANITY' },
-  { term: 'đmm', match: 'word', category: 'PROFANITY' },
-  { term: 'dcm', match: 'word', category: 'PROFANITY' },
-  { term: 'dmm', match: 'word', category: 'PROFANITY' },
-  { term: 'vcl', match: 'word', category: 'PROFANITY' },
-  { term: 'clgt', match: 'word', category: 'PROFANITY' },
-  { term: 'cc', match: 'word', category: 'PROFANITY' },
-  { term: 'đéo', match: 'word', category: 'PROFANITY' },
-  { term: 'đếch', match: 'word', category: 'PROFANITY' },
-  { term: 'đồ chó', match: 'word', category: 'INSULT' },
-  { term: 'đồ ngu', match: 'word', category: 'INSULT' },
+  high('profanity.vi.dit', 'địt', 'PROFANITY', ['dit', 'djt']),
+  high('profanity.vi.du', 'đụ', 'PROFANITY', ['du']),
+  high('profanity.vi.lon', 'lồn', 'PROFANITY', ['lon']),
+  high('profanity.vi.buoi', 'buồi', 'PROFANITY', ['buoi']),
+  high('profanity.vi.cac', 'cặc', 'PROFANITY', ['cac']),
+  high('profanity.vi.di', 'đĩ', 'PROFANITY', ['di']),
+  high('profanity.vi.dm', 'dm', 'PROFANITY', ['đm', 'd m'], true),
+  high('profanity.vi.dmm', 'dmm', 'PROFANITY', ['đmm', 'd m m'], true),
+  high('profanity.vi.dcm', 'dcm', 'PROFANITY', ['đcm', 'd c m'], true),
+  high('profanity.vi.vcl', 'vcl', 'PROFANITY', ['v c l'], true),
+  high('profanity.vi.clgt', 'clgt', 'PROFANITY', ['c l g t'], true),
+  high('profanity.vi.cc', 'cc', 'PROFANITY', ['c c'], true),
+  high('profanity.vi.deo', 'đéo', 'PROFANITY', ['deo']),
+  partial('insult.vi.do-ngu', 'đồ ngu', 'PROFANITY', ['do ngu']),
+  partial('insult.vi.do-cho', 'đồ chó', 'PROFANITY', ['do cho']),
+  high('profanity.en.fuck', 'fuck', 'PROFANITY'),
+  high('profanity.en.shit', 'shit', 'PROFANITY'),
+  high('profanity.en.bitch', 'bitch', 'PROFANITY'),
+  high('profanity.en.asshole', 'asshole', 'PROFANITY'),
+  partial('profanity.en.damn', 'damn', 'PROFANITY'),
+  high('sexual.en.porn', 'porn', 'NSFW_SEXUAL'),
+  high('sexual.en.sexting', 'sexting', 'NSFW_SEXUAL'),
+  high('sexual.vi.khoa-than', 'khoe thân', 'NSFW_SEXUAL'),
+  high('hate.en.slur-n', 'nigger', 'HATE_SPEECH'),
+  high('hate.en.slur-r', 'retard', 'HATE_SPEECH'),
+  high('hate.vi.phan-biet', 'phân biệt chủng tộc', 'HATE_SPEECH', ['phan biet chung toc']),
+  high('harmful.vi.de-doa', 'giết người', 'ILLEGAL_HARMFUL', ['giet nguoi']),
+  high('harmful.en.kill', 'kill you', 'ILLEGAL_HARMFUL'),
+  partial('impersonation.official-cue', 'official', 'IMPERSONATION', ['chính thức', 'chinh thuc']),
+  partial('impersonation.fake-cue', 'fake', 'IMPERSONATION', ['giả mạo', 'gia mao']),
+  partial('impersonation.reward-cue', 'trao thưởng', 'IMPERSONATION', ['trao thuong', 'giveaway', 'free diamonds']),
+];
 
-  // Tục tĩu tiếng Anh; dùng khớp trọn từ để tránh bắt nhầm một phần tên.
-  { term: 'fuck', match: 'word', category: 'PROFANITY' },
-  { term: 'fucking', match: 'word', category: 'PROFANITY' },
-  { term: 'shit', match: 'word', category: 'PROFANITY' },
-  { term: 'bitch', match: 'word', category: 'PROFANITY' },
-  { term: 'asshole', match: 'word', category: 'PROFANITY' },
-  { term: 'bastard', match: 'word', category: 'INSULT' },
-  { term: 'nigger', match: 'word', category: 'DISCRIMINATION' },
-  { term: 'retard', match: 'word', category: 'DISCRIMINATION' },
-  { term: 'racist', match: 'word', category: 'DISCRIMINATION' },
-
-  // Từ ngữ xúc phạm/phân biệt phổ biến.
-  { term: 'đồ súc vật', match: 'word', category: 'INSULT' },
-  { term: 'đồ khốn', match: 'word', category: 'INSULT' },
-  { term: 'đồ mất dạy', match: 'word', category: 'INSULT' },
-  { term: 'đồ phân biệt chủng tộc', match: 'word', category: 'DISCRIMINATION' },
-
-  // Từ khoá nhạy cảm chung; không chứa tên chính trị gia hoặc cá nhân.
-  { term: 'khủng bố', match: 'word', category: 'POLITICAL' },
-  { term: 'terrorist', match: 'word', category: 'POLITICAL' },
-  { term: 'terrorism', match: 'word', category: 'POLITICAL' },
-  { term: 'terror', match: 'word', category: 'POLITICAL' },
-  { term: 'phản động', match: 'word', category: 'POLITICAL' },
-  { term: 'bạo loạn', match: 'word', category: 'POLITICAL' },
-  { term: 'genocide', match: 'word', category: 'POLITICAL' },
-  { term: 'isis', match: 'word', category: 'POLITICAL' },
-
-  // Tên giả danh có vai trò/đơn vị tổ chức.
-  { term: 'admin', match: 'word', category: 'IMPERSONATION' },
-  { term: 'administrator', match: 'word', category: 'IMPERSONATION' },
-  { term: 'garena', match: 'word', category: 'IMPERSONATION' },
-  { term: 'moderator', match: 'word', category: 'IMPERSONATION' },
-  { term: 'mod', match: 'word', category: 'IMPERSONATION' },
-  { term: 'btc', match: 'word', category: 'IMPERSONATION' },
-  { term: 'ban to chuc', match: 'word', category: 'IMPERSONATION' },
+/** Protected names only create REVIEW by themselves; never an automatic block list. */
+export const DEFAULT_PROTECTED_ENTITIES: readonly ProtectedEntity[] = [
+  { id: 'entity.garena', label: 'Garena', aliases: [], kind: 'BRAND', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' },
+  { id: 'entity.free-fire', label: 'Free Fire', aliases: ['FreeFire'], kind: 'BRAND', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' },
+  { id: 'entity.free-fire-max', label: 'Free Fire MAX', aliases: ['FreeFireMAX'], kind: 'BRAND', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' },
+  { id: 'entity.btc', label: 'BTC', aliases: ['ban tổ chức', 'ban to chuc'], kind: 'ORGANIZATION', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' },
+  { id: 'entity.admin', label: 'admin', aliases: ['administrator'], kind: 'ROLE', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' },
+  { id: 'entity.moderator', label: 'moderator', aliases: ['mod'], kind: 'ROLE', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' },
+  { id: 'entity.support', label: 'support', aliases: ['hỗ trợ', 'ho tro'], kind: 'ROLE', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' },
 ];

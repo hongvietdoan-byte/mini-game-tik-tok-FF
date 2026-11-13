@@ -46,6 +46,9 @@ export const McVoiceSettingsSchema = z.object({
 });
 export type McVoiceSettings = z.infer<typeof McVoiceSettingsSchema>;
 
+/** Tăng số này khi thay đổi luật phát voice game; cache thiếu/khác version bị bỏ qua. */
+export const MC_VOICE_POLICY_VERSION = 1;
+
 /** Voice payload game-side có allowlist hẹp; strict schema loại mọi trường danh tính người chơi. */
 export const McVoiceEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('WELCOME'), scriptId: z.string().trim().min(1).max(64) }).strict(),
@@ -79,12 +82,12 @@ export type McVoiceSettingsUpdate = z.infer<typeof McVoiceSettingsUpdateSchema>;
 export const McVoiceTestRequestSchema = z.object({
   confirmed: z.literal(true),
   text: z.string().trim().min(1).max(1_000),
-});
+}).strict();
 export type McVoiceTestRequest = z.infer<typeof McVoiceTestRequestSchema>;
 
 export const McVoicePreGenerateRequestSchema = z.object({
   questionIds: z.array(z.string().trim().min(1).max(64)).min(1).max(200),
-}).superRefine((value, ctx) => {
+}).strict().superRefine((value, ctx) => {
   if (new Set(value.questionIds).size !== value.questionIds.length)
     ctx.addIssue({ code: 'custom', path: ['questionIds'], message: 'Danh sách câu hỏi không được trùng.' });
 });
@@ -537,10 +540,10 @@ export type PublicPlayerDTO = {
   playerId: string;
   safeDisplayName: string;
   score: number;
-  rank?: number;
+  rank: number;
+  correctCount: number;
+  tied: boolean;
   characterId?: string;
-  correctCount?: number;
-  tied?: boolean;
   top1Streak?: number;
 };
 export type PublicLeaderboardEntry = PublicPlayerDTO;
@@ -561,6 +564,54 @@ export type NameFilterRuleGroup = z.infer<typeof NameFilterRuleGroupSchema>;
 
 export const NameFilterDisplayActionSchema = z.enum(['SAFE_NAME', 'ALIAS', 'PARTIAL_MASK']);
 export type NameFilterDisplayAction = z.infer<typeof NameFilterDisplayActionSchema>;
+
+export const NameModerationRuleSchema = z.object({
+  id: z.string().min(2).max(80),
+  term: z.string().min(1).max(64),
+  aliases: z.array(z.string().min(1).max(64)),
+  match: z.enum(['word', 'substring']),
+  group: NameFilterRuleGroupSchema,
+  severity: z.enum(['PARTIAL', 'HIGH']),
+  source: z.enum(['SYSTEM', 'CUSTOM']),
+  separatorInsensitive: z.boolean().optional(),
+}).strict();
+export type NameModerationRule = z.infer<typeof NameModerationRuleSchema>;
+
+export const NameModerationWhitelistSchema = z.object({
+  value: z.string().min(1).max(80),
+  ruleIds: z.array(z.string().min(2).max(80)).min(1).max(100),
+}).strict();
+export type NameModerationWhitelist = z.infer<typeof NameModerationWhitelistSchema>;
+
+export const NameModerationProtectedEntitySchema = z.object({
+  id: z.string().min(1).max(80),
+  label: z.string().min(1).max(80),
+  aliases: z.array(z.string().min(1).max(80)),
+  kind: z.enum(['BRAND', 'ORGANIZATION', 'ROLE']),
+  source: z.enum(['SYSTEM', 'OPERATOR']),
+  scope: z.literal('PLAYER_DISPLAY_NAME'),
+  rule: z.literal('REVIEW_OR_HIGH_CONTEXT'),
+}).strict();
+export type NameModerationProtectedEntity = z.infer<typeof NameModerationProtectedEntitySchema>;
+
+export const NameModerationVerifiedAccountSchema = z.object({
+  source: z.enum(['TIKTOK', 'MOCK']),
+  stableUserId: z.string().min(1).max(200),
+  entityId: z.string().min(1).max(80),
+}).strict();
+export type NameModerationVerifiedAccount = z.infer<typeof NameModerationVerifiedAccountSchema>;
+
+export const NameModerationSettingsSchema = z.object({
+  rules: z.array(NameModerationRuleSchema),
+  whitelist: z.array(NameModerationWhitelistSchema),
+  version: z.number().int().nonnegative(),
+  protectedEntities: z.array(NameModerationProtectedEntitySchema),
+  playerNameSpeech: z.literal('UNSUPPORTED'),
+  hiddenPlayerIds: z.array(z.string()),
+  allowedReviewPlayerIds: z.array(z.string()),
+  verifiedOfficialAccounts: z.array(NameModerationVerifiedAccountSchema),
+}).strict();
+export type NameModerationSettings = z.infer<typeof NameModerationSettingsSchema>;
 
 export const NameModerationPlayerSchema = z.object({
   /** ID nội bộ; chỉ gửi qua API quản trị có Bearer token. */
@@ -719,12 +770,13 @@ export type AdminSnapshot = {
   /** Tên gốc flagged chỉ gửi trên kênh admin; không nằm trong PublicSnapshot hay DB. */
   flaggedPlayers: {
     playerId: string;
-    originalName: string;
+    rawDisplayName: string;
     safeDisplayName: string;
     flagged: true;
-    risk: 'REVIEW' | 'PARTIAL' | 'HIGH' | 'MANUAL_HIDE';
+    risk: Exclude<NameFilterRisk, 'NONE'>;
+    displayAction: NameFilterDisplayAction;
     matchedRuleIds: string[];
-    matchedRuleGroups: ('PROFANITY' | 'NSFW_SEXUAL' | 'HATE_SPEECH' | 'ILLEGAL_HARMFUL' | 'IMPERSONATION')[];
+    matchedRuleGroups: NameFilterRuleGroup[];
     requiresReview: boolean;
     policyVersion: number;
     checkedAt: number;

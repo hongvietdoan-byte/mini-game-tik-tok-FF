@@ -425,6 +425,35 @@ export class Store {
     return !!this.raw.prepare('SELECT 1 AS found FROM players WHERE id = ?').get(playerId);
   }
 
+  listPlayers(): {
+    id: string;
+    source: string;
+    sourceUserId: string;
+    displayName: string;
+    firstSeenAtMs: number;
+    lastSeenAtMs: number;
+  }[] {
+    return this.raw.prepare(
+      'SELECT id, source, source_user_id AS sourceUserId, display_name AS displayName, first_seen_at_ms AS firstSeenAtMs, last_seen_at_ms AS lastSeenAtMs FROM players ORDER BY last_seen_at_ms DESC',
+    ).all() as {
+      id: string;
+      source: string;
+      sourceUserId: string;
+      displayName: string;
+      firstSeenAtMs: number;
+      lastSeenAtMs: number;
+    }[];
+  }
+
+  /** Người chơi đã gửi ít nhất một câu trả lời trong phiên, kể cả khi sai và không có điểm. */
+  listPlayerIdsInSession(sessionId: string): string[] {
+    return (this.raw.prepare(
+      `SELECT DISTINCT a.player_id AS playerId
+       FROM answers a JOIN rounds r ON r.id = a.round_id
+       WHERE r.session_id = ? ORDER BY a.player_id`,
+    ).all(sessionId) as { playerId: string }[]).map((row) => row.playerId);
+  }
+
   touchPlayer(id: string, displayName: string, now: number) {
     this.stmt.playerTouch.run(displayName, now, id);
   }

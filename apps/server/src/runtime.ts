@@ -134,6 +134,7 @@ export class SessionRuntime {
   private participants = 0;
   private ranked: LeaderboardEntry[] = [];
   private top1 = new Map<string, number>();
+  private publicPlayerIds = new Map<string, string>();
   private seenEvents = new Set<string>();
   private rejections: { atMs: number; reason: RejectReason }[] = [];
   private simulator: MockSimulator | null = null;
@@ -790,22 +791,31 @@ export class SessionRuntime {
       }
     }
 
-    const originalName = sanitizeDisplayName(ev.displayName);
+    const sourceName = String(ev.displayName ?? '').trim();
+    const originalName = sourceName ? sanitizeDisplayName(sourceName) : '';
     const accepted = this.store.transaction(() => {
       // Bền qua khởi động lại: eventId đã xử lý (kể cả ở tiến trình trước) không bao giờ được tính lại.
       if (ev.eventId && !this.store.markEventProcessed(ev.source, ev.eventId, qid, now)) return 'DUP_EVENT' as const;
       const existingId = this.store.findPlayerId(ev.source, ev.userId);
       const firstPass = this.deps.nameFilter?.evaluate(originalName, existingId) ?? {
+        safeDisplayName: originalName,
         displayName: originalName,
         flagged: false,
+        risk: 'NONE' as const,
+        displayAction: 'ALLOW' as const,
+        matchedRuleIds: [],
+        matchedRuleGroups: [],
+        requiresReview: false,
+        policyVersion: 1,
+        checkedAt: now,
         reasonCategory: null,
       };
       // resolvePlayer chỉ nhận tên đã che. Tên gốc flagged không bao giờ chạm SQLite.
-      const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.displayName, now);
+      const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.safeDisplayName, now);
       const filtered = this.deps.nameFilter?.evaluate(originalName, playerId) ?? firstPass;
       if (filtered.flagged && existingId && this.playerNames.get(existingId)?.originalName !== originalName)
-        this.store.scrubPlayerNameHistory(playerId, [originalName], filtered.displayName);
-      this.store.touchPlayer(playerId, filtered.displayName, now);
+        this.store.scrubPlayerNameHistory(playerId, [originalName], filtered.safeDisplayName);
+      this.store.touchPlayer(playerId, filtered.safeDisplayName, now);
       const ok = this.store.insertAnswer({
         questionInstanceId: qid,
         roundId,
@@ -821,8 +831,10 @@ export class SessionRuntime {
     if (accepted.filtered.flagged)
       this.playerNames.set(accepted.playerId, { originalName, result: accepted.filtered });
     else this.playerNames.delete(accepted.playerId);
+    if (accepted.filtered.flagged) this.deps.nameFilter?.rememberFlaggedName(accepted.playerId, originalName);
+    else this.deps.nameFilter?.forgetFlaggedName(accepted.playerId);
     if (!accepted.inserted) return this.reject('DUPLICATE_ANSWER', now);
-    if (this.audience.onAccepted(accepted.playerId, accepted.filtered.displayName, now)) this.audienceChanged = true;
+    if (this.audience.onAccepted(accepted.playerId, accepted.filtered.safeDisplayName, now)) this.audienceChanged = true;
 
     this.metrics.accepted += 1;
     if (this.countsQid === qid) this.counts[decision.option] += 1;
@@ -948,27 +960,31 @@ export class SessionRuntime {
 
   /** Đánh giá lại tên của người chơi trong vòng hiện tại sau khi admin đổi luật. */
   refreshNameFilter(emit = true) {
-    const roundId = this.engine.round?.roundId;
-    if (!roundId || !this.deps.nameFilter) return;
+    if (!this.engine.round || !this.deps.nameFilter) return;
     const displayNames = new Map<string, string>();
-    for (const row of this.store.standings(roundId)) {
-      const originalName = this.playerNames.get(row.playerId)?.originalName ?? row.displayName;
-      const result = this.deps.nameFilter.evaluate(originalName, row.playerId);
+    const sessionIds = new Set(this.store.listPlayerIdsInSession(this.id));
+    for (const player of this.store.listPlayers()) {
+      if (!sessionIds.has(player.id)) continue;
+      const originalName = this.playerNames.get(player.id)?.originalName ??
+        this.deps.nameFilter.rawFlaggedName(player.id) ?? player.displayName;
+      const result = this.deps.nameFilter.evaluate(originalName, player.id);
       if (result.flagged) {
-        this.playerNames.set(row.playerId, { originalName, result });
+        this.playerNames.set(player.id, { originalName, result });
+        this.deps.nameFilter.rememberFlaggedName(player.id, originalName);
         // Nếu một tên sạch trước đó bị luật mới gắn cờ, DB chỉ còn bản đã che.
-        if (row.displayName !== result.displayName) {
+        if (player.displayName !== result.safeDisplayName) {
           this.store.transaction(() => {
-            this.store.scrubPlayerNameHistory(row.playerId, [originalName], result.displayName);
-            this.store.updatePlayerDisplayName(row.playerId, result.displayName);
+            this.store.scrubPlayerNameHistory(player.id, [originalName], result.safeDisplayName);
+            this.store.updatePlayerDisplayName(player.id, result.safeDisplayName);
           });
         }
       } else {
-        this.playerNames.delete(row.playerId);
-        if (row.displayName !== result.displayName) this.store.updatePlayerDisplayName(row.playerId, result.displayName);
+        this.playerNames.delete(player.id);
+        this.deps.nameFilter.forgetFlaggedName(player.id);
+        if (player.displayName !== result.safeDisplayName) this.store.updatePlayerDisplayName(player.id, result.safeDisplayName);
       }
-      displayNames.set(row.playerId, result.displayName);
-      if (this.audience.updateDisplayName(row.playerId, result.displayName)) this.audienceChanged = true;
+      displayNames.set(player.id, result.safeDisplayName);
+      if (this.audience.updateDisplayName(player.id, result.safeDisplayName)) this.audienceChanged = true;
     }
     this.ranked = this.ranked.map((entry) => ({
       ...entry,
@@ -983,6 +999,42 @@ export class SessionRuntime {
       ]);
       this.audienceChanged = false;
     }
+  }
+
+  /** Chỉ operator gọi qua API đã xác thực: Top 10 + ghế hiện tại + mọi cảnh báo còn trong RAM. */
+  moderationPlayers(query = '', riskFilter: string | undefined = undefined, now = this.scheduler.now()) {
+    const sessionIds = new Set(this.store.listPlayerIdsInSession(this.id));
+    const normalizedQuery = query.trim().toLocaleLowerCase('und');
+    return this.store.listPlayers().filter((player) => sessionIds.has(player.id)).flatMap((player) => {
+      const originalName = this.playerNames.get(player.id)?.originalName ??
+        this.deps.nameFilter?.rawFlaggedName(player.id) ?? player.displayName;
+      const moderated = this.deps.nameFilter?.evaluate(originalName, player.id, now);
+      const safeDisplayName = moderated?.safeDisplayName ?? player.displayName;
+      const risk = moderated?.risk ?? 'NONE';
+      if (riskFilter && risk !== riskFilter) return [];
+      if (normalizedQuery && !originalName.toLocaleLowerCase('und').includes(normalizedQuery) &&
+        !safeDisplayName.toLocaleLowerCase('und').includes(normalizedQuery)) return [];
+      const rank = this.ranked.find((entry) => entry.playerId === player.id);
+      const config = this.deps.nameFilter?.get();
+      return [{
+        playerId: player.id,
+        rawDisplayName: originalName,
+        safeDisplayName,
+        risk,
+        displayAction: moderated?.displayAction === 'PARTIAL_MASK' ? 'PARTIAL_MASK' :
+          moderated?.displayAction === 'ANONYMIZE' ? 'ALIAS' : 'SAFE_NAME',
+        matchedRuleIds: moderated?.matchedRuleIds ?? [],
+        matchedRuleGroups: moderated?.matchedRuleGroups ?? [],
+        requiresReview: moderated?.requiresReview ?? false,
+        policyVersion: moderated?.policyVersion ?? 0,
+        checkedAt: moderated?.checkedAt ?? now,
+        hidden: config?.hiddenPlayerIds.includes(player.id) ?? false,
+        reviewAllowed: config?.allowedReviewPlayerIds.includes(player.id) ?? false,
+        score: rank?.score ?? 0,
+        rank: rank && rank.rank <= 10 ? rank.rank : null,
+        seat: this.audience.seatForPlayer(player.id),
+      }];
+    });
   }
 
   publicSnapshot(now = this.scheduler.now()): PublicSnapshot {
@@ -1002,7 +1054,24 @@ export class SessionRuntime {
       list.map((x) => {
         const characterId = this.audience.characterOf(x.playerId);
         const top1Streak = this.top1.get(x.playerId);
-        return { ...x, ...(characterId ? { characterId } : {}), ...(top1Streak ? { top1Streak } : {}) };
+        const safeDisplayName = this.playerNames.get(x.playerId)?.result.safeDisplayName ??
+          this.deps.nameFilter?.evaluate(x.displayName, x.playerId, now).safeDisplayName ??
+          x.displayName;
+        let publicPlayerId = this.publicPlayerIds.get(x.playerId);
+        if (!publicPlayerId) {
+          publicPlayerId = randomUUID();
+          this.publicPlayerIds.set(x.playerId, publicPlayerId);
+        }
+        return {
+          rank: x.rank,
+          tied: x.tied,
+          playerId: publicPlayerId,
+          safeDisplayName,
+          score: x.score,
+          correctCount: x.correctCount,
+          ...(characterId ? { characterId } : {}),
+          ...(top1Streak ? { top1Streak } : {}),
+        };
       });
     if (e.round && (bigBoard || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
       leaderboard = { kind: 'FULL', entries: withChar(topN(this.ranked, 10)) };
@@ -1072,10 +1141,17 @@ export class SessionRuntime {
         item.result.flagged && item.result.reasonCategory
           ? [{
               playerId,
-              originalName: item.originalName,
-              displayName: item.result.displayName,
+              rawDisplayName: item.originalName,
+              safeDisplayName: item.result.safeDisplayName,
               flagged: true as const,
-              reasonCategory: item.result.reasonCategory,
+              risk: item.result.risk === 'NONE' ? 'REVIEW' as const : item.result.risk,
+              displayAction: item.result.displayAction === 'ANONYMIZE' ? 'ALIAS' as const :
+                item.result.displayAction === 'PARTIAL_MASK' ? 'PARTIAL_MASK' as const : 'SAFE_NAME' as const,
+              matchedRuleIds: [...item.result.matchedRuleIds],
+              matchedRuleGroups: [...item.result.matchedRuleGroups],
+              requiresReview: item.result.requiresReview,
+              policyVersion: item.result.policyVersion,
+              checkedAt: item.result.checkedAt,
             }]
           : [],
       ),

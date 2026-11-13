@@ -41,6 +41,7 @@ export interface McVoiceProvider {
 
 export type McVoiceCacheDescriptor = {
   text: string;
+  voicePolicyVersion: number;
   provider: 'clipai';
   model: string;
   voiceSettings: Readonly<Record<string, string | number | boolean>>;
@@ -58,6 +59,7 @@ export type McVoiceProfile = {
 
 export type CachedMcVoiceAudio = {
   assetId: string;
+  voicePolicyVersion: number;
   durationMs: number;
   format: McVoiceAudioFormat;
   checksum: string;

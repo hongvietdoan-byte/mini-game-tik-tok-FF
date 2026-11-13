@@ -23,8 +23,10 @@ function line(index: number): McVoiceReadingLine {
   const text = `Câu/đáp án ${index}`;
   return {
     lineId: index === 0 ? 'prompt' : `option-${index}`,
+    gameEvent: { type: 'QUESTION', questionInstanceId: 'approved-question-1', approvedQuestionVersion: '1' },
     descriptor: {
       text,
+      voicePolicyVersion: 1,
       provider: 'clipai',
       model: 'runtime-model',
       voiceSettings: { voiceProfile: 'runtime-only', rate: 1 },
@@ -86,6 +88,18 @@ describe('McVoiceService', () => {
     const service = new McVoiceService(provider, new McVoiceCache(directory), credentials, normalizer);
     const input = line(1);
     await expect(service.getOrCreate(input.descriptor, input.request)).rejects.toMatchObject({ code: 'AUTH' });
+    expect(provider.synthesize).not.toHaveBeenCalled();
+  });
+
+  it('validator backend từ chối event mang player identity trước khi gọi TTS', async () => {
+    const provider = { synthesize: vi.fn(async () => audio(1_000)) };
+    const { service } = await makeService(provider);
+    const lines = Array.from({ length: 5 }, (_, index) => line(index));
+    lines[0] = {
+      ...lines[0]!,
+      gameEvent: { type: 'QUESTION', questionInstanceId: 'q-1', approvedQuestionVersion: '1', playerName: 'Ngọc' } as never,
+    };
+    await expect(service.prepareQuestionReading(lines)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     expect(provider.synthesize).not.toHaveBeenCalled();
   });
 });

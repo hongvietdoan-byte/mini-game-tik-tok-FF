@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { AudienceSeatView, LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
+import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 import { McSequence } from './mc/mc-sequence-player';
@@ -38,7 +38,7 @@ export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
   );
 }
 
-function Top10({ entries }: { entries: LeaderboardEntry[] }) {
+function Top10({ entries }: { entries: PublicLeaderboardEntry[] }) {
   return (
     <section className="v3-top10" data-layer="leaderboard" data-testid="v3-top10">
       <div className="v3-top10-title">
@@ -50,7 +50,7 @@ function Top10({ entries }: { entries: LeaderboardEntry[] }) {
           <li key={e.playerId} className={`v3-rank-${e.rank <= 3 ? e.rank : 'n'}`} data-testid="leaderboard-row">
             <span className="v3-rank">{e.rank}</span>
             <span className="v3-name">
-              <span className="v3-name-text player-name" title={e.displayName}>{shortName(e.displayName, 16)}</span>
+              <span className="v3-name-text player-name" title={e.safeDisplayName}>{shortName(e.safeDisplayName, 16)}</span>
               {(e.top1Streak ?? 0) >= 2 && (
                 <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${e.top1Streak} lần`}>
                   x{e.top1Streak}
@@ -213,7 +213,7 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
   const left = a.occupant;
   const right = b.occupant;
   const sameOccupant = left === right || (!!left && !!right &&
-    left.displayName === right.displayName &&
+    left.safeDisplayName === right.safeDisplayName &&
     left.characterId === right.characterId &&
     left.pinned === right.pinned &&
     left.result === right.result);
@@ -247,7 +247,7 @@ const SeatName = React.memo(function SeatName({ seat, compactQuestion }: SeatPro
   const occupant = seat.occupant;
   if (!occupant) return null;
   return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
-    {shortName(occupant.displayName, 13)}
+    {shortName(occupant.safeDisplayName, 13)}
   </div>;
 }, sameSeat);
 

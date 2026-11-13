@@ -62,6 +62,7 @@ describe('MC Voice server API', () => {
     expect(unauthorized.statusCode).toBe(401);
 
     const settings = await h.quiz.app.inject({ method: 'GET', url: '/api/mc-voice/settings', headers: AUTH });
+    expect(settings.json().playerNameSpeech).toBe('UNSUPPORTED');
     expect(settings.statusCode).toBe(200);
     expect(settings.json()).toMatchObject({ hasToken: true, ready: false });
     expect(settings.body).not.toContain('test-only-secret-9876');
@@ -130,6 +131,13 @@ describe('MC Voice server API', () => {
   it('chỉ pre-generate câu đã duyệt; progress không mang text/audio/credential', async () => {
     const h = await harness({ voice: true });
     const questionId = h.store.listQuestions('demo')[0]!.id;
+    const identityAttempt = await h.quiz.app.inject({
+      method: 'POST', url: '/api/mc-voice/pre-generate', headers: AUTH,
+      payload: { questionIds: [questionId], playerName: 'Không được đọc', playerId: 'TIKTOK:123' },
+    });
+    expect(identityAttempt.statusCode).toBe(422);
+    expect(h.provider.synthesize).not.toHaveBeenCalled();
+
     const started = await h.quiz.app.inject({
       method: 'POST', url: '/api/mc-voice/pre-generate', headers: AUTH,
       payload: { questionIds: [questionId] },
@@ -137,6 +145,7 @@ describe('MC Voice server API', () => {
     expect(started.statusCode).toBe(202);
     expect(started.body).not.toContain('Câu hỏi thử nghiệm');
     expect(started.body).not.toContain('test-only-secret-9876');
+    expect(JSON.stringify(vi.mocked(h.provider.synthesize).mock.calls)).not.toContain('TIKTOK:123');
 
     let progress = started.json();
     for (let attempt = 0; attempt < 1_000 && !['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED'].includes(progress.status); attempt += 1) {
