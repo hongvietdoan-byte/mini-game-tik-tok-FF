@@ -69,6 +69,15 @@ describe('name moderation admin data source', () => {
     expect(new Headers(init.headers).get('Authorization')).toBe('Bearer admin-secret');
   });
 
+  it('validates the authenticated roster with the shared C-0181 contract schema', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...roster, policyVersion: -1 }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+    const source = createApiNameModerationDataSource('admin-secret');
+
+    await expect(source.loadRoster()).rejects.toThrow('NameModerationRosterSchema');
+  });
+
   it('sends only the contract request fields for moderation mutations', async () => {
     const source = createApiNameModerationDataSource('admin-secret');
 

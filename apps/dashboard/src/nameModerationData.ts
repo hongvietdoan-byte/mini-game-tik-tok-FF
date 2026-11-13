@@ -1,33 +1,30 @@
-import * as QuizContracts from '@quiz/contracts';
+import {
+  NameModerationAuditResponseSchema,
+  NameModerationConfigMutationResponseSchema,
+  NameModerationRosterSchema,
+  NameModerationSettingsResponseSchema,
+} from '@quiz/contracts';
+import type {
+  NameFilterDisplayAction,
+  NameFilterRisk,
+  NameFilterRuleGroup,
+  NameModerationAuditEntry as ContractNameModerationAuditEntry,
+  NameModerationAuditResponse as ContractNameModerationAuditResponse,
+  NameModerationConfigMutationResponse as ContractNameModerationConfigMutationResponse,
+  NameModerationExceptionRequest as ContractNameModerationExceptionRequest,
+  NameModerationPlayer,
+  NameModerationRoster,
+  NameModerationRule,
+  NameModerationRuleRequest as ContractNameModerationRuleRequest,
+  NameModerationSettingsResponse as ContractNameModerationSettingsResponse,
+  NameModerationWhitelist,
+} from '@quiz/contracts';
 
-export type NameRisk = 'NONE' | 'REVIEW' | 'PARTIAL' | 'HIGH' | 'MANUAL_HIDE';
-export type NameRuleGroup = 'PROFANITY' | 'NSFW_SEXUAL' | 'HATE_SPEECH' | 'ILLEGAL_HARMFUL' | 'IMPERSONATION';
-export type NameDisplayAction = 'SAFE_NAME' | 'ALIAS' | 'PARTIAL_MASK';
-
-/** Mirrors the admin-only roster contract; raw names must never enter a public snapshot. */
-export type AdminNameRosterPlayer = {
-  playerId: string;
-  rawDisplayName: string;
-  safeDisplayName: string;
-  risk: NameRisk;
-  displayAction: NameDisplayAction;
-  matchedRuleIds: string[];
-  matchedRuleGroups: NameRuleGroup[];
-  requiresReview: boolean;
-  hidden: boolean;
-  reviewAllowed: boolean;
-  policyVersion: number;
-  checkedAt: number;
-  rank: number | null;
-  seat: { slotId: string; rowIndex: number; seatIndex: number } | null;
-  score: number;
-};
-
-export type AdminNameRoster = {
-  players: AdminNameRosterPlayer[];
-  policyVersion: number;
-  playerNameSpeech: 'UNSUPPORTED';
-};
+export type NameRisk = NameFilterRisk;
+export type NameRuleGroup = NameFilterRuleGroup;
+export type NameDisplayAction = NameFilterDisplayAction;
+export type AdminNameRosterPlayer = NameModerationPlayer;
+export type AdminNameRoster = NameModerationRoster;
 
 /** Ordinary names stay as entered; flagged or manually hidden names use the server-safe value. */
 export function moderatedNameOnLive(player: Pick<AdminNameRosterPlayer, 'rawDisplayName' | 'safeDisplayName' | 'risk' | 'displayAction' | 'hidden'>) {
@@ -36,71 +33,16 @@ export function moderatedNameOnLive(player: Pick<AdminNameRosterPlayer, 'rawDisp
 }
 
 export type NameModerationRosterQuery = { q?: string; risk?: NameRisk };
-export type NameModerationRuleRequest = {
-  term: string;
-  aliases: string[];
-  match: 'word' | 'substring';
-  group: NameRuleGroup;
-  severity: 'PARTIAL' | 'HIGH';
-  separatorInsensitive?: boolean;
-};
-export type NameModerationExceptionRequest = { value: string; ruleIds: string[] };
-
-/** Shape of the full C-0181 contract responses used by the dashboard adapter. */
-export type NameModerationSettingsResponse = {
-  rules: NameModerationPolicyRule[];
-  whitelist: NameModerationWhitelistEntry[];
-  version: number;
-  protectedEntities: NameModerationProtectedEntity[];
-  playerNameSpeech: 'UNSUPPORTED';
-  hiddenPlayerIds: string[];
-  allowedReviewPlayerIds: string[];
-  verifiedOfficialAccounts: NameModerationVerifiedAccount[];
-};
-export type NameModerationConfigMutationResponse = Omit<NameModerationSettingsResponse, 'protectedEntities' | 'playerNameSpeech'>;
-export type NameModerationAuditResponse = { entries: NameModerationAuditEntry[] };
-export type NameModerationPolicyRule = {
-  id: string;
-  term: string;
-  aliases: string[];
-  match: 'word' | 'substring';
-  group: NameRuleGroup;
-  severity: 'PARTIAL' | 'HIGH';
-  source: 'SYSTEM' | 'CUSTOM';
-  separatorInsensitive?: boolean;
-};
-export type NameModerationWhitelistEntry = { value: string; ruleIds: string[] };
-export type NameModerationProtectedEntity = {
-  id: string;
-  label: string;
-  aliases: string[];
-  kind: 'BRAND' | 'ORGANIZATION' | 'ROLE';
-  source: 'SYSTEM' | 'OPERATOR';
-  scope: 'PLAYER_DISPLAY_NAME';
-  rule: 'REVIEW_OR_HIGH_CONTEXT';
-};
-export type NameModerationVerifiedAccount = { source: 'TIKTOK' | 'MOCK'; stableUserId: string; entityId: string };
-export type NameModerationAuditEntry = {
-  id: string;
-  at: number;
-  actor: string;
-  action: string;
-  policyVersion: number;
-  targetCount: number;
-  ruleId?: string;
-};
+export type NameModerationRuleRequest = ContractNameModerationRuleRequest;
+export type NameModerationExceptionRequest = ContractNameModerationExceptionRequest;
+export type NameModerationAuditEntry = ContractNameModerationAuditEntry;
+export type NameModerationAuditResponse = ContractNameModerationAuditResponse;
+export type NameModerationConfigMutationResponse = ContractNameModerationConfigMutationResponse;
+export type NameModerationSettingsResponse = ContractNameModerationSettingsResponse;
+export type NameModerationPolicyRule = NameModerationRule;
+export type NameModerationWhitelistEntry = NameModerationWhitelist;
 export type NameModerationPolicyUpdate = Pick<NameModerationSettingsResponse,
   'rules' | 'whitelist' | 'hiddenPlayerIds' | 'allowedReviewPlayerIds' | 'verifiedOfficialAccounts'>;
-
-type ContractSchema<T> = {
-  safeParse(value: unknown): { success: true; data: T } | { success: false; error?: { message: string } };
-};
-/** When C-0181 is present in @quiz/contracts, these are the canonical contract validators. */
-const moderationContractSchemas = QuizContracts as unknown as {
-  NameModerationSettingsResponseSchema?: ContractSchema<NameModerationSettingsResponse>;
-  NameModerationConfigMutationResponseSchema?: ContractSchema<NameModerationConfigMutationResponse>;
-  NameModerationAuditResponseSchema?: ContractSchema<NameModerationAuditResponse>;
-};
 
 /**
  * Kept separate from PublicSnapshot on purpose: this authenticated roster contains
@@ -138,102 +80,30 @@ async function adminRequest<T>(token: string, path: string, init: RequestInit = 
   return body as T;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
-}
-
-function hasShape(value: Record<string, unknown>, required: string[], optional: string[] = []) {
-  return required.every((key) => key in value) && Object.keys(value).every((key) => required.includes(key) || optional.includes(key));
-}
-
-function isPolicyRule(value: unknown): value is NameModerationPolicyRule {
-  return isRecord(value) && hasShape(value, ['id', 'term', 'aliases', 'match', 'group', 'severity', 'source'], ['separatorInsensitive'])
-    && typeof value.id === 'string' && typeof value.term === 'string'
-    && isStringArray(value.aliases) && (value.match === 'word' || value.match === 'substring')
-    && ['PROFANITY', 'NSFW_SEXUAL', 'HATE_SPEECH', 'ILLEGAL_HARMFUL', 'IMPERSONATION'].includes(String(value.group))
-    && (value.severity === 'PARTIAL' || value.severity === 'HIGH')
-    && (value.source === 'SYSTEM' || value.source === 'CUSTOM')
-    && (value.separatorInsensitive === undefined || typeof value.separatorInsensitive === 'boolean');
-}
-
-function isWhitelistEntry(value: unknown): value is NameModerationWhitelistEntry {
-  return isRecord(value) && hasShape(value, ['value', 'ruleIds']) && typeof value.value === 'string' && isStringArray(value.ruleIds) && value.ruleIds.length > 0;
-}
-
-function isProtectedEntity(value: unknown): value is NameModerationProtectedEntity {
-  return isRecord(value) && hasShape(value, ['id', 'label', 'aliases', 'kind', 'source', 'scope', 'rule'])
-    && typeof value.id === 'string' && typeof value.label === 'string'
-    && isStringArray(value.aliases) && ['BRAND', 'ORGANIZATION', 'ROLE'].includes(String(value.kind))
-    && (value.source === 'SYSTEM' || value.source === 'OPERATOR')
-    && value.scope === 'PLAYER_DISPLAY_NAME' && value.rule === 'REVIEW_OR_HIGH_CONTEXT';
-}
-
-function isVerifiedOfficialAccount(value: unknown): value is NameModerationVerifiedAccount {
-  return isRecord(value) && hasShape(value, ['source', 'stableUserId', 'entityId']) && (value.source === 'TIKTOK' || value.source === 'MOCK')
-    && typeof value.stableUserId === 'string' && typeof value.entityId === 'string';
-}
-
-function isNonnegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-/** Runtime guard for the full C-0181 settings response (not the smaller POST mutation body). */
+/** Runtime validation delegates to the canonical full C-0181 schema in contracts. */
 export function parseNameModerationSettingsResponse(value: unknown): NameModerationSettingsResponse {
-  const contractSchema = moderationContractSchemas.NameModerationSettingsResponseSchema;
-  if (contractSchema) {
-    const result = contractSchema.safeParse(value);
-    if (!result.success) throw new Error('Phản hồi policy không đúng NameModerationSettingsResponseSchema (C-0181).');
-    return result.data;
-  }
-  if (!isRecord(value) || !hasShape(value, ['rules', 'whitelist', 'version', 'protectedEntities', 'playerNameSpeech', 'hiddenPlayerIds', 'allowedReviewPlayerIds', 'verifiedOfficialAccounts'])
-    || !Array.isArray(value.rules) || !value.rules.every(isPolicyRule)
-    || !Array.isArray(value.whitelist) || !value.whitelist.every(isWhitelistEntry)
-    || !isNonnegativeInteger(value.version)
-    || !Array.isArray(value.protectedEntities) || !value.protectedEntities.every(isProtectedEntity)
-    || value.playerNameSpeech !== 'UNSUPPORTED'
-    || !isStringArray(value.hiddenPlayerIds) || !isStringArray(value.allowedReviewPlayerIds)
-    || !Array.isArray(value.verifiedOfficialAccounts) || !value.verifiedOfficialAccounts.every(isVerifiedOfficialAccount))
-    throw new Error('Phản hồi policy không đúng NameModerationSettingsResponseSchema (C-0181).');
-  return value as NameModerationSettingsResponse;
+  const result = NameModerationSettingsResponseSchema.safeParse(value);
+  if (!result.success) throw new Error('Phản hồi policy không đúng NameModerationSettingsResponseSchema (C-0181).');
+  return result.data;
 }
 
-/** Runtime guard for C-0181 mutation routes; these responses omit protectedEntities and playerNameSpeech. */
+/** Runtime validation delegates to the canonical C-0181 mutation schema. */
 export function parseNameModerationConfigMutationResponse(value: unknown): NameModerationConfigMutationResponse {
-  const contractSchema = moderationContractSchemas.NameModerationConfigMutationResponseSchema;
-  if (contractSchema) {
-    const result = contractSchema.safeParse(value);
-    if (!result.success) throw new Error('Phản hồi thao tác không đúng NameModerationConfigMutationResponseSchema (C-0181).');
-    return result.data;
-  }
-  if (!isRecord(value) || !hasShape(value, ['rules', 'whitelist', 'hiddenPlayerIds', 'allowedReviewPlayerIds', 'verifiedOfficialAccounts', 'version'])
-    || !Array.isArray(value.rules) || !value.rules.every(isPolicyRule)
-    || !Array.isArray(value.whitelist) || !value.whitelist.every(isWhitelistEntry)
-    || !isStringArray(value.hiddenPlayerIds) || !isStringArray(value.allowedReviewPlayerIds)
-    || !Array.isArray(value.verifiedOfficialAccounts) || !value.verifiedOfficialAccounts.every(isVerifiedOfficialAccount)
-    || !isNonnegativeInteger(value.version) || 'protectedEntities' in value || 'playerNameSpeech' in value)
-    throw new Error('Phản hồi thao tác không đúng NameModerationConfigMutationResponseSchema (C-0181).');
-  return value as NameModerationConfigMutationResponse;
+  const result = NameModerationConfigMutationResponseSchema.safeParse(value);
+  if (!result.success) throw new Error('Phản hồi thao tác không đúng NameModerationConfigMutationResponseSchema (C-0181).');
+  return result.data;
 }
 
 export function parseNameModerationAuditResponse(value: unknown): NameModerationAuditResponse {
-  const contractSchema = moderationContractSchemas.NameModerationAuditResponseSchema;
-  if (contractSchema) {
-    const result = contractSchema.safeParse(value);
-    if (!result.success) throw new Error('Phản hồi audit không đúng NameModerationAuditResponseSchema (C-0181).');
-    return result.data;
-  }
-  if (!isRecord(value) || !hasShape(value, ['entries']) || !Array.isArray(value.entries) || !value.entries.every((entry) => isRecord(entry)
-    && hasShape(entry, ['id', 'at', 'actor', 'action', 'policyVersion', 'targetCount'], ['ruleId'])
-    && typeof entry.id === 'string' && typeof entry.at === 'number' && Number.isFinite(entry.at)
-    && typeof entry.actor === 'string' && typeof entry.action === 'string'
-    && isNonnegativeInteger(entry.policyVersion) && isNonnegativeInteger(entry.targetCount)
-    && (entry.ruleId === undefined || typeof entry.ruleId === 'string')))
-    throw new Error('Phản hồi audit không đúng NameModerationAuditResponseSchema (C-0181).');
-  return value as NameModerationAuditResponse;
+  const result = NameModerationAuditResponseSchema.safeParse(value);
+  if (!result.success) throw new Error('Phản hồi audit không đúng NameModerationAuditResponseSchema (C-0181).');
+  return result.data;
+}
+
+export function parseAdminNameRoster(value: unknown): AdminNameRoster {
+  const result = NameModerationRosterSchema.safeParse(value);
+  if (!result.success) throw new Error('Phản hồi roster không đúng NameModerationRosterSchema (C-0181).');
+  return result.data;
 }
 
 /** Authenticated adapter for the admin-only roster. It never reads PublicSnapshot. */
@@ -244,7 +114,7 @@ export function createApiNameModerationDataSource(token: string, pollMs = 2_000)
     if (query.q?.trim()) params.set('q', query.q.trim());
     if (query.risk) params.set('risk', query.risk);
     const suffix = params.size ? `?${params.toString()}` : '';
-    return adminRequest<AdminNameRoster>(cleanToken, `/api/admin/name-filter/players${suffix}`);
+    return adminRequest<unknown>(cleanToken, `/api/admin/name-filter/players${suffix}`).then(parseAdminNameRoster);
   };
 
   return {
