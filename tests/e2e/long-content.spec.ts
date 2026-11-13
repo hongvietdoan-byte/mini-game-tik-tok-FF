@@ -50,14 +50,14 @@ function namesSnapshot(sceneName: 'top10-long-name' | 'victory-name-test'): Publ
   const snapshot = makeMockSnapshot(sceneName);
   if (!snapshot) throw new Error(`Thiếu mock snapshot cho ${sceneName}.`);
   const leaderboard = snapshot.leaderboard
-    ? { ...snapshot.leaderboard, entries: snapshot.leaderboard.entries.map((entry) => ({ ...entry, displayName: playerName })) }
+    ? { ...snapshot.leaderboard, entries: snapshot.leaderboard.entries.map((entry) => ({ ...entry, safeDisplayName: playerName })) }
     : null;
   const podium = snapshot.podium
     ? {
       ...snapshot.podium,
       slots: snapshot.podium.slots.map((slot) => ({
         ...slot,
-        entries: slot.entries.map((entry) => ({ ...entry, displayName: playerName })),
+        entries: slot.entries.map((entry) => ({ ...entry, safeDisplayName: playerName })),
       })),
     }
     : null;

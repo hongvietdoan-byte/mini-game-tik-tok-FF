@@ -523,16 +523,16 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
         expect(rowText).toContain(entry.score.toLocaleString('vi-VN'));
       }
 
-      const dashboardBoard = page.getByRole('heading', { name: 'Top 10' }).locator('xpath=../..');
-      for (const entry of entries) {
-        const dashboardName = page.getByText(entry.safeDisplayName, { exact: true });
-        await expect(dashboardName).toBeVisible();
-        const dashboardRow = normalized(await dashboardName.locator('xpath=..').innerText());
+      const dashboardRows = page.locator('.dashboard-leaderboard-row');
+      await expect(dashboardRows).toHaveCount(entries.length);
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index]!;
+        const dashboardRow = normalized(await dashboardRows.nth(index).innerText());
         expect(dashboardRow).toContain(String(entry.rank));
         expect(dashboardRow).toContain(entry.safeDisplayName);
         expect(dashboardRow).toContain(entry.score.toLocaleString('vi-VN'));
       }
-      await expect(dashboardBoard).toContainText('Top 10');
+      await expect(page.getByRole('heading', { name: 'Top 10' })).toBeVisible();
     }
   }
 
