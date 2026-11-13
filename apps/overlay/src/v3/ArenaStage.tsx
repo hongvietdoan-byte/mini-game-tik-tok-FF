@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { AudienceSeatView, LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
 import { BrandMark } from './BrandMark';
+import { publicPlayerName } from '../publicPlayerName';
 import { McSequence } from './mc/mc-sequence-player';
 import { ArenaBackdrop } from './ArenaBackdrop';
 import './arena.css';
@@ -38,7 +39,7 @@ export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
   );
 }
 
-function Top10({ entries }: { entries: LeaderboardEntry[] }) {
+function Top10({ entries, allowLegacyNames }: { entries: LeaderboardEntry[]; allowLegacyNames: boolean }) {
   return (
     <section className="v3-top10" data-layer="leaderboard" data-testid="v3-top10">
       <div className="v3-top10-title">
@@ -50,7 +51,7 @@ function Top10({ entries }: { entries: LeaderboardEntry[] }) {
           <li key={e.playerId} className={`v3-rank-${e.rank <= 3 ? e.rank : 'n'}`} data-testid="leaderboard-row">
             <span className="v3-rank">{e.rank}</span>
             <span className="v3-name">
-              <span className="v3-name-text player-name" title={e.displayName}>{shortName(e.displayName, 16)}</span>
+              {(() => { const name = publicPlayerName(e, `Người chơi ${e.rank}`, allowLegacyNames); return <span className="v3-name-text player-name" title={name}>{shortName(name, 16)}</span>; })()}
               {(e.top1Streak ?? 0) >= 2 && (
                 <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${e.top1Streak} lần`}>
                   x{e.top1Streak}
@@ -205,7 +206,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
   );
 }
 
-type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean };
+type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; allowLegacyNames: boolean };
 
 function sameSeat(previous: SeatProps, next: SeatProps) {
   const a = previous.seat;
@@ -213,11 +214,11 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
   const left = a.occupant;
   const right = b.occupant;
   const sameOccupant = left === right || (!!left && !!right &&
-    left.displayName === right.displayName &&
+    publicPlayerName(left, `Khán giả ${a.slotId}`, previous.allowLegacyNames) === publicPlayerName(right, `Khán giả ${b.slotId}`, next.allowLegacyNames) &&
     left.characterId === right.characterId &&
     left.pinned === right.pinned &&
     left.result === right.result);
-  return previous.compactQuestion === next.compactQuestion && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
+  return previous.compactQuestion === next.compactQuestion && previous.allowLegacyNames === next.allowLegacyNames && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
 }
 
 const Seat = React.memo(function Seat({ seat, compactQuestion }: SeatProps) {
@@ -243,15 +244,15 @@ const Seat = React.memo(function Seat({ seat, compactQuestion }: SeatProps) {
   );
 }, sameSeat);
 
-const SeatName = React.memo(function SeatName({ seat, compactQuestion }: SeatProps) {
+const SeatName = React.memo(function SeatName({ seat, compactQuestion, allowLegacyNames }: SeatProps) {
   const occupant = seat.occupant;
   if (!occupant) return null;
   return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
-    {shortName(occupant.displayName, 13)}
+    {shortName(publicPlayerName(occupant, `Khán giả ${seat.slotId}`, allowLegacyNames), 13)}
   </div>;
 }, sameSeat);
 
-function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
+function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; allowLegacyNames: boolean }) {
   const a = snapshot.audience;
   const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const rows = a
@@ -263,17 +264,17 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
       {rows.map((r) => (
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
-      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} />)}
+      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} />)}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} />)}
+        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} />)}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
   );
 }
 
-export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
+export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNames = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; allowLegacyNames?: boolean }) {
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
     ? 'CHÀO MỪNG ĐẾN VỚI ĐẤU TRƯỜNG BÃO TỐ!'
@@ -379,10 +380,10 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
         </svg>
       </div>
       <BrandHeader snapshot={snapshot} />
-      <Top10 entries={snapshot.leaderboard?.entries ?? []} />
+      <Top10 entries={snapshot.leaderboard?.entries ?? []} allowLegacyNames={allowLegacyNames} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
       <McKelly snapshot={snapshot} bubbleOverride={questionBubble} />
-      <Audience snapshot={snapshot} />
+      <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} />
     </div>
   );
 }

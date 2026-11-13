@@ -9,6 +9,7 @@ import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
 import { AudioFxLayer } from './v3/AudioFxLayer';
 import { overlayRoleFromSearch } from './overlayRole';
+import { publicPlayerName } from './publicPlayerName';
 import type { AudioEngineState } from './audio/audio-engine';
 import './style.css';
 
@@ -44,22 +45,22 @@ function useTimer(snapshot: PublicSnapshot, serverTimeMs: number, clockOffsetMs:
   return interpolateRemainingMs(snapshot.timer.remainingMs, snapshot.timer.running, now + clockOffsetMs - serverTimeMs);
 }
 
-function Leaderboard({ entries, compact = false }: { entries: LeaderboardEntry[]; compact?: boolean }) {
+function Leaderboard({ entries, compact = false, allowLegacyNames }: { entries: LeaderboardEntry[]; compact?: boolean; allowLegacyNames: boolean }) {
   return <div className={`leaderboard ${compact ? 'leaderboard-compact' : ''}`}>
     {entries.map((entry) => <div className="leaderboard-row" data-testid="leaderboard-row" key={entry.playerId}>
       <span className="rank">{entry.rank}</span>
-      <span className="player-name" title={entry.displayName}>{entry.displayName}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>
+      {(() => { const name = publicPlayerName(entry, `Người chơi ${entry.rank}`, allowLegacyNames); return <span className="player-name" title={name}>{name}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>; })()}
       <span className="score">{entry.score.toLocaleString('vi-VN')}<small>điểm</small></span>
     </div>)}
   </div>;
 }
 
-function Podium({ slots, tied }: { slots: PodiumSlot[]; tied: boolean }) {
+function Podium({ slots, tied, allowLegacyNames }: { slots: PodiumSlot[]; tied: boolean; allowLegacyNames: boolean }) {
   return <div className="podium-row">
     {podiumLeftToRight(slots).map((slot) => <div className={`podium-card place-${slot.place}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} key={slot.place}>
       <div className="avatar-silhouette" aria-hidden="true"><span /></div>
       <div className="nameplate">
-        {slot.entries.map((entry) => <div className="podium-name" key={entry.playerId}>{entry.displayName}</div>)}
+        {slot.entries.map((entry, index) => <div className="podium-name" key={entry.playerId}>{publicPlayerName(entry, `Người chơi hạng ${slot.rank}${slot.entries.length > 1 ? ` · ${index + 1}` : ''}`, allowLegacyNames)}</div>)}
         <b>{slot.entries.map((entry) => entry.score.toLocaleString('vi-VN')).join(' · ')} điểm</b>
         {(slot.tied || (tied && slot.entries.length > 1)) && <strong className="tie-label">ĐỒNG HẠNG</strong>}
       </div>
@@ -68,7 +69,7 @@ function Podium({ slots, tied }: { slots: PodiumSlot[]; tied: boolean }) {
   </div>;
 }
 
-function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
+function SceneContent({ snapshot, remainingMs, allowLegacyNames }: { snapshot: PublicSnapshot; remainingMs: number; allowLegacyNames: boolean }) {
   const { scene } = snapshot;
   const [page, setPage] = useState(0);
   const entries = snapshot.leaderboard?.entries ?? [];
@@ -117,7 +118,7 @@ function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; rem
         <p className="explanation">{reveal.explanation}</p>
         <div className="reveal-top10" data-testid="reveal-top10">
           <div className="section-label">BẢNG XẾP HẠNG NHANH · TOP 10</div>
-          <Leaderboard entries={entries.slice(0, 10)} compact />
+          <Leaderboard entries={entries.slice(0, 10)} compact allowLegacyNames={allowLegacyNames} />
         </div>
       </>}
     </section>;
@@ -126,18 +127,18 @@ function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; rem
   if (scene === 'INTERIM_TOP10') return <section className="top10-scene">
     <div className="eyebrow">BẢNG XẾP HẠNG</div><h2>TOP <span>10</span></h2>
     <p className="round-caption">SAU CÂU {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}</p>
-    <Leaderboard entries={pages[page] ?? []} />
+    <Leaderboard entries={pages[page] ?? []} allowLegacyNames={allowLegacyNames} />
     {pages.length > 1 && <div className="page-indicator">{page + 1} / {pages.length}</div>}
   </section>;
 
   if (scene === 'ROUND_WINNER') return <section className="winner-scene">
     <div className="eyebrow">VÒNG {snapshot.round?.roundNumber ?? 1}</div><h2>KẾT THÚC<br /><span>VÒNG ĐẤU</span></h2>
-    <Leaderboard entries={entries.slice(0, 3)} compact />
+    <Leaderboard entries={entries.slice(0, 3)} compact allowLegacyNames={allowLegacyNames} />
   </section>;
 
   if (scene === 'VICTORY') return <section className="victory-scene">
     <div className="eyebrow">VINH DANH NHÀ VÔ ĐỊCH</div><h2>VINH QUANG<br /><span>THUỘC VỀ</span></h2>
-    {snapshot.podium && <Podium slots={snapshot.podium.slots} tied={snapshot.podium.tieAcrossCutoff} />}
+    {snapshot.podium && <Podium slots={snapshot.podium.slots} tied={snapshot.podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />}
   </section>;
 
   if (scene === 'INTERMISSION') return <section className="intermission-scene">
@@ -209,6 +210,7 @@ function App() {
   const hud = query.get('hud') === '1';
   const scale = useStageScale();
   const requestedMock = query.get('mock');
+  const allowLegacyNames = requestedMock === 'cycle' || (requestedMock !== null && MOCK_SCENES.includes(requestedMock));
   const requestedCycleMs = Number(query.get('cycleMs'));
   const cycleIntervalMs = Number.isFinite(requestedCycleMs) && requestedCycleMs >= 100 && requestedCycleMs <= 10_000 ? requestedCycleMs : 3_000;
   const fxLow = query.get('fx') === 'low';
@@ -254,11 +256,11 @@ function App() {
       '--safe-right': `${safeZone!.right}px`,
       '--safe-right-from-y': `${safeZone!.rightFromY ?? 0}px`,
     } as React.CSSProperties}>
-      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
+      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} allowLegacyNames={allowLegacyNames} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
         <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
         {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
-        <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} /></div>
+        <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} allowLegacyNames={allowLegacyNames} /></div>
         {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
       </>}
       {guides && safeZone && <>

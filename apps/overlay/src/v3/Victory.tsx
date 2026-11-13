@@ -3,6 +3,7 @@ import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contrac
 import { podiumLeftToRight } from '../overlayLogic';
 import { shortName } from './arenaLogic';
 import { BrandMark } from './BrandMark';
+import { publicPlayerName } from '../publicPlayerName';
 
 const ASSET = '/assets';
 const VICTORY_BACKGROUND = `${ASSET}/victory/bg-user-cover.jpg`;
@@ -46,7 +47,7 @@ function podiumNameSize(name: string): number {
   return Math.max(22, Math.min(34, 38 - length));
 }
 
-function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
+function Slot({ slot, tieAcross, allowLegacyNames }: { slot: PodiumSlot; tieAcross: boolean; allowLegacyNames: boolean }) {
   const lead = slot.entries[0]!;
   const tied = slot.tied || (tieAcross && slot.entries.length > 1);
   return (
@@ -67,8 +68,8 @@ function Slot({ slot, tieAcross }: { slot: PodiumSlot; tieAcross: boolean }) {
         </span>
         <div className="v3v-names">
           <span className="v3v-rank-label" data-testid="podium-rank">TOP {slot.rank}</span>
-          {slot.entries.slice(0, 2).map((entry) => {
-            const displayName = shortName(entry.displayName, 16);
+          {slot.entries.slice(0, 2).map((entry, index) => {
+            const displayName = shortName(publicPlayerName(entry, `Người chơi hạng ${slot.rank}${slot.entries.length > 1 ? ` · ${index + 1}` : ''}`, allowLegacyNames), 16);
             return (
               <b className="v3v-player-row" key={entry.playerId}>
                 <span className="v3v-player-name" style={{ fontSize: `${podiumNameSize(displayName)}px` }}>{displayName}</span>
@@ -153,7 +154,7 @@ function VictoryConfetti() {
   </div>;
 }
 
-export function VictoryStage({ snapshot }: { snapshot: PublicSnapshot }) {
+export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot: PublicSnapshot; allowLegacyNames?: boolean }) {
   const podium = snapshot.podium;
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene}>
@@ -163,7 +164,7 @@ export function VictoryStage({ snapshot }: { snapshot: PublicSnapshot }) {
         <VictoryLogo />
       </header>
       <div className="v3v-podium" style={VICTORY_LAYOUT}>
-        {podium && podiumLeftToRight(podium.slots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} />)}
+        {podium && podiumLeftToRight(podium.slots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />)}
         {(!podium || podium.slots.length === 0) && <div className="v3v-empty">Chưa có người chơi đạt điểm</div>}
       </div>
     </div>

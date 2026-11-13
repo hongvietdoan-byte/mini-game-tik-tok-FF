@@ -2,14 +2,16 @@ import React from 'react';
 import type { LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { BrandHeader, McKelly } from './ArenaStage';
 import { ArenaBackdrop } from './ArenaBackdrop';
+import { publicPlayerName } from '../publicPlayerName';
 import { shortName } from './arenaLogic';
 import './arena.css';
 
-function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: number }) {
+function FullLeaderboardRow({ entry, index, allowLegacyNames }: { entry: LeaderboardEntry; index: number; allowLegacyNames: boolean }) {
+  const name = publicPlayerName(entry, `Người chơi ${entry.rank}`, allowLegacyNames);
   return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row" style={{ '--row-index': index } as React.CSSProperties}>
     <span className="v3-full-rank">{entry.rank}</span>
     <span className="v3-full-name">
-      <span className="v3-full-name-text player-name" title={entry.displayName}>{shortName(entry.displayName, 16)}</span>
+      <span className="v3-full-name-text player-name" title={name}>{shortName(name, 16)}</span>
       {(entry.top1Streak ?? 0) >= 2 && <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${entry.top1Streak} lần`}>x{entry.top1Streak}</b>}
       {entry.tied && <small>ĐỒNG HẠNG</small>}
     </span>
@@ -17,7 +19,7 @@ function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: 
   </li>;
 }
 
-export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
+export function LeaderboardStage({ snapshot, allowLegacyNames = false }: { snapshot: PublicSnapshot; allowLegacyNames?: boolean }) {
   const entries = snapshot.leaderboard?.entries ?? [];
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
     <ArenaBackdrop arena questionBackground showFlags={false} />
@@ -28,7 +30,7 @@ export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
         <h1>TOP <b>10</b></h1>
         <span className="v3-full-round">SAU CÂU {String((snapshot.round?.questionIndex ?? 0) + 1).padStart(2, '0')}</span>
       </header>
-      <ol className="v3-full-list">{entries.slice(0, 10).map((entry, index) => <FullLeaderboardRow key={entry.playerId} entry={entry} index={index} />)}</ol>
+      <ol className="v3-full-list">{entries.slice(0, 10).map((entry, index) => <FullLeaderboardRow key={entry.playerId} entry={entry} index={index} allowLegacyNames={allowLegacyNames} />)}</ol>
       {entries.length === 0 && <p className="v3-full-empty">Chưa có người chơi</p>}
       <p className="v3-full-footnote">TÍCH LŨY ĐIỂM · TIẾP TỤC CHIẾN ĐẤU</p>
     </section>

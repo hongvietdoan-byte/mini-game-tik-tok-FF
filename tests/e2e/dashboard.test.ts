@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
@@ -243,4 +244,101 @@ test('lọc câu hỏi, xác nhận duyệt hàng loạt và bắt buộc nhập
   await expect(rejectButton).toBeEnabled();
   await rejectButton.click();
   await expect(page.getByRole('status')).toContainText('Đã từ chối câu hỏi.');
+});
+
+test('kiểm duyệt tên DEMO: lọc, ẩn/cho hiện, quy tắc, ngoại lệ, audit và preview', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const overlayPort = process.env.PLAYWRIGHT_OVERLAY_PORT ?? '15176';
+  await page.route('**/overlay/**', (route) => {
+    const overlay = new URL(route.request().url());
+    overlay.port = overlayPort;
+    overlay.pathname = '/';
+    return route.continue({ url: overlay.toString() });
+  });
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  await expect(page.getByRole('heading', { name: 'Phiên MOCK' })).toBeVisible();
+  await page.getByRole('button', { name: 'Kiểm duyệt tên', exact: true }).click();
+
+  const moderation = page.getByTestId('name-moderation-page');
+  await expect(moderation.getByRole('heading', { name: 'Kiểm duyệt tên' })).toBeVisible();
+  await expect(moderation.getByTestId('name-voice-notice')).toContainText('Đọc tên người chơi: Chưa hỗ trợ trong phiên bản này');
+  await expect(moderation.getByRole('button', { name: /đọc tên/i })).toHaveCount(0);
+  const impersonationRow = moderation.getByTestId('moderation-player-row').filter({ hasText: 'Admin Bão Tố' });
+  await expect(impersonationRow.getByText('Admin Bão Tố')).toBeVisible();
+  await expect(impersonationRow.getByText('Người chơi 02')).toBeVisible();
+
+  const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'name-moderation');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const top10Frame = moderation.frameLocator('iframe[title="Overlay preview TOP 10"]');
+  const top10Stage = top10Frame.locator('[data-testid="stage"]');
+  await expect(top10Stage).toBeVisible();
+  await expect(top10Frame.locator('body')).not.toContainText('Bình Minh 84');
+  await expect(top10Frame.locator('body')).not.toContainText('Admin Bão Tố');
+  await moderation.locator('iframe[title="Overlay preview TOP 10"]').screenshot({ path: join(reviewDirectory, 'embedded-preview-top10.png'), animations: 'disabled', timeout: 8_000 });
+  const overlayScene = await page.context().newPage();
+  await overlayScene.setViewportSize({ width: 1080, height: 1920 });
+  await overlayScene.goto(`http://127.0.0.1:${overlayPort}/?mock=top10&hud=1`);
+  await expect(overlayScene.locator('[data-testid="stage"]')).toBeVisible();
+  await expect(overlayScene.locator('body')).not.toContainText('Bình Minh 84');
+  await expect(overlayScene.locator('body')).not.toContainText('Admin Bão Tố');
+  await overlayScene.screenshot({ path: join(reviewDirectory, 'overlay-top10.png'), fullPage: true, animations: 'disabled' });
+  await overlayScene.close();
+  await page.screenshot({ path: join(reviewDirectory, 'flagged-list.png'), fullPage: true });
+  await page.screenshot({ path: join(reviewDirectory, 'live-before-hide.png'), fullPage: true });
+
+  const reviewRow = moderation.getByTestId('moderation-player-row').filter({ hasText: 'Bình Minh 84' });
+  await reviewRow.getByRole('button', { name: 'Cho phép REVIEW' }).click();
+  await expect(reviewRow.locator('.moderation-live-name')).toHaveText('Bình Minh 84');
+  await expect(reviewRow.getByRole('button', { name: 'Đã cho phép' })).toBeDisabled();
+
+  const unflagged = moderation.getByTestId('moderation-player-row').filter({ hasText: 'Nắng Tháng Ba' });
+  await expect(unflagged.getByText('Bình thường')).toBeVisible();
+  await unflagged.getByRole('button', { name: 'Ẩn', exact: true }).click();
+  await expect(unflagged.getByText('Người chơi 05')).toBeVisible();
+  await expect(unflagged).toHaveAttribute('data-hidden', 'true');
+
+  await moderation.getByLabel('Chọn Bình Minh 84').check();
+  await moderation.getByLabel('Chọn Gió Lặng 09').check();
+  await moderation.getByRole('button', { name: 'Ẩn đã chọn' }).click();
+  await expect(moderation.getByTestId('moderation-hidden-count')).toHaveText('4');
+  await expect(moderation.getByTestId('moderation-history').getByText('Ẩn tên').first()).toBeVisible();
+  await page.screenshot({ path: join(reviewDirectory, 'live-after-hide.png'), fullPage: true });
+
+  const search = moderation.getByLabel('Tìm theo tên');
+  await search.fill('Mây Xanh');
+  await expect(moderation.getByTestId('moderation-player-row')).toHaveCount(1);
+  await moderation.getByLabel('Lọc mức cảnh báo').selectOption('HIGH');
+  await expect(moderation.getByTestId('moderation-player-row')).toHaveCount(0);
+  await moderation.getByLabel('Lọc mức cảnh báo').selectOption('ALL');
+  await search.clear();
+
+  await moderation.getByLabel('Từ / cụm từ cần chặn').fill('Cụm Demo 42');
+  await moderation.getByLabel('Mức xử lý').selectOption('PARTIAL');
+  await moderation.getByRole('button', { name: 'Thêm từ chặn', exact: true }).click();
+  const addedRule = moderation.getByLabel('Từ chặn hiện tại').getByText('Cụm Demo 42');
+  await expect(addedRule).toBeVisible();
+  await expect(moderation.getByLabel('Từ chặn hiện tại')).toContainText('che một phần');
+  await moderation.getByLabel('Người chơi có rule áp dụng').selectOption('demo-high-002');
+  await expect(moderation.getByLabel('Người chơi có rule áp dụng')).toHaveValue('demo-high-002');
+  await moderation.getByLabel('Thêm ngoại lệ').fill('Đội Ánh Sao');
+  await moderation.getByRole('button', { name: 'Thêm ngoại lệ', exact: true }).click();
+  await expect(moderation.getByLabel('Ngoại lệ hiện tại').getByText('Đội Ánh Sao')).toBeVisible();
+
+  await moderation.getByLabel('Cảnh preview overlay').selectOption('victory');
+  await expect(moderation.getByTitle('Overlay preview VICTORY')).toBeVisible();
+  const victoryFrame = moderation.frameLocator('iframe[title="Overlay preview VICTORY"]');
+  const victoryStage = victoryFrame.locator('[data-testid="stage"][data-scene="VICTORY"]');
+  await expect(victoryStage).toBeVisible();
+  await expect(victoryFrame.locator('body')).not.toContainText('Bình Minh 84');
+  await expect(victoryFrame.locator('body')).not.toContainText('Admin Bão Tố');
+  const victoryOverlay = await page.context().newPage();
+  await victoryOverlay.setViewportSize({ width: 1080, height: 1920 });
+  await victoryOverlay.goto(`http://127.0.0.1:${overlayPort}/?mock=victory&hud=1`);
+  await expect(victoryOverlay.locator('[data-testid="stage"][data-scene="VICTORY"]')).toBeVisible();
+  await expect(victoryOverlay.locator('body')).not.toContainText('Bình Minh 84');
+  await expect(victoryOverlay.locator('body')).not.toContainText('Admin Bão Tố');
+  await victoryOverlay.screenshot({ path: join(reviewDirectory, 'overlay-victory.png'), fullPage: true, animations: 'disabled' });
+  await victoryOverlay.close();
+  expect(page.url()).not.toContain(adminToken);
 });
