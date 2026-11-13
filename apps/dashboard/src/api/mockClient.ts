@@ -405,6 +405,7 @@ class MockDashboardClient implements DashboardClient {
     };
     return {
       public: publicSnapshot,
+      flaggedPlayers: [],
       sessionStatus: this.state === 'IDLE' && this.stateVersion > 0 ? 'CLOSED' : 'OPEN',
       autoMode: this.autoMode,
       recoveryPending: false,

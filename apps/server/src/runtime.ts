@@ -50,8 +50,10 @@ import {
   type PreparedRound,
 } from '@quiz/quiz-core';
 import { MockAdapter, MockSimulator, type LiveAdapter, type Scheduler, type SimPlayer } from '@quiz/live-adapters';
+import type { FilteredPlayerName } from '@quiz/name-filter';
 import type { SessionRow, Store } from '@quiz/persistence';
 import { AudienceManager, DEFAULT_CHARACTER_POOL } from './audience';
+import type { NameFilterStore } from './name-filter-store';
 
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
@@ -114,6 +116,8 @@ export type RuntimeDeps = {
   warn?: (message: string) => void;
   /** Kho nhân vật mặc định (vd đọc từ assets-local/chibi/manifest.json); phiên có characterPool riêng thì dùng của phiên. */
   characterPool?: readonly string[];
+  /** Lọc tên trước khi ghi DB/phát overlay. */
+  nameFilter?: NameFilterStore;
 };
 
 export class SessionRuntime {
@@ -143,6 +147,8 @@ export class SessionRuntime {
   /** 35 ghế khán giả (V3 §6). */
   private readonly audience: AudienceManager;
   private audienceChanged = false;
+  /** Tên gốc chỉ giữ trong RAM để role admin duyệt; DB và public WS luôn nhận tên đã lọc. */
+  private playerNames = new Map<string, { originalName: string; result: FilteredPlayerName }>();
 
   private constructor(
     private readonly deps: RuntimeDeps,
@@ -258,6 +264,9 @@ export class SessionRuntime {
     this.loadRound(r.roundId);
     this.audience.load(r.roundId);
     this.ranked = rankPlayers(this.store.standings(r.roundId));
+    // Cơ sở dữ liệu chỉ giữ tên đã che khi tên bị gắn cờ. Khi phục hồi, tuyệt đối
+    // không suy đoán lại tên gốc từ bất kỳ snapshot nào.
+    this.refreshNameFilter(false);
     this.participants = this.store.participantCount(r.roundId);
     this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
     const qid = currentQuestionInstanceId(this.engine);
@@ -781,12 +790,22 @@ export class SessionRuntime {
       }
     }
 
-    const name = sanitizeDisplayName(ev.displayName);
-    const inserted = this.store.transaction(() => {
+    const originalName = sanitizeDisplayName(ev.displayName);
+    const accepted = this.store.transaction(() => {
       // Bền qua khởi động lại: eventId đã xử lý (kể cả ở tiến trình trước) không bao giờ được tính lại.
       if (ev.eventId && !this.store.markEventProcessed(ev.source, ev.eventId, qid, now)) return 'DUP_EVENT' as const;
-      const playerId = this.store.resolvePlayer(ev.source, ev.userId, name, now);
-      this.store.touchPlayer(playerId, name, now);
+      const existingId = this.store.findPlayerId(ev.source, ev.userId);
+      const firstPass = this.deps.nameFilter?.evaluate(originalName, existingId) ?? {
+        displayName: originalName,
+        flagged: false,
+        reasonCategory: null,
+      };
+      // resolvePlayer chỉ nhận tên đã che. Tên gốc flagged không bao giờ chạm SQLite.
+      const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.displayName, now);
+      const filtered = this.deps.nameFilter?.evaluate(originalName, playerId) ?? firstPass;
+      if (filtered.flagged && existingId && this.playerNames.get(existingId)?.originalName !== originalName)
+        this.store.scrubPlayerNameHistory(playerId, [originalName], filtered.displayName);
+      this.store.touchPlayer(playerId, filtered.displayName, now);
       const ok = this.store.insertAnswer({
         questionInstanceId: qid,
         roundId,
@@ -795,11 +814,15 @@ export class SessionRuntime {
         receivedAtMs: now,
         sourceEventId: ev.eventId ?? null,
       });
-      return ok ? playerId : false;
+      return { playerId, filtered, inserted: ok };
     });
-    if (inserted === 'DUP_EVENT') return this.reject('DUPLICATE_EVENT', now);
-    if (!inserted) return this.reject('DUPLICATE_ANSWER', now);
-    if (this.audience.onAccepted(inserted, name, now)) this.audienceChanged = true;
+    if (accepted === 'DUP_EVENT') return this.reject('DUPLICATE_EVENT', now);
+    if (!accepted) return this.reject('DUPLICATE_ANSWER', now);
+    if (accepted.filtered.flagged)
+      this.playerNames.set(accepted.playerId, { originalName, result: accepted.filtered });
+    else this.playerNames.delete(accepted.playerId);
+    if (!accepted.inserted) return this.reject('DUPLICATE_ANSWER', now);
+    if (this.audience.onAccepted(accepted.playerId, accepted.filtered.displayName, now)) this.audienceChanged = true;
 
     this.metrics.accepted += 1;
     if (this.countsQid === qid) this.counts[decision.option] += 1;
@@ -923,6 +946,45 @@ export class SessionRuntime {
     return this.counts.A + this.counts.B + this.counts.C + this.counts.D;
   }
 
+  /** Đánh giá lại tên của người chơi trong vòng hiện tại sau khi admin đổi luật. */
+  refreshNameFilter(emit = true) {
+    const roundId = this.engine.round?.roundId;
+    if (!roundId || !this.deps.nameFilter) return;
+    const displayNames = new Map<string, string>();
+    for (const row of this.store.standings(roundId)) {
+      const originalName = this.playerNames.get(row.playerId)?.originalName ?? row.displayName;
+      const result = this.deps.nameFilter.evaluate(originalName, row.playerId);
+      if (result.flagged) {
+        this.playerNames.set(row.playerId, { originalName, result });
+        // Nếu một tên sạch trước đó bị luật mới gắn cờ, DB chỉ còn bản đã che.
+        if (row.displayName !== result.displayName) {
+          this.store.transaction(() => {
+            this.store.scrubPlayerNameHistory(row.playerId, [originalName], result.displayName);
+            this.store.updatePlayerDisplayName(row.playerId, result.displayName);
+          });
+        }
+      } else {
+        this.playerNames.delete(row.playerId);
+        if (row.displayName !== result.displayName) this.store.updatePlayerDisplayName(row.playerId, result.displayName);
+      }
+      displayNames.set(row.playerId, result.displayName);
+      if (this.audience.updateDisplayName(row.playerId, result.displayName)) this.audienceChanged = true;
+    }
+    this.ranked = this.ranked.map((entry) => ({
+      ...entry,
+      displayName: displayNames.get(entry.playerId) ?? entry.displayName,
+    }));
+    if (emit) {
+      const now = this.scheduler.now();
+      const publicSnapshot = this.publicSnapshot(now);
+      this.emit([
+        { audience: 'public', message: this.wrap('STATE_SNAPSHOT', publicSnapshot) },
+        { audience: 'admin', message: this.wrap('ADMIN_SNAPSHOT', this.adminSnapshot(now)) },
+      ]);
+      this.audienceChanged = false;
+    }
+  }
+
   publicSnapshot(now = this.scheduler.now()): PublicSnapshot {
     const e = this.engine;
     const eff = effectiveState(e);
@@ -1006,6 +1068,17 @@ export class SessionRuntime {
     const snap = qid ? this.snapshots.get(qid) : undefined;
     return {
       public: this.publicSnapshot(now),
+      flaggedPlayers: [...this.playerNames.entries()].flatMap(([playerId, item]) =>
+        item.result.flagged && item.result.reasonCategory
+          ? [{
+              playerId,
+              originalName: item.originalName,
+              displayName: item.result.displayName,
+              flagged: true as const,
+              reasonCategory: item.result.reasonCategory,
+            }]
+          : [],
+      ),
       sessionStatus: e.sessionStatus,
       autoMode: e.autoMode,
       recoveryPending: e.suspended?.kind === 'RECOVERY',

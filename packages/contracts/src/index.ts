@@ -589,6 +589,14 @@ export type PublicSnapshot = {
 
 export type AdminSnapshot = {
   public: PublicSnapshot;
+  /** Tên gốc flagged chỉ gửi trên kênh admin; không nằm trong PublicSnapshot hay DB. */
+  flaggedPlayers: {
+    playerId: string;
+    originalName: string;
+    displayName: string;
+    flagged: true;
+    reasonCategory: 'PROFANITY' | 'INSULT' | 'DISCRIMINATION' | 'POLITICAL' | 'IMPERSONATION' | 'CUSTOM' | 'MANUAL';
+  }[];
   sessionStatus: 'OPEN' | 'CLOSED';
   autoMode: boolean;
   recoveryPending: boolean;

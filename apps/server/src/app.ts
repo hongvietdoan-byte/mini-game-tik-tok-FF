@@ -24,6 +24,11 @@ import {
 import { formatDifficultyCounts, isEligible, planPreferredDifficultyCounts } from '@quiz/quiz-core';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
+import {
+  NameFilterStore,
+  NameFilterUpdateSchema,
+  NameFilterVisibilitySchema,
+} from './name-filter-store';
 import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
@@ -138,6 +143,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const voiceProfile = opts.mcVoice?.profile ?? null;
   const voiceCache = opts.mcVoice?.cache ?? new McVoiceCache(join(dirname(store.path), 'mc-voice-cache'));
   const voicePreGenerate = opts.mcVoice?.preGenerate ?? (voiceService ? new McVoicePreGenerateManager(voiceService, () => scheduler.now()) : null);
+  const nameFilter = new NameFilterStore(dirname(store.path));
   let primaryOverlayInstanceId: string | null = null;
 
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 256 * 1024 });
@@ -218,6 +224,31 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     }
     return rt;
   }
+
+  app.get('/api/admin/name-filter', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return nameFilter.get();
+  });
+
+  app.put('/api/admin/name-filter', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const updated = nameFilter.update(parsed.data);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/players/visibility', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterVisibilitySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    if (!store.hasPlayer(parsed.data.playerId))
+      return reply.code(404).send({ ok: false, code: 'PLAYER_NOT_FOUND', message: 'Không tìm thấy người chơi theo mã nội bộ.' });
+    const updated = nameFilter.setPlayerHidden(parsed.data.playerId, parsed.data.hidden);
+    rt?.refreshNameFilter();
+    return updated;
+  });
 
   type PreflightStatus = 'PASS' | 'FAIL' | 'WARN';
   type PreflightCheck = { id: string; label: string; status: PreflightStatus; reason: string; audioState?: OverlayAudioState | null };
@@ -575,6 +606,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       {
         store,
         scheduler,
+        nameFilter,
         characterPool: opts.characterPool,
         adapter: adapterFactory(parsed.data.config.mode, parsed.data.config),
         preflight: (session) => makePreflight(session),
@@ -847,6 +879,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         {
           store,
           scheduler,
+          nameFilter,
           characterPool: opts.characterPool,
           adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config),
           preflight: (session) => makePreflight(session),

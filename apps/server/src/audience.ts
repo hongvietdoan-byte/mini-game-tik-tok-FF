@@ -69,6 +69,13 @@ export class AudienceManager {
     return this.chars.get(playerId);
   }
 
+  updateDisplayName(playerId: string, displayName: string): boolean {
+    if (!this.names.has(playerId)) return false;
+    if (this.names.get(playerId) === displayName) return false;
+    this.names.set(playerId, displayName);
+    return true;
+  }
+
   endRound() {
     this.state = null;
     this.roundId = null;
