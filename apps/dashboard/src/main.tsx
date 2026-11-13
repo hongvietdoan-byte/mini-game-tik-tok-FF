@@ -527,7 +527,7 @@ function App() {
 
         <aside className="side-column">
           <section className="panel leaderboard-panel"><div className="panel-title"><div><span className="eyebrow">{leaderboardLabel(snapshot.public.state, snapshot.public.scene, snapshot.public.leaderboard?.kind)}</span><h2>Top 10</h2></div><span className="muted">{snapshot.public.leaderboard?.entries.length ?? 0} người</span></div>
-            {snapshot.public.leaderboard?.entries.length ? <div className="dashboard-leaderboard">{snapshot.public.leaderboard.entries.slice(0, 10).map((entry) => <div className="dashboard-leaderboard-row" key={entry.playerId}><b>{entry.rank}{entry.tied && <small>ĐỒNG HẠNG</small>}</b><span>{entry.displayName}</span><strong>{entry.score.toLocaleString('vi-VN')}<small>{entry.correctCount} đúng</small></strong></div>)}</div> : <p className="empty-state">Bảng xếp hạng xuất hiện sau khi bắt đầu chơi.</p>}
+            {snapshot.public.leaderboard?.entries.length ? <div className="dashboard-leaderboard">{snapshot.public.leaderboard.entries.slice(0, 10).map((entry) => <div className="dashboard-leaderboard-row" key={entry.playerId}><b>{entry.rank}{entry.tied && <small>ĐỒNG HẠNG</small>}</b><span>{entry.safeDisplayName}</span><strong>{entry.score.toLocaleString('vi-VN')}<small>{entry.correctCount} đúng</small></strong></div>)}</div> : <p className="empty-state">Bảng xếp hạng xuất hiện sau khi bắt đầu chơi.</p>}
             <div className="overlay-links"><a href={overlayUrl} target="_blank" rel="noreferrer">Mở overlay ↗</a><a href={`${overlayUrl}?guides=1`} target="_blank" rel="noreferrer">Overlay + lưới ↗</a></div>
           </section>
 

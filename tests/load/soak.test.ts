@@ -63,29 +63,29 @@ function seatShape(h: Harness) {
   const audience = rt(h).publicSnapshot().audience;
   if (!audience) throw new Error('Audience chưa được tạo trong vòng');
   expect(audience.seats).toHaveLength(35);
-  const occupied = audience.seats.flatMap((seat) => (seat.occupant ? [seat.occupant.displayName] : []));
+  const occupied = audience.seats.flatMap((seat) => (seat.occupant ? [seat.occupant.safeDisplayName] : []));
   expect(new Set(occupied).size).toBe(occupied.length);
   expect(audience.queued + occupied.length).toBe(audience.total);
   return audience;
 }
 
 function seatSignature(h: Harness) {
-  return seatShape(h).seats.map((seat) => `${seat.slotId}:${seat.occupant?.displayName ?? '-'}:${seat.occupant?.characterId ?? '-'}`).join('|');
+  return seatShape(h).seats.map((seat) => `${seat.slotId}:${seat.occupant?.safeDisplayName ?? '-'}:${seat.occupant?.characterId ?? '-'}`).join('|');
 }
 
 function checkRotation(h: Harness, before: ReturnType<typeof seatShape>) {
   const after = seatShape(h);
   expect(after.rotationId).toBe(before.rotationId + 1);
-  const changed = after.seats.filter((seat, index) => seat.occupant?.displayName !== before.seats[index]!.occupant?.displayName);
+  const changed = after.seats.filter((seat, index) => seat.occupant?.safeDisplayName !== before.seats[index]!.occupant?.safeDisplayName);
   expect(changed.length).toBeGreaterThan(0);
   expect(changed.length).toBeLessThanOrEqual(5);
 
-  const seatedBefore = new Set(before.seats.flatMap((seat) => (seat.occupant ? [seat.occupant.displayName] : [])));
-  const seatedAfter = new Set(after.seats.flatMap((seat) => (seat.occupant ? [seat.occupant.displayName] : [])));
+  const seatedBefore = new Set(before.seats.flatMap((seat) => (seat.occupant ? [seat.occupant.safeDisplayName] : [])));
+  const seatedAfter = new Set(after.seats.flatMap((seat) => (seat.occupant ? [seat.occupant.safeDisplayName] : [])));
   for (const top of rt(h).publicSnapshot().leaderboard?.entries.slice(0, 3) ?? []) {
-    if (!seatedBefore.has(top.displayName)) continue;
-    expect(seatedAfter.has(top.displayName)).toBe(true);
-    expect(after.seats.find((seat) => seat.occupant?.displayName === top.displayName)?.occupant?.pinned).toBe(true);
+    if (!seatedBefore.has(top.safeDisplayName)) continue;
+    expect(seatedAfter.has(top.safeDisplayName)).toBe(true);
+    expect(after.seats.find((seat) => seat.occupant?.safeDisplayName === top.safeDisplayName)?.occupant?.pinned).toBe(true);
   }
   return after;
 }

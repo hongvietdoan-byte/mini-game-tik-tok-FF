@@ -69,6 +69,26 @@ export class AudienceManager {
     return this.chars.get(playerId);
   }
 
+  updateDisplayName(playerId: string, displayName: string): boolean {
+    if (!this.names.has(playerId)) return false;
+    if (this.names.get(playerId) === displayName) return false;
+    this.names.set(playerId, displayName);
+    return true;
+  }
+
+  visiblePlayerIds(): string[] {
+    if (!this.state) return [];
+    return Object.values(this.state.seats).flatMap((occupant) => occupant ? [occupant.playerId] : []);
+  }
+
+  seatForPlayer(playerId: string): { slotId: string; rowIndex: number; seatIndex: number } | null {
+    if (!this.state) return null;
+    for (const slot of this.slots)
+      if (this.state.seats[slot.slotId]?.playerId === playerId)
+        return { slotId: slot.slotId, rowIndex: slot.rowIndex, seatIndex: slot.seatIndex };
+    return null;
+  }
+
   endRound() {
     this.state = null;
     this.roundId = null;
@@ -145,7 +165,7 @@ export class AudienceManager {
         depth: slot.depth,
         occupant: occ
           ? {
-              displayName: this.names.get(occ.playerId) ?? 'Khán giả',
+              safeDisplayName: this.names.get(occ.playerId) ?? 'Khán giả',
               characterId: this.chars.get(occ.playerId) ?? this.pool[0]!,
               pinned: occ.pinned,
               result: !revealed

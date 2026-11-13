@@ -18,6 +18,7 @@ import {
 function snapshot(state: AdminSnapshot['public']['state'] = 'LOBBY'): AdminSnapshot {
   return {
     public: { stateVersion: 17, state } as AdminSnapshot['public'],
+    flaggedPlayers: [],
     sessionStatus: 'OPEN',
     autoMode: false,
     recoveryPending: false,

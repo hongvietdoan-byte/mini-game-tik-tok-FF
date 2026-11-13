@@ -131,6 +131,9 @@ importers:
       '@quiz/live-adapters':
         specifier: workspace:*
         version: link:../../packages/live-adapters
+      '@quiz/name-filter':
+        specifier: workspace:*
+        version: link:../../packages/name-filter
       '@quiz/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
@@ -166,6 +169,8 @@ importers:
       tiktok-live-connector:
         specifier: 2.5.0
         version: 2.5.0
+
+  packages/name-filter: {}
 
   packages/persistence:
     dependencies:

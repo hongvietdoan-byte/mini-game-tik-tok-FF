@@ -515,9 +515,9 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
         const row = overlayRows.nth(index);
         const rowText = normalized(await row.innerText());
         const overlayName = row.locator('.v3-full-name-text');
-        const displayName = overlayDisplayName(entry.displayName);
+        const displayName = overlayDisplayName(entry.safeDisplayName);
         expect(rowText).toContain(String(entry.rank));
-        await expect(overlayName).toHaveAttribute('title', entry.displayName);
+        await expect(overlayName).toHaveAttribute('title', entry.safeDisplayName);
         await expect(overlayName).toHaveText(displayName);
         expect(rowText).toContain(displayName);
         expect(rowText).toContain(entry.score.toLocaleString('vi-VN'));
@@ -525,11 +525,11 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
 
       const dashboardBoard = page.getByRole('heading', { name: 'Top 10' }).locator('xpath=../..');
       for (const entry of entries) {
-        const dashboardName = page.getByText(entry.displayName, { exact: true });
+        const dashboardName = page.getByText(entry.safeDisplayName, { exact: true });
         await expect(dashboardName).toBeVisible();
         const dashboardRow = normalized(await dashboardName.locator('xpath=..').innerText());
         expect(dashboardRow).toContain(String(entry.rank));
-        expect(dashboardRow).toContain(entry.displayName);
+        expect(dashboardRow).toContain(entry.safeDisplayName);
         expect(dashboardRow).toContain(entry.score.toLocaleString('vi-VN'));
       }
       await expect(dashboardBoard).toContainText('Top 10');

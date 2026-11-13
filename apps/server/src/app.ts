@@ -12,8 +12,10 @@ import {
   ClientHelloSchema,
   CreateSessionRequestSchema,
   McVoicePreGenerateRequestSchema,
+  McVoiceEventSchema,
   McVoiceSettingsUpdateSchema,
   McVoiceTestRequestSchema,
+  MC_VOICE_POLICY_VERSION,
   QuestionReviewSchema,
   DEFAULT_DIFFICULTY_TARGETS,
   questionLengthWarnings,
@@ -24,6 +26,15 @@ import {
 import { formatDifficultyCounts, isEligible, planPreferredDifficultyCounts } from '@quiz/quiz-core';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
+import {
+  NameFilterStore,
+  NameFilterAllowReviewSchema,
+  NameFilterCustomRuleSchema,
+  NameFilterExceptionSchema,
+  NameFilterOfficialAccountSchema,
+  NameFilterUpdateSchema,
+  NameFilterVisibilitySchema,
+} from './name-filter-store';
 import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
@@ -138,6 +149,20 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const voiceProfile = opts.mcVoice?.profile ?? null;
   const voiceCache = opts.mcVoice?.cache ?? new McVoiceCache(join(dirname(store.path), 'mc-voice-cache'));
   const voicePreGenerate = opts.mcVoice?.preGenerate ?? (voiceService ? new McVoicePreGenerateManager(voiceService, () => scheduler.now()) : null);
+  const nameFilter = new NameFilterStore(dirname(store.path), { now: () => scheduler.now() });
+  // Recheck old local databases before any public snapshot is served. A flagged source name is
+  // copied to RAM for the guarded operator channel, then immediately removed from name/history JSON.
+  for (const player of store.listPlayers()) {
+    const moderated = nameFilter.evaluate(player.displayName, player.id, scheduler.now());
+    if (moderated.flagged) nameFilter.rememberFlaggedName(player.id, player.displayName);
+    else nameFilter.forgetFlaggedName(player.id);
+    if (moderated.safeDisplayName !== player.displayName) {
+      store.transaction(() => {
+        store.scrubPlayerNameHistory(player.id, [player.displayName], moderated.safeDisplayName);
+        store.updatePlayerDisplayName(player.id, moderated.safeDisplayName);
+      });
+    }
+  }
   let primaryOverlayInstanceId: string | null = null;
 
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 256 * 1024 });
@@ -218,6 +243,125 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     }
     return rt;
   }
+
+  app.get('/api/admin/name-filter', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return nameFilter.getAdminSettings();
+  });
+
+  app.put('/api/admin/name-filter', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    nameFilter.update(parsed.data, { actor });
+    rt?.refreshNameFilter();
+    return nameFilter.getAdminSettings();
+  });
+
+  app.get('/api/admin/name-filter/players', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const parsed = z.object({
+      q: z.string().trim().max(80).optional(),
+      risk: z.enum(['NONE', 'REVIEW', 'PARTIAL', 'HIGH', 'MANUAL_HIDE']).optional(),
+    }).strict().safeParse(req.query ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    return {
+      players: rt?.moderationPlayers(parsed.data.q ?? '', parsed.data.risk) ?? [],
+      policyVersion: nameFilter.get().version,
+      playerNameSpeech: 'UNSUPPORTED' as const,
+    };
+  });
+
+  app.post('/api/admin/name-filter/players/visibility', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterVisibilitySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const playerIds = [...new Set(parsed.data.playerIds)];
+    if (playerIds.some((playerId) => !store.hasPlayer(playerId)))
+      return reply.code(404).send({ ok: false, code: 'PLAYER_NOT_FOUND', message: 'Có mã người chơi không tồn tại.' });
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.setPlayersHidden(playerIds, parsed.data.hidden, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/players/review', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterAllowReviewSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const playerIds = [...new Set(parsed.data.playerIds)];
+    if (playerIds.some((playerId) => !store.hasPlayer(playerId)))
+      return reply.code(404).send({ ok: false, code: 'PLAYER_NOT_FOUND', message: 'Có mã người chơi không tồn tại.' });
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.setReviewAllowed(playerIds, parsed.data.allowed, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/rules', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterCustomRuleSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.addRule(parsed.data, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/exceptions', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterExceptionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.addException(parsed.data, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/official-accounts', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterOfficialAccountSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.addVerifiedOfficial(parsed.data, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/recheck', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const players = store.listPlayers();
+    let changed = 0;
+    let flagged = 0;
+    for (const player of players) {
+      const rawDisplayName = nameFilter.rawFlaggedName(player.id) ?? player.displayName;
+      const result = nameFilter.evaluate(rawDisplayName, player.id);
+      if (result.flagged) {
+        flagged += 1;
+        nameFilter.rememberFlaggedName(player.id, rawDisplayName);
+      } else nameFilter.forgetFlaggedName(player.id);
+      if (player.displayName !== result.safeDisplayName) {
+        store.transaction(() => {
+          store.scrubPlayerNameHistory(player.id, [rawDisplayName], result.safeDisplayName);
+          store.updatePlayerDisplayName(player.id, result.safeDisplayName);
+        });
+        changed += 1;
+      }
+    }
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    nameFilter.recordAudit('NAMES_RECHECKED', actor, changed);
+    rt?.refreshNameFilter();
+    return { policyVersion: nameFilter.get().version, checked: players.length, changed, flagged };
+  });
+
+  app.get('/api/admin/name-filter/audit', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const parsed = z.object({ limit: z.coerce.number().int().min(1).max(1_000).optional() }).strict().safeParse(req.query ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const limit = parsed.data.limit ?? 100;
+    return { entries: nameFilter.listAudit().slice(-limit).reverse() };
+  });
 
   type PreflightStatus = 'PASS' | 'FAIL' | 'WARN';
   type PreflightCheck = { id: string; label: string; status: PreflightStatus; reason: string; audioState?: OverlayAudioState | null };
@@ -400,6 +544,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       hasToken: token !== null,
       ready: token !== null && voiceService !== null && voiceProfile !== null,
       primaryOverlayInstanceId,
+      playerNameSpeech: 'UNSUPPORTED' as const,
     };
   }
 
@@ -485,6 +630,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const result = await voiceService.getOrCreate(
         {
           text,
+          voicePolicyVersion: MC_VOICE_POLICY_VERSION,
           provider: 'clipai',
           model: voiceProfile.model,
           voiceSettings: voiceProfile.voiceSettings,
@@ -521,10 +667,12 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (questions.length !== requested.size || questions.some((question) => question.approvalStatus !== 'APPROVED'))
       return reply.code(400).send({ ok: false, code: 'MC_VOICE_QUESTION_NOT_APPROVED', message: 'Chỉ có thể tạo audio cho câu đã được duyệt trong bộ câu hiện hành.' });
 
-    const makeLine = (lineId: string, text: string) => ({
+    const makeLine = (gameEvent: z.infer<typeof McVoiceEventSchema>, lineId: string, text: string) => ({
+      gameEvent,
       lineId,
       descriptor: {
         text,
+        voicePolicyVersion: MC_VOICE_POLICY_VERSION,
         provider: 'clipai' as const,
         model: voiceProfile.model,
         voiceSettings: voiceProfile.voiceSettings,
@@ -533,12 +681,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       },
       request: { text, voiceKey: voiceProfile.voiceKey, rate: voiceProfile.rate, format: 'mp3' as const },
     });
-    const items = questions.map((question) => ({
-      lines: [
-        makeLine('prompt', question.prompt),
-        ...question.options.map((option, index) => makeLine(`option-${index + 1}`, option.text)),
-      ],
-    }));
+    const items = questions.map((question) => {
+      const gameEvent = McVoiceEventSchema.parse({
+        type: 'QUESTION', questionInstanceId: question.id, approvedQuestionVersion: String(question.version),
+      });
+      return {
+        lines: [
+          makeLine(gameEvent, 'prompt', question.prompt),
+          ...question.options.map((option, index) => makeLine(gameEvent, `option-${index + 1}`, option.text)),
+        ],
+      };
+    });
     return reply.code(202).send(voicePreGenerate.start(items));
   });
 
@@ -575,6 +728,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       {
         store,
         scheduler,
+        nameFilter,
         characterPool: opts.characterPool,
         adapter: adapterFactory(parsed.data.config.mode, parsed.data.config),
         preflight: (session) => makePreflight(session),
@@ -847,6 +1001,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         {
           store,
           scheduler,
+          nameFilter,
           characterPool: opts.characterPool,
           adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config),
           preflight: (session) => makePreflight(session),

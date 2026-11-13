@@ -106,7 +106,7 @@ function answerRows(h: Harness, questionId: string) {
 function audienceSignature(audience: NonNullable<PublicSnapshot['audience']>) {
   return audience.seats.map((seat) => [
     seat.slotId,
-    seat.occupant?.displayName ?? null,
+    seat.occupant?.safeDisplayName ?? null,
     seat.occupant?.characterId ?? null,
   ]);
 }
@@ -226,7 +226,7 @@ describe('V3 §17 — acceptance', () => {
     const after = r.publicSnapshot();
     expect(after.mc.state).toBe('react');
     expect(after.participantCount).toBe(2);
-    expect(after.leaderboard!.entries.map((entry) => entry.displayName).sort()).toEqual(['FFVN.Kelly', 'MC KELLY']);
+    expect(after.leaderboard!.entries.map((entry) => entry.safeDisplayName).sort()).toEqual(['FFVN.Kelly', 'MC KELLY']);
     expect(h.store.participantCount(r.engine.round!.roundId)).toBe(2);
   });
 
