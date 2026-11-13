@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { DEFAULT_HUD_CONFIG, type HudConfig } from '@quiz/contracts';
 import { getE2eAssetDirectory } from './assets';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
 
@@ -256,6 +258,119 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   expect(askAnimation).toBe('v3-mc-ask');
   expect(errors).toEqual([]);
   expect(prepareErrors).toEqual([]);
+});
+
+test('mock overlay applies HUD text and uploaded images, then reloads config without refresh', async ({ page }) => {
+  const backgroundBase64 = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, 1080, 1920);
+    gradient.addColorStop(0, '#090b31');
+    gradient.addColorStop(.52, '#26105f');
+    gradient.addColorStop(1, '#070d29');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#db52ff';
+    ctx.lineWidth = 12;
+    ctx.shadowColor = '#a33fff';
+    ctx.shadowBlur = 38;
+    ctx.strokeRect(46, 52, 988, 1816);
+    ctx.strokeStyle = '#57dfff';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(56, 680);
+    ctx.lineTo(420, 510);
+    ctx.lineTo(686, 760);
+    ctx.lineTo(1024, 530);
+    ctx.stroke();
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  });
+  const logoBase64 = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 900;
+    canvas.height = 360;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, 900, 360);
+    gradient.addColorStop(0, '#25105b');
+    gradient.addColorStop(.5, '#141b63');
+    gradient.addColorStop(1, '#42125e');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(20, 20, 860, 320, 48);
+    ctx.fill();
+    ctx.strokeStyle = '#f179ff';
+    ctx.lineWidth = 12;
+    ctx.shadowColor = '#ce47ff';
+    ctx.shadowBlur = 24;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.font = '900 92px sans-serif';
+    ctx.fillText('NOVA', 450, 165);
+    ctx.fillStyle = '#ffd652';
+    ctx.font = '800 44px sans-serif';
+    ctx.fillText('ARENA', 450, 236);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  });
+  const background = Buffer.from(backgroundBase64, 'base64');
+  const logo = Buffer.from(logoBase64, 'base64');
+  const backgroundId = createHash('sha256').update(background).digest('hex') + '.png';
+  const logoId = createHash('sha256').update(logo).digest('hex') + '.png';
+  const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'hud');
+  mkdirSync(reviewDirectory, { recursive: true });
+  let hudConfig: HudConfig = DEFAULT_HUD_CONFIG;
+  await page.route('**/api/hud', (route) => route.fulfill({ json: hudConfig }));
+  await page.route('**/hud-assets/**', (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1);
+    return route.fulfill({ status: 200, contentType: 'image/png', body: id === logoId ? logo : background });
+  });
+
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'STORM ARENA');
+  await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.screenshot({ path: join(reviewDirectory, 'default-question.png'), animations: 'disabled' });
+
+  hudConfig = {
+    ...DEFAULT_HUD_CONFIG,
+    version: 1,
+    texts: {
+      ...DEFAULT_HUD_CONFIG.texts,
+      kicker: 'NOVA ARENA',
+      arenaTitle: 'ĐẤU TRƯỜNG MỚI',
+      playingLabel: 'ĐANG XEM',
+      roundLabel: 'VÒNG',
+      leaderboardTitle: 'TOP CHIẾN BINH',
+      victoryTitle: 'NHÀ VÔ ĐỊCH',
+    },
+    images: { logo: logoId, bgQuestion: backgroundId, bgLobby: backgroundId, bgVictory: backgroundId },
+  };
+  // Preview mocks poll public config; switching this response must update the active frame without navigation.
+  await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'NOVA ARENA', { timeout: 4_000 });
+  await expect(page.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG MỚI');
+  expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(page.getByTestId('round-card')).toContainText('VÒNG 1');
+  await expect(page.getByTestId('round-card')).toContainText('57 ĐANG XEM');
+  await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', `/hud-assets/${logoId}`);
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
+  await expect(page.getByTestId('brand-logo')).toHaveCSS('object-fit', 'contain');
+  await page.screenshot({ path: join(reviewDirectory, 'custom-question.png'), animations: 'disabled' });
+  await expect(page).toHaveURL(/mock=question/);
+
+  await page.goto('/?mock=top10', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.v3-full-heading .eyebrow')).toHaveText('TOP CHIẾN BINH');
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
+  await page.screenshot({ path: join(reviewDirectory, 'custom-top10.png'), animations: 'disabled' });
+
+  await page.goto('/?mock=victory', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('v3v-event-logo')).toHaveAttribute('src', `/hud-assets/${logoId}`);
+  await expect(page.getByTestId('victory-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
+  await expect(page.locator('.v3v-hud-title')).toHaveText('NHÀ VÔ ĐỊCH');
+  await expect(page.getByTestId('victory-background')).toHaveCSS('object-fit', 'cover');
+  await page.screenshot({ path: join(reviewDirectory, 'custom-victory.png'), animations: 'disabled' });
 });
 
 test('reveal marks exactly one correct option', async ({ page }) => {

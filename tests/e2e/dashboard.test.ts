@@ -244,3 +244,38 @@ test('lọc câu hỏi, xác nhận duyệt hàng loạt và bắt buộc nhập
   await rejectButton.click();
   await expect(page.getByRole('status')).toContainText('Đã từ chối câu hỏi.');
 });
+
+test('Giao diện HUD đếm grapheme, lưu chữ, tải/reset ảnh và đổi cảnh preview', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Giao diện HUD', exact: true }).click();
+  const settings = page.getByTestId('hud-settings-page');
+  await expect(settings.getByRole('heading', { name: 'Giao diện HUD' })).toBeVisible();
+
+  const kicker = page.getByLabel('Tên sự kiện góc trái');
+  await expect(kicker).toHaveValue('STORM ARENA');
+  await kicker.fill('A'.repeat(25));
+  await expect(settings.locator('.hud-text-field').filter({ has: kicker }).locator('em')).toHaveText('Tối đa 24 ký tự hiển thị.');
+  await expect(settings.getByRole('button', { name: 'Lưu giao diện' })).toBeDisabled();
+
+  await kicker.fill('LIVE ARENA');
+  await settings.getByRole('button', { name: 'Lưu giao diện' }).click();
+  await expect(settings.getByRole('status')).toContainText('Đã lưu giao diện HUD');
+
+  const logoSlot = page.getByTestId('hud-image-logo');
+  await logoSlot.getByLabel('Tải ảnh').setInputFiles({
+    name: 'logo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]),
+  });
+  await expect(logoSlot.locator('code')).toContainText('.png');
+  await logoSlot.getByRole('button', { name: 'Về mặc định ô này' }).click();
+  await expect(logoSlot.getByText('Đang dùng ảnh mặc định')).toBeVisible();
+
+  await page.getByLabel('Cảnh xem trước').selectOption('top10');
+  const preview = page.getByTestId('hud-preview');
+  await expect(preview).toHaveAttribute('src', /role=preview/);
+  await expect(preview).toHaveAttribute('src', /mock=top10/);
+
+  await settings.getByRole('button', { name: 'Về mặc định toàn bộ' }).click();
+  await expect(kicker).toHaveValue('STORM ARENA');
+});

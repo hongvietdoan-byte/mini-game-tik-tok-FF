@@ -4,6 +4,8 @@ import { shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 import { McSequence } from './mc/mc-sequence-player';
 import { ArenaBackdrop } from './ArenaBackdrop';
+import { useHudConfig } from '../hudConfig';
+import { fitHudTextStyle } from './hudText';
 import './arena.css';
 
 /**
@@ -20,18 +22,23 @@ function formatTime(ms: number) {
 }
 
 export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
+  const config = useHudConfig();
+  const [kickerFirst = '', ...kickerRest] = config.texts.kicker.trim().split(/\s+/u);
+  const kickerSecond = kickerRest.join(' ');
+  const roundLabel = config.texts.roundLabel + ' ' + (snapshot.round?.roundNumber ?? 1);
+  const playingLabel = snapshot.participantCount.toLocaleString('vi-VN') + ' ' + config.texts.playingLabel;
   return (
     <header className="v3-header" data-layer="brand-header">
-      <div className="v3-event-mark" data-testid="event-mark" aria-label="Storm Arena">
-        <span>STORM</span>
-        <b>ARENA</b>
+      <div className="v3-event-mark" data-testid="event-mark" aria-label={config.texts.kicker}>
+        <span title={config.texts.kicker} style={fitHudTextStyle(kickerFirst, 178, 31, 12)}>{kickerFirst}</span>
+        {kickerSecond && <b title={config.texts.kicker} style={fitHudTextStyle(kickerSecond, 178, 34, 12)}>{kickerSecond}</b>}
       </div>
-      <BrandMark ribbon="ĐẤU TRƯỜNG BÃO TỐ" wide />
+      <BrandMark wide />
       <div className="v3-round-card" data-testid="round-card">
-        <b>VÒNG {snapshot.round?.roundNumber ?? 1}</b>
+        <b style={fitHudTextStyle(roundLabel, 186, 25, 12)} title={roundLabel}>{roundLabel}</b>
         <span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0-2.8-4 4 4 0 0 1 0 8A3 3 0 0 0 16 11ZM8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2C14 15.7 11.3 14 8 14Zm8 .2c-.4 0-.8 0-1.2.1 1.3.9 2.2 2.1 2.2 3.5V20h5v-2.2c0-2.1-2.7-3.8-6-3.8Z" /></svg>
-          {snapshot.participantCount.toLocaleString('vi-VN')} ĐANG CHƠI
+          <span style={fitHudTextStyle(playingLabel, 164, 11, 8)} title={playingLabel}>{playingLabel}</span>
         </span>
       </div>
     </header>
@@ -39,10 +46,11 @@ export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
 }
 
 function Top10({ entries }: { entries: LeaderboardEntry[] }) {
+  const config = useHudConfig();
   return (
     <section className="v3-top10" data-layer="leaderboard" data-testid="v3-top10">
       <div className="v3-top10-title">
-        <small>BXH TRỰC TIẾP</small>
+        <small title={config.texts.leaderboardTitle} style={fitHudTextStyle(config.texts.leaderboardTitle, 216, 17, 9)}>{config.texts.leaderboardTitle}</small>
         <b>TOP 10</b>
       </div>
       <ol>
@@ -274,6 +282,7 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
 }
 
 export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
+  const config = useHudConfig();
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
     ? 'CHÀO MỪNG ĐẾN VỚI ĐẤU TRƯỜNG BÃO TỐ!'
@@ -283,7 +292,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
   const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
-      <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} />
+      <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
       <div className="v3-env-wrap" data-layer="arena-geometry" aria-hidden="true">
         <svg className="v3-arena-environment" viewBox="0 0 1080 1920" preserveAspectRatio="none">
           <defs>

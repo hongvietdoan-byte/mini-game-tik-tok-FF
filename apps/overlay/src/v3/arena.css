@@ -90,6 +90,9 @@
 }
 .v3-title-ribbon {
   display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
   margin-top: 10px;
   padding: 8px 34px;
   font-weight: 800;
@@ -99,6 +102,8 @@
   background: linear-gradient(90deg, #4a1fa8, #6b33d8, #4a1fa8);
   clip-path: polygon(6% 0, 94% 0, 100% 50%, 94% 100%, 6% 100%, 0 50%);
   box-shadow: 0 0 18px rgba(176, 140, 255, 0.7);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* ---------- BXH Top 10 ---------- */
 .v3-top10 {
@@ -803,6 +808,7 @@
 .v3v-header .v3-title { position: relative; left: auto; top: auto; width: 420px; margin: 0; transform: none; }
 .v3v-header .v3-brand-logo { display: block; width: 420px; height: 350px; object-fit: contain; margin: 0 auto; }
 .v3v-header .v3-title-ribbon { display: none; }
+.v3v-hud-title { position: absolute; z-index: 11; top: 22%; left: 50%; width: min(80%, 860px); margin: 0; overflow: hidden; color: #f4efff; text-align: center; text-overflow: ellipsis; text-shadow: 0 2px 10px #1a0c5e, 0 0 18px #7d52ff; transform: translateX(-50%); white-space: nowrap; }
 .v3v-caption { position: absolute; top: 356px; display: block; margin: 0; color: #eeeaff; font-size: 13px; font-weight: 800; letter-spacing: 2px; text-align: center; text-shadow: 0 2px 8px #1a0c5e, 0 0 14px #7d52ff; }
 .v3v-trophy { position: absolute; left: 0; top: 448px; width: 100%; height: 900px; z-index: 3; overflow: hidden; animation: v3v-trophy 3s ease-out both; }
 .v3v-trophy img.v3v-trophy-stage { position: absolute; top: 0; left: -25%; display: block; width: 150%; height: 110%; object-fit: fill; filter: drop-shadow(0 14px 24px rgba(4, 4, 28, .46)); }
@@ -1065,13 +1071,15 @@
   box-shadow: inset 0 0 18px rgba(112, 73, 245, .3), 0 0 18px rgba(193, 53, 255, .42);
   clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%);
 }
-.v3-event-mark { left: 98px; width: 210px; padding: 0 16px; text-align: center; line-height: .88; transform: skewX(-2deg); }
+.v3-event-mark { left: 98px; width: 210px; padding: 0 16px; overflow: hidden; text-align: center; line-height: .88; transform: skewX(-2deg); }
 .v3-event-mark span,
-.v3-event-mark b { font-size: 31px; font-weight: 950; font-style: italic; letter-spacing: -1px; text-shadow: 0 2px #30108b, 0 0 12px #8e5cff; }
+.v3-event-mark b { display: block; overflow: hidden; font-size: 31px; font-weight: 950; font-style: italic; letter-spacing: -1px; text-overflow: ellipsis; text-shadow: 0 2px #30108b, 0 0 12px #8e5cff; white-space: nowrap; }
+.v3-event-mark span { display: block; overflow: hidden; font-size: 31px; font-weight: 950; font-style: italic; letter-spacing: -1px; text-overflow: ellipsis; text-shadow: 0 2px #30108b, 0 0 12px #8e5cff; white-space: nowrap; }
 .v3-event-mark b { font-size: 34px; }
 .v3-round-card { right: 97px; width: 210px; gap: 8px; padding: 0 12px; text-align: center; }
-.v3-round-card b { font-size: 25px; font-weight: 950; line-height: 1; }
-.v3-round-card span { display: flex; align-items: center; justify-content: center; gap: 5px; color: #e2ddff; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.v3-round-card b { max-width: 100%; overflow: hidden; font-size: 25px; font-weight: 950; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
+.v3-round-card > span { display: flex; align-items: center; justify-content: center; gap: 5px; color: #e2ddff; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.v3-round-card > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .v3-round-card svg { width: 22px; height: 22px; fill: var(--gold); flex: none; }
 .v3-top10-title { margin-top: 4px; }
 .v3-timer { top: 0; right: 16px; width: 138px; height: 138px; z-index: 3; }
