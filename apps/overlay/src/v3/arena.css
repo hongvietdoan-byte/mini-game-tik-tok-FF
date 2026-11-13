@@ -1505,3 +1505,30 @@
 
 .v3-timer.is-urgent b { color: var(--pink); text-shadow: 0 0 15px rgba(255,79,114,.72); }
 .v3-timer.is-urgent .v3-timer-arc { filter: drop-shadow(0 0 11px rgba(255,79,114,.95)); }
+
+/* C-0168 / header B2: nhãn sự kiện một dòng, bộ đếm ba dòng và giữ khoảng trống trước câu hỏi. */
+.v3-header .v3-title.is-wide .v3-title-ribbon {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 6px 18px;
+  font-size: 38px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.v3-header .v3-event-mark { top: -18px; }
+.v3-round-card {
+  top: -18px;
+  right: 100px;
+  width: 220px;
+  height: 182px;
+  grid-template-rows: 36px 52px 24px;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+}
+.v3-round-card .v3-round-title { font-size: 36px; font-weight: 900; line-height: 1; white-space: nowrap; }
+.v3-round-card .v3-round-count { color: var(--gold); font-size: 52px; font-weight: 950; line-height: 1; font-variant-numeric: tabular-nums; }
+.v3-round-card .v3-round-label { font-size: 24px; font-weight: 850; line-height: 1; white-space: nowrap; }

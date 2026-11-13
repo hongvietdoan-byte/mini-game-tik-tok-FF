@@ -218,11 +218,14 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   const logo = stage.getByTestId('brand-logo');
   const eventMark = stage.getByTestId('event-mark');
   const roundCard = stage.getByTestId('round-card');
+  const participantCount = roundCard.getByTestId('participant-count');
+  const participantLabel = roundCard.locator('.v3-round-label');
   await expect(logo).toBeVisible();
   await expect(logo).toHaveAttribute('src', '/assets/brand/logo.png');
   await expect(eventMark).toBeVisible();
   await expect(roundCard).toContainText('VÒNG 1');
-  await expect(roundCard).toContainText('57 ĐANG CHƠI');
+  await expect(participantCount).toHaveText('57');
+  await expect(participantLabel).toHaveText('ĐANG CHƠI');
   const [logoBox, eventBox, roundBox, boardBox, subtitleBox] = await Promise.all([
     logo.boundingBox(), eventMark.boundingBox(), roundCard.boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-title-ribbon').boundingBox(),
   ]);
@@ -237,7 +240,14 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   expect(boardBox).not.toBeNull();
   expect(subtitleBox).not.toBeNull();
   expect(logoBox!.y + logoBox!.height).toBeLessThan(subtitleBox!.y);
-  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThan(boardBox!.y);
+  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThanOrEqual(boardBox!.y - 16);
+  expect(parseFloat(await stage.locator('.v3-title-ribbon').evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(38);
+  expect(parseFloat(await roundCard.locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(36);
+  expect(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(52);
+  expect(parseFloat(await participantLabel.evaluate((element) => getComputedStyle(element).fontSize))).toBeLessThan(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize)));
+  expect(await roundCard.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await roundCard.evaluate((element) => element.clientWidth));
+  await participantCount.evaluate((element) => { element.textContent = '1.248'; });
+  expect(await roundCard.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await roundCard.evaluate((element) => element.clientWidth));
   expect(await logo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   const [bubbleBox, firstAudienceLabel] = await Promise.all([
     stage.getByTestId('mc-bubble').boundingBox(), stage.locator('.v3-nametags .v3-seat-name').first().boundingBox(),
@@ -254,6 +264,44 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   expect(askAnimation).toBe('v3-mc-ask');
   expect(errors).toEqual([]);
   expect(prepareErrors).toEqual([]);
+});
+
+test('event name and participant count stay readable on every shared header scene', async ({ page }) => {
+  for (const { name, scene } of [
+    { name: 'lobby', scene: 'LOBBY' },
+    { name: 'prepare', scene: 'QUESTION' },
+    { name: 'reading', scene: 'QUESTION' },
+    { name: 'question', scene: 'QUESTION' },
+    { name: 'reveal', scene: 'REVEAL' },
+    { name: 'top10', scene: 'INTERIM_TOP10' },
+    { name: 'intermission', scene: 'INTERMISSION' },
+    { name: 'connection-lost', scene: 'CONNECTION_LOST' },
+  ]) {
+    const { stage } = await openScene(page, name, scene);
+    const ribbon = stage.locator('.v3-title-ribbon');
+    const count = stage.getByTestId('participant-count');
+    const label = stage.locator('.v3-round-label');
+    await expect(ribbon).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
+    expect(parseFloat(await ribbon.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(38);
+    expect(await ribbon.evaluate((element) => getComputedStyle(element).whiteSpace), name).toBe('nowrap');
+    expect(parseFloat(await stage.getByTestId('round-card').locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(36);
+    expect(parseFloat(await count.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(52);
+    expect(parseFloat(await label.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeLessThan(parseFloat(await count.evaluate((element) => getComputedStyle(element).fontSize)));
+    const roundBox = await stage.getByTestId('round-card').boundingBox();
+    expect(roundBox).toMatchObject({ x: 760, y: 14, width: 220, height: 182 });
+    expect(await stage.getByTestId('round-card').evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await stage.getByTestId('round-card').evaluate((element) => element.clientWidth));
+
+    if (name === 'question') {
+      const ribbonBox = await ribbon.boundingBox();
+      const boardBox = await stage.locator('.v3-board').boundingBox();
+      expect(ribbonBox).not.toBeNull();
+      expect(boardBox).not.toBeNull();
+      expect(boardBox!.y).toBe(345);
+      expect(ribbonBox!.x).toBeGreaterThanOrEqual(0);
+      expect(ribbonBox!.x + ribbonBox!.width).toBeLessThanOrEqual(1080);
+      expect(ribbonBox!.y + ribbonBox!.height).toBeLessThanOrEqual(boardBox!.y - 16);
+    }
+  }
 });
 
 test('reveal marks exactly one correct option', async ({ page }) => {
