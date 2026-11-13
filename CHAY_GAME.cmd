@@ -2,6 +2,7 @@
 setlocal
 title Ba Vuong Dai Chien - May chu game
 set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
 cd /d "%ROOT%"
 
 where py >nul 2>nul
@@ -14,7 +15,7 @@ if %QUIZ_PY_VERSION% LSS 309 goto python_too_old
 where node >nul 2>nul
 if errorlevel 1 goto node_missing
 
-set "QUIZ_DATA_DIR=%ROOT%data"
+set "QUIZ_DATA_DIR=%ROOT%\data"
 set "QUIZ_DB=%QUIZ_DATA_DIR%\quiz.db"
 set "QUIZ_COMMIT="
 where git >nul 2>nul
@@ -55,7 +56,6 @@ if errorlevel 1 goto backup_error
 
 :run
 echo [3/3] Dang chay may chu tai http://127.0.0.1:8787 ...
-start "" /min powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep 6; if (Test-Path 'data/admin-token.txt') { Get-Content 'data/admin-token.txt' -Raw | Set-Clipboard }; Start-Process 'http://127.0.0.1:8787/dashboard/'"
 echo.
 echo  - Dashboard (dieu khien): http://127.0.0.1:8787/dashboard/
 echo  - Overlay (dua vao LIVE Studio, 1080x1920): http://127.0.0.1:8787/overlay/?role=program
@@ -63,6 +63,7 @@ echo  - Tab xem thu: http://127.0.0.1:8787/overlay/
 echo  - Ma quan tri da duoc CHEP SAN vao clipboard: bam Ctrl+V o o dang nhap Dashboard.
 echo  - DUNG TAT cua so nay trong luc LIVE. Tat cua so = tat game.
 echo.
+start "" /min powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%ROOT%\tools\open-game-windows.ps1" -Root "%ROOT%"
 call "%~dp0node_modules\.bin\tsx.cmd" "%~dp0apps\server\src\main.ts"
 pause
 exit /b 0
