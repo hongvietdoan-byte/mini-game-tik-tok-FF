@@ -246,8 +246,6 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   expect(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(52);
   expect(parseFloat(await participantLabel.evaluate((element) => getComputedStyle(element).fontSize))).toBeLessThan(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize)));
   expect(await roundCard.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await roundCard.evaluate((element) => element.clientWidth));
-  await participantCount.evaluate((element) => { element.textContent = '1.248'; });
-  expect(await roundCard.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await roundCard.evaluate((element) => element.clientWidth));
   expect(await logo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   const [bubbleBox, firstAudienceLabel] = await Promise.all([
     stage.getByTestId('mc-bubble').boundingBox(), stage.locator('.v3-nametags .v3-seat-name').first().boundingBox(),
@@ -264,6 +262,138 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   expect(askAnimation).toBe('v3-mc-ask');
   expect(errors).toEqual([]);
   expect(prepareErrors).toEqual([]);
+});
+
+test('real participant counts format and fit the B2 card; capture the displayed values', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const base = makeMockSnapshot('question');
+  if (!base) throw new Error('Missing question mock for participant count test.');
+  let participantCount = 57;
+  await page.routeWebSocket('/ws', (socket) => {
+    socket.onMessage((message) => {
+      const incoming = JSON.parse(String(message)) as { type?: string };
+      if (incoming.type !== 'HELLO') return;
+      const snapshot = { ...base, participantCount };
+      socket.send(JSON.stringify({
+        v: 1,
+        type: 'STATE_SNAPSHOT',
+        seq: 1,
+        sessionId: snapshot.sessionId,
+        stateVersion: snapshot.stateVersion,
+        serverTimeMs: Date.now(),
+        payload: snapshot,
+      }));
+    });
+  });
+
+  const samples = [
+    { count: 57, text: '57' },
+    { count: 9_876, text: '9.876' },
+    { count: 10_500, text: '10,5K' },
+    { count: 1_234_567, text: '1,2M' },
+  ];
+  const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'c0168');
+  mkdirSync(reviewDirectory, { recursive: true });
+  for (const sample of samples) {
+    participantCount = sample.count;
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
+    await expect(stage).toBeVisible();
+    const count = stage.getByTestId('participant-count');
+    const card = stage.getByTestId('round-card');
+    await expect(count).toHaveText(sample.text);
+    expect(await card.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await card.evaluate((element) => element.clientWidth));
+    const cardBox = await card.boundingBox();
+    expect(cardBox).toMatchObject({ x: 760, y: 14, width: 220, height: 182 });
+    await page.screenshot({
+      path: join(reviewDirectory, `after-count-${sample.count}.png`),
+      clip: { x: 740, y: 0, width: 300, height: 220 },
+    });
+  }
+});
+
+test('C-0175 keeps the pill, Top 10 and question content inside their frame padding', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const { stage } = await openScene(page, 'question', 'QUESTION');
+  const ribbon = stage.locator('.v3-title-ribbon');
+  const pillSpace = await ribbon.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const text = range.getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return { left: text.left - box.left, right: box.right - text.right, top: text.top - box.top, bottom: box.bottom - text.bottom };
+  });
+  expect(pillSpace.left).toBeGreaterThanOrEqual(40);
+  expect(pillSpace.right).toBeGreaterThanOrEqual(40);
+  expect(pillSpace.top).toBeGreaterThanOrEqual(12);
+  expect(pillSpace.bottom).toBeGreaterThanOrEqual(12);
+
+  const top10 = stage.locator('.v3-top10');
+  const topBox = await top10.boundingBox();
+  const titleBox = await top10.locator('.v3-top10-title').boundingBox();
+  const rows = top10.locator('li[data-testid="leaderboard-row"]');
+  expect(topBox).not.toBeNull();
+  expect(titleBox).not.toBeNull();
+  expect(await rows.count()).toBe(10);
+  if (!topBox || !titleBox) return;
+  expect(titleBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+  expect(titleBox.y - topBox.y).toBeGreaterThanOrEqual(20);
+  for (let index = 0; index < await rows.count(); index += 1) {
+    const row = rows.nth(index);
+    const rowBox = await row.boundingBox();
+    expect(rowBox).not.toBeNull();
+    if (!rowBox) continue;
+    expect(rowBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+    expect(topBox.x + topBox.width - rowBox.x - rowBox.width).toBeGreaterThanOrEqual(20);
+    expect(rowBox.y - topBox.y).toBeGreaterThanOrEqual(20);
+    expect(topBox.y + topBox.height - rowBox.y - rowBox.height).toBeGreaterThanOrEqual(20);
+    const name = row.locator('.v3-name-text');
+    expect(parseFloat(await name.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(22);
+    const scoreBox = await row.locator('.v3-score').boundingBox();
+    expect(scoreBox).not.toBeNull();
+    if (scoreBox) {
+      expect(scoreBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+      expect(topBox.x + topBox.width - scoreBox.x - scoreBox.width).toBeGreaterThanOrEqual(20);
+    }
+    const badge = row.getByTestId('top1-badge');
+    if (await badge.count()) {
+      const badgeBox = await badge.boundingBox();
+      expect(badgeBox).not.toBeNull();
+      if (badgeBox) {
+        expect(badgeBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+        expect(topBox.x + topBox.width - badgeBox.x - badgeBox.width).toBeGreaterThanOrEqual(20);
+      }
+    }
+  }
+
+  const board = stage.locator('.v3-board');
+  const boardBox = await board.boundingBox();
+  expect(boardBox).not.toBeNull();
+  expect(boardBox?.y).toBe(345);
+  if (!boardBox || !topBox) return;
+  expect(boardBox.x - (topBox.x + topBox.width)).toBeGreaterThanOrEqual(20);
+  const framedItems = [
+    stage.getByTestId('question-tab'),
+    stage.getByTestId('timer'),
+    stage.getByTestId('answer-count'),
+    stage.getByTestId('question-prompt'),
+    stage.getByTestId('option-A'),
+    stage.getByTestId('option-B'),
+    stage.getByTestId('option-C'),
+    stage.getByTestId('option-D'),
+  ];
+  for (const item of framedItems) {
+    const box = await item.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) continue;
+    expect(box.x - boardBox.x).toBeGreaterThanOrEqual(24);
+    expect(boardBox.x + boardBox.width - box.x - box.width).toBeGreaterThanOrEqual(24);
+    expect(box.y - boardBox.y).toBeGreaterThanOrEqual(24);
+    expect(boardBox.y + boardBox.height - box.y - box.height).toBeGreaterThanOrEqual(24);
+  }
+  const bubbleBox = await stage.getByTestId('mc-bubble').boundingBox();
+  expect(bubbleBox).not.toBeNull();
+  if (bubbleBox) expect(bubbleBox.y - boardBox.y - boardBox.height).toBeGreaterThanOrEqual(16);
 });
 
 test('event name and participant count stay readable on every shared header scene', async ({ page }) => {
@@ -449,7 +579,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.answers.every(Boolean), `${name}: all answer boxes remain in place`).toBe(true);
     for (const region of ['board', 'top10'] as const) {
       const box = geometry[region];
-      const approvedBottom = region === 'top10' ? 811 : 815;
+      const approvedBottom = region === 'top10' ? 811 : 828;
       expect(box, `${name}: ${region} exists`).not.toBeNull();
       expect(Math.abs(box!.y - 345), `${name}: ${region} starts at the approved y=345`).toBeLessThanOrEqual(2);
       expect(Math.abs(box!.y + box!.height - approvedBottom), `${name}: ${region} ends at the approved y=${approvedBottom}`).toBeLessThanOrEqual(2);
