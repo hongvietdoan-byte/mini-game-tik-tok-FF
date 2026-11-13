@@ -129,7 +129,7 @@ describe('preflight role program/preview qua WebSocket', () => {
     const preflight = await harness.quiz.app.inject({ method: 'GET', url: '/api/preflight', headers: AUTH });
     const audioCheck = (preflight.json().checks as { id: string; status: string; reason: string; audioState?: string | null }[])
       .find((item) => item.id === 'overlayAudio');
-    expect(audioCheck).toMatchObject({ status: 'WARN', reason: 'Nguồn phát trong LIVE Studio chưa phát được âm thanh (trình duyệt chặn tự phát)', audioState: 'suspended' });
+    expect(audioCheck).toMatchObject({ status: 'WARN', reason: 'LIVE Studio đang chặn tự phát âm thanh. Bật “Điều khiển âm thanh qua phần mềm” và bỏ tắt tiếng nguồn Link.', audioState: 'suspended' });
 
     const system = await harness.quiz.app.inject({ method: 'GET', url: '/api/system/checks', headers: AUTH });
     expect(system.json().overlay.audioState).toBe('suspended');
@@ -137,7 +137,7 @@ describe('preflight role program/preview qua WebSocket', () => {
       .find((item) => item.id === 'overlay');
     expect(overlayCheck).toMatchObject({
       status: 'WARN',
-      detail: 'Nguồn phát trong LIVE Studio chưa phát được âm thanh (trình duyệt chặn tự phát)',
+      detail: 'LIVE Studio đang chặn tự phát âm thanh. Bật “Điều khiển âm thanh qua phần mềm” và bỏ tắt tiếng nguồn Link.',
     });
   });
 

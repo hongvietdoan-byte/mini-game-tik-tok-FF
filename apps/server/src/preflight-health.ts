@@ -3,14 +3,18 @@ import type { LiveSourceHealth, OverlayAudioState } from '@quiz/contracts';
 export type PreflightHealthStatus = 'PASS' | 'FAIL' | 'WARN';
 export const COMMENT_RECENCY_WINDOW_MS = 5 * 60 * 1_000;
 export const OVERLAY_ACK_GRACE_MS = 2_000;
-export const OVERLAY_AUDIO_WARNING = 'Nguồn phát trong LIVE Studio chưa phát được âm thanh (trình duyệt chặn tự phát)';
+export const OVERLAY_AUDIO_WARNING = 'LIVE Studio đang chặn tự phát âm thanh. Bật “Điều khiển âm thanh qua phần mềm” và bỏ tắt tiếng nguồn Link.';
+export const OVERLAY_AUDIO_UNAVAILABLE_WARNING = 'LIVE Studio chưa cung cấp trạng thái Web Audio; kiểm tra âm thanh của nguồn Link.';
 
 export function overlayAudioPreflight(audioState: OverlayAudioState | null): {
   status: PreflightHealthStatus;
   reason: string;
 } {
-  if (audioState === 'suspended' || audioState === 'unavailable') {
+  if (audioState === 'suspended') {
     return { status: 'WARN', reason: OVERLAY_AUDIO_WARNING };
+  }
+  if (audioState === 'unavailable') {
+    return { status: 'WARN', reason: OVERLAY_AUDIO_UNAVAILABLE_WARNING };
   }
   if (audioState === 'disabled') {
     return { status: 'PASS', reason: 'Âm thanh nguồn trong LIVE Studio đã tắt theo cấu hình.' };
