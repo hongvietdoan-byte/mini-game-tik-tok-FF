@@ -42,8 +42,28 @@ export const McVoiceSettingsSchema = z.object({
   hasToken: z.boolean(),
   ready: z.boolean(),
   primaryOverlayInstanceId: z.string().nullable(),
+  playerNameSpeech: z.literal('UNSUPPORTED'),
 });
 export type McVoiceSettings = z.infer<typeof McVoiceSettingsSchema>;
+
+/** Voice payload game-side có allowlist hẹp; strict schema loại mọi trường danh tính người chơi. */
+export const McVoiceEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('WELCOME'), scriptId: z.string().trim().min(1).max(64) }).strict(),
+  z.object({
+    type: z.literal('QUESTION'),
+    questionInstanceId: z.string().trim().min(1).max(128),
+    approvedQuestionVersion: z.string().trim().min(1).max(128),
+  }).strict(),
+  z.object({ type: z.literal('COUNTDOWN'), secondsRemaining: z.number().int().min(0).max(60) }).strict(),
+  z.object({
+    type: z.literal('ANSWER_REVEAL'),
+    questionInstanceId: z.string().trim().min(1).max(128),
+    approvedQuestionVersion: z.string().trim().min(1).max(128),
+  }).strict(),
+  z.object({ type: z.literal('LEADERBOARD_GENERIC'), roundId: z.string().trim().min(1).max(128) }).strict(),
+  z.object({ type: z.literal('VICTORY_GENERIC'), roundId: z.string().trim().min(1).max(128) }).strict(),
+]);
+export type McVoiceEvent = z.infer<typeof McVoiceEventSchema>;
 
 export const McVoiceSettingsUpdateSchema = z.object({
   token: z.string().trim().min(1).max(4_096).optional(),
@@ -511,6 +531,113 @@ export type LeaderboardEntry = {
   top1Streak?: number;
 };
 
+/** Public DTO: opaque id theo phiên, tên chỉ được phát trong safeDisplayName. */
+export type PublicPlayerDTO = {
+  /** Mã ngẫu nhiên theo phiên, không phải TikTok userId hoặc playerId nội bộ. */
+  playerId: string;
+  safeDisplayName: string;
+  score: number;
+  rank?: number;
+  characterId?: string;
+  correctCount?: number;
+  tied?: boolean;
+  top1Streak?: number;
+};
+export type PublicLeaderboardEntry = PublicPlayerDTO;
+export type PublicPodiumSlot = { place: 1 | 2 | 3; rank: number; tied: boolean; entries: PublicLeaderboardEntry[] };
+export type PublicPodium = { slots: PublicPodiumSlot[]; tieAcrossCutoff: boolean };
+
+// ---------------------------------------------------------------------------
+// Kiểm duyệt tên: chỉ DTO quản trị mới được mang rawDisplayName.
+// ---------------------------------------------------------------------------
+
+export const NameFilterRiskSchema = z.enum(['NONE', 'REVIEW', 'PARTIAL', 'HIGH', 'MANUAL_HIDE']);
+export type NameFilterRisk = z.infer<typeof NameFilterRiskSchema>;
+
+export const NameFilterRuleGroupSchema = z.enum([
+  'PROFANITY', 'NSFW_SEXUAL', 'HATE_SPEECH', 'ILLEGAL_HARMFUL', 'IMPERSONATION',
+]);
+export type NameFilterRuleGroup = z.infer<typeof NameFilterRuleGroupSchema>;
+
+export const NameFilterDisplayActionSchema = z.enum(['SAFE_NAME', 'ALIAS', 'PARTIAL_MASK']);
+export type NameFilterDisplayAction = z.infer<typeof NameFilterDisplayActionSchema>;
+
+export const NameModerationPlayerSchema = z.object({
+  /** ID nội bộ; chỉ gửi qua API quản trị có Bearer token. */
+  playerId: z.string().min(1),
+  rawDisplayName: z.string(),
+  safeDisplayName: z.string(),
+  risk: NameFilterRiskSchema,
+  displayAction: NameFilterDisplayActionSchema,
+  matchedRuleIds: z.array(z.string()),
+  matchedRuleGroups: z.array(NameFilterRuleGroupSchema),
+  requiresReview: z.boolean(),
+  hidden: z.boolean(),
+  reviewAllowed: z.boolean(),
+  policyVersion: z.number().int().nonnegative(),
+  checkedAt: z.number().finite(),
+  /** null khi không ở Top 10 hiện tại. */
+  rank: z.number().int().positive().nullable(),
+  /** null khi đang chờ ghế hoặc không có trong khán đài. */
+  seat: z.object({ slotId: z.string(), rowIndex: z.number().int().nonnegative(), seatIndex: z.number().int().nonnegative() }).strict().nullable(),
+  score: z.number().finite(),
+}).strict();
+export type NameModerationPlayer = z.infer<typeof NameModerationPlayerSchema>;
+
+export const NameModerationRosterSchema = z.object({
+  players: z.array(NameModerationPlayerSchema),
+  policyVersion: z.number().int().nonnegative(),
+  playerNameSpeech: z.literal('UNSUPPORTED'),
+}).strict();
+export type NameModerationRoster = z.infer<typeof NameModerationRosterSchema>;
+
+export const NameModerationAuditEntrySchema = z.object({
+  id: z.string().min(1),
+  at: z.number().finite(),
+  actor: z.string(),
+  action: z.string(),
+  policyVersion: z.number().int().nonnegative(),
+  targetCount: z.number().int().nonnegative(),
+  ruleId: z.string().optional(),
+}).strict();
+export type NameModerationAuditEntry = z.infer<typeof NameModerationAuditEntrySchema>;
+
+export const NameModerationVisibilityRequestSchema = z.object({
+  playerIds: z.array(z.string().min(1)).min(1).max(500),
+  hidden: z.boolean(),
+}).strict();
+export type NameModerationVisibilityRequest = z.infer<typeof NameModerationVisibilityRequestSchema>;
+
+export const NameModerationReviewRequestSchema = z.object({
+  playerIds: z.array(z.string().min(1)).min(1).max(500),
+  allowed: z.boolean(),
+}).strict();
+export type NameModerationReviewRequest = z.infer<typeof NameModerationReviewRequestSchema>;
+
+export const NameModerationRuleRequestSchema = z.object({
+  term: z.string().trim().min(1).max(64),
+  aliases: z.array(z.string().trim().min(1).max(64)).max(20).default([]),
+  match: z.enum(['word', 'substring']),
+  group: NameFilterRuleGroupSchema,
+  severity: z.enum(['PARTIAL', 'HIGH']),
+  separatorInsensitive: z.boolean().optional(),
+}).strict();
+export type NameModerationRuleRequest = z.infer<typeof NameModerationRuleRequestSchema>;
+
+export const NameModerationExceptionRequestSchema = z.object({
+  value: z.string().trim().min(1).max(80),
+  ruleIds: z.array(z.string().min(1)).min(1).max(100),
+}).strict();
+export type NameModerationExceptionRequest = z.infer<typeof NameModerationExceptionRequestSchema>;
+
+export const NameModerationRecheckResponseSchema = z.object({
+  policyVersion: z.number().int().nonnegative(),
+  checked: z.number().int().nonnegative(),
+  changed: z.number().int().nonnegative(),
+  flagged: z.number().int().nonnegative(),
+}).strict();
+export type NameModerationRecheckResponse = z.infer<typeof NameModerationRecheckResponseSchema>;
+
 export type PodiumSlot = { place: 1 | 2 | 3; rank: number; tied: boolean; entries: LeaderboardEntry[] };
 export type Podium = {
   /** Tối đa 3 vị trí; KHÔNG bịa người chơi nếu thiếu. */
@@ -549,7 +676,7 @@ export type AudienceSeatView = {
   scale: number;
   depth: number;
   occupant: {
-    displayName: string;
+    safeDisplayName: string;
     characterId: string;
     pinned: boolean;
     /** Chỉ có sau khi công bố đáp án: người ngồi ghế trả lời đúng / sai / không trả lời câu này. */
@@ -578,8 +705,8 @@ export type PublicSnapshot = {
   answerCount: number;
   participantCount: number;
   reveal: RevealView | null;
-  leaderboard: { kind: 'COMPACT' | 'FULL'; entries: LeaderboardEntry[] } | null;
-  podium: Podium | null;
+  leaderboard: { kind: 'COMPACT' | 'FULL'; entries: PublicLeaderboardEntry[] } | null;
+  podium: PublicPodium | null;
   mc: McView;
   /** null khi chưa có vòng. */
   audience: AudienceView | null;
@@ -593,9 +720,14 @@ export type AdminSnapshot = {
   flaggedPlayers: {
     playerId: string;
     originalName: string;
-    displayName: string;
+    safeDisplayName: string;
     flagged: true;
-    reasonCategory: 'PROFANITY' | 'INSULT' | 'DISCRIMINATION' | 'POLITICAL' | 'IMPERSONATION' | 'CUSTOM' | 'MANUAL';
+    risk: 'REVIEW' | 'PARTIAL' | 'HIGH' | 'MANUAL_HIDE';
+    matchedRuleIds: string[];
+    matchedRuleGroups: ('PROFANITY' | 'NSFW_SEXUAL' | 'HATE_SPEECH' | 'ILLEGAL_HARMFUL' | 'IMPERSONATION')[];
+    requiresReview: boolean;
+    policyVersion: number;
+    checkedAt: number;
   }[];
   sessionStatus: 'OPEN' | 'CLOSED';
   autoMode: boolean;
@@ -674,8 +806,8 @@ export type WsPayloads = {
   QUESTION_OPENED_PUBLIC: PublicQuestion;
   ANSWER_COUNTS: { questionInstanceId: string; answerCount: number; participantCount: number };
   ANSWER_REVEALED: RevealView;
-  LEADERBOARD_UPDATED: { kind: 'COMPACT' | 'FULL'; entries: LeaderboardEntry[] };
-  VICTORY_STARTED: { podium: Podium };
+  LEADERBOARD_UPDATED: { kind: 'COMPACT' | 'FULL'; entries: PublicLeaderboardEntry[] };
+  VICTORY_STARTED: { podium: PublicPodium };
   CONNECTION_STATUS: { status: ConnectionStatus };
   ERROR_PUBLIC: { code: string; message: string };
   AUDIENCE_UPDATED: AudienceView;
