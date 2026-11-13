@@ -11,6 +11,7 @@ import {
   ClientAckSchema,
   ClientHelloSchema,
   CreateSessionRequestSchema,
+  HudConfigUpdateSchema,
   HudImageSlotSchema,
   McVoicePreGenerateRequestSchema,
   McVoiceSettingsUpdateSchema,
