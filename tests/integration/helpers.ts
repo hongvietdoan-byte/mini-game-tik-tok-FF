@@ -127,9 +127,9 @@ export function referenceScores(
   opts: { mode?: 'KAHOOT' | 'CLASSIC'; speedBonusMax?: number; windowMs?: number } = {},
 ) {
   const mode = opts.mode ?? 'KAHOOT'; // khớp mặc định của phiên
-  // Mặc định khớp cấu hình phiên mặc định: thưởng tốc độ tối đa 50, cửa sổ 15 s, tốc độ ×1.
+  // Mặc định khớp cấu hình phiên mặc định: thưởng tốc độ tối đa 50, cửa sổ 20 s, tốc độ ×1.
   const speedMax = opts.speedBonusMax ?? 50;
-  const windowMs = opts.windowMs ?? 15_000;
+  const windowMs = opts.windowMs ?? 20_000;
   const qs = store.raw
     .prepare('SELECT id, position, correct_option_id AS c, status, opened_at_ms AS openedAt FROM round_questions WHERE round_id = ? ORDER BY position')
     .all(roundId) as { id: string; position: number; c: string; status: string; openedAt: number | null }[];

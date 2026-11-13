@@ -346,7 +346,7 @@ class MockDashboardClient implements DashboardClient {
     const scene = this.state === 'CONNECTION_INTERRUPTED' ? 'CONNECTION_LOST' : this.sceneFor(effectiveState);
     const shortLeaderboard = effectiveState === 'LEADERBOARD' && !this.isFullLeaderboard();
     const fullLeaderboard = effectiveState === 'LEADERBOARD' && this.isFullLeaderboard();
-    const questionVisible = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING' || shortLeaderboard;
+    const questionVisible = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING' || effectiveState === 'REVEAL' || shortLeaderboard;
     const leaderboardEntries = makeLeaderboard();
     const questionState = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING';
     const publicSnapshot: PublicSnapshot = {
@@ -357,12 +357,12 @@ class MockDashboardClient implements DashboardClient {
       scene,
       paused: this.state === 'PAUSED',
       mode: 'MOCK',
-      timer: questionState
-        ? { durationMs: effectiveState === 'PREPARE' ? 3_000 : 15_000, remainingMs: effectiveState === 'PREPARE' ? 3_000 : 11_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+      timer: questionState || effectiveState === 'REVEAL'
+        ? { durationMs: effectiveState === 'PREPARE' ? 8_000 : effectiveState === 'REVEAL' ? 9_000 : 20_000, remainingMs: effectiveState === 'PREPARE' ? 8_000 : effectiveState === 'REVEAL' ? 9_000 : 16_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
         : shortLeaderboard || fullLeaderboard
-          ? { durationMs: fullLeaderboard ? 6_000 : 4_000, remainingMs: fullLeaderboard ? 6_000 : 4_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+          ? { durationMs: fullLeaderboard ? 6_000 : 9_000, remainingMs: fullLeaderboard ? 6_000 : 9_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
           : effectiveState === 'INTERMISSION'
-            ? { durationMs: 25_000, remainingMs: 25_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+            ? { durationMs: 30_000, remainingMs: 30_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
             : null,
       round: { roundNumber: this.roundNumber, questionIndex: this.questionIndex, questionCount: this.config.questionsPerRound },
       question: questionVisible ? {
@@ -372,7 +372,14 @@ class MockDashboardClient implements DashboardClient {
       } : null,
       answerCount: this.answerCount,
       participantCount: this.participantCount,
-      reveal: shortLeaderboard && !this.voidedCurrent ? {
+      fastestCorrectAnswer: !this.voidedCurrent && ['REVEAL', 'LEADERBOARD'].includes(effectiveState) ? {
+        questionInstanceId: demoQuestion.questionInstanceId,
+        publicPlayerId: leaderboardEntries[0]!.playerId,
+        seatId: null,
+        safeDisplayName: leaderboardEntries[0]!.safeDisplayName,
+        responseMs: 1_234,
+      } : null,
+      reveal: (effectiveState === 'REVEAL' || shortLeaderboard) && !this.voidedCurrent ? {
         questionInstanceId: demoQuestion.questionInstanceId,
         correctOptionId: 'B',
         optionCounts: { ...this.optionCounts },
