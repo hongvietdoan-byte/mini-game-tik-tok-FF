@@ -200,9 +200,9 @@ export function McCelebration() {
   );
 }
 
-/** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1330–1860. */
+/** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1376–1860. */
 const seatY = (y: number, compactQuestion = false) => {
-  const top = compactQuestion ? 1330 : AUDIENCE_TOP_Y;
+  const top = compactQuestion ? 1376 : AUDIENCE_TOP_Y;
   const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
   return top + ((y - 1105) * (front - top)) / (1825 - 1105);
 };

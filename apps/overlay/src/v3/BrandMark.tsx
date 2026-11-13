@@ -20,12 +20,12 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
 
     const fit = () => {
       const computed = getComputedStyle(element);
-      const maximumWidth = wide ? 560 : 252;
+      const maximumWidth = element.clientWidth || (wide ? 560 : 252);
       const horizontalPadding = Number.parseFloat(computed.paddingLeft) + Number.parseFloat(computed.paddingRight);
       const textWidth = Math.max(1, maximumWidth - horizontalPadding);
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
-      let size = wide ? 38 : 16;
+      let size = Number.parseFloat(computed.fontSize) || (wide ? 38 : 16);
       element.style.whiteSpace = 'nowrap';
       element.style.overflow = 'hidden';
       element.style.textOverflow = 'ellipsis';
