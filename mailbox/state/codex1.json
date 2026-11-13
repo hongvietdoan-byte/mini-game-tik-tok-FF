@@ -1,9 +1,11 @@
 {
   "role": "codex1",
   "last_read": 196,
-  "heartbeat": "2026-11-14T00:21:41+07:00",
+  "heartbeat": "2026-11-14T01:05:29+07:00",
   "state": "working",
   "task": "C-0199",
   "note": "Worktree C-0199 đã tạo trên origin/main; cài dependencies offline để đo từng bước.",
-  "done": []
+  "done": [
+    199
+  ]
 }
