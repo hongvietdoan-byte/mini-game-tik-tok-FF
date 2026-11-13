@@ -1544,6 +1544,7 @@
 /* C-0175: add breathing room inside the shared event pill, Top 10, and question frames. */
 .v3-header .v3-title.is-wide .v3-title-ribbon { padding: 20px 56px; }
 .v3-top10 { padding: 20px; }
+.v3-stage--question-user .v3-top10 ol { gap: 2.5px; }
 .v3-top10 li { font-size: 22px; }
 .v3-stage--question-user .v3-top10 { padding: 20px; }
 .v3-stage--question-user .v3-top10 li { font-size: 22px; }

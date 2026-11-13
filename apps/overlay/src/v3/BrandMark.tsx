@@ -12,25 +12,43 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
   const imageSource = customLogo && failedSource !== customLogo ? customLogo : fallbackLogo;
   const logoAvailable = failedSource !== fallbackLogo;
   const ribbonText = ribbon ?? config.texts.arenaTitle;
-  const ribbonStyle = fitHudTextStyle(ribbonText, wide ? 340 : 252, wide ? 15 : 16, 9);
+  const ribbonStyle = wide ? { maxWidth: 'calc(100vw - 64px)' } : fitHudTextStyle(ribbonText, 252, 16, 9);
 
   useLayoutEffect(() => {
     const element = ribbonRef.current;
     if (!element) return;
 
     const fit = () => {
-      let size = wide ? 15 : 16;
-      element.style.fontSize = `${size}px`;
-      while (size > 9 && element.scrollWidth > element.clientWidth - 4) {
+      const computed = getComputedStyle(element);
+      const maximumWidth = wide ? Math.max(1, window.innerWidth - 64) : 252;
+      const horizontalPadding = Number.parseFloat(computed.paddingLeft) + Number.parseFloat(computed.paddingRight);
+      const textWidth = Math.max(1, maximumWidth - horizontalPadding);
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      let size = wide ? 38 : 16;
+      element.style.whiteSpace = 'nowrap';
+      element.style.overflow = 'hidden';
+      element.style.textOverflow = 'ellipsis';
+      const fits = (fontSize: number) => {
+        if (!context) return true;
+        context.font = `${computed.fontWeight} ${fontSize}px ${computed.fontFamily}`;
+        return context.measureText(ribbonText).width <= textWidth;
+      };
+      while (size > 9 && !fits(size)) {
         size = Math.max(9, size - 0.5);
-        element.style.fontSize = `${size}px`;
       }
+      element.style.fontSize = `${size}px`;
     };
 
     fit();
+    void document.fonts?.ready.then(fit);
     const observer = new ResizeObserver(fit);
     observer.observe(element.parentElement ?? element);
-    return () => observer.disconnect();
+    window.addEventListener('resize', fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', fit);
+    };
   }, [ribbonText, wide]);
 
   return (

@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
@@ -250,12 +251,24 @@ test('Giao diện HUD đếm grapheme, lưu chữ, tải/reset ảnh và đổi 
   await page.getByRole('button', { name: 'Giao diện HUD', exact: true }).click();
   const settings = page.getByTestId('hud-settings-page');
   await expect(settings.getByRole('heading', { name: 'Giao diện HUD' })).toBeVisible();
+  const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'hud');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const preview = page.getByTestId('hud-preview');
+  const previewFrame = page.frameLocator('[data-testid="hud-preview"]');
+  const waitForPreview = async () => {
+    await expect(preview).toHaveAttribute('src', /role=preview/);
+    await expect(preview).toHaveAttribute('src', /mock=question/);
+    await expect(previewFrame.locator('.v3-stage')).toBeVisible();
+  };
 
   const kicker = page.getByLabel('Tên sự kiện góc trái');
   await expect(kicker).toHaveValue('STORM ARENA');
+  await waitForPreview();
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-default.png'), fullPage: true, animations: 'disabled' });
   await kicker.fill('A'.repeat(25));
   await expect(settings.locator('.hud-text-field').filter({ has: kicker }).locator('em')).toHaveText('Tối đa 24 ký tự hiển thị.');
   await expect(settings.getByRole('button', { name: 'Lưu giao diện' })).toBeDisabled();
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-edit-validation.png'), fullPage: true, animations: 'disabled' });
 
   await kicker.fill('LIVE ARENA');
   await settings.getByRole('button', { name: 'Lưu giao diện' }).click();
@@ -265,17 +278,28 @@ test('Giao diện HUD đếm grapheme, lưu chữ, tải/reset ảnh và đổi 
   await logoSlot.getByLabel('Tải ảnh').setInputFiles({
     name: 'logo.png',
     mimeType: 'image/png',
-    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]),
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/K5sAAAAASUVORK5CYII=', 'base64'),
   });
   await expect(logoSlot.locator('code')).toContainText('.png');
+  const questionBackground = page.getByTestId('hud-image-bgQuestion');
+  await questionBackground.getByLabel('Tải ảnh').setInputFiles({
+    name: 'background.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/K5sAAAAASUVORK5CYII=', 'base64'),
+  });
+  await expect(questionBackground.locator('code')).toContainText('.png');
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-uploaded.png'), fullPage: true, animations: 'disabled' });
   await logoSlot.getByRole('button', { name: 'Về mặc định ô này' }).click();
   await expect(logoSlot.getByText('Đang dùng ảnh mặc định')).toBeVisible();
 
   await page.getByLabel('Cảnh xem trước').selectOption('top10');
-  const preview = page.getByTestId('hud-preview');
   await expect(preview).toHaveAttribute('src', /role=preview/);
   await expect(preview).toHaveAttribute('src', /mock=top10/);
 
   await settings.getByRole('button', { name: 'Về mặc định toàn bộ' }).click();
   await expect(kicker).toHaveValue('STORM ARENA');
+  await page.getByLabel('Cảnh xem trước').selectOption('question');
+  await expect(questionBackground.getByText('Đang dùng ảnh mặc định')).toBeVisible();
+  await waitForPreview();
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-reset.png'), fullPage: true, animations: 'disabled' });
 });
