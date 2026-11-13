@@ -1,9 +1,11 @@
 {
   "role": "codex1",
   "last_read": 167,
-  "heartbeat": "2026-11-13T15:55:36+07:00",
+  "heartbeat": "2026-11-13T16:47:49+07:00",
   "state": "working",
   "task": "C-0177",
   "note": "Đang đọc đặc tả V1 đầy đủ; tiếp tục trên worktree codex1/name-filter theo chỉ đạo mới",
-  "done": []
+  "done": [
+    178
+  ]
 }
