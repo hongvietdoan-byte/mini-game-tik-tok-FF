@@ -787,7 +787,7 @@ export class SessionRuntime {
       if (ev.eventId && !this.store.markEventProcessed(ev.source, ev.eventId, qid, now)) return 'DUP_EVENT' as const;
       const playerId = this.store.resolvePlayer(ev.source, ev.userId, name, now);
       this.store.touchPlayer(playerId, name, now);
-      const ok = this.store.insertAnswer({
+      const outcome = this.store.insertAnswerWithJoin({
         questionInstanceId: qid,
         roundId,
         playerId,
@@ -795,15 +795,15 @@ export class SessionRuntime {
         receivedAtMs: now,
         sourceEventId: ev.eventId ?? null,
       });
-      return ok ? playerId : false;
+      return outcome.inserted ? { playerId, participantAdded: outcome.participantAdded } : false;
     });
     if (inserted === 'DUP_EVENT') return this.reject('DUPLICATE_EVENT', now);
     if (!inserted) return this.reject('DUPLICATE_ANSWER', now);
-    if (this.audience.onAccepted(inserted, name, now)) this.audienceChanged = true;
+    if (inserted.participantAdded) this.participants += 1;
+    if (this.audience.onAccepted(inserted.playerId, name, now)) this.audienceChanged = true;
 
     this.metrics.accepted += 1;
     if (this.countsQid === qid) this.counts[decision.option] += 1;
-    this.participants = this.store.participantCount(roundId);
     this.scheduleCounts();
     return { accepted: true };
   }

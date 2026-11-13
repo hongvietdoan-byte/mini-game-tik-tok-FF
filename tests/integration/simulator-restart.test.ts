@@ -23,7 +23,9 @@ async function setSimulator(h: Harness, action: 'START' | 'STOP', players: numbe
 
 describe('Khởi động lại MockSimulator trong phiên đang chạy', () => {
   it('đổi 500 → 2.000 người không tạo DUPLICATE_EVENT do va chạm eventId giữa hai lần chạy', async () => {
-    const h = await createSession(await boot({ questions: 10 }), {
+    // This case checks simulator run IDs in one server process, not SQLite durability;
+    // keep the 2,000-comment burst independent from disk latency and temp-root location.
+    const h = await createSession(await boot({ dbPath: ':memory:', questions: 10 }), {
       questionsPerRound: 10,
       timings: { ...DEFAULT_TIMINGS, prepareMs: 500, answerMs: 3_000, revealMs: 500, leaderboardMs: 500 },
     });
@@ -47,6 +49,9 @@ describe('Khởi động lại MockSimulator trong phiên đang chạy', () => {
     currentIds = [];
     expect((await setSimulator(h, 'START', 2_000)).players).toBe(2_000);
     runUntil(h, () => rt(h).engine.state === 'ACCEPTING' && rt(h).engine.round!.questionIndex === 1);
+    h.scheduler.advance(1_000);
+    expect(rt(h).publicSnapshot().participantCount)
+      .toBe(h.store.participantCount(rt(h).engine.round!.roundId));
     runUntil(h, () => rt(h).engine.state === 'REVEAL');
     idsByRun.push(currentIds);
 

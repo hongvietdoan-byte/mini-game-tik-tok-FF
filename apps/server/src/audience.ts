@@ -86,15 +86,26 @@ export class AudienceManager {
       if (this.names.has(playerId)) this.names.set(playerId, displayName);
       return false;
     }
-    const t = onPlayerJoined(this.state, playerId, now);
+    const hasVacantSeat = Object.values(this.state.seats).some((occupant) => occupant === null);
+    let layoutChanged = false;
+    if (hasVacantSeat) {
+      const t = onPlayerJoined(this.state, playerId, now);
+      this.state = t.state;
+      layoutChanged = t.events.length > 0;
+    } else {
+      // The audience-engine reducer copies the full serializable state for pure callers.
+      // Once every seat is occupied, the server-owned queue can append in place: this
+      // state is private to AudienceManager and is persisted later by flush().
+      this.state.queue.push(playerId);
+      this.state.lastActiveAt[playerId] = now;
+    }
     this.known.add(playerId);
-    this.state = t.state;
     this.joined += 1;
     this.names.set(playerId, displayName);
     const proposed = assignCharacter(playerId, this.roundId, this.pool, this.seed);
     this.chars.set(playerId, this.store.assignCharacter(this.roundId, playerId, proposed, now));
     this.dirty = true;
-    return t.events.length > 0;
+    return layoutChanged;
   }
 
   /** Xoay ghế giữa hai câu: ghim Top N đang ngồi, thay tối đa 5 ghế. @returns true nếu có ghế đổi người. */

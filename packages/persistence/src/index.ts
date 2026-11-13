@@ -418,6 +418,18 @@ export class Store {
     receivedAtMs: number;
     sourceEventId: string | null;
   }): boolean {
+    return this.insertAnswerWithJoin(a).inserted;
+  }
+
+  /** Also reports whether this accepted answer added the player to the round roster. */
+  insertAnswerWithJoin(a: {
+    questionInstanceId: string;
+    roundId: string;
+    playerId: string;
+    option: OptionId;
+    receivedAtMs: number;
+    sourceEventId: string | null;
+  }): { inserted: boolean; participantAdded: boolean } {
     const res = this.stmt.answerInsert.run(
       a.questionInstanceId,
       a.roundId,
@@ -426,8 +438,9 @@ export class Store {
       Math.floor(a.receivedAtMs),
       a.sourceEventId,
     );
-    if (res.changes === 1) this.stmt.roundPlayerJoin.run(a.roundId, a.playerId, Math.floor(a.receivedAtMs));
-    return res.changes === 1;
+    if (res.changes !== 1) return { inserted: false, participantAdded: false };
+    const joined = this.stmt.roundPlayerJoin.run(a.roundId, a.playerId, Math.floor(a.receivedAtMs));
+    return { inserted: true, participantAdded: joined.changes === 1 };
   }
 
   /** Ghi nhận eventId của nguồn. @returns false nếu sự kiện này đã từng được xử lý (kể cả trước khi khởi động lại). */
