@@ -1,17 +1,17 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
 import type { McVoiceAudio, McVoiceCacheDescriptor } from './types';
+import { testTempRootAsync } from '../../../../tests/support/tempRoot';
 
 const directories: string[] = [];
 afterEach(async () => {
-  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 async function cache() {
-  const directory = await mkdtemp(join(tmpdir(), 'mc-voice-cache-test-'));
+  const directory = await testTempRootAsync('mc-voice-cache-test-');
   directories.push(directory);
   return { directory, cache: new McVoiceCache(directory) };
 }

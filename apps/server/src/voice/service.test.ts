@@ -1,18 +1,18 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
 import { McVoiceService, type McVoiceReadingLine } from './service';
 import { type McVoiceAudio, type McVoiceCredentialStore, type McVoiceProvider } from './types';
+import { testTempRootAsync } from '../../../../tests/support/tempRoot';
 
 const directories: string[] = [];
 afterEach(async () => {
-  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 async function makeService(provider: McVoiceProvider, normalizer = { normalize: vi.fn(async (audio: McVoiceAudio) => audio) }) {
-  const directory = await mkdtemp(join(tmpdir(), 'mc-voice-service-test-'));
+  const directory = await testTempRootAsync('mc-voice-service-test-');
   directories.push(directory);
   const cache = new McVoiceCache(directory);
   const credentials: McVoiceCredentialStore = { get: vi.fn(async () => 'test-secret'), set: vi.fn(), clear: vi.fn() };
@@ -81,7 +81,7 @@ describe('McVoiceService', () => {
     const provider = { synthesize: vi.fn(async () => audio(1_000)) };
     const { cache, normalizer } = await makeService(provider);
     const credentials: McVoiceCredentialStore = { get: vi.fn(async () => null), set: vi.fn(), clear: vi.fn() };
-    const directory = await mkdtemp(join(tmpdir(), 'mc-voice-auth-test-'));
+    const directory = await testTempRootAsync('mc-voice-auth-test-');
     directories.push(directory);
     const service = new McVoiceService(provider, new McVoiceCache(directory), credentials, normalizer);
     const input = line(1);

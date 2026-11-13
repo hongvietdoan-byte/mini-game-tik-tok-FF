@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { DEFAULT_TIMINGS } from '@quiz/contracts';
@@ -9,6 +8,7 @@ import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
 import { AUTH, TOKEN, ledgerSums, makeQuestions, markCurrentWebBuild, referenceScores, storedScores, tempDbPath } from './helpers';
+import { testTempRoot } from '../support/tempRoot';
 
 const FAST_TIMINGS = {
   ...DEFAULT_TIMINGS,
@@ -75,7 +75,7 @@ async function bootServer(opts: { dbPath?: string; seedQuestions?: boolean; ques
   if (opts.seedQuestions !== false)
     store.seedQuestions({ id: 'demo', name: 'Demo' }, makeQuestions(opts.questions ?? 20), scheduler.now());
   const connections: FakeTikTokConnection[] = [];
-  const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-operator-preflight-'));
+  const tempRoot = testTempRoot('quiz-operator-preflight-');
   const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
   for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
   markCurrentWebBuild(webRoots.dashboard, webRoots.overlay);
@@ -134,7 +134,7 @@ async function closeServer(h: TestServer) {
   h.closed = true;
   await h.quiz.close().catch(() => {});
   h.store.close();
-  rmSync(h.tempRoot, { recursive: true, force: true });
+  rmSync(h.tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 async function request(

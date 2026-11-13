@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sqlite3
-import tempfile
+try:
+    from test_support import repo_temp_directory
+except ImportError:
+    from tools.test_support import repo_temp_directory
 import unittest
 
 from openpyxl import Workbook, load_workbook
@@ -130,7 +133,7 @@ D. Bốn
             "fake-long", "FFWS", "vừa", "Q" * (bank.PROMPT_WARNING_LIMIT + 1),
             ["A", "B", "C", "D"], "A", True,
         )
-        with tempfile.TemporaryDirectory() as temp:
+        with repo_temp_directory() as temp:
             path = Path(temp) / "questions.xlsx"
             warnings = bank.create_workbook([long_row], path)
             workbook = load_workbook(path)
@@ -147,7 +150,7 @@ D. Bốn
                 workbook.close()
 
     def test_read_import_keeps_good_rows_and_reports_duplicate_ids(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
+        with repo_temp_directory() as temp:
             path = Path(temp) / "questions.xlsx"
             workbook = Workbook()
             sheet = workbook.active
@@ -164,7 +167,7 @@ D. Bốn
             self.assertTrue(all("id trùng" in error for error in errors))
 
     def test_direct_import_preserves_legacy_flags_tracks_history_and_archives(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
+        with repo_temp_directory() as temp:
             db_path = Path(temp) / "quiz.db"
             create_test_database(db_path)
             changed_legacy = fake_question("old-001", "Free Fire")

@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error Dự án tắt allowJs nên TS không nạp JSDoc của .mjs; hàm pure được định kiểu tại đây.
 import { checkFiles as untypedCheckFiles, parseExtraPatterns as untypedParseExtraPatterns, readTrackedFiles as untypedReadTrackedFiles } from './privacy-check.mjs';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { removeTestTempRoot, testTempRoot } from '../tests/support/tempRoot';
 
 const checkFiles: (files: { path: string; content?: string; sizeBytes?: number; isSymlink?: boolean }[], extraPatterns?: string[]) => string[] = untypedCheckFiles;
 const parseExtraPatterns: (environmentValue?: string, localFileContent?: string) => string[] = untypedParseExtraPatterns;
@@ -63,14 +61,14 @@ describe('checkFiles', () => {
   });
 
   it('xem file tracked đã bị xóa khỏi worktree là vắng mặt, không phải lỗi đọc', () => {
-    const root = mkdtempSync(join(tmpdir(), 'quiz-privacy-missing-'));
+    const root = testTempRoot('quiz-privacy-missing-');
     const errors: string[] = [];
     try {
       const files = readTrackedFiles(root, ['scripts/deleted-locally.ts'], errors);
       expect(files).toEqual([{ path: 'scripts/deleted-locally.ts' }]);
       expect(errors).toEqual([]);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeTestTempRoot(root);
     }
   });
 

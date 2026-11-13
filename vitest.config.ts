@@ -1,9 +1,22 @@
 import { defineConfig } from 'vitest/config';
+import { tmpdir } from 'node:os';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const systemTempRoot = tmpdir();
+const repoRoot = dirname(fileURLToPath(import.meta.url));
+const repoTempRoot = resolve(repoRoot, '.tmp-test');
+process.env.QUIZ_SYSTEM_TEMP_ROOT = systemTempRoot;
+process.env.TMPDIR = repoTempRoot;
+process.env.TMP = repoTempRoot;
+process.env.TEMP = repoTempRoot;
 
 export default defineConfig({
   test: {
     exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', '.codex-wt/**'],
     passWithNoTests: true,
+    setupFiles: ['./tests/support/vitest-temp-setup.ts'],
+    globalSetup: ['./tests/support/vitest-temp-global.ts'],
     projects: [
       {
         test: {

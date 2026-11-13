@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
 import { AUTH, TOKEN, makeQuestions, markCurrentWebBuild, tempDbPath } from './helpers';
+import { testTempRoot } from '../support/tempRoot';
 
 type RoundReplay = {
   questionsPerRound: 10;
@@ -76,7 +76,7 @@ async function bootReplay(connections: ReplayConnection[]) {
   const scheduler = new ManualScheduler(1_800_000_000_000);
   const store = new Store(tempDbPath());
   store.seedQuestions({ id: 'demo', name: 'Replay DEMO' }, makeQuestions(40), scheduler.now());
-  const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-replay-preflight-'));
+  const tempRoot = testTempRoot('quiz-replay-preflight-');
   const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
   for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
   markCurrentWebBuild(webRoots.dashboard, webRoots.overlay);
@@ -113,7 +113,7 @@ async function bootReplay(connections: ReplayConnection[]) {
     }
     await quiz.close();
     store.close();
-    rmSync(tempRoot, { recursive: true, force: true });
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   const inject = (method: 'GET' | 'POST', url: string, payload?: unknown) => quiz.app.inject({

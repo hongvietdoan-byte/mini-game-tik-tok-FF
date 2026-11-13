@@ -1,12 +1,12 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from './app';
+import { testTempRootAsync } from '../../../tests/support/tempRoot';
 
 const TOKEN = 'overlay-role-test-token-only';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
@@ -14,7 +14,7 @@ type Harness = { root: string; quiz: QuizApp; store: Store; sockets: WebSocket[]
 const opened: Harness[] = [];
 
 async function makeHarness(): Promise<Harness> {
-  const root = await mkdtemp(join(tmpdir(), 'quiz-overlay-role-'));
+  const root = await testTempRootAsync('quiz-overlay-role-');
   const store = new Store(join(root, 'data', 'quiz.db'));
   const quiz = await buildApp({
     store,
@@ -92,7 +92,7 @@ afterEach(async () => {
     }
     await harness.quiz.close().catch(() => {});
     harness.store.close();
-    await rm(harness.root, { recursive: true, force: true });
+    await rm(harness.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

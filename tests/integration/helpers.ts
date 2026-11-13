@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandBody, SessionConfig } from '@quiz/contracts';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
+import { testTempRoot } from '../support/repoTemp';
 
 export const TOKEN = 'test-admin-token-0123456789abcdef';
 export const AUTH = { authorization: `Bearer ${TOKEN}` };
@@ -42,7 +42,7 @@ export function makeQuestions(n: number, packId = 'demo') {
 }
 
 export function tempDbPath() {
-  return join(mkdtempSync(join(tmpdir(), 'quiz-it-')), 'quiz.db');
+  return join(testTempRoot('quiz-it-'), 'quiz.db');
 }
 
 export type Harness = {

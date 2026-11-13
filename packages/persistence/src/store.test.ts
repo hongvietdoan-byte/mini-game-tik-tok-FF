@@ -1,17 +1,17 @@
-import { mkdtempSync, existsSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { QuestionSchema, SessionConfigSchema, type LeaderboardEntry, type QuestionSnapshot } from '@quiz/contracts';
 import { createInitialState, createPrng, snapshotQuestion } from '@quiz/quiz-core';
 import { DEMO_PACK, DEMO_QUESTIONS, makeSimPlayers } from '../../../fixtures';
 import { Store } from './index';
+import { testTempRoot } from '../../../tests/support/tempRoot';
 
 const openStores: Store[] = [];
 const tempDirs: string[] = [];
 
 function tempDbPath(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'quiz-'));
+  const dir = testTempRoot('quiz-');
   tempDirs.push(dir);
   return join(dir, 'test.db');
 }
@@ -62,7 +62,7 @@ function addAction(store: Store, input: Partial<Parameters<Store['recordAction']
 
 afterEach(() => {
   for (const store of openStores.splice(0).reverse()) store.close();
-  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe('Store: khởi tạo và câu hỏi', () => {
