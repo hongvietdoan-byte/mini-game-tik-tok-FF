@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { NameModerationRosterSchema, NameModerationSettingsSchema } from '@quiz/contracts';
+import {
+  NameModerationAuditResponseSchema,
+  NameModerationAuditQuerySchema,
+  NameModerationExceptionMutationResponseSchema,
+  NameModerationReviewResponseSchema,
+  NameModerationRosterSchema,
+  NameModerationRuleMutationResponseSchema,
+  NameModerationSettingsResponseSchema,
+  NameModerationSettingsSchema,
+  NameModerationVisibilityResponseSchema,
+} from '@quiz/contracts';
 import { ManualScheduler } from '@quiz/live-adapters';
 import { AUTH, boot, command, createSession, rt, runUntil, tempDbPath, type Harness } from './helpers';
 
@@ -56,7 +66,9 @@ describe('lọc tên live và API quản trị', () => {
     expect(settings.json().protectedEntities[0]).toMatchObject({
       source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT',
     });
+    expect(settings.json().rules).toEqual([]); // System defaults are not exposed by this endpoint yet.
     expect(NameModerationSettingsSchema.safeParse(settings.json()).success).toBe(true);
+    expect(NameModerationSettingsResponseSchema.safeParse(settings.json()).success).toBe(true);
 
     const roster = await h.quiz.app.inject({ method: 'GET', url: '/api/admin/name-filter/players?q=d1t&risk=HIGH', headers: AUTH });
     expect(roster.statusCode).toBe(200);
@@ -97,6 +109,8 @@ describe('lọc tên live và API quản trị', () => {
       payload: { playerIds: [cleanId], hidden: true },
     });
     expect(hide.statusCode).toBe(200);
+    expect(NameModerationVisibilityResponseSchema.safeParse(hide.json()).success).toBe(true);
+    expect(hide.json()).not.toHaveProperty('players'); // Re-fetch the roster after mutation.
     expect(runtime.publicSnapshot().leaderboard!.entries.some((entry) => entry.safeDisplayName === 'Người chơi 1')).toBe(true);
     expect(runtime.publicSnapshot().leaderboard!.entries.some((entry) => entry.safeDisplayName === 'Người chơi 2')).toBe(true);
 
@@ -105,6 +119,7 @@ describe('lọc tên live và API quản trị', () => {
       payload: { playerIds: [brandId], allowed: true },
     });
     expect(allow.statusCode).toBe(200);
+    expect(NameModerationReviewResponseSchema.safeParse(allow.json()).success).toBe(true);
     expect(runtime.publicSnapshot().leaderboard!.entries.some((entry) => entry.safeDisplayName === 'Garena')).toBe(true);
 
     const rule = await h.quiz.app.inject({
@@ -112,12 +127,19 @@ describe('lọc tên live và API quản trị', () => {
       payload: { term: 'championx', aliases: [], match: 'word', group: 'PROFANITY', severity: 'HIGH' },
     });
     expect(rule.statusCode).toBe(200);
+    expect(NameModerationRuleMutationResponseSchema.safeParse(rule.json()).success).toBe(true);
     const ruleId = rule.json().rules.find((item: { id: string }) => item.id.startsWith('custom.'))!.id as string;
+    expect(rule.json().rules.find((item: { id: string }) => item.id === ruleId)).toMatchObject({
+      source: 'CUSTOM', severity: 'HIGH', term: 'championx',
+    });
     const exception = await h.quiz.app.inject({
       method: 'POST', url: '/api/admin/name-filter/exceptions', headers: AUTH,
       payload: { value: 'CleanChampionX', ruleIds: [ruleId] },
     });
     expect(exception.statusCode).toBe(200);
+    expect(NameModerationExceptionMutationResponseSchema.safeParse(exception.json()).success).toBe(true);
+    expect(exception.json().whitelist[0]).toMatchObject({ value: 'CleanChampionX', ruleIds: [ruleId] });
+    expect(exception.json().whitelist[0]).not.toHaveProperty('id');
 
     const recheck = await h.quiz.app.inject({ method: 'POST', url: '/api/admin/name-filter/recheck', headers: AUTH, payload: {} });
     expect(recheck.statusCode).toBe(200);
@@ -125,6 +147,11 @@ describe('lọc tên live và API quản trị', () => {
 
     const audit = await h.quiz.app.inject({ method: 'GET', url: '/api/admin/name-filter/audit', headers: AUTH });
     expect(audit.statusCode).toBe(200);
+    expect(NameModerationAuditResponseSchema.safeParse(audit.json()).success).toBe(true);
+    expect(NameModerationAuditQuerySchema.parse({ limit: '1' })).toEqual({ limit: 1 });
+    const oneAuditEntry = await h.quiz.app.inject({ method: 'GET', url: '/api/admin/name-filter/audit?limit=1', headers: AUTH });
+    expect(NameModerationAuditResponseSchema.safeParse(oneAuditEntry.json()).success).toBe(true);
+    expect(oneAuditEntry.json().entries).toHaveLength(1);
     const auditText = JSON.stringify(audit.json());
     expect(auditText).toContain('PLAYERS_HIDDEN');
     expect(auditText).toContain('REVIEW_ALLOWED');
