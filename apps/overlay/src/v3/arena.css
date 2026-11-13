@@ -741,6 +741,7 @@
   box-shadow: inset 0 0 0 3px rgba(90, 133, 255, .92), inset 0 0 22px rgba(77, 73, 255, .38), 0 0 18px rgba(195, 55, 255, .28);
 }
 .v3-mc-figure { isolation: isolate; }
+.mc-pose-transition { position: absolute; inset: 0; overflow: hidden; transform-origin: 50% 100%; animation: v3-mc-pose-enter .32s cubic-bezier(.2,.8,.3,1) both; }
 .v3-mc-figure img {
   position: absolute;
   left: 50%;
@@ -1112,6 +1113,7 @@
 @keyframes v3-mc-ask { from { transform: translateX(0) rotate(0); } to { transform: translateX(12px) rotate(-3deg); } }
 @keyframes v3-mc-react { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.055) translateY(-7px); } }
 @keyframes v3-mc-celebrate { 0%, 100% { transform: translateY(0) rotate(0); } 45% { transform: translateY(-12px) rotate(-4deg); } }
+@keyframes v3-mc-pose-enter { 0% { opacity: 0; transform: translateY(8px) scale(.97); } 68% { opacity: 1; transform: translateY(-2px) scale(1.015); } 100% { opacity: 1; transform: none; } }
 
 /* C-0098: giữ cỡ chữ đọc được khi prompt dài và tận dụng chiều cao màn hình. */
 .v3-stage .v3-question.is-long,
@@ -1173,6 +1175,7 @@
 .v3v-header .v3-title-ribbon { display: none; }
 .v3-board .v3-reading-status { position: absolute; z-index: 4; top: 22px; right: 22px; padding: 11px 16px; border: 1px solid rgba(140, 200, 251, .72); border-radius: 14px; background: rgba(13, 11, 46, .88); color: var(--sky); font-size: 14px; font-weight: 900; letter-spacing: 1px; white-space: nowrap; box-shadow: 0 0 14px rgba(112, 73, 245, .38); }
 @media (prefers-reduced-motion: reduce) {
+  .mc-pose-transition { animation: none; }
   .v3-mc-idle .v3-mc-figure,
   .v3-mc-welcome .v3-mc-figure,
   .v3-mc-ask .v3-mc-figure,

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import { McStateSchema, type LeaderboardEntry, type PodiumSlot, type PublicSnapshot } from '@quiz/contracts';
 import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './overlayLogic';
 import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
@@ -210,6 +210,7 @@ function App() {
   const hud = query.get('hud') === '1';
   const scale = useStageScale();
   const requestedMock = query.get('mock');
+  const requestedMcState = McStateSchema.safeParse(query.get('mc')).data;
   const requestedCycleMs = Number(query.get('cycleMs'));
   const cycleIntervalMs = Number.isFinite(requestedCycleMs) && requestedCycleMs >= 100 && requestedCycleMs <= 10_000 ? requestedCycleMs : 3_000;
   const fxLow = query.get('fx') === 'low';
@@ -217,7 +218,7 @@ function App() {
   const [audioState, setAudioState] = useState<AudioEngineState>('disabled');
   const [cycleScene, setCycleScene] = useState('lobby');
   const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
-  const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene, overlayRole, audioState);
+  const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene, overlayRole, audioState, requestedMcState);
   const hudConfig = useLiveHudConfig(networkSnapshot?.hudVersion, mockScene !== null);
   useEffect(() => {
     if (requestedMock !== 'cycle') return;
