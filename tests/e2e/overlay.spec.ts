@@ -298,16 +298,16 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
   });
   const logoBase64 = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
-    canvas.width = 900;
-    canvas.height = 360;
+    canvas.width = 600;
+    canvas.height = 400;
     const ctx = canvas.getContext('2d')!;
-    const gradient = ctx.createLinearGradient(0, 0, 900, 360);
+    const gradient = ctx.createLinearGradient(0, 0, 600, 400);
     gradient.addColorStop(0, '#25105b');
     gradient.addColorStop(.5, '#141b63');
     gradient.addColorStop(1, '#42125e');
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.roundRect(20, 20, 860, 320, 48);
+    ctx.roundRect(18, 18, 564, 364, 54);
     ctx.fill();
     ctx.strokeStyle = '#f179ff';
     ctx.lineWidth = 12;
@@ -316,11 +316,11 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
-    ctx.font = '900 92px sans-serif';
-    ctx.fillText('NOVA', 450, 165);
+    ctx.font = '900 112px sans-serif';
+    ctx.fillText('NOVA', 300, 174);
     ctx.fillStyle = '#ffd652';
-    ctx.font = '800 44px sans-serif';
-    ctx.fillText('ARENA', 450, 236);
+    ctx.font = '800 60px sans-serif';
+    ctx.fillText('ARENA', 300, 258);
     return canvas.toDataURL('image/png').split(',')[1]!;
   });
   const background = Buffer.from(backgroundBase64, 'base64');
@@ -346,6 +346,41 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
   await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const readLayout = () => page.evaluate(() => {
+    const selectors = {
+      ribbon: '.v3-title-ribbon',
+      roundCard: '[data-testid="round-card"]',
+      top10: '[data-testid="v3-top10"]',
+      question: '.v3-board',
+    } as const;
+    return Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect();
+      if (!rect) throw new Error(`Missing layout element: ${selector}`);
+      return [name, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }];
+    }));
+  });
+  const assertHeaderDoesNotOverlap = async () => {
+    const overlaps = await page.evaluate(() => {
+      const selectors = ['.v3-event-mark', '[data-testid="brand-logo-frame"]', '.v3-title-ribbon', '[data-testid="round-card"]'];
+      const rects = selectors.map((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) throw new Error(`Missing header element: ${selector}`);
+        return { selector, rect: element.getBoundingClientRect() };
+      });
+      const result: string[] = [];
+      for (let left = 0; left < rects.length; left += 1) for (let right = left + 1; right < rects.length; right += 1) {
+        const a = rects[left]!;
+        const b = rects[right]!;
+        const overlapX = Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left);
+        const overlapY = Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top);
+        if (overlapX > 1 && overlapY > 1) result.push(`${a.selector} intersects ${b.selector}`);
+      }
+      return result;
+    });
+    expect(overlaps).toEqual([]);
+  };
+  const defaultLayout = await readLayout();
+  await assertHeaderDoesNotOverlap();
   await page.screenshot({ path: join(reviewDirectory, 'default-question.png'), animations: 'disabled' });
 
   hudConfig = {
@@ -374,6 +409,13 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
   await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect(page.getByTestId('brand-logo')).toHaveCSS('object-fit', 'contain');
+  const customLayout = await readLayout();
+  for (const key of Object.keys(defaultLayout) as Array<keyof typeof defaultLayout>) {
+    for (const dimension of ['x', 'y', 'width', 'height'] as const) {
+      expect(Math.abs(customLayout[key]![dimension] - defaultLayout[key]![dimension]), `${key}.${dimension}`).toBeLessThanOrEqual(1);
+    }
+  }
+  await assertHeaderDoesNotOverlap();
   await page.screenshot({ path: join(reviewDirectory, 'custom-question.png'), animations: 'disabled' });
   await expect(page).toHaveURL(/mock=question/);
 

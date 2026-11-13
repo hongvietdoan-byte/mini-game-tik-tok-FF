@@ -1053,6 +1053,8 @@
 .v3-header { top: 32px; height: 208px; }
 .v3-header .v3-title { left: 50%; top: -14px; width: 460px; }
 .v3-header .v3-brand-logo { width: 440px; height: 182px; }
+.v3-logo-frame { width: 440px; height: 182px; flex: 0 0 182px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.v3-title.is-wide .v3-brand-logo { width: 100%; height: 100%; max-width: 100%; object-fit: contain; flex: none; }
 .v3-header .v3-title-ribbon { margin-top: -8px; padding: 4px 28px; font-size: 17px; }
 .v3-title.is-wide { display: flex; flex-direction: column; align-items: center; width: 460px; }
 .v3-title.is-wide .v3-crown { width: 104px; height: 48px; margin: 0 auto -4px; }
@@ -1553,3 +1555,8 @@
 .v3-timer { right: 24px; top: 24px; }
 .v3-stage--question-user .v3-question { left: 28px; right: 28px; padding: 8px 24px; }
 .v3-stage--question-user .v3-options { left: 28px; right: 28px; }
+
+/* C-0191: giữ logo và pill B2 cố định giữa preview và mọi ảnh HUD. */
+.v3-stage--question-user .v3-header .v3-title.is-wide .v3-logo-frame { width: 220px; height: 182px; flex: 0 0 182px; }
+.v3-stage--question-user .v3-header .v3-title.is-wide .v3-brand-logo { width: 100%; height: 100%; max-width: 100%; object-fit: contain; }
+.v3-header .v3-title.is-wide .v3-title-ribbon { width: 560px; min-width: 560px; max-width: 560px; }

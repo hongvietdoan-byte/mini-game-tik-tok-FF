@@ -12,7 +12,7 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
   const imageSource = customLogo && failedSource !== customLogo ? customLogo : fallbackLogo;
   const logoAvailable = failedSource !== fallbackLogo;
   const ribbonText = ribbon ?? config.texts.arenaTitle;
-  const ribbonStyle = wide ? { maxWidth: 'calc(100vw - 64px)' } : fitHudTextStyle(ribbonText, 252, 16, 9);
+  const ribbonStyle = wide ? undefined : fitHudTextStyle(ribbonText, 252, 16, 9);
 
   useLayoutEffect(() => {
     const element = ribbonRef.current;
@@ -20,7 +20,7 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
 
     const fit = () => {
       const computed = getComputedStyle(element);
-      const maximumWidth = wide ? Math.max(1, window.innerWidth - 64) : 252;
+      const maximumWidth = wide ? 560 : 252;
       const horizontalPadding = Number.parseFloat(computed.paddingLeft) + Number.parseFloat(computed.paddingRight);
       const textWidth = Math.max(1, maximumWidth - horizontalPadding);
       const canvas = document.createElement('canvas');
@@ -53,27 +53,31 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
 
   return (
     <div className={`v3-title${wide ? ' is-wide' : ''}`} aria-label={`${config.texts.kicker} · ${config.texts.arenaTitle}`}>
-      {wide && logoAvailable ? (
-        <img
-          className="v3-brand-logo"
-          data-testid="brand-logo"
-          src={imageSource}
-          alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí"
-          draggable={false}
-          decoding="async"
-          onError={() => setFailedSource(imageSource)}
-        />
-      ) : wide ? (
-        <>
-          <svg className="v3-crown" viewBox="0 0 120 60" aria-hidden="true">
-            <path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" />
-          </svg>
-          <div className="v3-title-main" data-testid="brand-logo">
-            <span>BÁ VƯƠNG</span>
-            <span>ĐẠI CHIẾN</span>
-          </div>
-          <small className="v3-title-tagline">AI LÀ NHÀ VUA BÁ KHÍ</small>
-        </>
+      {wide ? (
+        <div className="v3-logo-frame" data-testid="brand-logo-frame">
+          {logoAvailable ? (
+            <img
+              className="v3-brand-logo"
+              data-testid="brand-logo"
+              src={imageSource}
+              alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí"
+              draggable={false}
+              decoding="async"
+              onError={() => setFailedSource(imageSource)}
+            />
+          ) : (
+            <>
+              <svg className="v3-crown" viewBox="0 0 120 60" aria-hidden="true">
+                <path d="M8 52 L18 12 L42 34 L60 4 L78 34 L102 12 L112 52 Z" />
+              </svg>
+              <div className="v3-title-main" data-testid="brand-logo">
+                <span>BÁ VƯƠNG</span>
+                <span>ĐẠI CHIẾN</span>
+              </div>
+              <small className="v3-title-tagline">AI LÀ NHÀ VUA BÁ KHÍ</small>
+            </>
+          )}
+        </div>
       ) : logoAvailable ? (
         <img
           className="v3-brand-logo"

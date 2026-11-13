@@ -217,12 +217,12 @@ export function HudSettingsPage({ client, token, overlayUrl, isMock = false }: {
       </div>
 
       <aside className="panel hud-preview-panel">
-        <div className="panel-title"><div><span className="eyebrow">XEM THỬ TRỰC TIẾP</span><h2>Preview</h2></div></div>
+        <div className="panel-title"><div><span className="eyebrow">XEM THỬ TRỰC TIẾP</span><h2>Xem thử</h2></div></div>
         <label className="hud-preview-select">Cảnh xem trước<select aria-label="Cảnh xem trước" value={previewScene} onChange={(event) => setPreviewScene(event.target.value as PreviewScene)}>
           <option value="question">Câu hỏi</option><option value="top10">Top 10</option><option value="victory">Victory</option>
         </select></label>
         <iframe title="Xem trước giao diện HUD" data-testid="hud-preview" src={previewSrc} loading="lazy" referrerPolicy="no-referrer" />
-        <p>Preview dùng trạng thái mẫu, không tác động tới phiên LIVE.</p>
+        <p>Bản xem thử dùng trạng thái mẫu, không tác động tới phiên LIVE.</p>
       </aside>
     </div>
   </section>;

@@ -253,13 +253,19 @@ class MockDashboardClient implements DashboardClient {
     const mimeType = file.type.toLowerCase();
     if (file.size === 0 || file.size > 8 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(mimeType))
       throw new ApiError('Chọn ảnh PNG, JPG hoặc WEBP có dung lượng tối đa 8 MB.', 400, 'HUD_IMAGE_INVALID');
-    const id = `${'0'.repeat(64)}.png`;
+    const bitmap = await createImageBitmap(file);
+    const width = bitmap.width;
+    const height = bitmap.height;
+    bitmap.close();
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType.slice('image/'.length);
+    const id = `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}.${extension}`;
     this.hudConfig = HudConfigSchema.parse({
       ...this.hudConfig,
       images: { ...this.hudConfig.images, [slot]: id },
       version: this.hudConfig.version + 1,
     });
-    return { image: { id, width: 1, height: 1, mimeType: 'image/png' }, config: await this.getHud() };
+    return { image: { id, width, height, mimeType }, config: await this.getHud() };
   }
 
   async resetHud(_token: string): Promise<HudConfig> {
