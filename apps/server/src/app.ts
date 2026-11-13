@@ -11,6 +11,8 @@ import {
   ClientAckSchema,
   ClientHelloSchema,
   CreateSessionRequestSchema,
+  HudConfigUpdateSchema,
+  HudImageSlotSchema,
   McVoicePreGenerateRequestSchema,
   McVoiceEventSchema,
   McVoiceSettingsUpdateSchema,
@@ -22,6 +24,8 @@ import {
   QUESTION_DISPLAY_LIMITS,
   SimulatorRequestSchema,
   type OverlayAudioState,
+  type PublicSnapshot,
+  type WsMessage,
 } from '@quiz/contracts';
 import { formatDifficultyCounts, isEligible, planPreferredDifficultyCounts } from '@quiz/quiz-core';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
@@ -45,6 +49,7 @@ import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile,
 import { McVoiceService } from './voice/service';
 import { preflightAssets } from './preflight-assets';
 import { commentSourcePreflight, overlayAckPreflight, overlayAudioPreflight } from './preflight-health';
+import { HudConfigError, HudConfigStore, MAX_HUD_IMAGE_BYTES } from './hud-config';
 import {
   recordOverlayAck,
   registerOverlaySession,
@@ -75,6 +80,8 @@ export type AppOptions = {
   webRoots?: { dashboard?: string; overlay?: string; assets?: string };
   /** Kho nhân vật mặc định cho mọi phiên (từ manifest asset cục bộ). */
   characterPool?: readonly string[];
+  /** Thư mục chứa hud.json và hud-assets; mặc định cùng thư mục với DB. */
+  hudDataDir?: string;
   /** Cấu hình voice runtime được cấp ngoài repo; khi bỏ trống không gọi provider. */
   mcVoice?: {
     credentials?: McVoiceCredentialStore;
@@ -121,6 +128,7 @@ const MockCommentSchema = z.object({
 
 export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const { store, scheduler } = opts;
+  const hudStore = new HudConfigStore(opts.hudDataDir ?? dirname(store.path));
   const allowed = new Set(opts.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
   // TIKTOK: thư viện cộng đồng tiktok-live-connector — KHÔNG CHÍNH THỨC, người dùng chốt dùng tạm (BOARD #17).
   const adapterFactory =
@@ -166,6 +174,11 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   let primaryOverlayInstanceId: string | null = null;
 
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 256 * 1024 });
+  app.addContentTypeParser(
+    ['application/octet-stream', 'image/png', 'image/jpeg', 'image/webp'],
+    { parseAs: 'buffer' },
+    (_req, body, done) => done(null, body),
+  );
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
 
   let rt: SessionRuntime | null = null;
@@ -177,6 +190,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   let ackPendingSinceMs = scheduler.now();
   let observedStateVersion = 0;
   let lastSelfTest: SelfTestResult | null = null;
+  const withHudVersion = (snapshot: PublicSnapshot): PublicSnapshot => ({ ...snapshot, hudVersion: hudStore.get().version });
+  const withHudVersionOnMessage = (message: WsMessage): WsMessage => {
+    if (message.type === 'STATE_SNAPSHOT') return { ...message, payload: withHudVersion(message.payload) };
+    if (message.type === 'ADMIN_SNAPSHOT')
+      return { ...message, payload: { ...message.payload, public: withHudVersion(message.payload.public) } };
+    return message;
+  };
   const pushOverlayInfo = () =>
     rt?.setOverlayInfo({
       clients: overlayClients.size,
@@ -200,10 +220,20 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         if (lastAck === null || lastAck.stateVersion < stateVersion) ackPendingSinceMs = scheduler.now();
       }
       for (const o of batch) {
-        const data = JSON.stringify(o.message);
+        const data = JSON.stringify(withHudVersionOnMessage(o.message));
         for (const ws of o.audience === 'public' ? overlayClients : adminClients) if (ws.readyState === 1) ws.send(data);
       }
     });
+  }
+
+  function pushHudSnapshots() {
+    if (!rt) return;
+    const publicSnapshot = withHudVersion(rt.publicSnapshot());
+    const publicMessage = JSON.stringify(rt.wrap('STATE_SNAPSHOT', publicSnapshot));
+    for (const ws of overlayClients) if (ws.readyState === 1) ws.send(publicMessage);
+    const adminSnapshot = { ...rt.adminSnapshot(), public: publicSnapshot };
+    const adminMessage = JSON.stringify(rt.wrap('ADMIN_SNAPSHOT', adminSnapshot));
+    for (const ws of adminClients) if (ws.readyState === 1) ws.send(adminMessage);
   }
 
   const isAdmin = (req: FastifyRequest) => {
@@ -439,6 +469,14 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     const assets = preflightAssets(opts.webRoots?.assets, repositoryRoot);
     check('assets', 'Asset bắt buộc', assets.status, assets.reason);
 
+    const hudIssues = hudStore.preflightIssues();
+    check(
+      'hudAssets',
+      'Ảnh HUD tuỳ chỉnh',
+      hudIssues.length > 0 ? 'WARN' : 'PASS',
+      hudIssues.length > 0 ? hudIssues.join(' ') : 'Ảnh HUD đã cấu hình đều tồn tại và nền gần đúng tỷ lệ 9:16.',
+    );
+
     if (!session) {
       check('overlayAck', 'Overlay đã ACK', 'WARN', 'Chưa có phiên mở để đối chiếu ACK với stateVersion.');
       check('overlayAudio', 'Âm thanh nguồn trong LIVE Studio', 'WARN', 'Chưa có phiên overlay program để kiểm tra âm thanh.', null);
@@ -578,6 +616,55 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     sessionId: rt?.id ?? null,
     web: { dashboard: servedDashboard, overlay: servedOverlay },
   }));
+
+  app.get('/api/hud', async () => hudStore.get());
+
+  app.put('/api/hud', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = HudConfigUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    try {
+      const config = hudStore.save(parsed.data);
+      pushHudSnapshots();
+      return config;
+    } catch (error) {
+      if (error instanceof HudConfigError)
+        return reply.code(error.statusCode).send({ ok: false, code: error.code, message: error.message });
+      throw error;
+    }
+  });
+
+  app.post<{ Querystring: { slot?: string } }>('/api/hud/images', { bodyLimit: MAX_HUD_IMAGE_BYTES }, async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const slot = HudImageSlotSchema.safeParse(req.query.slot);
+    if (!slot.success) return reply.code(400).send({ ok: false, code: 'HUD_IMAGE_SLOT_INVALID', message: 'Slot ảnh HUD không hợp lệ.' });
+    try {
+      const result = hudStore.upload(slot.data, req.body, req.headers['content-type']);
+      pushHudSnapshots();
+      return reply.code(201).send(result);
+    } catch (error) {
+      if (error instanceof HudConfigError)
+        return reply.code(error.statusCode).send({ ok: false, code: error.code, message: error.message });
+      throw error;
+    }
+  });
+
+  app.post('/api/hud/reset', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const config = hudStore.reset();
+    pushHudSnapshots();
+    return config;
+  });
+
+  app.get<{ Params: { id: string } }>('/hud-assets/:id', async (req, reply) => {
+    const image = hudStore.getImage(req.params.id);
+    if (!image) return reply.code(404).send({ ok: false, code: 'HUD_IMAGE_NOT_FOUND', message: 'Không tìm thấy ảnh HUD.' });
+    return reply
+      .type(image.mimeType)
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .header('x-content-type-options', 'nosniff')
+      .send(image.bytes);
+  });
 
   app.get('/api/preflight', async (req, reply) => {
     if (!guard(req, reply, false)) return reply;
@@ -972,14 +1059,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         }
         role = 'admin';
         adminClients.add(socket);
-        if (rt) socket.send(JSON.stringify(rt.wrap('ADMIN_SNAPSHOT', rt.adminSnapshot())));
+        if (rt) {
+          const publicSnapshot = withHudVersion(rt.publicSnapshot());
+          socket.send(JSON.stringify(rt.wrap('ADMIN_SNAPSHOT', { ...rt.adminSnapshot(), public: publicSnapshot })));
+        }
       } else {
         role = 'overlay';
         if (overlayClients.size === 0) ackPendingSinceMs = scheduler.now();
         overlayClients.add(socket);
         registerOverlaySession(overlaySessions, socket);
         pushOverlayInfo();
-        if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', rt.publicSnapshot())));
+        if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', withHudVersion(rt.publicSnapshot()))));
       }
     });
     socket.on('close', () => {

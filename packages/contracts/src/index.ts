@@ -7,6 +7,74 @@ import { z } from 'zod';
 export const CONTRACT_VERSION = 1;
 
 // ---------------------------------------------------------------------------
+// Nội dung HUD có thể tuỳ chỉnh (C-0171)
+// ---------------------------------------------------------------------------
+
+export const HUD_IMAGE_SLOTS = ['logo', 'bgQuestion', 'bgLobby', 'bgVictory'] as const;
+export const HudImageSlotSchema = z.enum(HUD_IMAGE_SLOTS);
+export type HudImageSlot = z.infer<typeof HudImageSlotSchema>;
+
+export const HudImageIdSchema = z.string().regex(/^[a-f0-9]{64}\.(png|jpg|webp)$/, 'Id ảnh HUD không hợp lệ.');
+
+function hudText(maxGraphemes: number, allowEmpty = false) {
+  return z.string().trim().max(maxGraphemes * 16).superRefine((value, ctx) => {
+    if (!allowEmpty && value.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'Không được để trống.' });
+      return;
+    }
+    if (/[<>]/u.test(value)) {
+      ctx.addIssue({ code: 'custom', message: 'Không được chứa ký tự HTML.' });
+      return;
+    }
+    const graphemes = [...new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(value)].length;
+    if (graphemes > maxGraphemes)
+      ctx.addIssue({ code: 'custom', message: `Tối đa ${maxGraphemes} ký tự hiển thị.` });
+  });
+}
+
+export const HudTextsSchema = z.object({
+  kicker: hudText(24),
+  arenaTitle: hudText(28),
+  playingLabel: hudText(24),
+  roundLabel: hudText(24),
+  leaderboardTitle: hudText(28),
+  victoryTitle: hudText(28, true),
+}).strict();
+export type HudTexts = z.infer<typeof HudTextsSchema>;
+
+export const HudImagesSchema = z.object({
+  logo: HudImageIdSchema.nullable(),
+  bgQuestion: HudImageIdSchema.nullable(),
+  bgLobby: HudImageIdSchema.nullable(),
+  bgVictory: HudImageIdSchema.nullable(),
+}).strict();
+export type HudImages = z.infer<typeof HudImagesSchema>;
+
+export const HudConfigSchema = z.object({
+  texts: HudTextsSchema,
+  images: HudImagesSchema,
+  version: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+}).strict();
+export type HudConfig = z.infer<typeof HudConfigSchema>;
+
+export const HudConfigUpdateSchema = z.object({ texts: HudTextsSchema, images: HudImagesSchema }).strict();
+export type HudConfigUpdate = z.infer<typeof HudConfigUpdateSchema>;
+
+export const DEFAULT_HUD_CONFIG: HudConfig = {
+  texts: {
+    kicker: 'STORM ARENA',
+    arenaTitle: 'ĐẤU TRƯỜNG BÃO TỐ',
+    playingLabel: 'ĐANG CHƠI',
+    roundLabel: 'VÒNG',
+    leaderboardTitle: 'BXH TRỰC TIẾP',
+    // Bố cục Victory hiện không có tiêu đề riêng; để rỗng giữ nguyên mockup.
+    victoryTitle: '',
+  },
+  images: { logo: null, bgQuestion: null, bgLobby: null, bgVictory: null },
+  version: 0,
+};
+
+// ---------------------------------------------------------------------------
 // Trạng thái & cảnh (scene)
 // ---------------------------------------------------------------------------
 
@@ -792,6 +860,8 @@ export type AudienceView = {
 
 export type PublicSnapshot = {
   contractVersion: number;
+  /** Phiên bản nội dung HUD; server gắn vào snapshot WS để overlay nạp lại cấu hình khi đổi. */
+  hudVersion?: number;
   sessionId: string;
   stateVersion: number;
   state: GameState;
