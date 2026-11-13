@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { AudienceSeatView, LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
+import { formatParticipantCount } from './participantCount';
 import { BrandMark } from './BrandMark';
 import { McSequence } from './mc/mc-sequence-player';
 import { ArenaBackdrop } from './ArenaBackdrop';
@@ -21,28 +22,33 @@ function formatTime(ms: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
+export function BrandEventMark() {
   const config = useHudConfig();
-  const [kickerFirst = '', ...kickerRest] = config.texts.kicker.trim().split(/\s+/u);
-  const kickerSecond = kickerRest.join(' ');
-  const roundLabel = config.texts.roundLabel + ' ' + (snapshot.round?.roundNumber ?? 1);
-  const playingLabel = snapshot.participantCount.toLocaleString('vi-VN') + ' ' + config.texts.playingLabel;
-  return (
-    <header className="v3-header" data-layer="brand-header">
-      <div className="v3-event-mark" data-testid="event-mark" aria-label={config.texts.kicker}>
-        <span title={config.texts.kicker} style={fitHudTextStyle(kickerFirst, 178, 31, 12)}>{kickerFirst}</span>
-        {kickerSecond && <b title={config.texts.kicker} style={fitHudTextStyle(kickerSecond, 178, 34, 12)}>{kickerSecond}</b>}
-      </div>
-      <BrandMark wide />
-      <div className="v3-round-card" data-testid="round-card">
-        <b style={fitHudTextStyle(roundLabel, 186, 25, 12)} title={roundLabel}>{roundLabel}</b>
-        <span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0-2.8-4 4 4 0 0 1 0 8A3 3 0 0 0 16 11ZM8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2C14 15.7 11.3 14 8 14Zm8 .2c-.4 0-.8 0-1.2.1 1.3.9 2.2 2.1 2.2 3.5V20h5v-2.2c0-2.1-2.7-3.8-6-3.8Z" /></svg>
-          <span style={fitHudTextStyle(playingLabel, 164, 11, 8)} title={playingLabel}>{playingLabel}</span>
-        </span>
-      </div>
-    </header>
-  );
+  const [first = '', ...rest] = config.texts.kicker.trim().split(/\s+/u);
+  const second = rest.join(' ');
+  return <div className="v3-event-mark" data-testid="event-mark" aria-label={config.texts.kicker}>
+    <span title={config.texts.kicker} style={fitHudTextStyle(first, 178, 31, 12)}>{first}</span>
+    {second && <b title={config.texts.kicker} style={fitHudTextStyle(second, 178, 34, 12)}>{second}</b>}
+  </div>;
+}
+
+export function RoundCard({ snapshot }: { snapshot: PublicSnapshot }) {
+  const config = useHudConfig();
+  const roundTitle = `${config.texts.roundLabel} ${snapshot.round?.roundNumber ?? 1}`;
+  const count = formatParticipantCount(snapshot.participantCount);
+  return <div className="v3-round-card" data-testid="round-card">
+    <b className="v3-round-title" title={roundTitle} style={fitHudTextStyle(roundTitle, 190, 36, 18)}>{roundTitle}</b>
+    <strong className="v3-round-count" data-testid="participant-count" title={count} style={fitHudTextStyle(count, 196, 52, 30)}>{count}</strong>
+    <small className="v3-round-label" title={config.texts.playingLabel} style={fitHudTextStyle(config.texts.playingLabel, 196, 24, 12)}>{config.texts.playingLabel}</small>
+  </div>;
+}
+
+export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
+  return <header className="v3-header" data-layer="brand-header">
+    <BrandEventMark />
+    <BrandMark wide />
+    <RoundCard snapshot={snapshot} />
+  </header>;
 }
 
 function Top10({ entries }: { entries: LeaderboardEntry[] }) {

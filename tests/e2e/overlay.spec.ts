@@ -223,11 +223,14 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   const logo = stage.getByTestId('brand-logo');
   const eventMark = stage.getByTestId('event-mark');
   const roundCard = stage.getByTestId('round-card');
+  const participantCount = roundCard.getByTestId('participant-count');
+  const participantLabel = roundCard.locator('.v3-round-label');
   await expect(logo).toBeVisible();
   await expect(logo).toHaveAttribute('src', '/assets/brand/logo.png');
   await expect(eventMark).toBeVisible();
   await expect(roundCard).toContainText('VÒNG 1');
-  await expect(roundCard).toContainText('57 ĐANG CHƠI');
+  await expect(participantCount).toHaveText('57');
+  await expect(participantLabel).toHaveText('ĐANG CHƠI');
   const [logoBox, eventBox, roundBox, boardBox, subtitleBox] = await Promise.all([
     logo.boundingBox(), eventMark.boundingBox(), roundCard.boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-title-ribbon').boundingBox(),
   ]);
@@ -242,7 +245,12 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   expect(boardBox).not.toBeNull();
   expect(subtitleBox).not.toBeNull();
   expect(logoBox!.y + logoBox!.height).toBeLessThan(subtitleBox!.y);
-  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThan(boardBox!.y);
+  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThanOrEqual(boardBox!.y - 16);
+  expect(parseFloat(await stage.locator('.v3-title-ribbon').evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(38);
+  expect(parseFloat(await roundCard.locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(36);
+  expect(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(52);
+  expect(parseFloat(await participantLabel.evaluate((element) => getComputedStyle(element).fontSize))).toBeLessThan(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize)));
+  expect(await roundCard.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await roundCard.evaluate((element) => element.clientWidth));
   expect(await logo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   const [bubbleBox, firstAudienceLabel] = await Promise.all([
     stage.getByTestId('mc-bubble').boundingBox(), stage.locator('.v3-nametags .v3-seat-name').first().boundingBox(),
@@ -319,12 +327,15 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
   const logo = Buffer.from(logoBase64, 'base64');
   const backgroundId = createHash('sha256').update(background).digest('hex') + '.png';
   const logoId = createHash('sha256').update(logo).digest('hex') + '.png';
+  const missingLogoId = `${'f'.repeat(64)}.png`;
+  const missingBackgroundId = `${'e'.repeat(64)}.png`;
   const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'hud');
   mkdirSync(reviewDirectory, { recursive: true });
   let hudConfig: HudConfig = DEFAULT_HUD_CONFIG;
   await page.route('**/api/hud', (route) => route.fulfill({ json: hudConfig }));
   await page.route('**/hud-assets/**', (route) => {
     const id = new URL(route.request().url()).pathname.split('/').at(-1);
+    if (id === missingLogoId || id === missingBackgroundId) return route.fulfill({ status: 404, body: '' });
     return route.fulfill({ status: 200, contentType: 'image/png', body: id === logoId ? logo : background });
   });
 
@@ -332,6 +343,8 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
   await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'STORM ARENA');
   await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', '/assets/brand/logo.png');
   await expect(page.getByTestId('arena-background')).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.screenshot({ path: join(reviewDirectory, 'default-question.png'), animations: 'disabled' });
 
@@ -353,10 +366,13 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
   await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'NOVA ARENA', { timeout: 4_000 });
   await expect(page.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG MỚI');
   expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  await expect(page.getByTestId('round-card')).toContainText('VÒNG 1');
-  await expect(page.getByTestId('round-card')).toContainText('57 ĐANG XEM');
+  await expect(page.locator('.v3-round-title')).toHaveText('VÒNG 1');
+  await expect(page.getByTestId('participant-count')).toHaveText('57');
+  await expect(page.locator('.v3-round-label')).toHaveText('ĐANG XEM');
   await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', `/hud-assets/${logoId}`);
   await expect(page.getByTestId('arena-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
+  await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect(page.getByTestId('brand-logo')).toHaveCSS('object-fit', 'contain');
   await page.screenshot({ path: join(reviewDirectory, 'custom-question.png'), animations: 'disabled' });
   await expect(page).toHaveURL(/mock=question/);
@@ -371,7 +387,195 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
   await expect(page.getByTestId('victory-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
   await expect(page.locator('.v3v-hud-title')).toHaveText('NHÀ VÔ ĐỊCH');
   await expect(page.getByTestId('victory-background')).toHaveCSS('object-fit', 'cover');
+  await expect.poll(() => page.getByTestId('v3v-event-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('victory-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await page.screenshot({ path: join(reviewDirectory, 'custom-victory.png'), animations: 'disabled' });
+
+  hudConfig = {
+    ...hudConfig,
+    version: 2,
+    images: { logo: missingLogoId, bgQuestion: missingBackgroundId, bgLobby: null, bgVictory: missingBackgroundId },
+  };
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await page.goto('/?mock=victory', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('v3v-event-logo')).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect(page.getByTestId('victory-background')).toHaveAttribute('src', '/assets/victory/bg-user-cover.jpg');
+  await expect.poll(() => page.getByTestId('v3v-event-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('victory-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+});
+
+test('real participant counts format and fit the B2 card; capture the displayed values', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const base = makeMockSnapshot('question');
+  if (!base) throw new Error('Missing question mock for participant count test.');
+  let participantCount = 57;
+  await page.routeWebSocket('/ws', (socket) => {
+    socket.onMessage((message) => {
+      const incoming = JSON.parse(String(message)) as { type?: string };
+      if (incoming.type !== 'HELLO') return;
+      const snapshot = { ...base, participantCount };
+      socket.send(JSON.stringify({
+        v: 1,
+        type: 'STATE_SNAPSHOT',
+        seq: 1,
+        sessionId: snapshot.sessionId,
+        stateVersion: snapshot.stateVersion,
+        serverTimeMs: Date.now(),
+        payload: snapshot,
+      }));
+    });
+  });
+
+  const samples = [
+    { count: 57, text: '57' },
+    { count: 9_876, text: '9.876' },
+    { count: 10_500, text: '10,5K' },
+    { count: 1_234_567, text: '1,2M' },
+  ];
+  const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'c0168');
+  mkdirSync(reviewDirectory, { recursive: true });
+  for (const sample of samples) {
+    participantCount = sample.count;
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
+    await expect(stage).toBeVisible();
+    const count = stage.getByTestId('participant-count');
+    const card = stage.getByTestId('round-card');
+    await expect(count).toHaveText(sample.text);
+    expect(await card.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await card.evaluate((element) => element.clientWidth));
+    const cardBox = await card.boundingBox();
+    expect(cardBox).toMatchObject({ x: 760, y: 14, width: 220, height: 182 });
+    await page.screenshot({
+      path: join(reviewDirectory, `after-count-${sample.count}.png`),
+      clip: { x: 740, y: 0, width: 300, height: 220 },
+    });
+  }
+});
+
+test('C-0175 keeps the pill, Top 10 and question content inside their frame padding', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const { stage } = await openScene(page, 'question', 'QUESTION');
+  const ribbon = stage.locator('.v3-title-ribbon');
+  const pillSpace = await ribbon.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const text = range.getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return { left: text.left - box.left, right: box.right - text.right, top: text.top - box.top, bottom: box.bottom - text.bottom };
+  });
+  expect(pillSpace.left).toBeGreaterThanOrEqual(40);
+  expect(pillSpace.right).toBeGreaterThanOrEqual(40);
+  expect(pillSpace.top).toBeGreaterThanOrEqual(12);
+  expect(pillSpace.bottom).toBeGreaterThanOrEqual(12);
+
+  const top10 = stage.locator('.v3-top10');
+  const topBox = await top10.boundingBox();
+  const titleBox = await top10.locator('.v3-top10-title').boundingBox();
+  const rows = top10.locator('li[data-testid="leaderboard-row"]');
+  expect(topBox).not.toBeNull();
+  expect(titleBox).not.toBeNull();
+  expect(await rows.count()).toBe(10);
+  if (!topBox || !titleBox) return;
+  expect(titleBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+  expect(titleBox.y - topBox.y).toBeGreaterThanOrEqual(20);
+  for (let index = 0; index < await rows.count(); index += 1) {
+    const row = rows.nth(index);
+    const rowBox = await row.boundingBox();
+    expect(rowBox).not.toBeNull();
+    if (!rowBox) continue;
+    expect(rowBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+    expect(topBox.x + topBox.width - rowBox.x - rowBox.width).toBeGreaterThanOrEqual(20);
+    expect(rowBox.y - topBox.y).toBeGreaterThanOrEqual(20);
+    expect(topBox.y + topBox.height - rowBox.y - rowBox.height).toBeGreaterThanOrEqual(20);
+    const name = row.locator('.v3-name-text');
+    expect(parseFloat(await name.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(22);
+    const scoreBox = await row.locator('.v3-score').boundingBox();
+    expect(scoreBox).not.toBeNull();
+    if (scoreBox) {
+      expect(scoreBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+      expect(topBox.x + topBox.width - scoreBox.x - scoreBox.width).toBeGreaterThanOrEqual(20);
+    }
+    const badge = row.getByTestId('top1-badge');
+    if (await badge.count()) {
+      const badgeBox = await badge.boundingBox();
+      expect(badgeBox).not.toBeNull();
+      if (badgeBox) {
+        expect(badgeBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+        expect(topBox.x + topBox.width - badgeBox.x - badgeBox.width).toBeGreaterThanOrEqual(20);
+      }
+    }
+  }
+
+  const board = stage.locator('.v3-board');
+  const boardBox = await board.boundingBox();
+  expect(boardBox).not.toBeNull();
+  expect(boardBox?.y).toBe(345);
+  if (!boardBox || !topBox) return;
+  expect(boardBox.x - (topBox.x + topBox.width)).toBeGreaterThanOrEqual(20);
+  const framedItems = [
+    stage.getByTestId('question-tab'),
+    stage.getByTestId('timer'),
+    stage.getByTestId('answer-count'),
+    stage.getByTestId('question-prompt'),
+    stage.getByTestId('option-A'),
+    stage.getByTestId('option-B'),
+    stage.getByTestId('option-C'),
+    stage.getByTestId('option-D'),
+  ];
+  for (const item of framedItems) {
+    const box = await item.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) continue;
+    expect(box.x - boardBox.x).toBeGreaterThanOrEqual(24);
+    expect(boardBox.x + boardBox.width - box.x - box.width).toBeGreaterThanOrEqual(24);
+    expect(box.y - boardBox.y).toBeGreaterThanOrEqual(24);
+    expect(boardBox.y + boardBox.height - box.y - box.height).toBeGreaterThanOrEqual(24);
+  }
+  const bubbleBox = await stage.getByTestId('mc-bubble').boundingBox();
+  expect(bubbleBox).not.toBeNull();
+  if (bubbleBox) expect(bubbleBox.y - boardBox.y - boardBox.height).toBeGreaterThanOrEqual(16);
+});
+
+test('event name and participant count stay readable on every shared header scene', async ({ page }) => {
+  for (const { name, scene } of [
+    { name: 'lobby', scene: 'LOBBY' },
+    { name: 'prepare', scene: 'QUESTION' },
+    { name: 'reading', scene: 'QUESTION' },
+    { name: 'question', scene: 'QUESTION' },
+    { name: 'reveal', scene: 'REVEAL' },
+    { name: 'top10', scene: 'INTERIM_TOP10' },
+    { name: 'intermission', scene: 'INTERMISSION' },
+    { name: 'connection-lost', scene: 'CONNECTION_LOST' },
+  ]) {
+    const { stage } = await openScene(page, name, scene);
+    const ribbon = stage.locator('.v3-title-ribbon');
+    const count = stage.getByTestId('participant-count');
+    const label = stage.locator('.v3-round-label');
+    await expect(ribbon).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
+    expect(parseFloat(await ribbon.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(38);
+    expect(await ribbon.evaluate((element) => getComputedStyle(element).whiteSpace), name).toBe('nowrap');
+    expect(parseFloat(await stage.getByTestId('round-card').locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(36);
+    expect(parseFloat(await count.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(52);
+    expect(parseFloat(await label.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeLessThan(parseFloat(await count.evaluate((element) => getComputedStyle(element).fontSize)));
+    const roundBox = await stage.getByTestId('round-card').boundingBox();
+    expect(roundBox).toMatchObject({ x: 760, y: 14, width: 220, height: 182 });
+    expect(await stage.getByTestId('round-card').evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await stage.getByTestId('round-card').evaluate((element) => element.clientWidth));
+
+    if (name === 'question') {
+      const ribbonBox = await ribbon.boundingBox();
+      const boardBox = await stage.locator('.v3-board').boundingBox();
+      expect(ribbonBox).not.toBeNull();
+      expect(boardBox).not.toBeNull();
+      expect(boardBox!.y).toBe(345);
+      expect(ribbonBox!.x).toBeGreaterThanOrEqual(0);
+      expect(ribbonBox!.x + ribbonBox!.width).toBeLessThanOrEqual(1080);
+      expect(ribbonBox!.y + ribbonBox!.height).toBeLessThanOrEqual(boardBox!.y - 16);
+    }
+  }
 });
 
 test('reveal marks exactly one correct option', async ({ page }) => {
@@ -519,7 +723,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.answers.every(Boolean), `${name}: all answer boxes remain in place`).toBe(true);
     for (const region of ['board', 'top10'] as const) {
       const box = geometry[region];
-      const approvedBottom = region === 'top10' ? 811 : 815;
+      const approvedBottom = region === 'top10' ? 811 : 828;
       expect(box, `${name}: ${region} exists`).not.toBeNull();
       expect(Math.abs(box!.y - 345), `${name}: ${region} starts at the approved y=345`).toBeLessThanOrEqual(2);
       expect(Math.abs(box!.y + box!.height - approvedBottom), `${name}: ${region} ends at the approved y=${approvedBottom}`).toBeLessThanOrEqual(2);
