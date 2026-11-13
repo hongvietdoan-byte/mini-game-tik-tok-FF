@@ -19,7 +19,7 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
 
 1. Nhấp đúp `CHAY_GAME.cmd` ở thư mục dự án.
 2. Không tắt cửa sổ đen khi server đang dùng; tắt cửa sổ sẽ dừng game.
-3. Trình duyệt tự mở Dashboard `http://127.0.0.1:8787/dashboard/`.
+3. Sau khi server sẵn sàng, `CHAY_GAME.cmd` tự mở hai cửa sổ app Edge: overlay xem thử và Dashboard. Mỗi cửa sổ có profile riêng dưới `data/` (`edge-preview-profile` và `edge-dashboard-profile`); overlay có thêm cờ cho phép tự phát âm thanh. Hai cửa sổ không dùng profile Edge cá nhân. Nếu không tìm thấy Edge, dùng các URL được in trong cửa sổ chạy game.
 4. Ở ô “Mã quản trị”, bấm **Ctrl+V** rồi đăng nhập. Mã được chép vào clipboard; file gốc nằm ở `data/admin-token.txt`.
 5. Trình hướng dẫn kiểm tra Backend, Database và Mock. TikTok cần username của kênh đang LIVE.
 
@@ -28,13 +28,15 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
 1. Chọn bố cục dọc (Portrait 9:16).
 2. Thêm nguồn Link / Web (Browser) với URL `http://127.0.0.1:8787/overlay/?role=program` (bắt buộc có `?role=program`: chỉ nguồn này được tính là nguồn phát thật, không hiện nút bật âm; mở `/overlay/` không tham số trên trình duyệt chỉ là tab xem thử), kích thước 1080 × 1920.
 3. Kéo nguồn phủ kín khung hình và đặt ở lớp trên cùng.
-4. Nếu LIVE Studio không có nguồn Link, mở URL bằng Edge/Chrome rồi dùng Window capture.
+4. Nguồn `?role=program` trong LIVE Studio tự phát âm thanh hiệu ứng bằng trình duyệt nhúng; cửa sổ overlay xem thử do `CHAY_GAME.cmd` mở là nguồn preview riêng.
+5. Nếu LIVE Studio không ra tiếng, mở cài đặt âm thanh của nguồn Link, bật **Điều khiển âm thanh qua phần mềm** và kiểm tra nguồn không bị tắt tiếng.
+6. Nếu LIVE Studio không có nguồn Link, mở URL bằng Edge/Chrome rồi dùng Window capture.
 
 ## 3. Chạy một vòng
 
 1. Tạo phiên **TikTok** cho LIVE thật hoặc **Mô phỏng (MOCK)** để tập dượt.
 2. Với TikTok, chỉ dùng đủ câu đã APPROVED và không phải DEMO. Chờ kết nối TikTok và overlay đã ACK trạng thái mới nhất.
-3. Bấm **Mở sảnh**, sau đó **Bắt đầu vòng**. Nếu server trả `PREFLIGHT_FAILED`, xử lý các mục FAIL rồi kiểm tra lại trước khi bắt đầu.
+3. Bấm **Mở sảnh**, sau đó **Bắt đầu vòng**. Nếu server trả `PREFLIGHT_FAILED`, xử lý các mục FAIL rồi kiểm tra lại trước khi bắt đầu. `overlayAudio` ở trạng thái WARN không chặn phiên; nếu trạng thái là `suspended`, bật **Điều khiển âm thanh qua phần mềm** và bỏ tắt tiếng nguồn Link trong LIVE Studio.
    Nếu cần xem đủ kết quả, gọi API preflight có admin token trong PowerShell (token chỉ nằm trong header, không đặt trong URL):
 
    ```powershell
