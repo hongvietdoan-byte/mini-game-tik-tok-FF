@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 195,
-  "heartbeat": "2026-11-13T23:07:37+07:00",
-  "state": "waiting",
-  "task": "none",
-  "note": "Đã gửi note X-0318: static mock names đều sạch; ảnh Victory aliases không khớp mock fixture, chờ coordinator truy nguồn session.",
+  "heartbeat": "2026-11-13T23:21:55+07:00",
+  "state": "working",
+  "task": "C-0196",
+  "note": "Đã tạo worktree riêng codex1/c0196-source-audit từ origin/main; đang truy dấu ảnh, lọc tên, đổi phiên overlay và URL audio.",
   "done": []
 }
