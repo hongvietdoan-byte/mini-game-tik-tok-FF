@@ -98,7 +98,7 @@ describe('TikTok connector replay', () => {
       expect(comment).toMatchObject({
         source: 'TIKTOK',
         userId: String(user.id ?? user.userId),
-        displayName: String(user.nickname || user.uniqueId || user.displayId || 'Khán giả'),
+        displayName: String(user.nickname ?? '').trim(),
         text: String(sample.payload.content ?? sample.payload.comment),
         sourceTimestampMs: scheduler.now(),
       });

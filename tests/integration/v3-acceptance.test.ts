@@ -286,9 +286,11 @@ describe('V3 §17 — acceptance', () => {
     const entries = r.publicSnapshot().leaderboard!.entries;
     expect(entries).toHaveLength(10);
     expect(entries.every((entry) => entry.rank === 1 && entry.tied)).toBe(true);
-    expect(entries.map((entry) => entry.playerId)).toEqual(
-      Array.from({ length: 10 }, (_, index) => `MOCK:tie-${String(index).padStart(2, '0')}`),
+    expect(entries.map((entry) => entry.safeDisplayName)).toEqual(
+      Array.from({ length: 10 }, (_, index) => 'Đồng hạng ' + String(index).padStart(2, '0')),
     );
+    expect(entries.every((entry) => !entry.playerId.startsWith('MOCK:'))).toBe(true);
+    expect(r.publicSnapshot().leaderboard!.entries.map((entry) => entry.playerId)).toEqual(entries.map((entry) => entry.playerId));
   });
 
   it('crash ngay sau reveal rồi recovery không chấm lại score event', async () => {
