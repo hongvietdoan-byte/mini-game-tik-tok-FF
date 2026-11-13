@@ -5,8 +5,6 @@ import { AudioCueTracker, mcDuckingGain, parseAudioMix, type AudioCue, type Visu
 import { OverlayAudioEngine, type AudioEngineState } from '../audio/audio-engine';
 
 const MIX = parseAudioMix(location.search);
-const SOURCE_MODE = new URLSearchParams(location.search).get('source') === '1' || 'obsstudio' in window;
-const PROGRAM_MODE = new URLSearchParams(location.search).get('role') === 'program';
 const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
 
 function useReducedMotion() {
@@ -24,6 +22,7 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
   const tracker = useRef(new AudioCueTracker());
   const engine = useRef<OverlayAudioEngine | null>(null);
   const cleanupTimer = useRef<number | null>(null);
+  const lastResumePhase = useRef<string | null>(null);
   const reducedMotion = useReducedMotion();
   const [audioState, setAudioState] = useState<AudioEngineState>('disabled');
   const [cues, setCues] = useState<AudioCue[]>([]);
@@ -50,6 +49,17 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
 
   useEffect(() => {
     const audio = engine.current;
+    const phase = [
+      snapshot.scene,
+      snapshot.state,
+      snapshot.stateVersion,
+      snapshot.question?.questionInstanceId ?? '',
+      snapshot.round?.roundNumber ?? '',
+    ].join(':');
+    if (phase !== lastResumePhase.current) {
+      lastResumePhase.current = phase;
+      void audio?.unlock();
+    }
     audio?.setDucking(mcDuckingGain(snapshot));
     const decision = tracker.current.consume(snapshot, second * 1_000);
     if (decision.cues.length) {
@@ -70,7 +80,6 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
     snapshot.round?.roundNumber,
   ]);
 
-  const hintVisible = !PROGRAM_MODE && !SOURCE_MODE && audioState === 'suspended' && MIX.volume > 0 && (MIX.sfx > 0 || MIX.bgm > 0);
   const particleCount = reducedMotion ? 0 : FX_LOW ? 4 : 16;
   const confettiCount = snapshot.scene === 'VICTORY' && !reducedMotion && !FX_LOW ? 20 : 0;
 
@@ -106,9 +115,6 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
         return <i key={`confetti-${index}`} className="overlay-fx-confetti" style={style} />;
       })}
     </div>
-    {hintVisible && <button type="button" className="audio-unlock-hint" data-testid="audio-unlock" onClick={() => void engine.current?.unlock()}>
-      ♪ Bấm để bật âm
-    </button>}
     <output
       hidden
       data-testid="overlay-audio-runtime"
