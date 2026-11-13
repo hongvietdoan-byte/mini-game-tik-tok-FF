@@ -46,9 +46,10 @@ export function shouldAcceptSnapshotSeq(
   currentSeq: number | null,
   incomingSeq: number,
   awaitingFreshSnapshot = false,
+  sessionChanged = false,
 ): boolean {
   if (!Number.isSafeInteger(incomingSeq) || incomingSeq < 0) return false;
-  return awaitingFreshSnapshot || currentSeq === null || incomingSeq > currentSeq;
+  return awaitingFreshSnapshot || sessionChanged || currentSeq === null || incomingSeq > currentSeq;
 }
 
 export function checkStatusTone(status: CheckStatus): 'pass' | 'fail' | 'not-tested' {

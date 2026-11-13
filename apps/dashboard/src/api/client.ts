@@ -157,6 +157,7 @@ export const apiClient: DashboardClient = {
     let closed = false;
     let latestVersion = -1;
     let latestSeq: number | null = null;
+    let latestSessionId: string | null = null;
     let awaitingFreshSnapshot = true;
 
     const connect = () => {
@@ -175,10 +176,13 @@ export const apiClient: DashboardClient = {
         try {
           const message = JSON.parse(String(event.data)) as { type?: string; seq?: number; payload?: AdminSnapshot; serverTimeMs?: number };
           if (socket !== currentSocket || message.type !== 'ADMIN_SNAPSHOT' || !message.payload || typeof message.seq !== 'number') return;
-          if (!shouldAcceptSnapshotSeq(latestSeq, message.seq, awaitingFreshSnapshot)) return;
+          const sessionId = message.payload.public.sessionId;
+          const sessionChanged = latestSessionId !== null && sessionId !== latestSessionId;
+          if (!shouldAcceptSnapshotSeq(latestSeq, message.seq, awaitingFreshSnapshot, sessionChanged)) return;
           const version = message.payload.public.stateVersion;
-          if (!awaitingFreshSnapshot && version < latestVersion) return;
+          if (!awaitingFreshSnapshot && !sessionChanged && version < latestVersion) return;
           latestSeq = message.seq;
+          latestSessionId = sessionId;
           awaitingFreshSnapshot = false;
           latestVersion = version;
           delay = 500;

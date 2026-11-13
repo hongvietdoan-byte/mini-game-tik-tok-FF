@@ -73,6 +73,7 @@ describe('dashboard command logic', () => {
     expect(shouldAcceptSnapshotSeq(14, 13)).toBe(false);
     expect(shouldAcceptSnapshotSeq(14, 14)).toBe(false);
     expect(shouldAcceptSnapshotSeq(14, 1, true)).toBe(true);
+    expect(shouldAcceptSnapshotSeq(14, 1, false, true)).toBe(true);
   });
 
   it('maps system and connection statuses to visible tones and labels', () => {

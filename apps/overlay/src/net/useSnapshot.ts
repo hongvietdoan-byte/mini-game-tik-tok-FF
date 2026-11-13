@@ -7,6 +7,23 @@ import type { AudioEngineState } from '../audio/audio-engine';
 
 export type SnapshotConnection = 'connecting' | 'connected' | 'reconnecting';
 
+export function applySnapshot(
+  current: PublicSnapshot | null,
+  currentSeq: number | null,
+  awaitingFreshSnapshot: boolean,
+  message: WsMessage<'STATE_SNAPSHOT'>,
+): { snapshot: PublicSnapshot | null; seq: number | null } {
+  const sessionChanged = current !== null && message.sessionId !== current.sessionId;
+  const resetSequence = awaitingFreshSnapshot || sessionChanged;
+  if (!shouldAcceptSnapshotSeq(currentSeq, message.seq, resetSequence))
+    return { snapshot: current, seq: currentSeq };
+
+  return {
+    snapshot: selectNewestSnapshot(current, message.payload, resetSequence),
+    seq: message.seq,
+  };
+}
+
 export function applyAnswerCounts(
   current: PublicSnapshot | null,
   currentSeq: number | null,
@@ -99,13 +116,12 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
           }
 
           if (message.type !== 'STATE_SNAPSHOT' || !message.payload || typeof message.seq !== 'number') return;
-          if (!shouldAcceptSnapshotSeq(latestSeq.current, message.seq, awaitingFreshSnapshot)) return;
-          const incoming = message.payload;
-          const next = selectNewestSnapshot(latest.current, incoming, awaitingFreshSnapshot);
-          latestSeq.current = message.seq;
+          const next = applySnapshot(latest.current, latestSeq.current, awaitingFreshSnapshot, message);
+          if (next.snapshot === latest.current && next.seq === latestSeq.current) return;
+          latestSeq.current = next.seq;
           awaitingFreshSnapshot = false;
-          latest.current = next;
-          setSnapshot(next);
+          latest.current = next.snapshot;
+          setSnapshot(next.snapshot);
           const serverTime = typeof message.serverTimeMs === 'number' ? message.serverTimeMs : Date.now();
           setServerTimeMs(serverTime);
           setClockOffsetMs(serverTime - Date.now());
