@@ -1,6 +1,6 @@
 # HANDOFF — phiên coordinator (cập nhật 13/11/2026 ~16:00)
 
-**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 13/11 ~16:00) — ĐỌC ĐẦU TIÊN.**
+**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 13/11 ~16:00) — ĐÃ NHẬN 13/11 15:57.**
 
 ## Mới nhất 13/11 ~16:00 — đọc khối này trước, các khối dưới đã cũ
 - Main `3ce7335`+. Đã gộp hôm nay: C-0167 (CHAY_GAME mở 2 cửa sổ Edge app: Overlay preview có cờ autoplay + Dashboard; preflight WARN khi audio program bị chặn) — typecheck, 325 test, privacy, e2e 63/63 PASS. Quy trình gộp: worktree `.claude/worktrees/coord-merge3`, MERGE không rebase, e2e với `QUIZ_ASSETS_DIR=assets-local` cổng riêng, push `HEAD:main`, rồi ở checkout chính `git merge --ff-only origin/main` + `corepack pnpm build:web` (PowerShell) nếu đổi UI. `git pull` ở checkout chính báo "multiple branches" → dùng `git fetch` + `git merge --ff-only origin/main`.
