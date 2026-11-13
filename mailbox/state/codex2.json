@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 191,
-  "heartbeat": "2026-11-13T21:08:08+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-13T21:08:48+07:00",
+  "state": "waiting",
   "task": "C-0191",
-  "note": "Đã nhận C-0191; đang rà cấu trúc BrandMark và URL preview HUD để khóa vị trí header và dùng overlay preview hiện tại.",
+  "note": "C-0189/C-0191 đã push; chờ thư mới",
   "done": []
 }
