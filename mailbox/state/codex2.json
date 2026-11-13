@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 165,
-  "heartbeat": "2026-11-13T15:09:12+07:00",
+  "heartbeat": "2026-11-13T15:24:37+07:00",
   "state": "working",
-  "task": "C-0166",
-  "note": "C-0168 đã push xong; chuyển sang C-0166 bỏ nút âm thanh, giữ SFX tự phát và kiểm tra cue/audioState trên nhánh riêng",
+  "task": "C-0174",
+  "note": "C-0174 và C-0175 acked; đang sửa ảnh participantCount thật và padding các khung trên nhánh codex2/c0168-header-size",
   "done": [
     168,
     169,
