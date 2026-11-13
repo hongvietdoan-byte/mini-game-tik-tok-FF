@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { AudienceSeatView, LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
-import { shortName, splitBubble } from './arenaLogic';
+import { shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 import { McSequence } from './mc/mc-sequence-player';
 import { ArenaBackdrop } from './ArenaBackdrop';
@@ -96,6 +96,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const q = snapshot.question;
   const reveal = snapshot.reveal;
   const promptClass = promptSize(q?.prompt);
+  const promptText = truncateGraphemeText(q?.prompt ?? 'Đang chờ câu hỏi…', 160, true);
   const isLobby = snapshot.scene === 'LOBBY';
   const isPrepare = snapshot.state === 'PREPARE';
   const isReading = snapshot.state === 'READING';
@@ -112,7 +113,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
         {isLobby ? (
           <>SẮP BẮT ĐẦU</>
         ) : (
-          q?.prompt ?? 'Đang chờ câu hỏi…'
+          promptText
         )}
       </div>
       {!isLobby && (
@@ -130,7 +131,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
                 style={{ '--answer-share': `${share * 100}%` } as React.CSSProperties}
               >
                 <span className="v3-letter">{id}</span>
-                <span className={`v3-option-text ${optionSize(opt?.text)}`}>{opt?.text ?? ''}</span>
+                <span className={`v3-option-text ${optionSize(opt?.text)}`}>{opt ? truncateGraphemeText(opt.text, 45, true) : ''}</span>
                 {reveal && (
                   <span className="v3-option-count">{totalAnswers ? Math.round((count / totalAnswers) * 100) : 0}%</span>
                 )}

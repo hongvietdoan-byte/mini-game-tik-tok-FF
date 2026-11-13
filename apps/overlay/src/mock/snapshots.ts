@@ -61,8 +61,10 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'question-long-name': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-longest': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-long-answer': { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-clamp-text': { scene: 'QUESTION', state: 'ACCEPTING' },
   // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
   reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'reveal-clamp-text': { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-short': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-long-name': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
@@ -106,22 +108,42 @@ function victoryNameTestPodium(): Podium {
   };
 }
 
+function firstGraphemes(text: string, count: number): string {
+  return Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(text), (part) => part.segment)
+    .slice(0, count)
+    .join('');
+}
+
 export function makeMockSnapshot(name: string): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
   const short = name === 'top10-short';
-  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name);
+  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'paused'].includes(name);
   const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
   const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
+  const clampPrompt = firstGraphemes(
+    'Trong Free Fire, đội chơi cần phối hợp di chuyển, thu thập trang bị, theo dõi vùng an toàn và chọn thời điểm giao tranh hợp lý để tăng cơ hội sống sót đến cuối trận. '.repeat(4),
+    220,
+  );
+  const clampAnswer = firstGraphemes(
+    'Phối hợp với đồng đội để di chuyển an toàn, thu thập trang bị phù hợp và lựa chọn thời điểm giao tranh có lợi trong suốt trận đấu Free Fire. '.repeat(2),
+    80,
+  );
   const longestAnswerOptions = [
     { id: 'A' as const, text: 'Một nhóm đồng đội phối hợp trong trận' },
     { id: 'B' as const, text: 'Một nhóm khán giả cùng theo dõi trận đấu' },
     { id: 'C' as const, text: longestAnswer },
     { id: 'D' as const, text: 'Một nhóm nhân vật được hiển thị trong bộ sưu tập' },
   ];
+  const clampOptions = [
+    { id: 'A' as const, text: 'Tách khỏi đội và giao tranh ngay khi vừa tiếp đất.' },
+    { id: 'B' as const, text: clampAnswer },
+    { id: 'C' as const, text: 'Chỉ thu thập trang bị mà không quan tâm đến vùng an toàn.' },
+    { id: 'D' as const, text: 'Bỏ qua vùng an toàn để tiếp tục nhặt thêm trang bị.' },
+  ];
   const optionsVisible = name !== 'prepare';
-  const isReveal = name === 'reveal';
+  const isReveal = name === 'reveal' || name === 'reveal-clamp-text';
   const visibleLeaderboard = name === 'question-long-name' || name === 'top10-long-name'
     ? leaderboard.map((entry, index) => index === 0
       ? { ...entry, displayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
@@ -150,12 +172,14 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     question: question ? {
       questionInstanceId: 'demo-question-5',
       index: 4,
-      prompt: name === 'question-longest' || name === 'reading-longest'
+      prompt: name === 'question-clamp-text' || name === 'reveal-clamp-text'
+        ? clampPrompt
+        : name === 'question-longest' || name === 'reading-longest'
         ? longestPrompt
         : name === 'question-long-answer'
           ? squadPrompt
           : 'Free Fire · Trong chế độ Clash Squad, mỗi đội có bao nhiêu người?',
-      options: optionsVisible ? (name === 'question-long-answer' ? longestAnswerOptions : options) : [],
+      options: optionsVisible ? (name === 'question-clamp-text' || name === 'reveal-clamp-text' ? clampOptions : name === 'question-long-answer' ? longestAnswerOptions : options) : [],
       optionsVisible,
       isDemo: true,
     } : null,
@@ -188,7 +212,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
           ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
           : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
-    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'reveal', 'paused'].includes(name) ? mockAudience(name === 'reveal') : null,
+    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'paused'].includes(name) ? mockAudience(isReveal) : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   };
 }
