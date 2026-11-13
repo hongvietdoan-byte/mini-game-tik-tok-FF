@@ -2,6 +2,9 @@ import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { SessionConfigSchema } from '@quiz/contracts';
+import { mockClient } from '../../apps/dashboard/src/api/mockClient';
+import type { NameModerationSettingsResponse, NameRuleGroup } from '../../apps/dashboard/src/nameModerationData';
 
 let dashboardUrl = '';
 const adminToken = 'e2e-admin-token-must-not-appear-in-url';
@@ -248,13 +251,6 @@ test('lọc câu hỏi, xác nhận duyệt hàng loạt và bắt buộc nhập
 
 test('kiểm duyệt tên DEMO: lọc, ẩn/cho hiện, quy tắc, ngoại lệ, audit và preview', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const overlayPort = process.env.PLAYWRIGHT_OVERLAY_PORT ?? '15176';
-  await page.route('**/overlay/**', (route) => {
-    const overlay = new URL(route.request().url());
-    overlay.port = overlayPort;
-    overlay.pathname = '/';
-    return route.continue({ url: overlay.toString() });
-  });
   await launchDashboard(page);
   await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
   await expect(page.getByRole('heading', { name: 'Phiên MOCK' })).toBeVisible();
@@ -270,38 +266,35 @@ test('kiểm duyệt tên DEMO: lọc, ẩn/cho hiện, quy tắc, ngoại lệ,
 
   const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'name-moderation');
   mkdirSync(reviewDirectory, { recursive: true });
-  const top10Frame = moderation.frameLocator('iframe[title="Overlay preview TOP 10"]');
-  const top10Stage = top10Frame.locator('[data-testid="stage"]');
-  await expect(top10Stage).toBeVisible();
-  await expect(top10Frame.locator('body')).not.toContainText('Bình Minh 84');
-  await expect(top10Frame.locator('body')).not.toContainText('Admin Bão Tố');
-  await moderation.locator('iframe[title="Overlay preview TOP 10"]').screenshot({ path: join(reviewDirectory, 'embedded-preview-top10.png'), animations: 'disabled', timeout: 8_000 });
-  const overlayScene = await page.context().newPage();
-  await overlayScene.setViewportSize({ width: 1080, height: 1920 });
-  await overlayScene.goto(`http://127.0.0.1:${overlayPort}/?mock=top10&hud=1`);
-  await expect(overlayScene.locator('[data-testid="stage"]')).toBeVisible();
-  await expect(overlayScene.locator('body')).not.toContainText('Bình Minh 84');
-  await expect(overlayScene.locator('body')).not.toContainText('Admin Bão Tố');
-  await overlayScene.screenshot({ path: join(reviewDirectory, 'overlay-top10.png'), fullPage: true, animations: 'disabled' });
-  await overlayScene.close();
+  const top10Preview = moderation.getByTestId('moderation-preview-top10');
+  await expect(top10Preview.locator('.moderation-preview-rows > li')).toHaveCount(10);
+  await expect(top10Preview).toContainText('Nắng Tháng Ba');
+  await expect(top10Preview).not.toContainText('Người chơi 05');
+  await top10Preview.screenshot({ path: join(reviewDirectory, 'preview-top10.png'), animations: 'disabled' });
+  await moderation.getByLabel('Cảnh xem trước').selectOption('victory');
+  const victoryPreview = moderation.getByTestId('moderation-preview-victory');
+  await expect(victoryPreview.locator('.moderation-preview-rows > li')).toHaveCount(3);
+  await victoryPreview.screenshot({ path: join(reviewDirectory, 'preview-victory.png'), animations: 'disabled' });
+  await moderation.getByLabel('Cảnh xem trước').selectOption('top10');
+  await expect(moderation.getByTestId('moderation-hidden-count')).toHaveText('3');
+  const normalRow = moderation.getByTestId('moderation-player-row').filter({ hasText: 'Nắng Tháng Ba' });
+  await expect(normalRow.locator('.moderation-live-name')).toHaveText('Nắng Tháng Ba');
+  await expect(normalRow.locator('td').nth(2).locator('small')).toHaveText('Đang hiển thị');
   await page.screenshot({ path: join(reviewDirectory, 'flagged-list.png'), fullPage: true });
   await page.screenshot({ path: join(reviewDirectory, 'live-before-hide.png'), fullPage: true });
 
   const reviewRow = moderation.getByTestId('moderation-player-row').filter({ hasText: 'Bình Minh 84' });
-  await reviewRow.getByRole('button', { name: 'Cho phép REVIEW' }).click();
+  await reviewRow.getByRole('button', { name: 'Cho phép hiện' }).click();
   await expect(reviewRow.locator('.moderation-live-name')).toHaveText('Bình Minh 84');
   await expect(reviewRow.getByRole('button', { name: 'Đã cho phép' })).toBeDisabled();
 
-  const unflagged = moderation.getByTestId('moderation-player-row').filter({ hasText: 'Nắng Tháng Ba' });
-  await expect(unflagged.getByText('Bình thường')).toBeVisible();
-  await unflagged.getByRole('button', { name: 'Ẩn', exact: true }).click();
-  await expect(unflagged.getByText('Người chơi 05')).toBeVisible();
-  await expect(unflagged).toHaveAttribute('data-hidden', 'true');
-
-  await moderation.getByLabel('Chọn Bình Minh 84').check();
-  await moderation.getByLabel('Chọn Gió Lặng 09').check();
+  await moderation.getByLabel('Chọn Nắng Tháng Ba').check();
+  await moderation.getByLabel('Chọn Mưa Nhẹ 18').check();
   await moderation.getByRole('button', { name: 'Ẩn đã chọn' }).click();
   await expect(moderation.getByTestId('moderation-hidden-count')).toHaveText('4');
+  await expect(moderation.locator('.moderation-notice.alert-success')).toContainText('Đã ẩn 2 tên trong dữ liệu DEMO.');
+  await expect(moderation.locator('[data-risk="MANUAL_HIDE"]')).toHaveCount(3);
+  await expect(moderation.getByTestId('moderation-player-row').filter({ hasText: 'Nắng Tháng Ba' }).locator('.moderation-live-name')).toHaveText('Người chơi 05');
   await expect(moderation.getByTestId('moderation-history').getByText('Ẩn tên').first()).toBeVisible();
   await page.screenshot({ path: join(reviewDirectory, 'live-after-hide.png'), fullPage: true });
 
@@ -319,26 +312,164 @@ test('kiểm duyệt tên DEMO: lọc, ẩn/cho hiện, quy tắc, ngoại lệ,
   const addedRule = moderation.getByLabel('Từ chặn hiện tại').getByText('Cụm Demo 42');
   await expect(addedRule).toBeVisible();
   await expect(moderation.getByLabel('Từ chặn hiện tại')).toContainText('che một phần');
-  await moderation.getByLabel('Người chơi có rule áp dụng').selectOption('demo-high-002');
-  await expect(moderation.getByLabel('Người chơi có rule áp dụng')).toHaveValue('demo-high-002');
+  await moderation.getByLabel('Người chơi có quy tắc áp dụng').selectOption('demo-high-002');
+  await expect(moderation.getByLabel('Người chơi có quy tắc áp dụng')).toHaveValue('demo-high-002');
   await moderation.getByLabel('Thêm ngoại lệ').fill('Đội Ánh Sao');
   await moderation.getByRole('button', { name: 'Thêm ngoại lệ', exact: true }).click();
   await expect(moderation.getByLabel('Ngoại lệ hiện tại').getByText('Đội Ánh Sao')).toBeVisible();
 
-  await moderation.getByLabel('Cảnh preview overlay').selectOption('victory');
-  await expect(moderation.getByTitle('Overlay preview VICTORY')).toBeVisible();
-  const victoryFrame = moderation.frameLocator('iframe[title="Overlay preview VICTORY"]');
-  const victoryStage = victoryFrame.locator('[data-testid="stage"][data-scene="VICTORY"]');
-  await expect(victoryStage).toBeVisible();
-  await expect(victoryFrame.locator('body')).not.toContainText('Bình Minh 84');
-  await expect(victoryFrame.locator('body')).not.toContainText('Admin Bão Tố');
-  const victoryOverlay = await page.context().newPage();
-  await victoryOverlay.setViewportSize({ width: 1080, height: 1920 });
-  await victoryOverlay.goto(`http://127.0.0.1:${overlayPort}/?mock=victory&hud=1`);
-  await expect(victoryOverlay.locator('[data-testid="stage"][data-scene="VICTORY"]')).toBeVisible();
-  await expect(victoryOverlay.locator('body')).not.toContainText('Bình Minh 84');
-  await expect(victoryOverlay.locator('body')).not.toContainText('Admin Bão Tố');
-  await victoryOverlay.screenshot({ path: join(reviewDirectory, 'overlay-victory.png'), fullPage: true, animations: 'disabled' });
-  await victoryOverlay.close();
+  await moderation.getByLabel('Cảnh xem trước').selectOption('victory');
+  await expect(moderation.getByTestId('moderation-preview-victory')).toBeVisible();
+  await expect(moderation.getByTestId('moderation-preview-victory')).toContainText('Sương Sớm 09');
+  expect(page.url()).not.toContain(adminToken);
+});
+
+test('kiểm duyệt tên LIVE dùng đúng schema settings, mutation, audit và tải lại roster sau visibility/review', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const { snapshot } = await mockClient.createSession('e2e', {
+    name: 'C-0183 API DEMO',
+    config: SessionConfigSchema.parse({ mode: 'MOCK', allowDemoQuestions: true }),
+  });
+
+  let playersGetCount = 0;
+  let settingsGetCount = 0;
+  let auditGetCount = 0;
+  const authHeaders: string[] = [];
+  let players = [{
+    playerId: 'api-player-01', rawDisplayName: 'Người Chơi Demo 01', safeDisplayName: 'Người chơi 01',
+    risk: 'REVIEW', displayAction: 'ALIAS', matchedRuleIds: ['custom.rule1'], matchedRuleGroups: ['PROFANITY'],
+    requiresReview: true, hidden: false, reviewAllowed: false, policyVersion: 4, checkedAt: 1_700_000_000_000,
+    rank: 1, seat: null, score: 900,
+  }];
+  let settings: NameModerationSettingsResponse = {
+    rules: [{ id: 'custom.rule1', term: 'demo-rule', aliases: [], match: 'word', group: 'PROFANITY', severity: 'HIGH', source: 'CUSTOM' }],
+    whitelist: [{ value: 'Demo Allow', ruleIds: ['custom.rule1'] }],
+    version: 4,
+    protectedEntities: [{ id: 'storm-arena', label: 'Storm Arena', aliases: ['Storm Arena'], kind: 'BRAND', source: 'SYSTEM', scope: 'PLAYER_DISPLAY_NAME', rule: 'REVIEW_OR_HIGH_CONTEXT' }],
+    playerNameSpeech: 'UNSUPPORTED',
+    hiddenPlayerIds: [], allowedReviewPlayerIds: [], verifiedOfficialAccounts: [],
+  };
+  let auditEntries = [{ id: 'audit-1', at: 1_700_000_000_000, actor: 'Người vận hành', action: 'PLAYERS_HIDDEN', policyVersion: 4, targetCount: 1 }];
+  const recordAudit = (action: string, targetCount: number, ruleId?: string) => {
+    auditEntries = [{ id: `audit-${Date.now()}`, at: Date.now(), actor: 'Người vận hành', action, policyVersion: settings.version, targetCount, ...(ruleId ? { ruleId } : {}) }, ...auditEntries];
+  };
+  const mutationResponse = () => ({
+    rules: settings.rules, whitelist: settings.whitelist, hiddenPlayerIds: settings.hiddenPlayerIds,
+    allowedReviewPlayerIds: settings.allowedReviewPlayerIds, verifiedOfficialAccounts: settings.verifiedOfficialAccounts,
+    version: settings.version,
+  });
+
+  await page.route('**/api/sessions/current', (route) => route.fulfill({ json: { sessionId: null } }));
+  await page.route('**/api/questions', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() !== 'POST') return route.fulfill({ json: { sessionId: null } });
+    await route.fulfill({ json: { sessionId: 'c0183-session', snapshot } });
+  });
+  await page.route('**/api/admin/name-filter**', async (route: Route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    const method = route.request().method();
+    authHeaders.push(route.request().headers().authorization ?? '');
+    if (path.endsWith('/players') && method === 'GET') {
+      playersGetCount += 1;
+      return route.fulfill({ json: { players, policyVersion: settings.version, playerNameSpeech: 'UNSUPPORTED' } });
+    }
+    if (path.endsWith('/players/visibility') && method === 'POST') {
+      const body = route.request().postDataJSON() as { playerIds: string[]; hidden: boolean };
+      players = players.map((player) => body.playerIds.includes(player.playerId) ? {
+        ...player, hidden: body.hidden, risk: body.hidden ? 'MANUAL_HIDE' : 'REVIEW',
+        safeDisplayName: body.hidden ? 'Người chơi 01' : player.reviewAllowed ? player.rawDisplayName : 'Người chơi 01',
+      } : player);
+      settings = { ...settings, hiddenPlayerIds: body.hidden ? body.playerIds : [] , version: settings.version + 1 };
+      recordAudit(body.hidden ? 'PLAYERS_HIDDEN' : 'PLAYERS_RESTORED', body.playerIds.length);
+      return route.fulfill({ json: mutationResponse() });
+    }
+    if (path.endsWith('/players/review') && method === 'POST') {
+      const body = route.request().postDataJSON() as { playerIds: string[]; allowed: boolean };
+      players = players.map((player) => body.playerIds.includes(player.playerId) ? {
+        ...player, reviewAllowed: body.allowed, safeDisplayName: body.allowed ? player.rawDisplayName : 'Người chơi 01',
+      } : player);
+      settings = { ...settings, allowedReviewPlayerIds: body.allowed ? body.playerIds : [], version: settings.version + 1 };
+      recordAudit(body.allowed ? 'REVIEW_ALLOWED' : 'REVIEW_ALLOW_REMOVED', body.playerIds.length);
+      return route.fulfill({ json: mutationResponse() });
+    }
+    if (path === '/api/admin/name-filter' && method === 'GET') {
+      settingsGetCount += 1;
+      return route.fulfill({ json: settings });
+    }
+    if (path === '/api/admin/name-filter' && method === 'PUT') {
+      const body = route.request().postDataJSON() as typeof settings;
+      settings = { ...settings, ...body, version: settings.version + 1 };
+      recordAudit('POLICY_UPDATED', 0);
+      return route.fulfill({ json: settings });
+    }
+    if (path === '/api/admin/name-filter/audit' && method === 'GET') {
+      auditGetCount += 1;
+      return route.fulfill({ json: { entries: auditEntries.slice(0, Number(url.searchParams.get('limit') ?? 100)) } });
+    }
+    if (path === '/api/admin/name-filter/rules' && method === 'POST') {
+      const body = route.request().postDataJSON() as { term: string; aliases: string[]; match: 'word' | 'substring'; group: NameRuleGroup; severity: 'PARTIAL' | 'HIGH' };
+      const rule = { ...body, id: `custom.rule${settings.rules.length + 1}`, source: 'CUSTOM' as const };
+      settings = { ...settings, rules: [...settings.rules, rule], version: settings.version + 1 };
+      recordAudit('CUSTOM_RULE_ADDED', 0, rule.id);
+      return route.fulfill({ json: mutationResponse() });
+    }
+    if (path === '/api/admin/name-filter/exceptions' && method === 'POST') {
+      const body = route.request().postDataJSON() as { value: string; ruleIds: string[] };
+      settings = { ...settings, whitelist: [...settings.whitelist, body], version: settings.version + 1 };
+      recordAudit('SCOPED_EXCEPTION_ADDED', 0);
+      return route.fulfill({ json: mutationResponse() });
+    }
+    if (path === '/api/admin/name-filter/recheck' && method === 'POST')
+      return route.fulfill({ json: { policyVersion: settings.version, checked: players.length, changed: 0, flagged: 1 } });
+    return route.fulfill({ status: 404, json: { message: `Unexpected moderation request: ${method} ${path}` } });
+  });
+
+  await launchDashboard(page, { mock: false });
+  await page.getByRole('button', { name: 'Kết nối', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tạo phiên MOCK' })).toBeVisible();
+  await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  await expect(page.getByRole('heading', { name: 'Phiên MOCK' })).toBeVisible();
+  await page.getByRole('button', { name: 'Kiểm duyệt tên', exact: true }).click();
+
+  const moderation = page.getByTestId('name-moderation-page');
+  await expect(moderation.locator('iframe')).toHaveCount(0);
+  await expect(moderation.getByText('Bộ từ mặc định (SYSTEM) không hiển thị trong API này', { exact: false })).toBeVisible();
+  await expect(moderation.getByLabel('Từ chặn hiện tại')).toContainText('demo-rule');
+  await expect(moderation.getByLabel('Ngoại lệ hiện tại')).toContainText('Demo Allow');
+  await expect(moderation.getByTestId('moderation-history')).toContainText('Ẩn tên');
+  await expect(moderation.getByTestId('moderation-history')).toContainText('Người vận hành');
+  await expect.poll(() => settingsGetCount).toBeGreaterThan(0);
+  await expect.poll(() => auditGetCount).toBeGreaterThan(0);
+  expect(new Set(authHeaders)).toEqual(new Set([`Bearer ${adminToken}`]));
+
+  const row = moderation.getByTestId('moderation-player-row').filter({ hasText: 'Người Chơi Demo 01' });
+  const initialPlayersGets = playersGetCount;
+  await row.getByRole('button', { name: 'Cho phép hiện' }).click();
+  await expect.poll(() => playersGetCount).toBeGreaterThan(initialPlayersGets);
+  await expect(row.locator('.moderation-live-name')).toHaveText('Người Chơi Demo 01');
+  await expect(row.getByRole('button', { name: 'Đã cho phép' })).toBeDisabled();
+
+  const afterReviewGets = playersGetCount;
+  await row.getByRole('button', { name: 'Ẩn', exact: true }).click();
+  await expect.poll(() => playersGetCount).toBeGreaterThan(afterReviewGets);
+  await expect(row.locator('.moderation-live-name')).toHaveText('Người chơi 01');
+
+  await moderation.getByLabel('Từ / cụm từ cần chặn').fill('rule mới');
+  await moderation.getByRole('button', { name: 'Thêm từ chặn', exact: true }).click();
+  await expect(moderation.getByLabel('Từ chặn hiện tại')).toContainText('rule mới');
+  await expect.poll(() => settingsGetCount).toBeGreaterThan(1);
+  await moderation.getByLabel('Người chơi có quy tắc áp dụng').selectOption('api-player-01');
+  await moderation.getByLabel('Thêm ngoại lệ').fill('Ngoại lệ API');
+  await moderation.getByRole('button', { name: 'Thêm ngoại lệ', exact: true }).click();
+  await expect(moderation.getByLabel('Ngoại lệ hiện tại')).toContainText('Ngoại lệ API');
+
+  await moderation.getByRole('button', { name: 'Xoá ngoại lệ Ngoại lệ API' }).click();
+  await expect(moderation.getByLabel('Ngoại lệ hiện tại')).not.toContainText('Ngoại lệ API');
+  const putsBeforeRemoval = authHeaders.length;
+  await moderation.getByRole('button', { name: 'Xoá quy tắc chặn rule mới' }).click();
+  await expect(moderation.getByLabel('Từ chặn hiện tại')).not.toContainText('rule mới');
+  await expect.poll(() => authHeaders.length).toBeGreaterThan(putsBeforeRemoval);
+  await expect(moderation.getByTestId('moderation-history')).toContainText('Cập nhật chính sách');
   expect(page.url()).not.toContain(adminToken);
 });
