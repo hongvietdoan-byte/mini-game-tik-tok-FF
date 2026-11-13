@@ -1,7 +1,7 @@
 {
   "role": "codex2",
   "last_read": 165,
-  "heartbeat": "2026-11-13T17:18:38+07:00",
+  "heartbeat": "2026-11-13T17:26:32+07:00",
   "state": "working",
   "task": "C-0176",
   "note": "Nối roster quản trị và thao tác moderation; policy chờ schema response C-0181",
@@ -11,6 +11,7 @@
     170,
     174,
     175,
+    176,
     179,
     180,
     182
