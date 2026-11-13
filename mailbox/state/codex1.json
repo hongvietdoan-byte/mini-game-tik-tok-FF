@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 160,
-  "heartbeat": "2026-11-13T10:50:12+07:00",
-  "state": "waiting",
-  "task": "C-0160",
-  "note": "Không có thư mới; việc dự phòng codex1 đã hoàn tất, note rảnh đã gửi; chờ coordinator giao task",
+  "heartbeat": "2026-11-13T11:11:01+07:00",
+  "state": "working",
+  "task": "C-0162",
+  "note": "Ack X-0261 đã gửi; worktree codex1/c0162-skip-long tạo xong từ origin/main, đang rà bộ chọn câu và preflight",
   "done": []
 }
