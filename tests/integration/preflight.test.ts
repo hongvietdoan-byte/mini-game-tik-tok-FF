@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, rm, utimes, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +10,7 @@ import { ManualScheduler, MockAdapter, type LiveAdapter } from '@quiz/live-adapt
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
 import { AUTH, makeQuestions, tempDbPath, TOKEN } from './helpers';
+import { testTempRootAsync } from '../support/tempRoot';
 
 class ReadyTikTokAdapter implements LiveAdapter {
   readonly source: LiveSource = 'TIKTOK';
@@ -73,7 +73,7 @@ async function makeHarness(options: {
     verificationStatus: options.demoQuestions ? 'DEMO' as const : 'OPERATOR_VERIFIED' as const,
   }));
   store.seedQuestions({ id: 'preflight', name: 'Preflight' }, questions, scheduler.now());
-  const tempRoot = await mkdtemp(join(tmpdir(), 'quiz-preflight-'));
+  const tempRoot = await testTempRootAsync('quiz-preflight-');
   const webRoots = await createWebRoots(tempRoot, options.completeAssets ?? true, options.staleBuilds ?? false);
   if (options.staleBuilds) {
     const epoch = new Date(0);
@@ -157,7 +157,7 @@ afterEach(async () => {
     }
     await harness.quiz.close().catch(() => {});
     harness.store.close();
-    await rm(harness.tempRoot, { recursive: true, force: true });
+    await rm(harness.tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

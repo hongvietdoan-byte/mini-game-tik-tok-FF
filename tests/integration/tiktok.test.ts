@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
@@ -9,6 +8,7 @@ import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
 import { AUTH, TOKEN, makeQuestions, markCurrentWebBuild, tempDbPath } from './helpers';
+import { testTempRoot } from '../support/tempRoot';
 
 class FakeConn implements TikTokConnectionLike {
   handlers = new Map<string, ((d: any) => void)[]>();
@@ -34,7 +34,7 @@ async function bootTikTok() {
   const store = new Store(tempDbPath());
   store.seedQuestions({ id: 'demo', name: 'Demo' }, makeQuestions(20), scheduler.now());
   const conn = new FakeConn();
-  const tempRoot = mkdtempSync(join(tmpdir(), 'quiz-tiktok-preflight-'));
+  const tempRoot = testTempRoot('quiz-tiktok-preflight-');
   const webRoots = { assets: join(tempRoot, 'assets'), dashboard: join(tempRoot, 'dashboard'), overlay: join(tempRoot, 'overlay') };
   for (const directory of Object.values(webRoots)) mkdirSync(directory, { recursive: true });
   markCurrentWebBuild(webRoots.dashboard, webRoots.overlay);
@@ -62,7 +62,7 @@ async function bootTikTok() {
     }
     await quiz.close();
     store.close();
-    rmSync(tempRoot, { recursive: true, force: true });
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
   const inject = (method: 'GET' | 'POST', url: string, payload?: unknown) =>
     quiz.app.inject({ method, url, headers: AUTH, ...(payload ? { payload } : {}) });

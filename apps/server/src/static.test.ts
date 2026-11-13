@@ -1,9 +1,9 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { serveAssets } from './static';
+import { testTempRoot } from '../../../tests/support/tempRoot';
 
 const MAX_AUDIO_ASSET_BYTES = 5 * 1024 * 1024;
 
@@ -13,7 +13,7 @@ describe('serveAssets audio slots', () => {
   let app: FastifyInstance;
 
   beforeEach(() => {
-    tempRoot = mkdtempSync(join(tmpdir(), 'quiz-static-assets-'));
+    tempRoot = testTempRoot('quiz-static-assets-');
     assetsRoot = join(tempRoot, 'assets');
     mkdirSync(join(assetsRoot, 'audio'), { recursive: true });
     app = Fastify({ logger: false });
@@ -22,7 +22,7 @@ describe('serveAssets audio slots', () => {
 
   afterEach(async () => {
     await app.close();
-    rmSync(tempRoot, { recursive: true, force: true });
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it.each([

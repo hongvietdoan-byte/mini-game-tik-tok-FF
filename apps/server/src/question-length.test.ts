@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ManualScheduler } from '@quiz/live-adapters';
 import { DEMO_PACK, DEMO_QUESTIONS } from '../../../fixtures/questions';
 import { Store } from '@quiz/persistence';
 import { buildApp } from './app';
+import { testTempRoot } from '../../../tests/support/tempRoot';
 
 const TOKEN = 'question-length-test-token-0123456789';
 const cleanup: (() => Promise<void>)[] = [];
@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 async function boot() {
-  const root = mkdtempSync(join(tmpdir(), 'quiz-question-length-'));
+  const root = testTempRoot('quiz-question-length-');
   const dataDir = join(root, 'data');
   mkdirSync(dataDir, { recursive: true });
   const store = new Store(join(dataDir, 'quiz.db'));
@@ -51,7 +51,7 @@ async function boot() {
   cleanup.push(async () => {
     await quiz.close();
     store.close();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
   return { quiz, store, scheduler };
 }

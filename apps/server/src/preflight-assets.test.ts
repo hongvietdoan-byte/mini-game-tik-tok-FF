@@ -1,17 +1,17 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { preflightAssets } from './preflight-assets';
+import { testTempRoot } from '../../../tests/support/tempRoot';
 
 const roots: string[] = [];
 function tempRoot() {
-  const root = mkdtempSync(join(tmpdir(), 'quiz-preflight-assets-'));
+  const root = testTempRoot('quiz-preflight-assets-');
   roots.push(root);
   return root;
 }
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 function seedAssets(root: string) {
   for (const file of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/one.png', 'mc/kelly.png']) {

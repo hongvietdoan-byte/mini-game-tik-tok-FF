@@ -1,11 +1,11 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { McVoiceCache, McVoiceService, buildApp, type McVoiceAudio, type McVoiceCredentialStore, type McVoiceProvider } from '@quiz/server';
 import { AUTH, makeQuestions, tempDbPath, TOKEN } from './helpers';
+import { testTempRootAsync } from '../support/tempRoot';
 
 type Harness = { quiz: Awaited<ReturnType<typeof buildApp>>; store: Store; voiceCacheDirectory: string; secret: { value: string | null }; provider: McVoiceProvider };
 const opened: Harness[] = [];
@@ -14,7 +14,7 @@ afterEach(async () => {
   for (const harness of opened.splice(0)) {
     await harness.quiz.close().catch(() => {});
     harness.store.close();
-    await rm(harness.voiceCacheDirectory, { recursive: true, force: true });
+    await rm(harness.voiceCacheDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -27,7 +27,7 @@ async function harness(opts: { voice?: boolean } = {}) {
   const store = new Store(tempDbPath());
   store.seedQuestions({ id: 'demo', name: 'Demo' }, makeQuestions(4), scheduler.now());
   const adapter = new MockAdapter();
-  const voiceCacheDirectory = await mkdtemp(join(tmpdir(), 'mc-voice-api-cache-'));
+  const voiceCacheDirectory = await testTempRootAsync('mc-voice-api-cache-');
   const secret: { value: string | null } = { value: 'test-only-secret-9876' };
   const credentials: McVoiceCredentialStore = {
     get: async () => secret.value,

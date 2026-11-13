@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-import tempfile
+try:
+    from test_support import repo_temp_directory
+except ImportError:
+    from tools.test_support import repo_temp_directory
 import unittest
 from unittest.mock import patch
 
@@ -17,7 +20,7 @@ class WebBuildNoGitTests(unittest.TestCase):
             (directory / web_build.BUILD_MARKER).write_text(marker + "\n", encoding="utf-8")
 
     def test_missing_git_always_requests_a_rebuild(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-web-no-git-") as temp:
+        with repo_temp_directory(prefix="quiz-web-no-git-") as temp:
             root = Path(temp)
             self.seed_dist(root, "old-build")
 
@@ -28,7 +31,7 @@ class WebBuildNoGitTests(unittest.TestCase):
             self.assertIn("Không có Git/HEAD để xác minh dist; luôn build lại.", reasons)
 
     def test_verify_accepts_complete_build_without_git(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-web-verify-no-git-") as temp:
+        with repo_temp_directory(prefix="quiz-web-verify-no-git-") as temp:
             root = Path(temp)
             for relative in web_build.WEB_BUILDS:
                 index = root / relative / "index.html"
@@ -50,14 +53,14 @@ class WebBuildHashTests(unittest.TestCase):
             (directory / web_build.BUILD_MARKER).write_text(marker + "\n", encoding="utf-8")
 
     def test_same_hash_is_fresh(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-web-same-hash-") as temp:
+        with repo_temp_directory(prefix="quiz-web-same-hash-") as temp:
             root = Path(temp)
             self.seed_dist(root, "head")
             with patch.object(web_build, "current_head_hash", return_value="head"):
                 self.assertEqual(web_build.build_state(root), (True, []))
 
     def test_old_hash_without_relevant_changes_is_fresh(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-web-doc-change-") as temp:
+        with repo_temp_directory(prefix="quiz-web-doc-change-") as temp:
             root = Path(temp)
             self.seed_dist(root, "built")
             with (
@@ -67,7 +70,7 @@ class WebBuildHashTests(unittest.TestCase):
                 self.assertEqual(web_build.build_state(root), (True, []))
 
     def test_relevant_source_change_requires_build(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-web-source-change-") as temp:
+        with repo_temp_directory(prefix="quiz-web-source-change-") as temp:
             root = Path(temp)
             self.seed_dist(root, "built")
             with (
