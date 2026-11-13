@@ -1,10 +1,12 @@
 import { performance } from 'node:perf_hooks';
 import {
   DEFAULT_NAME_FILTER_RULES,
+  DEFAULT_NAME_FILTER_GROUP_POLICY,
   DEFAULT_PROTECTED_ENTITIES,
   filterPlayerName,
   type NameFilterConfig,
 } from '../packages/name-filter/src/index';
+import { CLEAN_NAME_CORPUS } from '../packages/name-filter/src/clean-name-corpus';
 
 const repeats = 20;
 const perBatch = 10_000;
@@ -27,8 +29,14 @@ const adversarialCases = [
   { name: 'đ.ị.t', group: 'PROFANITY' }, { name: 'd m', group: 'PROFANITY' },
   { name: 'l0n', group: 'PROFANITY' }, { name: 'c.c', group: 'PROFANITY' },
   { name: 'Tên đồ ngu', group: 'PROFANITY' }, { name: 'Tên đồ chó', group: 'PROFANITY' },
-  { name: 'porn', group: 'NSFW_SEXUAL' }, { name: 'nigger', group: 'HATE_SPEECH' },
+  { name: 'DZ0-KH0-DI3N', group: 'PROFANITY' }, { name: 'Cường bố dại MVP', group: 'PROFANITY' },
+  { name: 'fan biet chung toc', group: 'HATE_SPEECH' },
+  { name: 'porn', group: 'NSFW_SEXUAL' }, { name: 'xex', group: 'NSFW_SEXUAL' }, { name: 'nigger', group: 'HATE_SPEECH' },
   { name: 'giết người', group: 'ILLEGAL_HARMFUL' },
+  { name: 'người chơi cá độ', group: 'ILLEGAL_HARMFUL' },
+  { name: 'https://quiz.example.vn', group: 'ILLEGAL_HARMFUL' },
+  { name: 'Liên hệ 0912 345 678', group: 'ILLEGAL_HARMFUL' },
+  { name: 'kêu gọi biểu tình', group: 'ILLEGAL_HARMFUL' },
   { name: 'Garena Official', group: 'IMPERSONATION' }, { name: 'Free Fire MAX fake', group: 'IMPERSONATION' },
   { name: 'BTC trao thưởng', group: 'IMPERSONATION' }, { name: 'admin support' },
 ].map((item) => {
@@ -55,6 +63,9 @@ for (let repeat = 0; repeat < repeats; repeat += 1) {
 const curatedFalsePositives = curatedCleanNames.filter((name) =>
   filterPlayerName(name, null, config, DEFAULT_NAME_FILTER_RULES, { protectedEntities: DEFAULT_PROTECTED_ENTITIES }).risk !== 'NONE',
 ).length;
+const reviewedCleanFalsePositives = CLEAN_NAME_CORPUS.filter((name) =>
+  filterPlayerName(name, null, config, DEFAULT_NAME_FILTER_RULES, { protectedEntities: DEFAULT_PROTECTED_ENTITIES }).risk !== 'NONE',
+).length;
 const adversarialGroups = ['PROFANITY', 'NSFW_SEXUAL', 'HATE_SPEECH', 'ILLEGAL_HARMFUL', 'IMPERSONATION'] as const;
 
 const sorted = [...batchesMs].sort((a, b) => a - b);
@@ -66,9 +77,20 @@ console.log(JSON.stringify({
   batchMs: batchesMs.map((value) => Number(value.toFixed(2))),
   medianMs: Number(median.toFixed(2)),
   p95Ms: Number(percentile(0.95).toFixed(2)),
+  medianMicrosecondsPerName: Number(((median * 1_000) / perBatch).toFixed(2)),
+  p95MicrosecondsPerName: Number(((percentile(0.95) * 1_000) / perBatch).toFixed(2)),
   falsePositives: `${falsePositives}/${perBatch}`,
   curatedSyntheticFalsePositives: `${curatedFalsePositives}/${curatedCleanNames.length}`,
+  reviewedCleanCorpusFalsePositives: `${reviewedCleanFalsePositives}/${CLEAN_NAME_CORPUS.length}`,
   adversarialFalseNegatives: `${adversarialCases.filter((item) => !item.detected).length}/${adversarialCases.length}`,
+  defaultRulesByGroup: Object.fromEntries(adversarialGroups.map((group) => [group, {
+    defaultSeverity: DEFAULT_NAME_FILTER_GROUP_POLICY.find((policy) => policy.group === group)?.defaultSeverity,
+    ruleCount: DEFAULT_NAME_FILTER_RULES.filter((rule) => rule.group === group).length + (group === 'ILLEGAL_HARMFUL' ? 2 : 0),
+    severityCounts: Object.fromEntries(['PARTIAL', 'REVIEW', 'HIGH'].map((severity) => [
+      severity, DEFAULT_NAME_FILTER_RULES.filter((rule) => rule.group === group && rule.severity === severity).length +
+        (group === 'ILLEGAL_HARMFUL' && severity === 'REVIEW' ? 2 : 0),
+    ])),
+  }])),
   adversarialByGroup: Object.fromEntries(adversarialGroups.map((group) => {
     const cases = adversarialCases.filter((item) => item.group === group);
     return [group, { detected: cases.filter((item) => item.matchedGroups.includes(group)).length, total: cases.length }];
