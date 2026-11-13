@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 187,
-  "heartbeat": "2026-11-13T19:27:39+07:00",
+  "heartbeat": "2026-11-13T20:10:46+07:00",
   "state": "waiting",
-  "task": "none",
-  "note": "Đã hoàn tất C-0172, report Y-0304 đã gửi; hộp thư hiện không còn task.",
+  "task": "C-0189",
+  "note": "Đã push nhánh, gửi report Y-0307 và hỏi ưu tiên B2 hay giống hệt main; chờ trả lời trước khi done. PowerShell policy chặn dọn .tmp-test/main-compare-data.",
   "done": []
 }
