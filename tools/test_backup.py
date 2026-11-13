@@ -7,7 +7,10 @@ from pathlib import Path
 import shutil
 import socket
 import sqlite3
-import tempfile
+try:
+    from test_support import repo_temp_directory
+except ImportError:
+    from tools.test_support import repo_temp_directory
 import unittest
 from unittest.mock import patch
 
@@ -17,7 +20,7 @@ from tools.backup import make_backup
 
 class BackupFirstLaunchTests(unittest.TestCase):
     def test_no_database_skips_backup_without_blocking_first_launch(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-backup-first-launch-") as temp:
+        with repo_temp_directory(prefix="quiz-backup-first-launch-") as temp:
             root = Path(temp)
             output_dir = root / "backups"
             stdout = StringIO()
@@ -38,7 +41,7 @@ class BackupRetentionTests(unittest.TestCase):
         (root / "assets-local" / "logo.txt").write_text("asset", encoding="utf-8")
 
     def test_keeps_only_newest_timestamp_backups(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-backup-retention-") as temp:
+        with repo_temp_directory(prefix="quiz-backup-retention-") as temp:
             root = Path(temp)
             self._seed_checkout(root)
             output_dir = root / "backups"
@@ -60,7 +63,7 @@ class BackupRetentionTests(unittest.TestCase):
             self.assertIn(created.name, names)
 
     def test_low_disk_space_returns_distinct_cli_code_before_copy(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-backup-low-space-") as temp:
+        with repo_temp_directory(prefix="quiz-backup-low-space-") as temp:
             root = Path(temp)
             self._seed_checkout(root)
             output_dir = root / "backups"
@@ -98,7 +101,7 @@ class RestoreSafetyTests(unittest.TestCase):
         return result
 
     def test_refuses_restore_when_server_port_is_open(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-restore-port-") as temp:
+        with repo_temp_directory(prefix="quiz-restore-port-") as temp:
             root = Path(temp)
             backup_dir = self._create_backup(root)
             with socket.socket() as listener:
@@ -110,7 +113,7 @@ class RestoreSafetyTests(unittest.TestCase):
                     backup.restore_backup(backup_dir, root, assume_yes=True, port=port)
 
     def test_refuses_restore_when_database_is_locked(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-restore-lock-") as temp:
+        with repo_temp_directory(prefix="quiz-restore-lock-") as temp:
             root = Path(temp)
             backup_dir = self._create_backup(root)
             connection = sqlite3.connect(root / "data" / "quiz.db", timeout=0)
@@ -124,7 +127,7 @@ class RestoreSafetyTests(unittest.TestCase):
                 connection.close()
 
     def test_mirror_restore_removes_extra_assets_but_keeps_excluded_folders(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-restore-mirror-") as temp:
+        with repo_temp_directory(prefix="quiz-restore-mirror-") as temp:
             root = Path(temp)
             backup_dir = self._create_backup(root)
             assets = root / "assets-local"
@@ -146,7 +149,7 @@ class RestoreSafetyTests(unittest.TestCase):
             self.assertEqual((assets / "_backup" / "keep.txt").read_text(encoding="utf-8"), "backup")
 
     def test_default_restore_keeps_assets_not_in_manifest(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="quiz-restore-no-mirror-") as temp:
+        with repo_temp_directory(prefix="quiz-restore-no-mirror-") as temp:
             root = Path(temp)
             backup_dir = self._create_backup(root)
             extra = root / "assets-local" / "extra.png"

@@ -1,19 +1,22 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ManualScheduler } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
 import { TOKEN, tempDbPath } from './helpers';
+import { removeTestTempRoot, testTempRoot } from '../support/tempRoot';
 
 const cleanup: (() => Promise<void>)[] = [];
+const tempRoots: string[] = [];
 afterEach(async () => {
   for (const f of cleanup.splice(0)) await f();
+  for (const root of tempRoots.splice(0)) removeTestTempRoot(root);
 });
 
 function fakeBuild(name: string) {
-  const dir = mkdtempSync(join(tmpdir(), `quiz-web-${name}-`));
+  const dir = testTempRoot(`quiz-web-${name}-`);
+  tempRoots.push(dir);
   mkdirSync(join(dir, 'assets'));
   writeFileSync(join(dir, 'index.html'), `<!doctype html><title>${name}</title><script src="/${name}/assets/app.js"></script>`);
   writeFileSync(join(dir, 'assets', 'app.js'), `console.log('${name}')`);

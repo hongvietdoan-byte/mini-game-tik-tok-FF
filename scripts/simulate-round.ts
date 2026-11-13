@@ -1,10 +1,8 @@
 /**
  * Mô phỏng một vòng MOCK hoàn chỉnh trên đồng hồ ảo, in bảng xếp hạng và kiểm toàn vẹn điểm.
  *   corepack pnpm simulate -- --players 100 --questions 15 --seed 42
- * DB tạm trong thư mục hệ thống, không đụng data/.
+ * DB tạm trong .tmp-test/ của repo, không đụng data/.
  */
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
@@ -12,6 +10,7 @@ import type { CommandBody } from '@quiz/contracts';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { SessionRuntime } from '@quiz/server';
+import { removeTestTempRoot, testTempRoot } from '../tests/support/repoTemp';
 
 const { values } = parseArgs({
   args: process.argv.slice(2).filter((a) => a !== '--'),
@@ -27,8 +26,14 @@ const questionCount = Number(values.questions) as 10 | 15 | 20;
 const seed = Number(values.seed);
 
 const scheduler = new ManualScheduler();
-const dbPath = join(mkdtempSync(join(tmpdir(), 'quiz-sim-')), 'sim.db');
-const store = new Store(dbPath);
+const tempRoot = testTempRoot('quiz-sim-');
+const dbPath = join(tempRoot, 'sim.db');
+let store: Store | null = null;
+let runtime: SessionRuntime | null = null;
+let exitCode = 0;
+
+try {
+store = new Store(dbPath);
 store.seedQuestions(
   { id: 'demo', name: 'Demo mô phỏng' },
   Array.from({ length: 60 }, (_, i) => ({
@@ -45,7 +50,7 @@ store.seedQuestions(
   scheduler.now(),
 );
 
-const rt = await SessionRuntime.create(
+runtime = await SessionRuntime.create(
   { store, scheduler, adapter: new MockAdapter() },
   {
     name: 'Mô phỏng',
@@ -72,9 +77,9 @@ const rt = await SessionRuntime.create(
 await Promise.resolve();
 
 const send = (command: CommandBody) => {
-  const out = rt.dispatch({
+  const out = runtime!.dispatch({
     commandId: randomUUID(),
-    expectedStateVersion: rt.engine.stateVersion,
+    expectedStateVersion: runtime!.engine.stateVersion,
     operatorId: 'simulate-round',
     requestedAtMs: scheduler.now(),
     command,
@@ -82,14 +87,14 @@ const send = (command: CommandBody) => {
   if (!out.result.ok) throw new Error(`${command.type}: ${out.result.code} ${out.result.message}`);
 };
 
-rt.simulatorControl({ action: 'START', players, accuracy: Number(values.accuracy), participation: 0.9, spamRate: 0.15, noiseRate: 0.1, seed });
+runtime.simulatorControl({ action: 'START', players, accuracy: Number(values.accuracy), participation: 0.9, spamRate: 0.15, noiseRate: 0.1, seed });
 send({ type: 'OPEN_LOBBY' });
 send({ type: 'START_ROUND', questionCount });
-const roundId = rt.engine.round!.roundId;
+const roundId = runtime.engine.round!.roundId;
 let guard = 0;
-while (rt.engine.state !== 'VICTORY' && guard++ < 100_000) scheduler.advance(250);
+while (runtime.engine.state !== 'VICTORY' && guard++ < 100_000) scheduler.advance(250);
 
-const snap = rt.adminSnapshot();
+const snap = runtime.adminSnapshot();
 console.log(`Vòng ${roundId}: ${questionCount} câu, ${snap.public.participantCount} người tham gia`);
 console.log('Chỉ số nhận comment:', JSON.stringify(snap.metrics));
 console.log('\nTop 10:');
@@ -97,8 +102,19 @@ for (const e of snap.public.leaderboard?.entries ?? [])
   console.log(`  #${String(e.rank).padStart(2)}${e.tied ? '=' : ' '} ${e.displayName.padEnd(16)} ${String(e.score).padStart(5)} điểm  (${e.correctCount} đúng)`);
 const podium = snap.public.podium!;
 console.log(`\nBục: ${podium.slots.map((s) => `hạng ${s.rank}${s.tied ? ' (ĐỒNG HẠNG)' : ''}: ${s.entries.map((x) => x.displayName).join(', ')}`).join(' | ')}`);
-const integrity = rt.verifyIntegrity();
+const integrity = runtime.verifyIntegrity();
 console.log(`\nToàn vẹn sổ cái: ${integrity ?? 'OK'}`);
-rt.dispose();
-store.close();
-process.exit(integrity ? 1 : 0);
+if (integrity) exitCode = 1;
+} finally {
+  try {
+    runtime?.dispose();
+  } finally {
+    try {
+      store?.close();
+    } finally {
+      removeTestTempRoot(tempRoot);
+    }
+  }
+}
+
+process.exitCode = exitCode;

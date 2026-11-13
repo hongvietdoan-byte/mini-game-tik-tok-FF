@@ -24,8 +24,7 @@ const scenes = [
   { name: 'paused', scene: 'QUESTION' },
 ] as const;
 
-const screenshotDirectory = join(process.cwd(), 'test-results', 'e2e', 'screenshots');
-mkdirSync(screenshotDirectory, { recursive: true });
+const screenshotDirectory = join(process.cwd(), '.tmp-test', 'playwright-results', 'screenshots');
 const c0166ReviewDirectory = join(process.cwd(), 'assets-local', 'review', 'c0166');
 mkdirSync(c0166ReviewDirectory, { recursive: true });
 const localAssetDirectory = getE2eAssetDirectory();
@@ -40,6 +39,8 @@ let closestSafeScene = '';
 test.afterAll(() => {
   console.log(`Cảnh sát biên vùng an toàn nhất: ${closestSafeScene} (${closestSafeMargin.toFixed(1)}px).`);
 });
+
+test.beforeAll(() => mkdirSync(screenshotDirectory, { recursive: true }));
 
 function watchPageErrors(page: Page) {
   const errors: string[] = [];

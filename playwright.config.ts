@@ -1,6 +1,14 @@
 import { defineConfig } from '@playwright/test';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getE2eAssetDirectory } from './tests/e2e/assets';
+
+const repoRoot = dirname(fileURLToPath(import.meta.url));
+const repoTempRoot = resolve(repoRoot, '.tmp-test');
+// Playwright tạo user-data-dir nội bộ qua os.tmpdir(); ép nó vào vùng tạm được teardown dọn.
+process.env.TMPDIR = repoTempRoot;
+process.env.TMP = repoTempRoot;
+process.env.TEMP = repoTempRoot;
 
 const localAssetDirectory = getE2eAssetDirectory();
 const serverPort = Number(process.env.PLAYWRIGHT_SERVER_PORT ?? 18787);
@@ -11,8 +19,9 @@ const serverUrl = 'http://127.0.0.1:' + serverPort;
 const overlayUrl = 'http://127.0.0.1:' + overlayPort;
 
 export default defineConfig({
+  globalSetup: './tests/support/playwright-temp-global.ts',
   testDir: 'tests/e2e',
-  outputDir: 'test-results/e2e',
+  outputDir: '.tmp-test/playwright-results',
   snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
   fullyParallel: false,
   workers: 1,
@@ -32,7 +41,7 @@ export default defineConfig({
       env: {
         QUIZ_PORT: String(serverPort),
         QUIZ_DB: ':memory:',
-        QUIZ_DATA_DIR: resolve(process.cwd(), 'test-results/e2e/server-data'),
+        QUIZ_DATA_DIR: resolve(repoTempRoot, 'playwright-server-data'),
         QUIZ_ASSETS_DIR: localAssetDirectory,
       },
     },

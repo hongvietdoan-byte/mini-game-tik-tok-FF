@@ -1,17 +1,17 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FfmpegMcVoiceAudioNormalizer } from './ffmpeg-normalizer';
 import type { McVoiceAudio } from './types';
+import { testTempRootAsync } from '../../../../tests/support/tempRoot';
 
 const directories: string[] = [];
 afterEach(async () => {
-  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 async function tempDirectory() {
-  const directory = await mkdtemp(join(tmpdir(), 'mc-voice-normalizer-test-'));
+  const directory = await testTempRootAsync('mc-voice-normalizer-test-');
   directories.push(directory);
   return directory;
 }

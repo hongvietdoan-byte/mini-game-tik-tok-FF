@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { MockAdapter, type Scheduler } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
+import { removeTestTempRootAsync, testTempRootAsync } from '../tests/support/repoTemp';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TOKEN = 'mock-rehearsal-local-only-token-20261112';
@@ -439,7 +439,7 @@ function markdownReport() {
 }
 
 async function main() {
-  const tempRoot = await import('node:fs/promises').then(({ mkdtemp }) => mkdtemp(join(tmpdir(), 'quiz-mock-rehearsal-')));
+  const tempRoot = await testTempRootAsync('quiz-mock-rehearsal-');
   temporaryRoots.add(resolve(tempRoot));
 
   try {
@@ -619,11 +619,8 @@ async function main() {
   await mkdir(dirname(reportPath), { recursive: true });
   await import('node:fs/promises').then(({ writeFile }) => writeFile(reportPath, markdownReport(), 'utf8'));
 
-  for (const root of temporaryRoots) {
-    const tempBase = `${resolve(tmpdir())}${sep}`;
-    if (!root.startsWith(tempBase)) throw new Error(`Từ chối dọn đường dẫn ngoài thư mục tạm: ${root}`);
-    await rm(root, { recursive: true, force: true });
-  }
+  for (const root of temporaryRoots) await removeTestTempRootAsync(root);
+  temporaryRoots.clear();
 
   const passed = gates.every((gate) => gate.status === 'PASS');
   console.log(`${rehearsalStatusLabel(passed)} — ${roundMetrics.length}/6 vòng; biên bản: ${reportPath}`);
@@ -631,8 +628,13 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  void main().catch((error) => {
-    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-    process.exitCode = 1;
-  });
+  void main()
+    .catch((error) => {
+      console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      for (const root of temporaryRoots) await removeTestTempRootAsync(root);
+      temporaryRoots.clear();
+    });
 }

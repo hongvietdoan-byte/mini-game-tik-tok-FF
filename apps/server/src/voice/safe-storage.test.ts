@@ -1,16 +1,16 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SafeStorageMcVoiceCredentialStore, type McVoiceSafeStorage } from './safe-storage';
+import { testTempRootAsync } from '../../../../tests/support/tempRoot';
 
 const directories: string[] = [];
 afterEach(async () => {
-  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 async function makeStore() {
-  const directory = await mkdtemp(join(tmpdir(), 'mc-voice-safe-storage-'));
+  const directory = await testTempRootAsync('mc-voice-safe-storage-');
   directories.push(directory);
   const secure: McVoiceSafeStorage = {
     isEncryptionAvailable: () => true,
