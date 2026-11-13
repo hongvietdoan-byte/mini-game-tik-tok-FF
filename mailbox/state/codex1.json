@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 162,
-  "heartbeat": "2026-11-13T13:54:57+07:00",
+  "heartbeat": "2026-11-13T14:15:15+07:00",
   "state": "waiting",
   "task": "C-0162",
-  "note": "Không có thư mới; BOARD không có dự phòng mới cho codex1, DP1/DP2 xong và note rảnh đã gửi; chờ giao task",
+  "note": "Hộp thư codex1 trống; BOARD không có dự phòng mới cho lane, DP1/DP2 đã xong và note rảnh đã gửi; chờ coordinator giao việc",
   "done": []
 }
