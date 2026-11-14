@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 220,
-  "heartbeat": "2026-11-14T17:19:55+07:00",
+  "heartbeat": "2026-11-14T17:39:52+07:00",
   "state": "waiting",
   "task": "C-0215",
-  "note": "Không có thư mới; chờ coordinator/người dùng duyệt ảnh C-0215 trước khi gộp",
+  "note": "Hộp thư trống; đang chờ coordinator/người dùng duyệt ảnh C-0215 trước khi gộp",
   "done": []
 }
