@@ -30,7 +30,7 @@ mkdirSync(c0166ReviewDirectory, { recursive: true });
 mkdirSync(screenshotDirectory, { recursive: true });
 const optionB = process.env.C0194_OPTION?.toUpperCase() === 'B';
 const roundCardMinimums = optionB ? { title: 24, count: 34 } : { title: 36, count: 52 };
-const roundCardHeight = 108;
+const roundCardHeight = optionB ? 108 : 128;
 const localAssetDirectory = getE2eAssetDirectory();
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
@@ -430,14 +430,14 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     logo: { x: 453.6, y: 18, width: 172.8, height: 178.5 },
     event: { x: 96.4, y: 14, width: 213.3, height: 94 },
     ribbon: { x: 430.4, y: 212.5, width: 325.2, height: 53 },
-    roundCard: { x: 760, y: 16, width: 220, height: 108 },
+    roundCard: { x: 760, y: 16, width: 220, height: 128 },
     top10: { x: 98, y: 345, width: 300, height: 466 },
     board: { x: 416, y: 345, width: 567, height: 470 },
     question: { x: 436, y: 492, width: 527, height: 160 },
   } as const;
   for (const key of Object.keys(c0168Approved) as Array<keyof typeof c0168Approved>) {
     for (const dimension of ['x', 'y', 'width', 'height'] as const) {
-      expect(Math.abs(defaultLayout[key]![dimension] - c0168Approved[key][dimension]), `hud default ${key}.${dimension} matches C-0168 header A`).toBeLessThanOrEqual(1);
+      expect(Math.abs(defaultLayout[key]![dimension] - c0168Approved[key][dimension]), `hud default ${key}.${dimension} matches approved C-0168/C-0210 header A`).toBeLessThanOrEqual(1);
     }
   }
   await assertHeaderDoesNotOverlap();
