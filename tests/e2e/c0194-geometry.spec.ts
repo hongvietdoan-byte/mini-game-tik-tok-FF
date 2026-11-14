@@ -52,9 +52,9 @@ test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, a
     ribbon: { x: 430.9, y: 212.5, width: 324.2, height: 53 },
     event: { x: 96.4, y: 14, width: 213.3, height: 94 },
     round: { x: 760, y: 16, width: 220, height: 108 },
-    top10: { x: 98, y: 620, width: 300, height: 466 },
-    board: { x: 418, y: 620, width: 560, height: 512 },
-    question: { x: 448, y: 796, width: 500, height: 160 },
+    top10: { x: 98, y: 345, width: 300, height: 466 },
+    board: { x: 416, y: 345, width: 567, height: 470 },
+    question: { x: 436, y: 492, width: 527, height: 160 },
   } as const;
   for (const [element, dimensions] of Object.entries(expected)) {
     const actual = result[element as keyof typeof result] as { x: number; y: number; width: number; height: number } | null;

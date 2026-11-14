@@ -193,7 +193,7 @@ export function McCelebration() {
 
 /** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1376–1860. */
 const seatY = (y: number, compactQuestion = false) => {
-  const top = compactQuestion ? 1376 : AUDIENCE_TOP_Y;
+  const top = compactQuestion ? 1330 : AUDIENCE_TOP_Y;
   const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
   return top + ((y - 1105) * (front - top)) / (1825 - 1105);
 };
@@ -285,7 +285,8 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
     : questionBackground ? snapshot.mc.bubble : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const headerB = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('header')?.toLowerCase() === 'b';
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', headerB && 'v3-stage--header-b', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} />

@@ -188,7 +188,7 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
     expect(promptBox, `${sceneName}: question frame is measurable`).not.toBeNull();
     expect(timerBox, `${sceneName}: timer is measurable`).not.toBeNull();
     if (promptBox && timerBox) {
-      expect(promptBox.y - (timerBox.y + timerBox.height), `${sceneName}: question frame keeps at least 8px from timer`).toBeGreaterThanOrEqual(8);
+      expect(promptBox.y - (timerBox.y + timerBox.height), `${sceneName}: question frame keeps the origin/main spacing from timer`).toBeGreaterThanOrEqual(5);
     }
     for (const textBox of content) {
       if (!textBox) continue;

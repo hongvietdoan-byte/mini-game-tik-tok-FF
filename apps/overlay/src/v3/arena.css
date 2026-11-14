@@ -1575,3 +1575,34 @@
 .v3-stage--question-user.has-long-prompt .v3-options,
 .v3-stage--question-user.has-long-options .v3-options,
 .v3-stage--question-user.has-long-prompt.has-long-options .v3-options { top: 349px; }
+
+/* C-0207: Restore fixed question-scene geometry to origin/main.
+   Header B varies text inside the approved round card only; it cannot move arena frames. */
+.v3-stage--question-user .v3-top10 { left: 98px; top: 345px; width: 300px; height: 466px; }
+.v3-stage--question-user .v3-board { left: 416px; top: 345px; width: 567px; height: 470px !important; }
+.v3-stage--question-user .v3-board-tab { left: 32px; top: 18px; }
+.v3-stage--question-user .v3-timer { top: 0; right: 16px; width: 138px; height: 138px; }
+.v3-stage--question-user .v3-question { left: 18px; right: 18px; top: 145px; height: 160px; padding: 8px 16px; font-size: 30px; line-height: 1.14; }
+.v3-stage--question-user.has-long-prompt .v3-question { top: 145px; height: 160px; padding: 8px 16px; }
+.v3-stage--question-user .v3-question.is-long,
+.v3-stage--question-user .v3-question.is-xlong { font-size: 24px; line-height: 1.08; }
+.v3-stage--question-user .v3-options,
+.v3-stage--question-user .v3-options.has-long-option,
+.v3-stage--question-user.has-long-prompt .v3-options,
+.v3-stage--question-user.has-long-options .v3-options,
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-options { left: 20px; right: 31px; top: 320px; height: 136px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, 64px); grid-auto-rows: 64px; gap: 8px 12px; }
+.v3-stage--question-user .v3-mc,
+.v3-stage--question-user.has-long-prompt .v3-mc,
+.v3-stage--question-user.has-long-options .v3-mc,
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-mc { left: 0; right: 0; top: 760px; height: 470px; z-index: 9; contain: none; }
+.v3-stage--question-user .v3-mc .v3-mc-figure { left: 108px; top: 0; width: 280px; height: 390px; overflow: hidden; }
+.v3-stage--question-user .v3-mc .v3-mc-figure img { position: absolute; left: 50%; top: 0; display: block; width: 280px; height: 390px; max-height: none; margin: 0; object-fit: cover; object-position: top center; transform: translateX(-50%); }
+.v3-stage--question-user .v3-mc .v3-mc-plate { left: 100px; top: 392px; width: 280px; height: 56px; }
+.v3-stage--question-user .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-prompt .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-options .v3-mc .v3-bubble,
+.v3-stage--question-user.has-long-prompt.has-long-options .v3-mc .v3-bubble { left: 410px; right: auto; top: 84px; width: 568px; height: 220px; min-height: 0; max-height: 220px; box-sizing: border-box; }
+.v3-stage--question-user[data-scene="REVEAL"] .v3-fastest-callout { height: 220px !important; max-height: 220px; box-sizing: border-box; }
+.v3-stage--header-b .v3-round-card .v3-round-title { font-size: 24px !important; }
+.v3-stage--header-b .v3-round-card .v3-round-count { font-size: 34px !important; }
+.v3-stage--header-b .v3-round-card .v3-round-label { font-size: 18px !important; }
