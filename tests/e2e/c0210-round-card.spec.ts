@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import type { PublicSnapshot } from '@quiz/contracts';
+import { DEFAULT_HUD_CONFIG, type PublicSnapshot } from '@quiz/contracts';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
 
 const reviewRoot = join(process.cwd(), '.claude', 'review', 'C0210');
@@ -17,6 +17,9 @@ async function useSnapshotsWithCounts(page: Page) {
   if (!base) throw new Error('Missing question snapshot fixture.');
   let publish: ((seq: number, version: number, count: number) => void) | null = null;
 
+  await page.route('**/api/hud', (route) => route.fulfill({
+    json: { ...DEFAULT_HUD_CONFIG, version: 1, texts: { ...DEFAULT_HUD_CONFIG.texts, roundLabel: 'VONG' } },
+  }));
   await page.routeWebSocket('/ws', (socket) => {
     socket.onMessage((raw) => {
       const message = JSON.parse(String(raw)) as { type?: string };

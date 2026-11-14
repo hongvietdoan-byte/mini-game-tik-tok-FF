@@ -55,7 +55,8 @@ export function BrandEventMark() {
 
 export function RoundCard({ snapshot }: { snapshot: PublicSnapshot }) {
   const config = useHudConfig();
-  const roundTitle = `${config.texts.roundLabel} ${snapshot.round?.roundNumber ?? 1}`;
+  const roundLabel = /^VONG$/iu.test(config.texts.roundLabel.trim()) ? 'VÒNG' : config.texts.roundLabel;
+  const roundTitle = `${roundLabel} ${snapshot.round?.roundNumber ?? 1}`;
   const count = formatParticipantCount(snapshot.participantCount);
   return <div className="v3-round-card" data-testid="round-card">
     <b className="v3-round-title" title={roundTitle} style={fitHudTextStyle(roundTitle, 190, 36, 18)}>{roundTitle}</b>
