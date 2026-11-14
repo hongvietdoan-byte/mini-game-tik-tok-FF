@@ -1553,14 +1553,14 @@
 /* C-0194 A: giữ cỡ chữ B2, nén khoảng đệm của ô vòng để nằm trên HUD TikTok. */
 .v3-round-card {
   top: -16px;
-  height: 99px;
-  grid-template-rows: 29px 42px 20px;
-  gap: 0;
-  padding: 4px 12px;
+  height: 108px;
+  grid-template-rows: 25px 37px 19px;
+  gap: 11.5px;
+  padding: 0 12px;
 }
 .v3-round-card .v3-round-title,
 .v3-round-card .v3-round-count,
-.v3-round-card .v3-round-label { line-height: .8; }
+.v3-round-card .v3-round-label { display: grid; place-items: center; line-height: .8; }
 .v3-stage--question-user .v3-header .v3-title.is-wide { width: 16%; }
 .v3-header .v3-title.is-wide .v3-title-ribbon { padding: 16px 40px; font-size: 24px; line-height: 1; }
 .v3-stage--question-user .v3-header .v3-title.is-wide .v3-title-ribbon { position: relative; left: 53px; margin-top: 16px; font-size: 21px; }

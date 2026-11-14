@@ -30,7 +30,7 @@ mkdirSync(c0166ReviewDirectory, { recursive: true });
 mkdirSync(screenshotDirectory, { recursive: true });
 const optionB = process.env.C0194_OPTION?.toUpperCase() === 'B';
 const roundCardMinimums = optionB ? { title: 24, count: 34 } : { title: 36, count: 52 };
-const roundCardHeight = optionB ? 108 : 99;
+const roundCardHeight = 108;
 const localAssetDirectory = getE2eAssetDirectory();
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
