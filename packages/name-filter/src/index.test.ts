@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_NAME_FILTER_RULES,
+  DEFAULT_NAME_FILTER_GROUP_POLICY,
   DEFAULT_PROTECTED_ENTITIES,
   filterPlayerName,
   maskName,
@@ -8,6 +9,7 @@ import {
   type NameFilterConfig,
   type NameFilterRule,
 } from './index';
+import { CLEAN_NAME_CORPUS } from './clean-name-corpus';
 
 const emptyConfig: NameFilterConfig = {
   rules: [], whitelist: [], hiddenPlayerIds: [], allowedReviewPlayerIds: [], verifiedOfficialAccounts: [], version: 1,
@@ -38,6 +40,47 @@ describe('name-filter: risk, representation và alias an toàn', () => {
     'gắn HIGH cho biến thể rõ ràng: %s',
     (name) => expect(clean(name)).toMatchObject({ risk: 'HIGH', displayAction: 'ANONYMIZE', safeDisplayName: 'Người chơi 1' }),
   );
+  it('che đúng cụm chó điên và giữ nguyên phần trước/sau', () => {
+    expect(clean('A chó điên!')).toMatchObject({
+      risk: 'PARTIAL', displayAction: 'PARTIAL_MASK', safeDisplayName: 'A ********!',
+      matchedRuleIds: ['insult.vi.cho-dien'],
+    });
+  });
+  it('giữ markup dạng chữ thường sau khi che; lớp giao diện chịu trách nhiệm escape khi render', () => {
+    expect(clean('A chó điên <b>')).toMatchObject({
+      risk: 'PARTIAL', displayAction: 'PARTIAL_MASK', safeDisplayName: 'A ******** <b>',
+      matchedRuleIds: ['insult.vi.cho-dien'],
+    });
+  });
+  it.each(['do cho dien', 'd.o-c.h.o', 'd.z.0-k.h.0', 'd o c h o'])(
+    'nhận biến thể c → k, đ → dz, leet và dấu phân cách: %s',
+    (name) => {
+      const result = clean(`A ${name} 8`);
+      expect(result).toMatchObject({ risk: 'PARTIAL', displayAction: 'PARTIAL_MASK' });
+      expect(result.matchedRuleIds).toContain('insult.vi.do-cho');
+      expect(result.safeDisplayName.startsWith('A ')).toBe(true);
+      expect(result.safeDisplayName.endsWith(' 8')).toBe(true);
+      expect(result.safeDisplayName.slice(2, -2)).toMatch(/^\*+$/u);
+    },
+  );
+  it('che riêng cụm bố dại và giữ nguyên phần tên sạch', () => {
+    expect(clean('Cường bố dại MVP')).toMatchObject({
+      risk: 'PARTIAL', displayAction: 'PARTIAL_MASK', safeDisplayName: 'Cường ****** MVP',
+      matchedRuleIds: ['insult.vi.bo-dai'],
+    });
+  });
+  it.each(['fan biet chung toc', 'phân-biệt-chủng-tộc'])(
+    'mở rộng ph → f nhưng vẫn yêu cầu ranh giới từ: %s',
+    (name) => expect(clean(name)).toMatchObject({ risk: 'HIGH', matchedRuleIds: ['hate.vi.phan-biet'] }),
+  );
+  it('nhận chữ giống nhau từ Greek/Cyrillic, lặp chữ và full-width', () => {
+    for (const name of ['ρorn', 'рorn', 'ｐｏｒｎ', 'P.O.R.N', 'pooorrrnnn'])
+      expect(clean(name), name).toMatchObject({ risk: 'HIGH', matchedRuleIds: ['sexual.en.porn'] });
+  });
+  it('nhận teencode s → x ở phía luật mà không gộp toàn cục tên sạch', () => {
+    expect(clean('xex')).toMatchObject({ risk: 'HIGH', matchedRuleIds: ['sexual.en.sex'] });
+    for (const name of ['Xuan Sang', 'Xinh Xắn', 'Sang Xuan']) expect(clean(name), name).toMatchObject({ risk: 'NONE' });
+  });
   it('không biến chữ C sạch thành CC sau bước gộp lặp', () => expect(clean('C').risk).toBe('NONE'));
 
   it('giữ tên sạch có substring tương tự và tên Việt phổ biến', () => {
@@ -102,6 +145,34 @@ describe('name-filter: risk, representation và alias an toàn', () => {
     expect(clean('địt')).toMatchObject({
       matchedRuleGroups: ['PROFANITY'], policyVersion: 1, checkedAt: 123, requiresReview: true,
     });
+  });
+
+  it('có mức mặc định cho đủ nhóm và chỉ đưa nội dung liên hệ/quảng cáo vào REVIEW', () => {
+    expect(DEFAULT_NAME_FILTER_GROUP_POLICY.map((entry) => entry.group)).toEqual([
+      'PROFANITY', 'NSFW_SEXUAL', 'HATE_SPEECH', 'ILLEGAL_HARMFUL', 'IMPERSONATION',
+    ]);
+    expect(DEFAULT_NAME_FILTER_GROUP_POLICY.map((entry) => entry.defaultSeverity)).toEqual([
+      'PARTIAL', 'HIGH', 'HIGH', 'REVIEW', 'REVIEW',
+    ]);
+    expect(clean('Tên cá độ hôm nay')).toMatchObject({
+      risk: 'REVIEW', displayAction: 'ANONYMIZE', matchedRuleIds: ['harmful.vi.ca-do'],
+      matchedRuleGroups: ['ILLEGAL_HARMFUL'],
+    });
+    expect(clean('thanhvien https://quiz.example.vn')).toMatchObject({
+      risk: 'REVIEW', matchedRuleIds: ['spam.contact.url'], matchedRuleGroups: ['ILLEGAL_HARMFUL'],
+    });
+    expect(clean('Liên hệ 0912 345 678')).toMatchObject({
+      risk: 'REVIEW', matchedRuleIds: ['spam.contact.phone'], matchedRuleGroups: ['ILLEGAL_HARMFUL'],
+    });
+    expect(clean('Cá độ')).toMatchObject({ risk: 'REVIEW' });
+    expect(clean('Bắc Kỳ')).toMatchObject({ risk: 'NONE' });
+    expect(clean('Nam Kỳ')).toMatchObject({ risk: 'NONE' });
+  });
+
+  it('không báo nhầm tên sạch, handle game và âm gần nhau trong corpus công khai', () => {
+    expect(CLEAN_NAME_CORPUS.length).toBeGreaterThanOrEqual(200);
+    const falsePositives = CLEAN_NAME_CORPUS.filter((name) => clean(name).risk !== 'NONE');
+    expect(falsePositives).toEqual([]);
   });
 
   it('không gắn nhãn nhầm cho 500 tên Việt tổng hợp đã rà theo từ điển', () => {

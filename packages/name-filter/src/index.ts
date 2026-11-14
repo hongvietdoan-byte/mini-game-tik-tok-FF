@@ -9,7 +9,7 @@ export type NameFilterRule = {
   aliases?: string[];
   match: NameFilterMatch;
   group: NameRuleGroup;
-  severity: 'PARTIAL' | 'HIGH';
+  severity: 'PARTIAL' | 'REVIEW' | 'HIGH';
   source: 'SYSTEM' | 'CUSTOM';
   /** Một số teencode ngắn chỉ khớp khi các chữ nằm ở ranh giới từ sau khi bỏ dấu phân cách. */
   separatorInsensitive?: boolean;
@@ -61,6 +61,7 @@ const MAPPED_PART_CACHE_LIMIT = 2_048;
 const LEET: Record<string, string> = { '0': 'o', '1': 'i', '!': 'i', '|': 'i', '3': 'e', '4': 'a', '@': 'a', '5': 's', '$': 's', '7': 't', '8': 'b' };
 const HOMOGLYPH: Record<string, string> = {
   а: 'a', е: 'e', о: 'o', р: 'p', с: 'c', х: 'x', і: 'i', ј: 'j', у: 'y', к: 'k', м: 'm', т: 't', в: 'b', н: 'h', ӏ: 'l',
+  α: 'a', ε: 'e', ο: 'o', ρ: 'p', ϲ: 'c', χ: 'x', ι: 'i', κ: 'k', μ: 'm', τ: 't', υ: 'y', ν: 'v',
 };
 
 function baseText(value: string) {
@@ -73,7 +74,7 @@ function leet(value: string) {
   return [...accentless(value)].map((char) => LEET[char] ?? HOMOGLYPH[char] ?? char).join('');
 }
 function collapseText(value: string) {
-  return value.replace(/(.)\1+/gu, (run, char: string) => char === 'c' ? 'cc' : char);
+  return value.replace(/(.)\1+/gu, (run, char: string) => char === 'c' || char === 'k' ? char + char : char);
 }
 function compact(value: string) {
   return [...value].filter(isAlnum).join('');
@@ -154,7 +155,7 @@ function buildRepresentations(name: string): NameRepresentations {
     for (let i = 0; i < chars.length;) {
       let end = i + 1;
       while (end < chars.length && chars[end]!.value === chars[i]!.value) end += 1;
-      const keep = chars[i]!.value === 'c' ? Math.min(2, end - i) : 1;
+      const keep = chars[i]!.value === 'c' || chars[i]!.value === 'k' ? Math.min(2, end - i) : 1;
       if (end - i > 1 || out) {
         out ??= chars.slice(0, i);
         for (let n = 0; n < keep; n += 1) out.push({ value: chars[i]!.value, start: chars[i]!.start, end: chars[end - 1]!.end });
@@ -195,6 +196,19 @@ function candidatesByRepresentation(term: string): Record<'original' | 'accentle
     leet: compact(leet(term)),
     'leet-repeated': collapseText(compact(leet(term))),
   };
+}
+function spellingVariants(term: string): string[] {
+  // Generate rule-side aliases rather than merging c/k or ph/f globally; a
+  // global fold would turn ordinary names such as "Phúc" into offensive hits.
+  const transforms = [
+    (value: string) => value.replace(/đ/giu, 'dz'),
+    (value: string) => value.replace(/c/giu, 'k'),
+    (value: string) => value.replace(/ph/giu, 'f'),
+    (value: string) => value.replace(/s/giu, 'x'),
+  ];
+  let variants = [term];
+  for (const transform of transforms) variants = [...new Set([...variants, ...variants.map(transform)])];
+  return variants;
 }
 function makeMatcher(entries: readonly MatcherEntry[]): CompiledMatcher {
   const itemsByValue = new Map<string, CompiledItem[]>();
@@ -245,10 +259,14 @@ function compileFilter(
   const entities = protectedEntities.map((entity) => ({ kind: 'ENTITY' as const, entity }));
   const entriesFor = (id: 'leet' | 'leet-repeated'): MatcherEntry[] => [
     ...rules.flatMap(({ rule, ...item }) =>
-      [rule.term, ...(rule.aliases ?? [])].map((term) => ({ value: candidatesByRepresentation(term)[id], item: { ...item, rule } as CompiledItem })),
+      [rule.term, ...(rule.aliases ?? [])].flatMap((term) => spellingVariants(term).map((variant) => ({
+        value: candidatesByRepresentation(variant)[id], item: { ...item, rule } as CompiledItem,
+      }))),
     ),
     ...entities.flatMap(({ entity, ...item }) =>
-      [entity.label, ...entity.aliases].map((term) => ({ value: candidatesByRepresentation(term)[id], item: { ...item, entity } as CompiledItem })),
+      [entity.label, ...entity.aliases].flatMap((term) => spellingVariants(term).map((variant) => ({
+        value: candidatesByRepresentation(variant)[id], item: { ...item, entity } as CompiledItem,
+      }))),
     ),
   ];
   const leetEntries = entriesFor('leet');
@@ -273,7 +291,8 @@ function runMatcher(
   const representation = input.variants.find((variant) => variant.id === representationId)!;
   const matches: Array<{ item: CompiledItem; span: Span }> = [];
   const boundaryHasAlnum = (part: string) => {
-    for (const char of leet(part)) if (ALNUM.test(char)) return true;
+    const folded = baseText(part).normalize('NFD').replace(MARKS, '');
+    for (const char of folded) if (isAlnum(HOMOGLYPH[char] ?? char)) return true;
     return false;
   };
   let state = 0;
@@ -302,6 +321,20 @@ function runMatcher(
 
 function exactWhitelistValue(value: string) {
   return safeText(value).toLocaleLowerCase('und');
+}
+
+const URL_LIKE = /(?:https?:\/\/|www\.)[^\s<>"']+|(?<![\p{L}\p{N}])(?:[\p{L}\p{N}-]+\.)+(?:com|net|org|vn|gg|io|me|ly|xyz|info|co|tv|app|link|site|shop|store|club|live|pro)(?![\p{L}\p{N}])/iu;
+const PHONE_LIKE = /(?<![\p{L}\p{N}])(?:\+?84|0)(?:[\s().-]*\d){8,10}(?!\d)/u;
+const CONTEXTUAL_REVIEW_RULES: readonly NameFilterRule[] = [
+  { id: 'spam.contact.url', term: 'link', aliases: [], match: 'word', group: 'ILLEGAL_HARMFUL', severity: 'REVIEW', source: 'SYSTEM' },
+  { id: 'spam.contact.phone', term: 'phone', aliases: [], match: 'word', group: 'ILLEGAL_HARMFUL', severity: 'REVIEW', source: 'SYSTEM' },
+];
+
+function contextualReviewRules(name: string): NameFilterRule[] {
+  const matches: NameFilterRule[] = [];
+  if (URL_LIKE.test(name)) matches.push(CONTEXTUAL_REVIEW_RULES[0]!);
+  if (PHONE_LIKE.test(name)) matches.push(CONTEXTUAL_REVIEW_RULES[1]!);
+  return matches;
 }
 
 function collectMatches(
@@ -341,7 +374,11 @@ function buildMatches(input: NameRepresentations, config: NameFilterConfig, comp
     collectMatches(runMatcher(input, 'leet', compiled.representations.leet, skipped), rulesFound, entitiesFound);
     collectMatches(runMatcher(input, 'leet-repeated', compiled.representations['leet-repeated'], skipped), rulesFound, entitiesFound);
   }
-  return { rules: [...rulesFound.values()], entities: [...entitiesFound.values()] };
+  return {
+    rules: [...rulesFound.values()],
+    entities: [...entitiesFound.values()],
+    contextualRules: contextualReviewRules(input.graphemes.join('')).filter((rule) => !skipped.has(rule.id)),
+  };
 }
 
 function isVerified(playerId: string | null, config: NameFilterConfig) {
@@ -405,12 +442,16 @@ export function filterPlayerName(
   const compiled = compileFilter(config, defaultRules, entities);
   const matches = buildMatches(input, config, compiled);
   const protectedMatches = matches.entities;
-  const ruleMatches = matches.rules.flatMap((item) => item.spans.map((span) => ({ ...span, rule: item.rule })));
+  const ruleMatches = [
+    ...matches.rules.flatMap((item) => item.spans.map((span) => ({ ...span, rule: item.rule }))),
+    ...matches.contextualRules.map((rule) => ({ start: 0, end: Math.max(0, input.graphemes.length - 1), rule })),
+  ];
   const hasProtected = protectedMatches.length > 0;
   const hasImpersonationCue = matches.rules.some((item) => item.rule.group === 'IMPERSONATION');
   const protectedIds = protectedMatches.map((item) => item.entity.id);
   const highMatches = ruleMatches.filter((item) => item.rule.severity === 'HIGH');
   const partialMatches = ruleMatches.filter((item) => item.rule.severity === 'PARTIAL');
+  const reviewMatches = ruleMatches.filter((item) => item.rule.severity === 'REVIEW');
   const verifiedProtected = hasProtected && isVerified(playerId, config) && !highMatches.length;
   const combinedProtectedRisk = hasProtected && (highMatches.length > 0 || hasImpersonationCue);
   const ids = [...ruleMatches.map((item) => item.rule.id), ...protectedIds];
@@ -423,16 +464,21 @@ export function filterPlayerName(
     const masked = partialMask(input, partialMatches);
     const maskedInput = buildRepresentations(masked);
     const rechecked = buildMatches(maskedInput, config, compiled);
-    if (rechecked.rules.length || rechecked.entities.length)
-      return result(resolveSafeAlias(options), rechecked.entities.length ? 'REVIEW' : 'HIGH', 'ANONYMIZE', ids, groups, config.version, checkedAt);
+    if (rechecked.rules.length || rechecked.entities.length || rechecked.contextualRules.length) {
+      const needsReview = rechecked.contextualRules.length > 0 || rechecked.rules.some((item) => item.rule.severity === 'REVIEW');
+      return result(resolveSafeAlias(options), needsReview || rechecked.entities.length ? 'REVIEW' : 'HIGH', 'ANONYMIZE', ids, groups, config.version, checkedAt);
+    }
     return result(masked, 'PARTIAL', 'PARTIAL_MASK', ids, groups, config.version, checkedAt);
   }
 
   const reviewAllowed = !!playerId && config.allowedReviewPlayerIds.includes(playerId);
+  if (reviewMatches.length && !reviewAllowed)
+    return result(resolveSafeAlias(options), 'REVIEW', 'ANONYMIZE', ids, groups, config.version, checkedAt);
+
   if (hasProtected && !verifiedProtected && !reviewAllowed)
     return result(resolveSafeAlias(options), 'REVIEW', 'ANONYMIZE', protectedIds, [], config.version, checkedAt);
 
   return result(input.graphemes.slice(0, 16).join(''), 'NONE', 'ALLOW', [], [], config.version, checkedAt, true);
 }
 
-export { DEFAULT_NAME_FILTER_RULES, DEFAULT_PROTECTED_ENTITIES } from './default-list';
+export { DEFAULT_NAME_FILTER_GROUP_POLICY, DEFAULT_NAME_FILTER_RULES, DEFAULT_PROTECTED_ENTITIES } from './default-list';
