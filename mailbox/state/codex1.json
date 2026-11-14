@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 208,
-  "heartbeat": "2026-11-14T12:51:51+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-14T12:52:04+07:00",
+  "state": "waiting",
   "task": "C-0204",
-  "note": "Đang nối runtime MC Voice; cần coordinator xác nhận transport nhà cung cấp đã được duyệt vì repo hiện chỉ có interface, chưa có transport thật",
+  "note": "C-0204 đã push/report; chờ coordinator và Codex2 nối phát overlay",
   "done": []
 }
