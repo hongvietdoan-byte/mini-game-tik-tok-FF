@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 
 const option = (process.env.C0194_OPTION ?? 'A').toLowerCase();
-const reviewDir = join(process.cwd(), '.claude', 'review', 'C0194');
+const reviewDir = join(process.cwd(), '.claude', 'review', 'C0202');
 
 test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, async ({ page }) => {
   await mkdir(reviewDir, { recursive: true });
@@ -32,14 +32,29 @@ test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, a
   expect(await roundCard.locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize)).toBe(option === 'b' ? '24px' : '36px');
   expect(await roundCard.getByTestId('participant-count').evaluate((element) => getComputedStyle(element).fontSize)).toBe(option === 'b' ? '34px' : '52px');
   expect(await roundCard.locator('.v3-round-label').evaluate((element) => getComputedStyle(element).fontSize)).toBe(option === 'b' ? '18px' : '24px');
+  const roundLines = await Promise.all([
+    roundCard.locator('.v3-round-title'),
+    roundCard.getByTestId('participant-count'),
+    roundCard.locator('.v3-round-label'),
+  ].map((line) => line.boundingBox().then((rect) => {
+    expect(rect).not.toBeNull();
+    return { top: rect!.y, bottom: rect!.y + rect!.height };
+  })));
+  console.log('C0194 round row bounds:', JSON.stringify(roundLines));
+  expect(roundLines[0]!.bottom, 'round title and participant count do not intersect').toBeLessThanOrEqual(roundLines[1]!.top);
+  expect(roundLines[1]!.bottom, 'participant count and status label do not intersect').toBeLessThanOrEqual(roundLines[2]!.top);
+  const roundBounds = await roundCard.boundingBox();
+  expect(roundBounds).not.toBeNull();
+  expect(roundBounds!.y).toBeGreaterThanOrEqual(15);
+  expect(roundBounds!.y + roundBounds!.height).toBeLessThanOrEqual(124);
   const expected = {
     logo: { x: 453.6, y: 18, width: 172.8, height: 178.5 },
     ribbon: { x: 430.4, y: 212.5, width: 325.2, height: 53 },
     event: { x: 96.4, y: 14, width: 213.3, height: 94 },
-    round: { x: 760, y: 16, width: 220, height: option === 'a' ? 99 : 108 },
-    top10: { x: 98, y: 620, width: 300, height: 466 },
-    board: { x: 418, y: 620, width: 560, height: 512 },
-    question: { x: 448, y: 796, width: 500, height: 160 },
+    round: { x: 760, y: 16, width: 220, height: 108 },
+    top10: { x: 98, y: 345, width: 300, height: 466 },
+    board: { x: 416, y: 345, width: 567, height: 470 },
+    question: { x: 436, y: 492, width: 527, height: 160 },
   } as const;
   for (const [element, dimensions] of Object.entries(expected)) {
     const actual = result[element as keyof typeof result] as { x: number; y: number; width: number; height: number } | null;
