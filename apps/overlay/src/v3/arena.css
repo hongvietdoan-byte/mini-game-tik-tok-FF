@@ -1846,3 +1846,46 @@
 /* C-0221: show Kelly as a bust and place her Top 10 guide directly below the leaderboard. */
 .v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide { top: 1138px; right: 112px; }
 .v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-mc-figure img { width: 180px; height: auto; object-fit: initial; }
+
+/* C-0222: give the mid-round MC prompt the same wide treatment as QUESTION, with its tail toward Kelly. */
+.v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-mc { contain: layout; }
+.v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-bubble {
+  display: grid;
+  left: auto;
+  right: calc(100% - 4px);
+  top: 40px;
+  width: 633px;
+  height: 145px;
+  min-height: 0;
+  max-height: 145px;
+  box-sizing: border-box;
+  padding: 12px 36px;
+  border-color: var(--gold);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(35, 22, 117, .98), rgba(15, 12, 66, .98));
+  box-shadow: inset 0 0 0 1px rgba(255, 232, 139, .38), 0 0 20px rgba(255, 198, 62, .32);
+}
+.v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-bubble p { max-width: 510px; font-size: 27px; line-height: 1.08; }
+.v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-bubble::before {
+  left: auto;
+  right: -18px;
+  top: 50px;
+  bottom: auto;
+  width: 42px;
+  height: 48px;
+  clip-path: polygon(0 0, 0 100%, 100% 54%);
+  background: linear-gradient(145deg, #ffdc69, #efa823);
+  filter: drop-shadow(0 0 5px rgba(255, 209, 74, .8));
+}
+.v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-bubble::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: auto;
+  right: -9px;
+  top: 56px;
+  width: 33px;
+  height: 36px;
+  clip-path: polygon(0 0, 0 100%, 100% 54%);
+  background: linear-gradient(145deg, #242280, #11143f);
+}

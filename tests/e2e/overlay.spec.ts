@@ -949,7 +949,8 @@ test('compact Top 10 stays within 45 percent and shows 14-character names beside
   const [figureBox, bubbleBox] = await Promise.all([guide.locator('.v3-mc-figure').boundingBox(), guide.getByTestId('mc-bubble').boundingBox()]);
   expect(figureBox).not.toBeNull();
   expect(bubbleBox).not.toBeNull();
-  expect(bubbleBox!.y).toBeGreaterThanOrEqual(figureBox!.y + figureBox!.height - 2);
+  expect(bubbleBox).toMatchObject({ x: 115, y: 1178, width: 633, height: 145 });
+  expect(Math.abs(bubbleBox!.y + bubbleBox!.height / 2 - (figureBox!.y + figureBox!.height / 2))).toBeLessThanOrEqual(1);
   await page.waitForTimeout(8_100);
   await page.screenshot({ path: join(screenshotDirectory, 'top10.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
