@@ -8,23 +8,21 @@ import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
 import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
 import { AudioFxLayer } from './v3/AudioFxLayer';
-import { overlayRoleFromSearch } from './overlayRole';
+import { overlayFitFromSearch, overlayRoleFromSearch, overlayStageScale } from './overlayRole';
 import { publicPlayerName } from './publicPlayerName';
 import type { AudioEngineState } from './audio/audio-engine';
 import './style.css';
 
-function useStageScale() {
-  const [scale, setScale] = useState(1);
+function useStageScale(fit: 'contain' | 'cover') {
+  const [scale, setScale] = useState(() => overlayStageScale(window.innerWidth, window.innerHeight, fit));
   useEffect(() => {
     const resize = () => {
-      const widthScale = window.innerWidth / 1080;
-      const heightScale = window.innerHeight / 1920;
-      setScale(Math.max(widthScale, heightScale));
+      setScale(overlayStageScale(window.innerWidth, window.innerHeight, fit));
     };
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
-  }, []);
+  }, [fit]);
   return scale;
 }
 
@@ -208,13 +206,14 @@ function TikTokHudSimulator({ debug }: { debug: boolean }) {
 function App() {
   const query = new URLSearchParams(location.search);
   const hud = query.get('hud') === '1';
-  const scale = useStageScale();
+  const overlayRole = overlayRoleFromSearch(location.search);
+  const fit = overlayFitFromSearch(location.search, overlayRole);
+  const scale = useStageScale(fit);
   const requestedMock = query.get('mock');
   const allowLegacyNames = requestedMock === 'cycle' || (requestedMock !== null && MOCK_SCENES.includes(requestedMock));
   const requestedCycleMs = Number(query.get('cycleMs'));
   const cycleIntervalMs = Number.isFinite(requestedCycleMs) && requestedCycleMs >= 100 && requestedCycleMs <= 10_000 ? requestedCycleMs : 3_000;
   const fxLow = query.get('fx') === 'low';
-  const overlayRole = overlayRoleFromSearch(location.search);
   const [audioState, setAudioState] = useState<AudioEngineState>('disabled');
   const [cycleScene, setCycleScene] = useState('lobby');
   const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
@@ -247,7 +246,7 @@ function App() {
     rightFromY: queryPixelOverride(query, 'safeRightFromY', snapshot.safeZone.rightFromY ?? 0, 1920),
   } : undefined;
 
-  return <main className="viewport">
+  return <main className={`viewport viewport-${overlayRole}`} data-fit={fit} data-role={overlayRole}>
     {snapshot ? <div id="stage" className={fxLow ? 'fx-low' : undefined} data-testid="stage" data-scene={snapshot.scene} data-state={snapshot.state} data-fx-level={fxLow ? 'low' : 'full'} style={{
       transform: `translate(-50%, -50%) scale(${scale})`,
       '--safe-top': `${safeZone!.top}px`,
