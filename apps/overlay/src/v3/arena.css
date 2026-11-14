@@ -1596,8 +1596,8 @@
   padding: 8px 24px;
 }
 .v3-stage--question-user .v3-mc .v3-bubble p { font-size: 22px; line-height: 1.05; }
-.v3-stage--question-user .v3-mc .v3-mc-figure { width: 180px; height: 240px; }
-.v3-stage--question-user .v3-mc .v3-mc-figure img { width: 180px; height: 240px; }
+.v3-stage--question-user .v3-mc .v3-mc-figure { top: -64px; width: 180px; height: 208px; }
+.v3-stage--question-user .v3-mc .v3-mc-figure img { width: 180px; height: 208px; }
 .v3-stage--question-user .v3-mc .v3-mc-plate { left: 100px; top: -58px; width: 180px; height: 44px; font-size: 17px; }
 .v3-stage--question-user.has-long-prompt .v3-question,
 .v3-stage--question-user.has-long-prompt.has-long-options .v3-question { top: 174px; }
@@ -1618,6 +1618,7 @@
   color: #fff;
   text-align: center;
 }
+.v3-stage--question-user[data-scene="REVEAL"] .v3-fastest-callout:not(.v3-fastest-callout-b) { height: 132px; }
 .v3-fastest-copy { display: grid; justify-items: center; gap: 3px; width: 100%; }
 .v3-fastest-copy strong { color: #ffe47a; font-size: 23px; font-weight: 950; letter-spacing: .12em; line-height: 1; text-shadow: 0 2px 8px rgba(255, 193, 38, .42); }
 .v3-fastest-name { max-width: 100%; overflow: hidden; color: #fff; font-size: 40px; font-weight: 950; line-height: 1.08; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 3px 12px rgba(0,0,0,.65); }
@@ -1633,6 +1634,7 @@
 .v3-seat.is-fastest .v3-seat-back svg path { fill: rgba(255, 218, 89, .2); stroke: #fff2a8; stroke-width: 5; }
 .v3-seat.is-fastest .v3-chibi-img { filter: drop-shadow(0 0 16px rgba(255, 209, 59, .98)); }
 .v3-seat-name.is-fastest { z-index: 90; border: 3px solid #ffe47a; background: linear-gradient(180deg, #fffbdc, #ffe59a) padding-box, linear-gradient(110deg, #fff3a6, #ff9e27) border-box; box-shadow: 0 0 16px rgba(255, 201, 43, .95); }
+
 /* C-0207: Restore fixed question-scene geometry to origin/main.
    Header B varies text inside the approved round card only; it cannot move arena frames. */
 .v3-stage--question-user .v3-top10 { left: 98px; top: 345px; width: 300px; height: 466px; }

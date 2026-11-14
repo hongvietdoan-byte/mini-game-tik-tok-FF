@@ -227,7 +227,7 @@ export function McCelebration() {
   );
 }
 
-/** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1376–1860. */
+/** Giữ tọa độ ghế của màn câu hỏi đúng theo bố cục đã duyệt trên main. */
 const seatY = (y: number, compactQuestion = false) => {
   const top = compactQuestion ? 1330 : AUDIENCE_TOP_Y;
   const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
