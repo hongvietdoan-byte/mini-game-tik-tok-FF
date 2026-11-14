@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 208,
-  "heartbeat": "2026-11-14T13:33:29+07:00",
-  "state": "waiting",
-  "task": "C-0204",
-  "note": "Không có thư mới; Codex2 đang xử lý C-0209, chờ coordinator giao việc tiếp",
+  "heartbeat": "2026-11-14T13:53:39+07:00",
+  "state": "working",
+  "task": "C-0211",
+  "note": "Đã ack X-0352; chuẩn bị worktree ứng viên riêng",
   "done": []
 }
