@@ -1,12 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { createServer as createNetServer } from 'node:net';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { removeTestTempRoot, testTempRoot } from '../support/repoTemp';
-import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
+import { ManualScheduler, MockAdapter, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
-import type { PublicSnapshot } from '@quiz/contracts';
+import type { CommandBody, PublicSnapshot } from '@quiz/contracts';
 import { expect, test, type Page } from '@playwright/test';
 import { makeQuestions, TOKEN } from '../integration/helpers';
 import { getE2eAssetDirectory, usesE2ePlaceholderAssets } from './assets';
@@ -167,12 +168,14 @@ async function boot(): Promise<RunningQuiz> {
       allowedOrigins: [dashboardOrigin, overlayOrigin],
       webRoots: { assets: assetDirectory },
       ...(characterPool?.length ? { characterPool } : {}),
-      adapterFactory: (_mode, config) => new TikTokLiveAdapter({
-        username: config.tiktokUsername ?? 'synthetic_live',
-        scheduler,
-        createConnection: () => connection,
-        reconnect: { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
-      }),
+      adapterFactory: (mode, config) => mode === 'MOCK'
+        ? new MockAdapter()
+        : new TikTokLiveAdapter({
+          username: config.tiktokUsername ?? 'synthetic_live',
+          scheduler,
+          createConnection: () => connection,
+          reconnect: { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
+        }),
     });
     closers.push(async () => { await app.close(); });
     await app.app.listen({ host: '127.0.0.1', port: backendPort });
@@ -204,6 +207,77 @@ async function boot(): Promise<RunningQuiz> {
 test.afterEach(async () => {
   const errors = await closeResources(cleanup.splice(0));
   if (errors.length) throw new AggregateError(errors, 'Lỗi khi dọn E2E sau test.');
+});
+
+test('C-0203: fastestCorrectAnswer từ server MOCK hiện trên overlay; mcVoiceEnabled không tự phát giọng', async ({ page }) => {
+  test.setTimeout(90_000);
+  const running = await boot();
+  const created = await running.app.app.inject({
+    method: 'POST',
+    url: '/api/sessions',
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      name: 'C-0203 kiểm tra overlay MOCK',
+      config: {
+        mode: 'MOCK',
+        packId: 'demo',
+        questionsPerRound: 10,
+        allowDemoQuestions: true,
+        seed: 42,
+        mcVoiceEnabled: true,
+        timings: { lobbyMs: 0, prepareMs: 500, answerMs: 20_000, revealMs: 500 },
+      },
+    },
+  });
+  expect(created.statusCode).toBe(201);
+  const sessionId = (created.json() as { sessionId: string }).sessionId;
+  const runtime = currentRuntime(running.app);
+  expect(runtime.config.mcVoiceEnabled).toBe(true);
+  await expect.poll(() => runtime.liveHealth().status).toBe('CONNECTED');
+
+  const overlay = await page.context().newPage();
+  await overlay.setViewportSize({ width: 1080, height: 1920 });
+  const voiceRequests: string[] = [];
+  overlay.on('request', (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (/\/(?:api\/mc-voice|assets\/mc\/voice)(?:\/|$)/.test(pathname)) voiceRequests.push(pathname);
+  });
+  await overlay.goto(running.overlayUrl);
+  const stage = overlay.getByTestId('stage');
+  await expect(stage).toBeVisible();
+
+  await commandMockRound(running, sessionId, { type: 'OPEN_LOBBY' });
+  await expect(stage).toHaveAttribute('data-scene', 'LOBBY');
+  await commandMockRound(running, sessionId, { type: 'START_ROUND', questionCount: 10 });
+  runUntil(running, () => runtime.engine.state === 'ACCEPTING');
+  await expect(stage).toHaveAttribute('data-state', 'ACCEPTING');
+
+  const correctOptionId = runtime.adminSnapshot().current!.correctOptionId;
+  expect(runtime.mockComment({
+    userId: 'c0203-synthetic-player',
+    displayName: 'StormKing',
+    text: correctOptionId,
+    eventId: 'c0203-fastest-correct',
+  }).ok).toBe(true);
+  running.scheduler.advance(runtime.config.timings.answerMs);
+  expect(runtime.engine.state).toBe('REVEAL');
+  await expect(stage).toHaveAttribute('data-scene', 'REVEAL');
+
+  const fastest = runtime.adminSnapshot().public.fastestCorrectAnswer;
+  expect(fastest).toMatchObject({ safeDisplayName: 'StormKing', responseMs: expect.any(Number) });
+  const callout = stage.getByTestId('fastest-callout');
+  await expect(callout).toContainText('StormKing');
+  await expect(callout).toContainText('NHANH NHẤT');
+  await expect(stage.locator('.v3-seat-name.is-fastest')).toHaveCount(1);
+  expect(JSON.stringify(runtime.adminSnapshot().public.fastestCorrectAnswer)).not.toContain('c0203-synthetic-player');
+
+  const reviewDirectory = join(process.cwd(), '.claude', 'review', 'C0203');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const screenshotPath = join(reviewDirectory, 'mock-server-fastest-overlay.png');
+  await stage.screenshot({ path: screenshotPath, animations: 'disabled' });
+  expect(voiceRequests).toEqual([]);
+  await expect(overlay.locator('audio')).toHaveCount(0);
+  console.log(`C-0203 MOCK server round: mcVoiceEnabled=true; fastest shown for StormKing; MC Voice requests=0; audio elements=0; screenshot=${screenshotPath}`);
 });
 
 function watchPage(
@@ -282,6 +356,23 @@ function emitComment(
     user: { id: input.userId, nickname: input.nickname },
     content: input.text,
   });
+}
+
+async function commandMockRound(running: RunningQuiz, sessionId: string, command: CommandBody) {
+  const runtime = currentRuntime(running.app);
+  const response = await running.app.app.inject({
+    method: 'POST',
+    url: `/api/sessions/${encodeURIComponent(sessionId)}/commands`,
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      commandId: randomUUID(),
+      expectedStateVersion: runtime.engine.stateVersion,
+      operatorId: 'c0203-e2e',
+      requestedAtMs: running.scheduler.now(),
+      command,
+    },
+  });
+  if (response.statusCode !== 200) throw new Error(`Lệnh MOCK lỗi ${response.statusCode}: ${response.body}`);
 }
 
 function acceptedAnswerCount(running: RunningQuiz) {
