@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 197,
-  "heartbeat": "2026-11-14T10:53:10+07:00",
+  "heartbeat": "2026-11-14T11:29:45+07:00",
   "state": "working",
   "task": "C-0202",
-  "note": "Đang đọc report nguồn và kiểm tra ba worktree/nhánh trước khi sửa từng lỗi.",
+  "note": "Đã sửa header A và fastest/MC A-B; e2e đầy đủ đang chạy trên nhánh C0197",
   "done": []
 }
