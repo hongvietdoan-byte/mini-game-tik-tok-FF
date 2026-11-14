@@ -27,6 +27,7 @@ function line(index: number): McVoiceReadingLine {
     descriptor: {
       text,
       voicePolicyVersion: 1,
+      voiceKey: 'runtime-only',
       provider: 'clipai',
       model: 'runtime-model',
       voiceSettings: { voiceProfile: 'runtime-only', rate: 1 },
@@ -88,6 +89,15 @@ describe('McVoiceService', () => {
     const service = new McVoiceService(provider, new McVoiceCache(directory), credentials, normalizer);
     const input = line(1);
     await expect(service.getOrCreate(input.descriptor, input.request)).rejects.toMatchObject({ code: 'AUTH' });
+    expect(provider.synthesize).not.toHaveBeenCalled();
+  });
+
+  it('từ chối voice key không khớp cache descriptor trước khi gọi provider', async () => {
+    const provider = { synthesize: vi.fn(async () => audio(1_000)) };
+    const { service } = await makeService(provider);
+    const input = line(1);
+    await expect(service.getOrCreate(input.descriptor, { ...input.request, voiceKey: 'other-profile' }))
+      .rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     expect(provider.synthesize).not.toHaveBeenCalled();
   });
 

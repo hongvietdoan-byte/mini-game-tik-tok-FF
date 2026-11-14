@@ -59,6 +59,8 @@ export type PreparedRound = { roundId: string; roundNumber: number; questionInst
 export type EngineInput =
   | { kind: 'COMMAND'; expectedStateVersion: number; command: CommandBody; preparedRound?: PreparedRound }
   | { kind: 'TIMER_ELAPSED'; expectedStateVersion: number }
+  /** Server chỉ được rút ngắn READING sau khi có bundle đã chuẩn hoá; không vượt trần cứng. */
+  | { kind: 'MC_READING_DURATION_SET'; expectedStateVersion: number; questionInstanceId: string; durationMs: number; elapsedMs: number }
   /** Chỉ runtime sau khi xác thực lease/playback identity mới được gửi ACK hoàn tất. */
   | { kind: 'MC_READING_FINISHED'; expectedStateVersion: number; questionInstanceId: string }
   /** Fallback sớm khi không có audio/owner hoặc playback lỗi; TIMEOUT do timer phát ra. */
@@ -454,6 +456,20 @@ export function transition(state: EngineState, input: EngineInput, now: number):
   const d: Draft = { s: clone(state), events: [] };
 
   switch (input.kind) {
+    case 'MC_READING_DURATION_SET': {
+      if (input.expectedStateVersion !== state.stateVersion)
+        return fail('STALE_STATE_VERSION', 'Thời lượng MC thuộc phiên bản trạng thái cũ');
+      if (state.state !== 'READING' || input.questionInstanceId !== currentQuestionInstanceId(state))
+        return fail('ILLEGAL_TRANSITION', 'Thời lượng MC không khớp câu đang đọc');
+      if (!state.timer || state.timer.deadlineMs === null ||
+        !Number.isSafeInteger(input.durationMs) || input.durationMs <= 0 || input.durationMs > MAX_MC_READING_MS ||
+        !Number.isSafeInteger(input.elapsedMs) || input.elapsedMs < 0 || input.elapsedMs >= input.durationMs)
+        return fail('ILLEGAL_TRANSITION', 'Thời lượng MC không hợp lệ');
+      const remaining = input.durationMs - input.elapsedMs;
+      d.s.timer = { durationMs: input.durationMs, remainingMs: remaining, deadlineMs: now + remaining };
+      return done(d);
+    }
+
     case 'MC_READING_FINISHED':
     case 'MC_READING_FALLBACK': {
       if (input.expectedStateVersion !== state.stateVersion)

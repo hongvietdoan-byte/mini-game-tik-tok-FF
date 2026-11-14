@@ -60,6 +60,30 @@ describe('ClipAiMcVoiceProvider qua transport giả', () => {
     expect(clock.sleeps).toEqual([400, 50]);
   });
 
+  it('retry giới hạn khi submit bị giới hạn và không tạo quá ba lần thử lại', async () => {
+    const api = transport({
+      submit: vi.fn()
+        .mockRejectedValueOnce(new ClipAiTransportError('RATE_LIMITED', 1_000))
+        .mockRejectedValueOnce(new ClipAiTransportError('RATE_LIMITED', 2_000))
+        .mockRejectedValueOnce(new ClipAiTransportError('RATE_LIMITED', 3_000))
+        .mockResolvedValueOnce({ jobId: 'job-1' }),
+    });
+    const clock = fakeClock();
+    const provider = new ClipAiMcVoiceProvider(api, { clock });
+    await expect(provider.synthesize(request, 'secret-test-only')).resolves.toMatchObject({ durationMs: 2_000 });
+    expect(api.submit).toHaveBeenCalledTimes(4);
+    expect(clock.sleeps).toEqual([1_000, 2_000, 3_000]);
+  });
+
+  it('dừng sau tối đa ba lần thử lại rate-limit, không gửi job thêm', async () => {
+    const api = transport({ submit: vi.fn().mockRejectedValue(new ClipAiTransportError('RATE_LIMITED', 100)) });
+    const clock = fakeClock();
+    const provider = new ClipAiMcVoiceProvider(api, { clock });
+    await expect(provider.synthesize(request, 'secret-test-only')).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+    expect(api.submit).toHaveBeenCalledTimes(4);
+    expect(clock.sleeps).toEqual([100, 100, 100]);
+  });
+
   it('401 dừng ngay, job lỗi hết hạn mức không tải audio', async () => {
     const authTransport = transport({ submit: vi.fn().mockRejectedValue(new ClipAiTransportError('AUTH')) });
     await expect(new ClipAiMcVoiceProvider(authTransport).synthesize(request, 'secret-test-only'))

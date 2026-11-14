@@ -20,6 +20,7 @@ function descriptor(overrides: Partial<McVoiceCacheDescriptor> = {}): McVoiceCac
   return {
     text: 'Câu hỏi thử nghiệm?',
     voicePolicyVersion: 1,
+    voiceKey: 'hashed-runtime-profile',
     provider: 'clipai',
     model: 'runtime-model',
     voiceSettings: { runtimeVoice: 'private-value', rate: 1 },
@@ -41,9 +42,10 @@ describe('McVoiceCache', () => {
     expect(mcVoiceCacheKey(first)).toMatch(/^[a-f0-9]{64}$/);
     expect(mcVoiceCacheKey(first)).not.toContain('private-value');
     expect(mcVoiceCacheKey(first)).not.toBe(mcVoiceCacheKey(descriptor({ voiceSettings: { b: 2, a: 'y' } })));
+    expect(mcVoiceCacheKey(first)).not.toBe(mcVoiceCacheKey(descriptor({ voiceKey: 'different-hash' })));
   });
 
-  it('ghi audio và metadata hạn chế quyền, kiểm checksum khi đọc; không lưu text/voice key', async () => {
+  it('ghi audio và metadata hạn chế quyền, kiểm checksum khi đọc; không lưu text/profile key', async () => {
     const { directory, cache: store } = await cache();
     const key = mcVoiceCacheKey(descriptor());
     const written = await store.put(key, audio());
@@ -53,6 +55,7 @@ describe('McVoiceCache', () => {
     const metadata = await readFile(join(directory, key, 'metadata.json'), 'utf8');
     expect(metadata).not.toContain('Câu hỏi thử nghiệm');
     expect(metadata).not.toContain('private-value');
+    expect(metadata).not.toContain('hashed-runtime-profile');
 
     await writeFile(join(directory, key, 'audio.mp3'), 'tampered');
     expect(await store.get(key)).toBeNull();

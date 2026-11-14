@@ -3,7 +3,14 @@ import {
   CONTRACT_VERSION,
   CommandEnvelopeSchema,
   CommentEventSchema,
+  DEFAULT_MC_READING_MS,
   INITIAL_TEST_SAFE_ZONE,
+  MAX_MC_READING_MS,
+  MC_VOICE_POLICY_VERSION,
+  McVoiceCueSchema,
+  McVoiceEventSchema,
+  type McVoiceCue,
+  type McVoiceEvent,
   type AdminSnapshot,
   type CommandBody,
   type CommandEnvelope,
@@ -55,6 +62,9 @@ import type { FilteredPlayerName } from '@quiz/name-filter';
 import type { SessionRow, Store } from '@quiz/persistence';
 import { AudienceManager, DEFAULT_CHARACTER_POOL } from './audience';
 import type { NameFilterStore } from './name-filter-store';
+import { McVoiceService, type McVoiceReadingBundle, type McVoiceReadingLine } from './voice/service';
+import type { McVoiceProfile } from './voice/types';
+import { containsPlayerIdentity } from './voice/safety';
 
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
@@ -91,6 +101,9 @@ const MAX_REJECTIONS = 50;
 const MAX_SEEN_EVENTS = 100_000;
 const HEARTBEAT_MS = 1_000;
 const COUNTS_THROTTLE_MS = 250;
+const MC_VOICE_TELEMETRY_REASONS = new Set([
+  'UNSAFE_PLAYER_IDENTITY', 'TOO_LONG', 'NOT_CONFIGURED', 'LATE_AUDIO', 'AUTH', 'NO_CREDIT', 'RATE_LIMITED', 'FAILED', 'TIMEOUT', 'DOWNLOAD_FAILED', 'INVALID_RESPONSE',
+]);
 
 export function statusForResult(r: CommandResult): number {
   if (r.ok) return 200;
@@ -119,6 +132,8 @@ export type RuntimeDeps = {
   characterPool?: readonly string[];
   /** Lọc tên trước khi ghi DB/phát overlay. */
   nameFilter?: NameFilterStore;
+  /** Runtime MC được cấp ngoài app; thiếu cấu hình/credential thì game chạy im lặng. */
+  mcVoice?: { service: McVoiceService; profile: McVoiceProfile };
 };
 
 export class SessionRuntime {
@@ -128,6 +143,12 @@ export class SessionRuntime {
   private timerHandle: unknown = null;
   private heartbeatHandle: unknown = null;
   private countsHandle: unknown = null;
+  private readingStartedAtMs: number | null = null;
+  private questionVoiceBundles = new Map<string, Promise<McVoiceReadingBundle | null>>();
+  private voiceAssetPromises = new Map<string, Promise<{ assetId: string; durationMs: number } | null>>();
+  private voiceHandles = new Set<unknown>();
+  private countdownCues = new Set<string>();
+  private voiceTailAtMs = 0;
   private snapshots = new Map<string, QuestionSnapshot>();
   private snapshotsRoundId: string | null = null;
   private counts = ZERO_COUNTS();
@@ -250,6 +271,10 @@ export class SessionRuntime {
     this.unsubs.push(this.adapter.onStatus((s) => this.safe(() => this.onConnectionStatus(s))));
     this.beat();
     this.arm();
+    if (this.config.mcVoiceEnabled) {
+      this.preGenerateGenericVoice();
+      void this.speakGeneric({ type: 'WELCOME', scriptId: 'lobby-v1' }, 'Chào mừng cả nhà đến với phiên đố vui! Hãy cùng sẵn sàng nhé.');
+    }
     if (this.engine.sessionStatus === 'OPEN') {
       try {
         await this.adapter.connect();
@@ -287,8 +312,10 @@ export class SessionRuntime {
 
   dispose() {
     this.disposed = true;
-    for (const h of [this.timerHandle, this.heartbeatHandle, this.countsHandle]) if (h !== null) this.scheduler.clearTimeout(h);
+    for (const h of [this.timerHandle, this.heartbeatHandle, this.countsHandle, ...this.voiceHandles])
+      if (h !== null) this.scheduler.clearTimeout(h);
     this.timerHandle = this.heartbeatHandle = this.countsHandle = null;
+    this.voiceHandles.clear();
     this.simulator?.stop();
     this.simulator = null;
     for (const u of this.unsubs.splice(0)) u();
@@ -518,6 +545,13 @@ export class SessionRuntime {
 
   private afterCommit(events: EngineEvent[], input: EngineInput) {
     for (const e of events) {
+      if (e.type === 'ROUND_STARTED') this.preGenerateRoundVoice();
+      else if (e.type === 'QUESTION_CLOSED') this.speakAnswerReveal(e.questionInstanceId);
+      else if (e.type === 'VICTORY_STARTED')
+        void this.speakGeneric({ type: 'VICTORY_GENERIC', roundId: e.roundId }, 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.');
+      else if (e.type === 'STATE_CHANGED' && e.to === 'READING') this.beginQuestionReading();
+      else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round)
+        void this.speakGeneric({ type: 'LEADERBOARD_GENERIC', roundId: this.engine.round.roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!');
       if (e.type === 'QUESTION_OPENED') {
         const snap = this.snapshots.get(e.questionInstanceId);
         if (snap && this.simulator)
@@ -561,13 +595,268 @@ export class SessionRuntime {
         this.timerHandle = this.scheduler.setTimeout(fire, left);
         return;
       }
-      this.safe(() => this.apply({ kind: 'TIMER_ELAPSED', expectedStateVersion: version }));
+      this.safe(() => {
+        const qid = this.engine.state === 'READING' ? currentQuestionInstanceId(this.engine) : null;
+        this.apply(qid
+          ? { kind: 'MC_READING_FINISHED', expectedStateVersion: version, questionInstanceId: qid }
+          : { kind: 'TIMER_ELAPSED', expectedStateVersion: version });
+      });
     };
-    this.timerHandle = this.scheduler.setTimeout(fire, deadline - this.scheduler.now());
+    // Kết thúc READING sớm 1 ms bằng ACK nội bộ để không ghi nhầm TIMEOUT khi audio phát đủ.
+    this.timerHandle = this.scheduler.setTimeout(fire, Math.max(0, deadline - this.scheduler.now() - Number(this.engine.state === 'READING')));
+  }
+
+  private voiceEnabled() {
+    return this.config.mcVoiceEnabled === true && !!this.deps.mcVoice;
+  }
+
+  private telemetry(reason: string, eventType: McVoiceEvent['type']) {
+    // Chỉ ghi loại sự kiện và mã lý do; tuyệt đối không ghi text, tên, token hay chi tiết provider.
+    const safeReason = MC_VOICE_TELEMETRY_REASONS.has(reason) ? reason : 'FAILED';
+    this.deps.warn?.(`[mc-voice] cue skipped event=${eventType} reason=${safeReason}`);
+  }
+
+  voiceIdentityValues() {
+    const sessionPlayerIds = new Set(this.store.listPlayerIdsInSession(this.id));
+    const identities = new Set<string>();
+    for (const player of this.store.listPlayers()) {
+      if (!sessionPlayerIds.has(player.id)) continue;
+      identities.add(player.id);
+      identities.add(this.publicPlayerIdFor(player.id));
+      identities.add(player.displayName);
+      const held = this.playerNames.get(player.id);
+      if (held) {
+        identities.add(held.originalName);
+        identities.add(held.result.safeDisplayName);
+      }
+    }
+    return [...identities];
+  }
+
+  private speechContainsPlayerIdentity(text: string) {
+    return containsPlayerIdentity(text, this.voiceIdentityValues());
+  }
+
+  private questionVoiceLines(snap: QuestionSnapshot): McVoiceReadingLine[] {
+    const event = McVoiceEventSchema.parse({
+      type: 'QUESTION', questionInstanceId: snap.questionInstanceId, approvedQuestionVersion: String(snap.questionVersion),
+    });
+    const values = [{ lineId: 'prompt', text: snap.prompt }, ...snap.options.map((option, index) => ({ lineId: `option-${index + 1}`, text: option.text }))];
+    return values.map(({ lineId, text }) => ({
+      gameEvent: event,
+      lineId,
+      descriptor: {
+        text, voicePolicyVersion: MC_VOICE_POLICY_VERSION, voiceKey: this.deps.mcVoice!.profile.voiceKey, provider: 'clipai',
+        model: this.deps.mcVoice!.profile.model, voiceSettings: this.deps.mcVoice!.profile.voiceSettings,
+        rate: this.deps.mcVoice!.profile.rate, format: 'mp3',
+      },
+      request: { text, voiceKey: this.deps.mcVoice!.profile.voiceKey, rate: this.deps.mcVoice!.profile.rate, format: 'mp3' },
+    }));
+  }
+
+  private prepareQuestionVoice(snap: QuestionSnapshot) {
+    const existing = this.questionVoiceBundles.get(snap.questionInstanceId);
+    if (existing) return existing;
+    const lines = this.questionVoiceLines(snap);
+    if (lines.some((line) => this.speechContainsPlayerIdentity(line.request.text))) {
+      this.telemetry('UNSAFE_PLAYER_IDENTITY', 'QUESTION');
+      const skipped = Promise.resolve(null);
+      this.questionVoiceBundles.set(snap.questionInstanceId, skipped);
+      return skipped;
+    }
+    const service = this.deps.mcVoice!.service;
+    const pending = service.prepareQuestionReading(lines).then((bundle) => {
+      if (!bundle.ok) this.telemetry('TOO_LONG', 'QUESTION');
+      return bundle;
+    }).catch((error: unknown) => {
+      this.telemetry(error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'FAILED', 'QUESTION');
+      return null;
+    });
+    this.questionVoiceBundles.set(snap.questionInstanceId, pending);
+    return pending;
+  }
+
+  private preGenerateGenericVoice() {
+    if (!this.voiceEnabled()) return;
+    void this.voiceAsset({ type: 'WELCOME', scriptId: 'lobby-v1' }, 'Chào mừng cả nhà đến với phiên đố vui! Hãy cùng sẵn sàng nhé.');
+    for (const secondsRemaining of [10, 5, 3, 2, 1])
+      void this.voiceAsset({ type: 'COUNTDOWN', secondsRemaining }, `Còn ${secondsRemaining} giây, hãy chốt đáp án!`);
+  }
+
+  private preGenerateRoundVoice() {
+    if (!this.voiceEnabled() || !this.engine.round) return;
+    const selected = [...this.snapshots.values()];
+    let next = 0;
+    const worker = async () => {
+      while (!this.disposed && next < selected.length) {
+        const index = next++;
+        const question = selected[index]!;
+        await this.prepareQuestionVoice(question);
+        await this.prepareAnswerRevealVoice(question);
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(2, selected.length) }, () => worker())).catch(() => {
+      if (!this.disposed) this.telemetry('FAILED', 'QUESTION');
+    });
+    const roundId = this.engine.round.roundId;
+    void this.voiceAsset({ type: 'LEADERBOARD_GENERIC', roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!');
+    void this.voiceAsset({ type: 'VICTORY_GENERIC', roundId }, 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.');
+  }
+
+  private voiceAsset(event: McVoiceEvent, text: string) {
+    const parsed = McVoiceEventSchema.safeParse(event);
+    if (!this.voiceEnabled() || !parsed.success) return Promise.resolve(null);
+    if (this.speechContainsPlayerIdentity(text)) {
+      this.telemetry('UNSAFE_PLAYER_IDENTITY', event.type);
+      return Promise.resolve(null);
+    }
+    const key = `${event.type}\u0000${text.normalize('NFC').trim().replace(/\s+/gu, ' ')}`;
+    const cached = this.voiceAssetPromises.get(key);
+    if (cached) return cached;
+    const { service, profile } = this.deps.mcVoice!;
+    const descriptor = {
+      text, voicePolicyVersion: MC_VOICE_POLICY_VERSION, voiceKey: profile.voiceKey, provider: 'clipai' as const,
+      model: profile.model, voiceSettings: profile.voiceSettings, rate: profile.rate, format: 'mp3' as const,
+    };
+    const request = { text, voiceKey: profile.voiceKey, rate: profile.rate, format: 'mp3' as const };
+    const pending = service.getOrCreate(descriptor, request).then(({ asset }) => ({ assetId: asset.assetId, durationMs: asset.durationMs })).catch((error: unknown) => {
+      this.telemetry(error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'FAILED', event.type);
+      return null;
+    });
+    this.voiceAssetPromises.set(key, pending);
+    return pending;
+  }
+
+  private emitVoiceCue(eventType: McVoiceEvent['type'], assetId: string, durationMs: number, startsAtServerMs: number) {
+    if (this.disposed) return;
+    const cue = McVoiceCueSchema.parse({
+      cueId: randomUUID(), eventType, assetUrl: `/api/mc-voice/assets/${assetId}`,
+      durationMs, startsAtServerMs,
+    });
+    // Direct one-shot snapshot: publicSnapshot() and reconnects always contain null, so a cue is never replayed.
+    this.emit([{ audience: 'public', message: this.wrap('STATE_SNAPSHOT', this.publicSnapshot(this.scheduler.now(), cue)) }]);
+  }
+
+  private scheduleVoiceCue(
+    eventType: McVoiceEvent['type'], assetId: string, durationMs: number,
+    isCurrent: () => boolean, delayMs = 0,
+  ) {
+    const now = this.scheduler.now();
+    const startsAtServerMs = Math.max(now + 80 + Math.max(0, delayMs), this.voiceTailAtMs);
+    this.voiceTailAtMs = startsAtServerMs + durationMs;
+    const handle = this.scheduler.setTimeout(() => {
+      this.voiceHandles.delete(handle);
+      if (!this.disposed && isCurrent()) this.emitVoiceCue(eventType, assetId, durationMs, startsAtServerMs);
+    }, startsAtServerMs - now);
+    this.voiceHandles.add(handle);
+  }
+
+  private beginQuestionReading() {
+    if (this.config.mcVoiceEnabled !== true) return;
+    const qid = currentQuestionInstanceId(this.engine);
+    const snap = qid ? this.snapshots.get(qid) : undefined;
+    if (!qid || !snap) return;
+    const startedAt = this.scheduler.now();
+    this.readingStartedAtMs = startedAt;
+    this.countdownCues = new Set([...this.countdownCues].filter((key) => !key.startsWith(`${qid}:`)));
+    this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
+      questionInstanceId: qid, durationMs: DEFAULT_MC_READING_MS, elapsedMs: 0 });
+    if (!this.voiceEnabled()) {
+      this.telemetry('NOT_CONFIGURED', 'QUESTION');
+      return;
+    }
+    const bundle = this.prepareQuestionVoice(snap);
+    void bundle.then((prepared) => {
+      if (!prepared?.ok) return;
+      if (this.disposed || this.engine.state !== 'READING' || currentQuestionInstanceId(this.engine) !== qid) {
+        this.telemetry('LATE_AUDIO', 'QUESTION');
+        return;
+      }
+      if (this.questionVoiceLines(snap).some((line) => this.speechContainsPlayerIdentity(line.request.text))) {
+        this.telemetry('UNSAFE_PLAYER_IDENTITY', 'QUESTION');
+        return;
+      }
+      const elapsedMs = Math.max(0, Math.floor(this.scheduler.now() - startedAt));
+      const queueDelayMs = Math.max(0, this.voiceTailAtMs - this.scheduler.now());
+      const durationMs = Math.min(MAX_MC_READING_MS, elapsedMs + queueDelayMs + prepared.totalDurationMs + 80);
+      if (elapsedMs >= DEFAULT_MC_READING_MS) {
+        this.telemetry('LATE_AUDIO', 'QUESTION');
+        return;
+      }
+      if (queueDelayMs + prepared.totalDurationMs + 80 > MAX_MC_READING_MS) {
+        this.telemetry('TOO_LONG', 'QUESTION');
+        return;
+      }
+      const setDuration = this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
+        questionInstanceId: qid, durationMs, elapsedMs });
+      if (!setDuration.ok) return;
+      let offset = 0;
+      for (const line of prepared.lines) {
+        this.scheduleVoiceCue('QUESTION', line.asset.assetId, line.asset.durationMs,
+          () => this.engine.state === 'READING' && currentQuestionInstanceId(this.engine) === qid, offset);
+        offset += line.asset.durationMs;
+      }
+    });
+  }
+
+  private answerRevealVoice(snap: QuestionSnapshot) {
+    const event = McVoiceEventSchema.parse({
+      type: 'ANSWER_REVEAL', questionInstanceId: snap.questionInstanceId, approvedQuestionVersion: String(snap.questionVersion),
+    });
+    const option = snap.options.find((item) => item.id === snap.correctOptionId);
+    return option ? { event, text: `Đáp án đúng là ${snap.correctOptionId}: ${option.text}` } : null;
+  }
+
+  private prepareAnswerRevealVoice(snap: QuestionSnapshot) {
+    const line = this.answerRevealVoice(snap);
+    return line ? this.voiceAsset(line.event, line.text) : Promise.resolve(null);
+  }
+
+  private speakAnswerReveal(questionInstanceId: string) {
+    const snap = this.snapshots.get(questionInstanceId);
+    if (!snap || !this.engine.round) return;
+    const line = this.answerRevealVoice(snap);
+    if (!line) return;
+    void this.voiceAsset(line.event, line.text).then((asset) => {
+      if (asset) this.scheduleVoiceCue(line.event.type, asset.assetId, asset.durationMs,
+        () => ['REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY'].includes(effectiveState(this.engine)) && !this.speechContainsPlayerIdentity(line.text));
+    });
+  }
+
+  private speakGeneric(event: McVoiceEvent, text: string) {
+    void this.voiceAsset(event, text).then((asset) => {
+      if (!asset) return;
+      this.scheduleVoiceCue(event.type, asset.assetId, asset.durationMs, () => {
+        if (this.speechContainsPlayerIdentity(text)) return false;
+        if (event.type === 'WELCOME') return this.engine.sessionStatus === 'OPEN' && effectiveState(this.engine) === 'LOBBY';
+        if (event.type === 'LEADERBOARD_GENERIC') return effectiveState(this.engine) === 'LEADERBOARD';
+        if (event.type === 'VICTORY_GENERIC') return ['VICTORY', 'ROUND_END'].includes(effectiveState(this.engine));
+        return this.engine.sessionStatus === 'OPEN';
+      });
+    });
+  }
+
+  private maybeSpeakCountdown() {
+    if (!this.voiceEnabled() || this.engine.state !== 'ACCEPTING' || !this.engine.timer) return;
+    const qid = currentQuestionInstanceId(this.engine);
+    if (!qid) return;
+    const secondsRemaining = Math.ceil(remainingMs(this.engine, this.scheduler.now()) / 1_000);
+    if (![10, 5, 3, 2, 1].includes(secondsRemaining)) return;
+    const key = `${qid}:${secondsRemaining}`;
+    if (this.countdownCues.has(key)) return;
+    this.countdownCues.add(key);
+    const event = { type: 'COUNTDOWN' as const, secondsRemaining };
+    const text = `Còn ${secondsRemaining} giây, hãy chốt đáp án!`;
+    void this.voiceAsset(event, text).then((asset) => {
+      if (asset) this.scheduleVoiceCue(event.type, asset.assetId, asset.durationMs,
+        () => this.engine.state === 'ACCEPTING' && currentQuestionInstanceId(this.engine) === qid &&
+          remainingMs(this.engine, this.scheduler.now()) > 0 && !this.speechContainsPlayerIdentity(text));
+    });
   }
 
   private beat() {
     if (this.disposed || this.engine.sessionStatus === 'CLOSED') return;
+    this.maybeSpeakCountdown();
     this.store.heartbeat(this.id, this.scheduler.now());
     this.audience.flush(this.scheduler.now());
     this.heartbeatHandle = this.scheduler.setTimeout(() => this.beat(), HEARTBEAT_MS);
@@ -1093,7 +1382,7 @@ export class SessionRuntime {
     });
   }
 
-  publicSnapshot(now = this.scheduler.now()): PublicSnapshot {
+  publicSnapshot(now = this.scheduler.now(), mcVoiceCue: McVoiceCue | null = null): PublicSnapshot {
     const e = this.engine;
     const eff = effectiveState(e);
     const qid = currentQuestionInstanceId(e);
@@ -1166,6 +1455,7 @@ export class SessionRuntime {
       answerCount: showOptions ? this.answerCount() : 0,
       participantCount: e.round ? this.participants : 0,
       fastestCorrectAnswer,
+      mcVoiceCue,
       reveal: revealView,
       leaderboard,
       podium:

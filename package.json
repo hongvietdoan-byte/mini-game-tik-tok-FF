@@ -19,6 +19,7 @@
     "test:e2e": "playwright test",
     "db:generate": "corepack pnpm --filter @quiz/persistence generate",
     "simulate": "tsx scripts/simulate-round.ts",
+    "mc-voice:real-check": "tsx tools/mc_voice_real_check.ts",
     "privacy:check": "node scripts/privacy-check.mjs",
     "ci": "node scripts/privacy-check.mjs && tsc --noEmit -p tsconfig.json && vitest run --project unit --project integration",
     "start": "corepack pnpm build:web && corepack pnpm server",

@@ -34,7 +34,7 @@ export class McVoiceService {
   ): Promise<{ asset: CachedMcVoiceAudio; cacheHit: boolean }> {
     if (descriptor.voicePolicyVersion !== MC_VOICE_POLICY_VERSION)
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Voice policy version MC Voice không được hỗ trợ.');
-    if (descriptor.text !== request.text)
+    if (descriptor.text !== request.text || descriptor.voiceKey !== request.voiceKey)
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Nội dung MC Voice không khớp cache key.');
     const assetId = mcVoiceCacheKey(descriptor);
     const cached = await this.cache.get(assetId);
@@ -64,7 +64,7 @@ export class McVoiceService {
         throw new McVoiceProviderError('INVALID_RESPONSE', 'Sự kiện MC Voice không nằm trong allowlist câu hỏi đã duyệt.');
       if (line.descriptor.voicePolicyVersion !== MC_VOICE_POLICY_VERSION)
         throw new McVoiceProviderError('INVALID_RESPONSE', 'Voice policy version MC Voice không được hỗ trợ.');
-      if (line.descriptor.text !== line.request.text)
+      if (line.descriptor.text !== line.request.text || line.descriptor.voiceKey !== line.request.voiceKey)
         throw new McVoiceProviderError('INVALID_RESPONSE', 'Nội dung MC Voice không khớp cache key.');
       const assetId = mcVoiceCacheKey(line.descriptor);
       const cached = await this.cache.get(assetId);

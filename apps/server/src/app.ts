@@ -47,6 +47,7 @@ import { McVoiceCache } from './voice/cache';
 import { McVoicePreGenerateManager } from './voice/pre-generate';
 import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile, EnvironmentMcVoiceCredentialStore } from './voice/types';
 import { McVoiceService } from './voice/service';
+import { containsPlayerIdentity } from './voice/safety';
 import { preflightAssets } from './preflight-assets';
 import { commentSourcePreflight, overlayAckPreflight, overlayAudioPreflight } from './preflight-health';
 import { HudConfigError, HudConfigStore, MAX_HUD_IMAGE_BYTES } from './hud-config';
@@ -155,6 +156,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const voiceCredentials = opts.mcVoice?.credentials ?? new EnvironmentMcVoiceCredentialStore();
   const voiceService = opts.mcVoice?.service ?? null;
   const voiceProfile = opts.mcVoice?.profile ?? null;
+  const mcVoiceRuntime = voiceService && voiceProfile ? { service: voiceService, profile: voiceProfile } : undefined;
   const voiceCache = opts.mcVoice?.cache ?? new McVoiceCache(join(dirname(store.path), 'mc-voice-cache'));
   const voicePreGenerate = opts.mcVoice?.preGenerate ?? (voiceService ? new McVoicePreGenerateManager(voiceService, () => scheduler.now()) : null);
   const nameFilter = new NameFilterStore(dirname(store.path), { now: () => scheduler.now() });
@@ -182,6 +184,15 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
 
   let rt: SessionRuntime | null = null;
+  const voicePlayerIdentities = () => {
+    const identities = new Set(rt?.voiceIdentityValues() ?? []);
+    // Pre-generation may run before a session exists; still reject identities retained by the local player store.
+    for (const player of store.listPlayers()) {
+      identities.add(player.id);
+      identities.add(player.displayName);
+    }
+    return [...identities];
+  };
   const overlayClients = new Set<WebSocket>();
   const overlaySessions = new Map<WebSocket, OverlaySession>();
   const adminClients = new Set<WebSocket>();
@@ -459,6 +470,12 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         enough && roundsAvailable >= 6 && !outsideDifficultyRange ? 'PASS' : 'WARN',
         `${modeDetail} ${outsideDifficultyRange ? 'Kho hiện có buộc phải lệch quá ±2 ở ít nhất một mức.' : ''} ${roundsDetail}`.trim(),
       );
+      if (config.mcVoiceEnabled) {
+        check('mcVoice', 'Giọng đọc MC', voiceService && voiceProfile ? 'PASS' : 'WARN',
+          voiceService && voiceProfile
+            ? 'Giọng đọc MC đã sẵn sàng.'
+            : 'Chưa có profile hoặc thông tin xác thực; phiên vẫn chạy và bỏ qua giọng đọc MC.');
+      }
     }
 
     let dbReason = `Ghi/đọc thử OK — ${store.path}`;
@@ -721,11 +738,14 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!voiceService || !voiceProfile)
       return reply.code(503).send({ ok: false, code: 'MC_VOICE_NOT_READY', message: 'MC Voice chưa được cấu hình ở server.' });
     const text = parsed.data.text;
+    if (containsPlayerIdentity(text, voicePlayerIdentities()))
+      return reply.code(422).send({ ok: false, code: 'MC_VOICE_UNSAFE_CONTENT', message: 'Câu thử có thể chứa tên hoặc ID người chơi.' });
     try {
       const result = await voiceService.getOrCreate(
         {
           text,
           voicePolicyVersion: MC_VOICE_POLICY_VERSION,
+          voiceKey: voiceProfile.voiceKey,
           provider: 'clipai',
           model: voiceProfile.model,
           voiceSettings: voiceProfile.voiceSettings,
@@ -761,6 +781,10 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     const questions = store.listQuestions(packId).filter((question) => requested.has(question.id));
     if (questions.length !== requested.size || questions.some((question) => question.approvalStatus !== 'APPROVED'))
       return reply.code(400).send({ ok: false, code: 'MC_VOICE_QUESTION_NOT_APPROVED', message: 'Chỉ có thể tạo audio cho câu đã được duyệt trong bộ câu hiện hành.' });
+    const identities = voicePlayerIdentities();
+    if (questions.some((question) => [question.prompt, ...question.options.map((option) => option.text)]
+      .some((text) => containsPlayerIdentity(text, identities))))
+      return reply.code(422).send({ ok: false, code: 'MC_VOICE_UNSAFE_CONTENT', message: 'Câu hỏi có thể chứa tên hoặc ID người chơi.' });
 
     const makeLine = (gameEvent: z.infer<typeof McVoiceEventSchema>, lineId: string, text: string) => ({
       gameEvent,
@@ -768,6 +792,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       descriptor: {
         text,
         voicePolicyVersion: MC_VOICE_POLICY_VERSION,
+        voiceKey: voiceProfile.voiceKey,
         provider: 'clipai' as const,
         model: voiceProfile.model,
         voiceSettings: voiceProfile.voiceSettings,
@@ -798,10 +823,11 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   });
 
   app.get<{ Params: { assetId: string } }>('/api/mc-voice/assets/:assetId', async (req, reply) => {
-    if (!guard(req, reply, false)) return reply;
+    // assetId là SHA-256 cache key không tiết lộ text/profile; endpoint chỉ đọc asset đã chuẩn hoá.
     const asset = await voiceCache.get(req.params.assetId);
     if (!asset) return reply.code(404).send({ ok: false, code: 'MC_VOICE_ASSET_NOT_FOUND', message: 'Không tìm thấy audio MC Voice.' });
-    return reply.type('audio/mpeg').header('cache-control', 'private, no-store').send(asset.bytes);
+    return reply.type('audio/mpeg').header('cache-control', 'public, max-age=31536000, immutable')
+      .header('x-content-type-options', 'nosniff').send(asset.bytes);
   });
 
   app.get('/api/sessions/current', async () => ({
@@ -828,6 +854,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         adapter: adapterFactory(parsed.data.config.mode, parsed.data.config),
         preflight: (session) => makePreflight(session),
         warn: (message) => console.warn(message),
+        mcVoice: mcVoiceRuntime,
       },
       parsed.data,
     );
@@ -1104,6 +1131,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
           adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config),
           preflight: (session) => makePreflight(session),
           warn: (message) => console.warn(message),
+          mcVoice: mcVoiceRuntime,
         },
         row,
       );

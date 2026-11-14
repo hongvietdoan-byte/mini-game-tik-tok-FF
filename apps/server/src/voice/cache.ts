@@ -33,6 +33,7 @@ export function mcVoiceCacheKey(input: McVoiceCacheDescriptor): string {
   const canonical = JSON.stringify({
     text: input.text.normalize('NFC').trim().replace(/\s+/g, ' '),
     voicePolicyVersion: input.voicePolicyVersion,
+    voiceKey: input.voiceKey,
     provider: input.provider,
     model: input.model,
     voiceSettings: stableValue(input.voiceSettings),

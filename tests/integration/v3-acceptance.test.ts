@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { DEFAULT_TIMINGS, type PublicSnapshot, type SessionConfig } from '@quiz/contracts';
+import { DEFAULT_MC_READING_MS, DEFAULT_TIMINGS, type PublicSnapshot, type SessionConfig } from '@quiz/contracts';
 import { ManualScheduler } from '@quiz/live-adapters';
 import { currentQuestionInstanceId, selectRound } from '@quiz/quiz-core';
 import {
@@ -142,10 +142,17 @@ describe('V3 §17 — acceptance', () => {
     expect((await command(h, { type: 'START_ROUND' })).status).toBe(200);
     runUntil(h, () => rt(h).engine.state === 'READING');
 
+    const preflight = await h.quiz.app.inject({ method: 'GET', url: '/api/preflight', headers: AUTH });
+    expect(preflight.statusCode).toBe(200);
+    expect(preflight.json().checks.find((check: { id: string }) => check.id === 'mcVoice')).toMatchObject({
+      status: 'WARN', reason: expect.stringContaining('phiên vẫn chạy'),
+    });
+
     const r = rt(h);
     const questionId = currentQuestionInstanceId(r.engine)!;
     const publicView = r.publicSnapshot();
     expect(publicView.state).toBe('READING');
+    expect(r.engine.timer?.durationMs).toBe(DEFAULT_MC_READING_MS); // thiếu service/audio: dùng mặc định, không chờ trần 20s.
     expect(publicView.question).toMatchObject({
       questionInstanceId: questionId,
       optionsVisible: true,

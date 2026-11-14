@@ -174,6 +174,23 @@ export type McVoicePreGenerateProgress = z.infer<typeof McVoicePreGenerateProgre
 
 /** Trần đọc câu hỏi và bốn đáp án trong một lần phát MC. */
 export const MAX_MC_READING_MS = 20_000;
+/** Thời lượng dự phòng khi không có bundle audio MC hợp lệ. */
+export const DEFAULT_MC_READING_MS = 5_000;
+
+export const McVoiceCueEventTypeSchema = z.enum([
+  'WELCOME', 'QUESTION', 'COUNTDOWN', 'ANSWER_REVEAL', 'LEADERBOARD_GENERIC', 'VICTORY_GENERIC',
+]);
+export type McVoiceCueEventType = z.infer<typeof McVoiceCueEventTypeSchema>;
+
+/** Tín hiệu một lần qua STATE_SNAPSHOT; URL chỉ trỏ tới hash asset công khai đã cache. */
+export const McVoiceCueSchema = z.object({
+  cueId: z.string().uuid(),
+  eventType: McVoiceCueEventTypeSchema,
+  assetUrl: z.string().regex(/^\/api\/mc-voice\/assets\/[a-f0-9]{64}$/),
+  durationMs: z.number().int().min(1).max(MAX_MC_READING_MS),
+  startsAtServerMs: z.number().finite().nonnegative(),
+}).strict();
+export type McVoiceCue = z.infer<typeof McVoiceCueSchema>;
 
 export const SceneSchema = z.enum([
   'LOBBY',
@@ -884,6 +901,8 @@ export type PublicSnapshot = {
   participantCount: number;
   /** Present only while publishing a question result or its following leaderboard. */
   fastestCorrectAnswer: FastestCorrectAnswer | null;
+  /** Cue chỉ được gắn vào snapshot WS phát một lần; snapshot phục hồi luôn trả null. */
+  mcVoiceCue?: McVoiceCue | null;
   reveal: RevealView | null;
   leaderboard: { kind: 'COMPACT' | 'FULL'; entries: PublicLeaderboardEntry[] } | null;
   podium: PublicPodium | null;

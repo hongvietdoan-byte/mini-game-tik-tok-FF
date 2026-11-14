@@ -3,7 +3,7 @@ import { McVoiceProviderError, type McVoiceAudio, type McVoiceProvider, type McV
 
 export type ClipAiTransportErrorCode = 'AUTH' | 'NO_CREDIT' | 'RATE_LIMITED' | 'FAILED' | 'DOWNLOAD_FAILED';
 
-/** Transport được tiêm vào adapter; endpoint/payload riêng của nhà cung cấp không nằm trong repo công khai. */
+/** HTTP transport nhận endpoint và tham số cấu hình từ profile riêng ngoài repository. */
 export interface ClipAiTransport {
   submit(input: McVoiceSynthesisRequest, token: string, signal?: AbortSignal): Promise<{ jobId: string }>;
   poll(jobId: string, token: string, signal?: AbortSignal): Promise<
@@ -50,6 +50,8 @@ const realClock: McVoiceClock = {
   }),
 };
 
+const MAX_RATE_LIMIT_RETRIES = 3;
+
 function mapTransportError(error: unknown): McVoiceProviderError {
   if (error instanceof McVoiceProviderError) return error;
   if (error instanceof ClipAiTransportError) {
@@ -77,9 +79,25 @@ export class ClipAiMcVoiceProvider implements McVoiceProvider {
     const timeoutMs = this.options.timeoutMs ?? 45_000;
     const pollIntervalMs = this.options.pollIntervalMs ?? 750;
     const deadline = clock.now() + timeoutMs;
+    const withRateLimitRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
+      for (let retry = 0; ; retry += 1) {
+        try {
+          return await operation();
+        } catch (error) {
+          const mapped = mapTransportError(error);
+          if (mapped.code !== 'RATE_LIMITED') throw mapped;
+          const retryAfter = mapped.retryAfterMs;
+          if (retry >= MAX_RATE_LIMIT_RETRIES || !Number.isFinite(retryAfter) || retryAfter! < 0)
+            throw new McVoiceProviderError('RATE_LIMITED', 'Nhà cung cấp MC Voice chưa cho phép thử lại.');
+          if (clock.now() + retryAfter! >= deadline)
+            throw new McVoiceProviderError('TIMEOUT', 'Hết thời gian chờ tạo audio MC Voice.');
+          await clock.sleep(retryAfter!, signal);
+        }
+      }
+    };
     let jobId: string;
     try {
-      const submitted = await this.transport.submit(input, token, signal);
+      const submitted = await withRateLimitRetry(() => this.transport.submit(input, token, signal));
       if (!submitted.jobId || submitted.jobId.length > 200) throw new McVoiceProviderError('INVALID_RESPONSE', 'Mã tác vụ MC Voice không hợp lệ.');
       jobId = submitted.jobId;
     } catch (error) {
@@ -91,27 +109,19 @@ export class ClipAiMcVoiceProvider implements McVoiceProvider {
       if (signal?.aborted) throw new McVoiceProviderError('FAILED', 'Yêu cầu đọc MC đã bị huỷ.');
       if (clock.now() >= deadline) throw new McVoiceProviderError('TIMEOUT', 'Hết thời gian chờ tạo audio MC Voice.');
       try {
-        const job = await this.transport.poll(jobId, token, signal);
+        const job = await withRateLimitRetry(() => this.transport.poll(jobId, token, signal));
         if (job.status === 'FAILED')
           throw new McVoiceProviderError(job.code === 'NO_CREDIT' ? 'NO_CREDIT' : 'FAILED', 'Tác vụ MC Voice không hoàn tất.');
         complete = job.status === 'SUCCEEDED';
       } catch (error) {
-        const mapped = mapTransportError(error);
-        if (mapped.code !== 'RATE_LIMITED') throw mapped;
-        const retryAfter = mapped.retryAfterMs;
-        if (!Number.isFinite(retryAfter) || retryAfter! < 0)
-          throw new McVoiceProviderError('RATE_LIMITED', 'Nhà cung cấp MC Voice chưa cho phép thử lại.');
-        if (clock.now() + retryAfter! >= deadline)
-          throw new McVoiceProviderError('TIMEOUT', 'Hết thời gian chờ tạo audio MC Voice.');
-        await clock.sleep(retryAfter!, signal);
-        continue;
+        throw mapTransportError(error);
       }
       if (!complete) await clock.sleep(Math.min(pollIntervalMs, Math.max(0, deadline - clock.now())), signal);
     }
 
     let items: Array<{ assetRef: string; durationMs: number }>;
     try {
-      items = await this.transport.listAudio(jobId, token, signal);
+      items = await withRateLimitRetry(() => this.transport.listAudio(jobId, token, signal));
     } catch (error) {
       throw mapTransportError(error);
     }
@@ -123,7 +133,7 @@ export class ClipAiMcVoiceProvider implements McVoiceProvider {
 
     let bytes: Uint8Array;
     try {
-      bytes = await this.transport.download(audioItem.assetRef, token, signal);
+      bytes = await withRateLimitRetry(() => this.transport.download(audioItem.assetRef, token, signal));
     } catch (error) {
       const mapped = mapTransportError(error);
       throw mapped.code === 'FAILED'
