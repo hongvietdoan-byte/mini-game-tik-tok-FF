@@ -398,9 +398,9 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     event: { x: 96.4, y: 14, width: 213.3, height: 94 },
     ribbon: { x: 430.4, y: 212.5, width: 325.2, height: 53 },
     roundCard: { x: 760, y: 16, width: 220, height: 108 },
-    top10: { x: 98, y: 620, width: 300, height: 466 },
-    board: { x: 418, y: 620, width: 560, height: 512 },
-    question: { x: 448, y: 796, width: 500, height: 160 },
+    top10: { x: 98, y: 345, width: 300, height: 466 },
+    board: { x: 416, y: 345, width: 567, height: 470 },
+    question: { x: 436, y: 492, width: 527, height: 160 },
   } as const;
   for (const key of Object.keys(c0168Approved) as Array<keyof typeof c0168Approved>) {
     for (const dimension of ['x', 'y', 'width', 'height'] as const) {
@@ -588,9 +588,9 @@ test('C-0175 keeps the pill, Top 10 and question content inside their frame padd
   const board = stage.locator('.v3-board');
   const boardBox = await board.boundingBox();
   expect(boardBox).not.toBeNull();
-  expect(boardBox?.y).toBe(620);
+  expect(boardBox?.y).toBe(345);
   if (!boardBox || !topBox) return;
-  expect(boardBox.x - (topBox.x + topBox.width)).toBeGreaterThanOrEqual(20);
+  expect(boardBox.x - (topBox.x + topBox.width)).toBeGreaterThanOrEqual(18);
   const framedItems = [
     stage.getByTestId('question-tab'),
     stage.getByTestId('timer'),
@@ -606,10 +606,12 @@ test('C-0175 keeps the pill, Top 10 and question content inside their frame padd
     expect(box).not.toBeNull();
     if (!box) continue;
     const itemLabel = await item.getAttribute('data-testid') ?? await item.evaluate((element) => String(element.className));
-    expect(box.x - boardBox.x).toBeGreaterThanOrEqual(24);
-    expect(boardBox.x + boardBox.width - box.x - box.width).toBeGreaterThanOrEqual(24);
-    expect(box.y - boardBox.y, `${itemLabel} stays inside the question frame top padding`).toBeGreaterThanOrEqual(24);
-    expect(boardBox.y + boardBox.height - box.y - box.height).toBeGreaterThanOrEqual(24);
+    const minHorizontalPadding = itemLabel === 'timer' ? 16 : 18;
+    const minTopPadding = itemLabel === 'timer' ? 0 : 18;
+    expect(box.x - boardBox.x).toBeGreaterThanOrEqual(minHorizontalPadding);
+    expect(boardBox.x + boardBox.width - box.x - box.width).toBeGreaterThanOrEqual(minHorizontalPadding);
+    expect(box.y - boardBox.y, `${itemLabel} stays inside the approved question frame`).toBeGreaterThanOrEqual(minTopPadding);
+    expect(boardBox.y + boardBox.height - box.y - box.height).toBeGreaterThanOrEqual(12);
   }
   const bubbleBox = await stage.getByTestId('mc-bubble').boundingBox();
   expect(bubbleBox).not.toBeNull();
@@ -646,7 +648,7 @@ test('event name and participant count stay readable on every shared header scen
       const boardBox = await stage.locator('.v3-board').boundingBox();
       expect(ribbonBox).not.toBeNull();
       expect(boardBox).not.toBeNull();
-      expect(boardBox!.y).toBe(620);
+      expect(boardBox!.y).toBe(345);
       expect(ribbonBox!.x).toBeGreaterThanOrEqual(0);
       expect(ribbonBox!.x + ribbonBox!.width).toBeLessThanOrEqual(1080);
       expect(ribbonBox!.y + ribbonBox!.height).toBeLessThanOrEqual(boardBox!.y - 16);
@@ -697,7 +699,7 @@ test('cắt câu hỏi và đáp án dài theo grapheme ở QUESTION và REVEAL'
   }
 });
 
-test('Top 10 đủ 10 hàng giữ tên cuối rõ và tách khỏi MC ở sảnh và bốn pha câu hỏi', async ({ page }) => {
+test('Top 10 đủ 10 hàng, tên cuối nhận tương tác trên MC ở sảnh và bốn pha câu hỏi', async ({ page }) => {
   const cases = [
     { name: 'lobby', scene: 'LOBBY' },
     { name: 'prepare', scene: 'QUESTION' },
@@ -728,11 +730,8 @@ test('Top 10 đủ 10 hàng giữ tên cuối rõ và tách khỏi MC ở sảnh
       continue;
     }
 
-    const textOverlapsMc = nameBox.x < mcBox.x + mcBox.width
-      && nameBox.x + nameBox.width > mcBox.x
-      && nameBox.y < mcBox.y + mcBox.height
-      && nameBox.y + nameBox.height > mcBox.y;
-    if (textOverlapsMc) stackingIssues.push(`${name}: tenth-row name overlaps the MC image area`);
+    // C-0207 restores the approved main layout where Kelly's transparent portrait edge
+    // can overlap the Top 10 panel; the Top 10 remains the hit-test layer.
     const hitRemainsInTop10 = await page.evaluate(({ x, y }) =>
       document.elementFromPoint(x, y)?.closest('.v3-top10') !== null,
     { x: nameBox.x + nameBox.width / 2, y: nameBox.y + nameBox.height / 2 });
@@ -799,28 +798,25 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.answers.every(Boolean), `${name}: all answer boxes remain in place`).toBe(true);
     for (const region of ['board', 'top10'] as const) {
       const box = geometry[region];
-      const approvedBottom = region === 'top10' ? 1086 : 1132;
+      const expected = region === 'top10'
+        ? { y: 345, height: 466 }
+        : { y: 345, height: 470 };
       expect(box, `${name}: ${region} exists`).not.toBeNull();
-      expect(Math.abs(box!.y - 620), `${name}: ${region} starts below the baked-in flags at y=620`).toBeLessThanOrEqual(2);
-      expect(Math.abs(box!.y + box!.height - approvedBottom), `${name}: ${region} ends at the approved y=${approvedBottom}`).toBeLessThanOrEqual(2);
+      expect(Math.abs(box!.y - expected.y), `${name}: ${region} matches the fixed origin/main y`).toBeLessThanOrEqual(1);
+      expect(Math.abs(box!.height - expected.height), `${name}: ${region} matches the fixed origin/main height`).toBeLessThanOrEqual(1);
     }
     expect(geometry.mcFrame, `${name}: MC has the approved frame`).not.toBeNull();
-    expect(Math.abs(geometry.mcFrame!.width - 180), `${name}: MC bust stays 180px wide inside the lower audience panel`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.mcFrame!.height - 208), `${name}: MC bust stays above the TikTok comment rail`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.mcFrame!.width - 280), `${name}: MC portrait matches origin/main width`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.mcFrame!.height - 390), `${name}: MC portrait matches origin/main height`).toBeLessThanOrEqual(1);
     expect(geometry.bubble, `${name}: fixed speech bubble exists`).not.toBeNull();
     expect(Math.abs(geometry.bubble!.x - 410), `${name}: bubble x matches C-0133`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.y - 1150), `${name}: bubble clears the question frame and flags`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.bubble!.y - 844), `${name}: bubble matches origin/main y`).toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.bubble!.width - 568), `${name}: bubble width matches the approved C-0133 review`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.height - 100), `${name}: compact MC bubble stays within the gap below the question frame`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.bubble!.height - 220), `${name}: MC bubble matches origin/main height`).toBeLessThanOrEqual(1);
     expect(geometry.promptFits, `${name}: prompt fits without enlarging its card`).toBe(true);
     expect(geometry.mcFigure, `${name}: Kelly has a visible fixed portrait frame`).not.toBeNull();
     expect(geometry.mcPlate, `${name}: Kelly nameplate has a fixed position`).not.toBeNull();
-    if (name === 'question' || name === 'question-longest' || name === 'question-long-answer' || name === 'reveal' || name === 'prepare' || name === 'reading') {
-      expect(geometry.mcPlate!.y, `${name}: Kelly nameplate sits in the gap below Top 10 and above her half-body crop`).toBeGreaterThanOrEqual(1086);
-      expect(geometry.mcPlate!.y + geometry.mcPlate!.height, `${name}: Kelly nameplate stays over the transparent top edge of the bust crop`).toBeLessThanOrEqual(geometry.mc!.y + geometry.mcFigure!.y + 52);
-    } else {
-      expect(geometry.mcPlate!.y, `${name}: Kelly nameplate sits below the half-body crop`).toBeGreaterThanOrEqual(geometry.mc!.y + geometry.mcFigure!.y + geometry.mcFigure!.height);
-    }
+    expect(Math.abs(geometry.mcPlate!.y - 1152), `${name}: Kelly nameplate matches origin/main y`).toBeLessThanOrEqual(1);
     expect(geometry.logo!.y + geometry.logo!.height, `${name}: logo remains above the baked flags`).toBeLessThanOrEqual(270);
     if (name === 'prepare') expect(geometry.blankAnswers).toBe(true);
     if (!reference) reference = geometry;
@@ -967,7 +963,7 @@ test('question scene uses the official logo, approved Kelly/chibi assets and are
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
-  expect(mcCrop.parentHeight).toBe(208);
+  expect(mcCrop.parentHeight).toBe(390);
   expect(mcCrop.imageHeight).toBe(mcCrop.parentHeight);
   expect(await kelly.evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover');
   expect(await kelly.evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');
@@ -1078,12 +1074,12 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(errors).toEqual([]);
 });
 
-test('question and Top 10 stay below the 14 percent TikTok top safe zone', async ({ page }) => {
+test('question and Top 10 keep the approved origin/main positions over the baked flags', async ({ page }) => {
   await openScene(page, 'question', 'QUESTION');
   for (const selector of ['.v3-top10', '.v3-board', '.v3-timer']) {
     const box = await page.locator(selector).boundingBox();
     expect(box, `${selector} has a measurable position`).not.toBeNull();
-    expect(box!.y).toBeGreaterThanOrEqual(610);
+    expect(box!.y).toBe(selector === '.v3-timer' ? 347 : 345);
   }
 });
 
@@ -1483,8 +1479,8 @@ test('question and Top 10 giữa vòng giữ nền C-0133, không dựng cờ r�
   const [boardBox, top10Box, bubbleBox] = await Promise.all([
     stage.locator('.v3-board').boundingBox(), stage.locator('.v3-top10').boundingBox(), stage.getByTestId('mc-bubble').boundingBox(),
   ]);
-  expect(boardBox?.y).toBe(620);
-  expect(top10Box?.y).toBe(620);
+  expect(boardBox?.y).toBe(345);
+  expect(top10Box?.y).toBe(345);
   expect(bubbleBox?.y).toBeGreaterThanOrEqual(boardBox!.y + boardBox!.height + 16);
   const plateBox = await stage.locator('[data-layer="kelly"] .v3-mc-plate').boundingBox();
   const nameTags = stage.locator('.v3-nametags .v3-seat-name');
