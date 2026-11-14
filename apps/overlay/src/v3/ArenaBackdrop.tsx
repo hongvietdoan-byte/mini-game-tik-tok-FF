@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { hudImageUrl } from './hudText';
 
 function ArenaFlag({ index }: { index: number }) {
   const [available, setAvailable] = useState(true);
@@ -29,12 +30,17 @@ export function ArenaBackdrop({
   arena = false,
   questionBackground = false,
   showFlags = arena,
-}: { arena?: boolean; questionBackground?: boolean; showFlags?: boolean }) {
+  backgroundId = null,
+}: { arena?: boolean; questionBackground?: boolean; showFlags?: boolean; backgroundId?: string | null }) {
+  const [failedBackground, setFailedBackground] = useState<string | null>(null);
+  useEffect(() => setFailedBackground(null), [backgroundId]);
+  const useCustomBackground = !!backgroundId && failedBackground !== backgroundId;
+  const fallbackBackground = questionBackground ? '/assets/arena/bg-question-user.jpg' : '/assets/arena/bg.jpg';
+  const backgroundSrc = hudImageUrl(useCustomBackground ? backgroundId : null, fallbackBackground);
   const backgroundClass = questionBackground ? ' v3-bg--question-user' : '';
   return (
     <div className={`v3-bg${arena ? ' v3-bg--arena' : ''}${backgroundClass}`} data-layer="background-storm" aria-hidden="true">
-      {arena && <img className={`v3-arena-backdrop-image${questionBackground ? ' v3-arena-backdrop-image--user' : ''}`} src={questionBackground ? '/assets/arena/bg-question-user.jpg' : '/assets/arena/bg.jpg'} alt="" draggable={false} decoding="async" />}
-      {questionBackground && <span className="v3-question-banner-mask"><img src="/assets/arena/bg-question-user.jpg" alt="" draggable={false} decoding="async" /></span>}
+      {arena && <img className={`v3-arena-backdrop-image${questionBackground && !useCustomBackground ? ' v3-arena-backdrop-image--user' : ''}`} data-testid="arena-background" src={backgroundSrc} alt="" draggable={false} decoding="async" onError={() => { if (useCustomBackground && backgroundId) setFailedBackground(backgroundId); }} />}
       <span className="v3-storm" />
       <span className="v3-bolt-l" />
       <span className="v3-bolt-r" />

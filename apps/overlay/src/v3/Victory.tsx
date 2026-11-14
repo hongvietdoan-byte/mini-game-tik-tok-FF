@@ -1,9 +1,11 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
 import { podiumLeftToRight } from '../overlayLogic';
 import { shortName } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
+import { useHudConfig } from '../hudConfig';
+import { fitHudTextStyle, hudImageUrl } from './hudText';
 
 const ASSET = '/assets';
 const VICTORY_BACKGROUND = `${ASSET}/victory/bg-user-cover.jpg`;
@@ -21,9 +23,14 @@ const VICTORY_LAYOUT = {
 } as CSSProperties;
 
 function VictoryLogo() {
+  const config = useHudConfig();
+  const customLogo = config.images.logo ? hudImageUrl(config.images.logo, '') : null;
   const [ok, setOk] = useState(true);
+  const [failedCustom, setFailedCustom] = useState(false);
+  useEffect(() => { setFailedCustom(false); setOk(true); }, [customLogo]);
+  const source = customLogo && !failedCustom ? customLogo : `${ASSET}/brand/logo.png`;
   return ok
-    ? <img className="v3v-event-logo" src={`${ASSET}/brand/logo.png`} alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí" draggable={false} decoding="async" data-testid="v3v-event-logo" onError={() => setOk(false)} />
+    ? <img className="v3v-event-logo" src={source} alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí" draggable={false} decoding="async" data-testid="v3v-event-logo" onError={() => { if (customLogo && !failedCustom) setFailedCustom(true); else setOk(false); }} />
     : <div className="v3v-logo-fallback"><BrandMark /></div>;
 }
 
@@ -155,14 +162,20 @@ function VictoryConfetti() {
 }
 
 export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot: PublicSnapshot; allowLegacyNames?: boolean }) {
+  const config = useHudConfig();
+  const customBackground = config.images.bgVictory ? hudImageUrl(config.images.bgVictory, '') : null;
+  const [failedCustomBackground, setFailedCustomBackground] = useState(false);
+  useEffect(() => setFailedCustomBackground(false), [customBackground]);
+  const backgroundSource = customBackground && !failedCustomBackground ? customBackground : VICTORY_BACKGROUND;
   const podium = snapshot.podium;
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene}>
-      <img className="v3v-bg-image" src={VICTORY_BACKGROUND} alt="" draggable={false} decoding="async" data-testid="victory-background" />
+      <img className="v3v-bg-image" src={backgroundSource} alt="" draggable={false} decoding="async" data-testid="victory-background" onError={() => { if (customBackground && !failedCustomBackground) setFailedCustomBackground(true); }} />
       <VictoryConfetti />
       <header className="v3v-header">
         <VictoryLogo />
       </header>
+      {config.texts.victoryTitle && <h1 className="v3v-hud-title" title={config.texts.victoryTitle} style={fitHudTextStyle(config.texts.victoryTitle, 860, 42, 18)}>{config.texts.victoryTitle}</h1>}
       <div className="v3v-podium" style={VICTORY_LAYOUT}>
         {podium && podiumLeftToRight(podium.slots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />)}
         {(!podium || podium.slots.length === 0) && <div className="v3v-empty">Chưa có người chơi đạt điểm</div>}

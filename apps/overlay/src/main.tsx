@@ -10,6 +10,7 @@ import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES
 import { AudioFxLayer } from './v3/AudioFxLayer';
 import { overlayFitFromSearch, overlayRoleFromSearch, overlayStageScale } from './overlayRole';
 import { publicPlayerName } from './publicPlayerName';
+import { HudConfigProvider, useLiveHudConfig } from './hudConfig';
 import type { AudioEngineState } from './audio/audio-engine';
 import './style.css';
 
@@ -218,6 +219,7 @@ function App() {
   const [cycleScene, setCycleScene] = useState('lobby');
   const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
   const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene, overlayRole, audioState);
+  const hudConfig = useLiveHudConfig(networkSnapshot?.hudVersion, mockScene !== null);
   useEffect(() => {
     if (requestedMock !== 'cycle') return;
     const available = MOCK_SCENES.filter((scene) => scene !== 'paused');
@@ -246,7 +248,7 @@ function App() {
     rightFromY: queryPixelOverride(query, 'safeRightFromY', snapshot.safeZone.rightFromY ?? 0, 1920),
   } : undefined;
 
-  return <main className={`viewport viewport-${overlayRole}`} data-fit={fit} data-role={overlayRole}>
+  return <HudConfigProvider config={hudConfig}><main className={`viewport viewport-${overlayRole}`} data-fit={fit} data-role={overlayRole}>
     {snapshot ? <div id="stage" className={fxLow ? 'fx-low' : undefined} data-testid="stage" data-scene={snapshot.scene} data-state={snapshot.state} data-fx-level={fxLow ? 'low' : 'full'} style={{
       transform: `translate(-50%, -50%) scale(${scale})`,
       '--safe-top': `${safeZone!.top}px`,
@@ -270,7 +272,7 @@ function App() {
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
     {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} onAudioStateChange={setAudioState} />}
-  </main>;
+  </main></HudConfigProvider>;
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

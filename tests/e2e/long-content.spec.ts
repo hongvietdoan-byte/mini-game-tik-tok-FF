@@ -183,6 +183,13 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
       stage.locator('.v3-title').boundingBox(),
       stage.locator('.v3-mc-figure').boundingBox(),
     ]);
+    const promptBox = content[0];
+    const timerBox = blockers[0];
+    expect(promptBox, `${sceneName}: question frame is measurable`).not.toBeNull();
+    expect(timerBox, `${sceneName}: timer is measurable`).not.toBeNull();
+    if (promptBox && timerBox) {
+      expect(promptBox.y - (timerBox.y + timerBox.height), `${sceneName}: question frame keeps at least 8px from timer`).toBeGreaterThanOrEqual(8);
+    }
     for (const textBox of content) {
       if (!textBox) continue;
       for (const blocker of blockers) {

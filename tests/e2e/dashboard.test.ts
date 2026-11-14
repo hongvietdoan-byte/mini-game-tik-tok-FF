@@ -1,5 +1,7 @@
 import { mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
+import { DEFAULT_HUD_CONFIG, type HudConfig } from '@quiz/contracts';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { SessionConfigSchema } from '@quiz/contracts';
@@ -12,10 +14,21 @@ let dashboardServer: ViteDevServer | undefined;
 
 test.beforeAll(async () => {
   const dashboardRoot = resolve(process.cwd(), 'apps/dashboard');
+  const serverPort = Number(process.env.PLAYWRIGHT_SERVER_PORT ?? 18787);
   dashboardServer = await createServer({
     root: dashboardRoot,
     configFile: resolve(dashboardRoot, 'vite.config.ts'),
-    server: { host: '127.0.0.1', port: 0, strictPort: true },
+    server: {
+      host: '127.0.0.1',
+      port: 0,
+      strictPort: true,
+      proxy: {
+        '/api': { target: `http://127.0.0.1:${serverPort}`, changeOrigin: true },
+        '/assets': { target: `http://127.0.0.1:${serverPort}`, changeOrigin: true },
+        '/hud-assets': { target: `http://127.0.0.1:${serverPort}`, changeOrigin: true },
+        '/ws': { target: `http://127.0.0.1:${serverPort}`, changeOrigin: true, ws: true },
+      },
+    },
   });
   await dashboardServer.listen();
   const address = dashboardServer.httpServer?.address();
@@ -27,15 +40,82 @@ test.afterAll(async () => {
   await dashboardServer?.close();
 });
 
-async function launchDashboard(page: Page, options: { mock?: boolean; setupDone?: boolean } = {}) {
-  const { mock = true, setupDone = true } = options;
-  await page.addInitScript(({ completed, token }) => {
+async function launchDashboard(page: Page, options: { mock?: boolean; setupDone?: boolean; overlayUrl?: string } = {}) {
+  const { mock = true, setupDone = true, overlayUrl } = options;
+  await page.addInitScript(({ completed, token, previewOverlayUrl }) => {
     localStorage.clear();
     sessionStorage.clear();
     if (completed) localStorage.setItem('quiz.setupDone', '1');
     sessionStorage.setItem('quiz.adminToken', token);
-  }, { completed: setupDone, token: adminToken });
+    if (previewOverlayUrl) {
+      (window as Window & { stormArena?: { getAdminToken: () => Promise<string>; getInfo: () => Promise<{ version: string; overlayUrl: string; dataDir: string }> } }).stormArena = {
+        getAdminToken: async () => token,
+        getInfo: async () => ({ version: 'e2e', overlayUrl: previewOverlayUrl, dataDir: 'e2e' }),
+      };
+    }
+  }, { completed: setupDone, token: adminToken, previewOverlayUrl: overlayUrl });
   await page.goto(`${dashboardUrl}/${mock ? '?mock=1' : ''}`);
+}
+
+async function createReviewPlaceholder(page: Page, kind: 'logo' | 'background'): Promise<Buffer> {
+  const base64 = await page.evaluate((imageKind) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = imageKind === 'logo' ? 600 : 1080;
+    canvas.height = imageKind === 'logo' ? 400 : 1920;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Không tạo được ảnh placeholder HUD.');
+
+    if (imageKind === 'logo') {
+      const gradient = context.createLinearGradient(0, 0, 600, 400);
+      gradient.addColorStop(0, '#141b63');
+      gradient.addColorStop(1, '#42125e');
+      context.fillStyle = gradient;
+      context.beginPath();
+      context.roundRect(18, 18, 564, 364, 54);
+      context.fill();
+      context.strokeStyle = '#f179ff';
+      context.lineWidth = 12;
+      context.shadowColor = '#ce47ff';
+      context.shadowBlur = 24;
+      context.stroke();
+      context.shadowBlur = 0;
+      context.fillStyle = '#fff';
+      context.textAlign = 'center';
+      context.font = '900 112px sans-serif';
+      context.fillText('NOVA', 300, 174);
+      context.fillStyle = '#ffd652';
+      context.font = '800 60px sans-serif';
+      context.fillText('ARENA', 300, 258);
+    } else {
+      const gradient = context.createLinearGradient(0, 0, 0, 1920);
+      gradient.addColorStop(0, '#07104d');
+      gradient.addColorStop(.52, '#291278');
+      gradient.addColorStop(1, '#080d2b');
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const glow = context.createRadialGradient(540, 880, 50, 540, 880, 950);
+      glow.addColorStop(0, 'rgba(111,71,255,.42)');
+      glow.addColorStop(1, 'rgba(111,71,255,0)');
+      context.fillStyle = glow;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.strokeStyle = '#e548ff';
+      context.shadowColor = '#ce47ff';
+      context.shadowBlur = 36;
+      context.lineWidth = 20;
+      context.strokeRect(34, 34, 1012, 1852);
+      context.shadowBlur = 0;
+      context.strokeStyle = '#39d8ff';
+      context.lineWidth = 8;
+      context.beginPath();
+      context.moveTo(0, 760);
+      context.lineTo(310, 600);
+      context.lineTo(540, 820);
+      context.lineTo(1080, 490);
+      context.stroke();
+    }
+    return canvas.toDataURL('image/png').slice('data:image/png;base64,'.length);
+  }, kind);
+  return Buffer.from(base64, 'base64');
 }
 
 async function installWizardApi(page: Page, overlay: 'PASS' | 'FAIL' | 'NOT_TESTED', updated: 'PASS' | 'FAIL' | 'NOT_TESTED') {
@@ -472,4 +552,108 @@ test('kiểm duyệt tên LIVE dùng đúng schema settings, mutation, audit và
   await expect.poll(() => authHeaders.length).toBeGreaterThan(putsBeforeRemoval);
   await expect(moderation.getByTestId('moderation-history')).toContainText('Cập nhật chính sách');
   expect(page.url()).not.toContain(adminToken);
+});
+
+test('Giao diện HUD đếm grapheme, lưu chữ, tải/reset ảnh và đổi cảnh preview', async ({ page }) => {
+  const overlayPort = Number(process.env.PLAYWRIGHT_OVERLAY_PORT ?? 15176);
+  await launchDashboard(page, { overlayUrl: `http://127.0.0.1:${overlayPort}/` });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  let previewHudConfig: HudConfig = JSON.parse(JSON.stringify(DEFAULT_HUD_CONFIG)) as HudConfig;
+  const previewAssets = new Map<string, Buffer>();
+  await page.route('**/api/hud', (route) => route.fulfill({ json: previewHudConfig }));
+  await page.route('**/hud-assets/**', (route) => {
+    const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1) ?? '');
+    const image = previewAssets.get(id);
+    return image
+      ? route.fulfill({ status: 200, contentType: 'image/png', body: image })
+      : route.fulfill({ status: 404, body: '' });
+  });
+  await page.getByRole('button', { name: 'Giao diện HUD', exact: true }).click();
+  const settings = page.getByTestId('hud-settings-page');
+  await expect(settings.getByRole('heading', { name: 'Giao diện HUD' })).toBeVisible();
+  const reviewDirectory = join(process.cwd(), 'assets-local', 'review', 'hud');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const preview = page.getByTestId('hud-preview');
+  const previewFrame = page.frameLocator('[data-testid="hud-preview"]');
+  const waitForPreview = async () => {
+    await expect(preview).toHaveAttribute('src', `http://127.0.0.1:${overlayPort}/?role=preview&mock=question`);
+    await expect(previewFrame.locator('.v3-stage')).toBeVisible();
+    await expect(previewFrame.locator('.v3-title-ribbon')).toHaveCSS('font-size', '21px');
+    await expect(previewFrame.locator('.v3-round-title')).toHaveCSS('font-size', '36px');
+    await expect(previewFrame.getByTestId('participant-count')).toHaveCSS('font-size', '52px');
+    await expect(previewFrame.locator('.v3-round-label')).toHaveCSS('font-size', '24px');
+  };
+
+  const kicker = page.getByLabel('Tên sự kiện góc trái');
+  await expect(kicker).toHaveValue('STORM ARENA');
+  await waitForPreview();
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-default.png'), fullPage: true, animations: 'disabled' });
+  await kicker.fill('A'.repeat(25));
+  await expect(settings.locator('.hud-text-field').filter({ has: kicker }).locator('em')).toHaveText('Tối đa 24 ký tự hiển thị.');
+  await expect(settings.getByRole('button', { name: 'Lưu giao diện' })).toBeDisabled();
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-edit-validation.png'), fullPage: true, animations: 'disabled' });
+
+  const logoPng = await createReviewPlaceholder(page, 'logo');
+  const backgroundPng = await createReviewPlaceholder(page, 'background');
+  const logoId = `${createHash('sha256').update(logoPng).digest('hex')}.png`;
+  const backgroundId = `${createHash('sha256').update(backgroundPng).digest('hex')}.png`;
+  previewAssets.set(logoId, logoPng);
+  previewAssets.set(backgroundId, backgroundPng);
+
+  await kicker.fill('LIVE ARENA');
+  previewHudConfig = {
+    ...previewHudConfig,
+    version: previewHudConfig.version + 1,
+    texts: { ...previewHudConfig.texts, kicker: 'LIVE ARENA' },
+  };
+  await settings.getByRole('button', { name: 'Lưu giao diện' }).click();
+  await expect(settings.getByRole('status')).toContainText('Đã lưu giao diện HUD');
+  await expect.poll(() => previewFrame.getByTestId('event-mark').getAttribute('aria-label')).toBe('LIVE ARENA');
+
+  const logoSlot = page.getByTestId('hud-image-logo');
+  await logoSlot.getByLabel('Tải ảnh').setInputFiles({
+    name: 'logo.png',
+    mimeType: 'image/png',
+    buffer: logoPng,
+  });
+  await expect(logoSlot.locator('code')).toHaveText(logoId);
+  await expect(settings.getByRole('status')).toContainText('600 × 400px');
+  previewHudConfig = {
+    ...previewHudConfig,
+    version: previewHudConfig.version + 1,
+    images: { ...previewHudConfig.images, logo: logoId },
+  };
+  await expect.poll(() => previewFrame.getByTestId('brand-logo').getAttribute('src')).toBe(`/hud-assets/${logoId}`);
+  await expect.poll(() => previewFrame.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(600);
+
+  const questionBackground = page.getByTestId('hud-image-bgQuestion');
+  await questionBackground.getByLabel('Tải ảnh').setInputFiles({
+    name: 'background.png',
+    mimeType: 'image/png',
+    buffer: backgroundPng,
+  });
+  await expect(questionBackground.locator('code')).toHaveText(backgroundId);
+  await expect(settings.getByRole('status')).toContainText('1080 × 1920px');
+  previewHudConfig = {
+    ...previewHudConfig,
+    version: previewHudConfig.version + 1,
+    images: { ...previewHudConfig.images, bgQuestion: backgroundId },
+  };
+  await expect.poll(() => previewFrame.getByTestId('arena-background').getAttribute('src')).toBe(`/hud-assets/${backgroundId}`);
+  await expect.poll(() => previewFrame.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(1080);
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-uploaded.png'), fullPage: true, animations: 'disabled' });
+  await logoSlot.getByRole('button', { name: 'Về mặc định ô này' }).click();
+  await expect(logoSlot.getByText('Đang dùng ảnh mặc định')).toBeVisible();
+
+  await page.getByLabel('Cảnh xem trước').selectOption('top10');
+  await expect(preview).toHaveAttribute('src', /role=preview/);
+  await expect(preview).toHaveAttribute('src', /mock=top10/);
+
+  await settings.getByRole('button', { name: 'Về mặc định toàn bộ' }).click();
+  await expect(kicker).toHaveValue('STORM ARENA');
+  previewHudConfig = { ...DEFAULT_HUD_CONFIG, version: previewHudConfig.version + 1 };
+  await page.getByLabel('Cảnh xem trước').selectOption('question');
+  await expect(questionBackground.getByText('Đang dùng ảnh mặc định')).toBeVisible();
+  await waitForPreview();
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-reset.png'), fullPage: true, animations: 'disabled' });
 });

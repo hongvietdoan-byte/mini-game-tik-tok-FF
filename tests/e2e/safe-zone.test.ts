@@ -49,7 +49,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     const stageBox = stage.getBoundingClientRect();
     if (stageBox.width <= 0 || stageBox.height <= 0) throw new Error('Stage không có kích thước');
     const isVictoryScene = stage.querySelector('.v3v') !== null;
-    const compactQuestionHeader = stage.querySelector('.v3-stage--question-user') !== null;
+    const compactQuestionHeader = stage.matches('.v3-stage--question-user') || stage.querySelector('.v3-stage--question-user') !== null;
 
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const visible = (element: Element) => {

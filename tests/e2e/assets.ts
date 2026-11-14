@@ -20,6 +20,11 @@ export function getE2eAssetDirectory(cwd = process.cwd()) {
   return configured ? resolve(cwd, configured) : resolve(mainCheckoutRoot(cwd), 'assets-local');
 }
 
+export function getE2eTempDirectory(cwd = process.cwd()) {
+  const configured = process.env.QUIZ_E2E_TEMP_DIR?.trim();
+  return resolve(cwd, configured || '.tmp-test');
+}
+
 export function usesE2ePlaceholderAssets(cwd = process.cwd()) {
   const configuredAssets = resolve(cwd, getE2eAssetDirectory(cwd));
   const placeholderPaths = [

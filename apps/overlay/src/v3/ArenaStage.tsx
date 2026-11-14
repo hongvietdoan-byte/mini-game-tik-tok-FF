@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
+import { formatParticipantCount } from './participantCount';
 import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
 import { McSequence } from './mc/mc-sequence-player';
 import { ArenaBackdrop } from './ArenaBackdrop';
+import { useHudConfig } from '../hudConfig';
+import { fitHudTextStyle } from './hudText';
 import './arena.css';
 
 /**
@@ -20,30 +23,41 @@ function formatTime(ms: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
+export function BrandEventMark() {
+  const config = useHudConfig();
+  const [first = '', ...rest] = config.texts.kicker.trim().split(/\s+/u);
+  const second = rest.join(' ');
+  return <div className="v3-event-mark" data-testid="event-mark" aria-label={config.texts.kicker}>
+    <span title={config.texts.kicker} style={fitHudTextStyle(first, 178, 31, 12)}>{first}</span>
+    {second && <b title={config.texts.kicker} style={fitHudTextStyle(second, 178, 34, 12)}>{second}</b>}
+  </div>;
+}
+
+export function RoundCard({ snapshot }: { snapshot: PublicSnapshot }) {
+  const config = useHudConfig();
+  const roundTitle = `${config.texts.roundLabel} ${snapshot.round?.roundNumber ?? 1}`;
+  const count = formatParticipantCount(snapshot.participantCount);
+  return <div className="v3-round-card" data-testid="round-card">
+    <b className="v3-round-title" title={roundTitle} style={fitHudTextStyle(roundTitle, 190, 36, 18)}>{roundTitle}</b>
+    <strong className="v3-round-count" data-testid="participant-count" title={count} style={fitHudTextStyle(count, 196, 52, 30)}>{count}</strong>
+    <small className="v3-round-label" title={config.texts.playingLabel} style={fitHudTextStyle(config.texts.playingLabel, 196, 24, 12)}>{config.texts.playingLabel}</small>
+  </div>;
+}
+
 export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
-  return (
-    <header className="v3-header" data-layer="brand-header">
-      <div className="v3-event-mark" data-testid="event-mark" aria-label="Storm Arena">
-        <span>STORM</span>
-        <b>ARENA</b>
-      </div>
-      <BrandMark ribbon="ĐẤU TRƯỜNG BÃO TỐ" wide />
-      <div className="v3-round-card" data-testid="round-card">
-        <b>VÒNG {snapshot.round?.roundNumber ?? 1}</b>
-        <span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a3 3 0 1 0-2.8-4 4 4 0 0 1 0 8A3 3 0 0 0 16 11ZM8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.3 0-6 1.7-6 3.8V20h12v-2.2C14 15.7 11.3 14 8 14Zm8 .2c-.4 0-.8 0-1.2.1 1.3.9 2.2 2.1 2.2 3.5V20h5v-2.2c0-2.1-2.7-3.8-6-3.8Z" /></svg>
-          {snapshot.participantCount.toLocaleString('vi-VN')} ĐANG CHƠI
-        </span>
-      </div>
-    </header>
-  );
+  return <header className="v3-header" data-layer="brand-header">
+    <BrandEventMark />
+    <BrandMark wide />
+    <RoundCard snapshot={snapshot} />
+  </header>;
 }
 
 function Top10({ entries, allowLegacyNames }: { entries: PublicLeaderboardEntry[]; allowLegacyNames: boolean }) {
+  const config = useHudConfig();
   return (
     <section className="v3-top10" data-layer="leaderboard" data-testid="v3-top10">
       <div className="v3-top10-title">
-        <small>BXH TRỰC TIẾP</small>
+        <small title={config.texts.leaderboardTitle} style={fitHudTextStyle(config.texts.leaderboardTitle, 216, 17, 9)}>{config.texts.leaderboardTitle}</small>
         <b>TOP 10</b>
       </div>
       <ol>
@@ -187,9 +201,9 @@ export function McCelebration() {
   );
 }
 
-/** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1330–1860. */
+/** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1376–1860. */
 const seatY = (y: number, compactQuestion = false) => {
-  const top = compactQuestion ? 1330 : AUDIENCE_TOP_Y;
+  const top = compactQuestion ? 1376 : AUDIENCE_TOP_Y;
   const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
   return top + ((y - 1105) * (front - top)) / (1825 - 1105);
 };
@@ -275,6 +289,7 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
 }
 
 export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNames = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; allowLegacyNames?: boolean }) {
+  const config = useHudConfig();
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
     ? 'CHÀO MỪNG ĐẾN VỚI ĐẤU TRƯỜNG BÃO TỐ!'
@@ -284,7 +299,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
-      <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} />
+      <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
       <div className="v3-env-wrap" data-layer="arena-geometry" aria-hidden="true">
         <svg className="v3-arena-environment" viewBox="0 0 1080 1920" preserveAspectRatio="none">
           <defs>

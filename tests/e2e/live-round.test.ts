@@ -2,7 +2,7 @@ import { createServer as createNetServer } from 'node:net';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
-import { testTempRoot } from '../support/repoTemp';
+import { removeTestTempRoot, testTempRoot } from '../support/repoTemp';
 import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
@@ -134,8 +134,9 @@ async function closeResources(closers: (() => Promise<void>)[]) {
 
 async function boot(): Promise<RunningQuiz> {
   const closers: (() => Promise<void>)[] = [];
+  let scratchDirectory = '';
   try {
-    const scratchDirectory = testTempRoot('playwright-c0062-');
+    scratchDirectory = testTempRoot('playwright-c0062-');
     const dbPath = join(scratchDirectory, 'quiz.sqlite');
     const [backendPort, dashboardPort, overlayPort] = await Promise.all([freePort(), freePort(), freePort()]);
     const backendUrl = 'http://127.0.0.1:' + backendPort;
@@ -190,11 +191,13 @@ async function boot(): Promise<RunningQuiz> {
     };
     cleanup.push(async () => {
       const errors = await closeResources(closers);
+      removeTestTempRoot(scratchDirectory);
       if (errors.length) throw new AggregateError(errors, 'Không đóng sạch được stack live-round.');
     });
     return running;
   } catch (error) {
     await closeResources(closers);
+    if (scratchDirectory) removeTestTempRoot(scratchDirectory);
     throw error;
   }
 }

@@ -1,4 +1,6 @@
 import {
+  DEFAULT_HUD_CONFIG,
+  HudConfigSchema,
   INITIAL_TEST_SAFE_ZONE,
   SessionConfigSchema,
   SYSTEM_CHECK_IDS,
@@ -9,6 +11,10 @@ import {
   type CommandResult,
   type CreateSessionRequest,
   type GameState,
+  type HudConfig,
+  type HudConfigUpdate,
+  type HudImageSlot,
+  type LeaderboardEntry,
   type PublicLeaderboardEntry,
   type LiveSourceHealth,
   type PublicQuestion,
@@ -19,7 +25,7 @@ import {
   type SimulatorRequest,
   type SystemCheck,
 } from '@quiz/contracts';
-import type { CommandResponse, DashboardClient, SelfTestResponse, SocketStatus, SourceControlAction, SystemChecksResponse } from './client';
+import { ApiError, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './client';
 
 const rejectReasons: RejectReason[] = [
   'INVALID_EVENT', 'NOT_AN_ANSWER', 'NOT_ACCEPTING', 'EARLY', 'LATE',
@@ -77,6 +83,7 @@ function makeLeaderboard(): PublicLeaderboardEntry[] {
 
 class MockDashboardClient implements DashboardClient {
   private config = SessionConfigSchema.parse({ mode: 'MOCK', allowDemoQuestions: true });
+  private hudConfig = HudConfigSchema.parse(DEFAULT_HUD_CONFIG);
   private sessionId: string | null = null;
   private state: GameState = 'IDLE';
   private suspendedFrom: GameState | null = null;
@@ -232,6 +239,39 @@ class MockDashboardClient implements DashboardClient {
   async runSystemSelfTest(_token: string): Promise<SelfTestResponse> {
     this.selfTestResult = { ok: true, mockComment: true, engineRecorded: true, detail: 'MOCK: pipeline giả lập đã ghi nhận đáp án vào sổ điểm.', durationMs: 5 };
     return this.selfTestResult;
+  }
+
+  async getHud(): Promise<HudConfig> {
+    return JSON.parse(JSON.stringify(this.hudConfig)) as HudConfig;
+  }
+
+  async saveHud(_token: string, update: HudConfigUpdate): Promise<HudConfig> {
+    this.hudConfig = HudConfigSchema.parse({ ...update, version: this.hudConfig.version + 1 });
+    return this.getHud();
+  }
+
+  async uploadHudImage(_token: string, slot: HudImageSlot, file: File): Promise<HudImageUploadResponse> {
+    const mimeType = file.type.toLowerCase();
+    if (file.size === 0 || file.size > 8 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(mimeType))
+      throw new ApiError('Chọn ảnh PNG, JPG hoặc WEBP có dung lượng tối đa 8 MB.', 400, 'HUD_IMAGE_INVALID');
+    const bitmap = await createImageBitmap(file);
+    const width = bitmap.width;
+    const height = bitmap.height;
+    bitmap.close();
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType.slice('image/'.length);
+    const id = `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}.${extension}`;
+    this.hudConfig = HudConfigSchema.parse({
+      ...this.hudConfig,
+      images: { ...this.hudConfig.images, [slot]: id },
+      version: this.hudConfig.version + 1,
+    });
+    return { image: { id, width, height, mimeType }, config: await this.getHud() };
+  }
+
+  async resetHud(_token: string): Promise<HudConfig> {
+    this.hudConfig = HudConfigSchema.parse({ ...DEFAULT_HUD_CONFIG, version: this.hudConfig.version + 1 });
+    return this.getHud();
   }
 
   async sendComment(_token: string, sessionId: string, comment: { userId: string; displayName: string; text: string }) {
