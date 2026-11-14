@@ -990,14 +990,17 @@ test('question scene uses the official logo, approved Kelly/chibi assets and are
   await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   const mcCrop = await kelly.evaluate((image: HTMLImageElement) => ({
     parentHeight: image.parentElement?.clientHeight ?? 0,
+    imageWidth: image.offsetWidth,
     imageHeight: image.offsetHeight,
+    naturalWidth: image.naturalWidth,
+    naturalHeight: image.naturalHeight,
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
   expect(mcCrop.parentHeight).toBe(205);
-  expect(mcCrop.imageHeight).toBe(mcCrop.parentHeight);
-  expect(await kelly.evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover');
-  expect(await kelly.evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');
+  expect(mcCrop.imageWidth).toBe(168);
+  expect(mcCrop.imageHeight).toBeGreaterThan(mcCrop.parentHeight);
+  expect(mcCrop.imageHeight / mcCrop.imageWidth).toBeCloseTo(mcCrop.naturalHeight / mcCrop.naturalWidth, 2);
 
   const chibis = page.locator('.v3-chibi-img img');
   await expect(chibis).toHaveCount(35);

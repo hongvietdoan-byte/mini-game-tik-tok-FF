@@ -49,6 +49,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     const stageBox = stage.getBoundingClientRect();
     if (stageBox.width <= 0 || stageBox.height <= 0) throw new Error('Stage không có kích thước');
     const isVictoryScene = stage.querySelector('.v3v') !== null;
+    const isTop10Midround = stage.dataset.scene === 'INTERIM_TOP10';
     const compactQuestionHeader = stage.matches('.v3-stage--question-user') || stage.querySelector('.v3-stage--question-user') !== null;
     // C-0067 theo C-0219: vùng câu hỏi cho phép khung Top 10 ở x=8.15% và thẻ vòng tới x=92.6%; logo đo bằng khung đang clip ảnh.
     const cropLeftLimit = compactQuestionHeader ? 8 : 8.9;
@@ -117,6 +118,10 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
       const isEventSubtitle = item.label.startsWith('event subtitle');
       const isTopMeta = item.label.startsWith('top meta');
       const decorativeBleed = item.label === 'trophy';
+      // C-0221 aligns the guide to the leaderboard's right edge (x=968). Its bubble
+      // crosses the mock comment rail's x=756 boundary by only 12px by design.
+      const approvedTop10GuideBubbleEdge = isTop10Midround && item.label === 'MC bubble' &&
+        p.x1 >= 68.5 && p.x1 < 70 && p.x2 <= 90 && p.y1 >= 72 && p.y2 <= 80;
       const approvedVictoryNameplate = isVictoryScene && item.label.startsWith('podium name');
       const approvedVictoryLogoHudException = isVictoryScene && isBrandLogo && p.x1 >= 25 && p.x2 <= 75;
       if (!decorativeBleed && !approvedVictoryNameplate && !isBrandLogo && (p.x1 < cropLeftLimit || p.x2 > cropRightLimit)) add(`crop-fill: phải nằm trong x=${cropLeftLimit}–${cropRightLimit}%`);
@@ -140,7 +145,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
         if (p.y1 < metaTop || p.y2 > 12.1) add('thông tin vòng phải nằm trong dải header theo ref');
       } else if (p.y1 < 14) add('HUD trên: y bắt đầu từ 14%');
       const commentBandTop = isVictoryScene ? 79 : 73;
-      if (p.x1 < 70 && p.y2 > commentBandTop && p.y1 < 92) add(`cột bình luận trái: vùng x<70%, y=${commentBandTop}–92%`);
+      if (!approvedTop10GuideBubbleEdge && p.x1 < 70 && p.y2 > commentBandTop && p.y1 < 92) add(`cột bình luận trái: vùng x<70%, y=${commentBandTop}–92%`);
       if (p.y2 >= 92.5) add('thanh nhập: y phải nhỏ hơn 92.5%');
       for (const blocker of blockersFound) {
         // C-0216 fixes the shared top card at x=770–1000, y=133–228 and the ribbon at y=250–322.
@@ -149,6 +154,7 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
         const approvedSharedHeaderHudException = (isTopMeta && ['viewers', 'event banner'].includes(blocker.label)) ||
           (isEventSubtitle && ['live chips', 'event banner'].includes(blocker.label));
         if (approvedSharedHeaderHudException) continue;
+        if (approvedTop10GuideBubbleEdge && blocker.label === 'comment rail') continue;
         // Chỉ cho logo Victory ở dải giữa đi qua banner sự kiện; các góc host/viewers vẫn phải thông thoáng.
         if (approvedVictoryLogoHudException && ['event banner', 'live chips'].includes(blocker.label)) continue;
         if (item.label.startsWith('brand logo') && !isVictoryScene && ['host avatar', 'viewers', 'live chips'].includes(blocker.label)) continue;

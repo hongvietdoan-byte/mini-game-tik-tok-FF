@@ -1784,12 +1784,11 @@
   left: 50%;
   top: 0;
   display: block;
-  width: 205px;
-  height: 205px;
+  width: 168px;
+  height: auto;
   max-height: none;
   margin: 0;
-  object-fit: cover;
-  object-position: top center;
+  object-fit: initial;
   transform: translateX(-50%);
 }
 .v3-stage--user-question-layout .v3-mc .v3-mc-plate { left: 92px; top: 203px; width: 250px; height: 49px; font-size: 22px; }
@@ -1831,7 +1830,7 @@
 .v3-stage--user-question-layout .v3-tiers { top: 1070px; }
 .v3-stage--user-question-layout[data-scene="REVEAL"] .v3-fastest-callout { height: 145px !important; max-height: 145px; }
 .v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-mc-figure { left: 130px; width: 205px; height: 205px; }
-.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-mc-figure img { width: 205px; height: 205px; object-fit: cover; object-position: top center; }
+.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-mc-figure img { width: 168px; height: auto; object-fit: initial; }
 .v3-stage--user-question-layout.has-long-prompt .v3-question,
 .v3-stage--user-question-layout.has-long-prompt.has-long-options .v3-question { top: 162px; height: 145px; }
 .v3-stage--user-question-layout.has-long-options .v3-options.has-long-option,
@@ -1843,3 +1842,7 @@
 
 /* All shared-header scenes use the same C-0216 ribbon position, including non-question scenes. */
 .v3-stage:not(.v3-stage--question-user) .v3-header .v3-title.is-wide .v3-title-ribbon { left: 10px; margin-top: 10px; }
+
+/* C-0221: show Kelly as a bust and place her Top 10 guide directly below the leaderboard. */
+.v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide { top: 1138px; right: 112px; }
+.v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-mc-figure img { width: 180px; height: auto; object-fit: initial; }
