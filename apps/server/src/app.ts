@@ -11,19 +11,34 @@ import {
   ClientAckSchema,
   ClientHelloSchema,
   CreateSessionRequestSchema,
+  HudConfigUpdateSchema,
+  HudImageSlotSchema,
   McVoicePreGenerateRequestSchema,
+  McVoiceEventSchema,
   McVoiceSettingsUpdateSchema,
   McVoiceTestRequestSchema,
+  MC_VOICE_POLICY_VERSION,
   QuestionReviewSchema,
   DEFAULT_DIFFICULTY_TARGETS,
   questionLengthWarnings,
   QUESTION_DISPLAY_LIMITS,
   SimulatorRequestSchema,
   type OverlayAudioState,
+  type PublicSnapshot,
+  type WsMessage,
 } from '@quiz/contracts';
 import { formatDifficultyCounts, isEligible, planPreferredDifficultyCounts } from '@quiz/quiz-core';
 import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
+import {
+  NameFilterStore,
+  NameFilterAllowReviewSchema,
+  NameFilterCustomRuleSchema,
+  NameFilterExceptionSchema,
+  NameFilterOfficialAccountSchema,
+  NameFilterUpdateSchema,
+  NameFilterVisibilitySchema,
+} from './name-filter-store';
 import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
@@ -34,6 +49,7 @@ import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile,
 import { McVoiceService } from './voice/service';
 import { preflightAssets } from './preflight-assets';
 import { commentSourcePreflight, overlayAckPreflight, overlayAudioPreflight } from './preflight-health';
+import { HudConfigError, HudConfigStore, MAX_HUD_IMAGE_BYTES } from './hud-config';
 import {
   recordOverlayAck,
   registerOverlaySession,
@@ -64,6 +80,8 @@ export type AppOptions = {
   webRoots?: { dashboard?: string; overlay?: string; assets?: string };
   /** Kho nhân vật mặc định cho mọi phiên (từ manifest asset cục bộ). */
   characterPool?: readonly string[];
+  /** Thư mục chứa hud.json và hud-assets; mặc định cùng thư mục với DB. */
+  hudDataDir?: string;
   /** Cấu hình voice runtime được cấp ngoài repo; khi bỏ trống không gọi provider. */
   mcVoice?: {
     credentials?: McVoiceCredentialStore;
@@ -110,6 +128,7 @@ const MockCommentSchema = z.object({
 
 export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const { store, scheduler } = opts;
+  const hudStore = new HudConfigStore(opts.hudDataDir ?? dirname(store.path));
   const allowed = new Set(opts.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
   // TIKTOK: thư viện cộng đồng tiktok-live-connector — KHÔNG CHÍNH THỨC, người dùng chốt dùng tạm (BOARD #17).
   const adapterFactory =
@@ -138,9 +157,28 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const voiceProfile = opts.mcVoice?.profile ?? null;
   const voiceCache = opts.mcVoice?.cache ?? new McVoiceCache(join(dirname(store.path), 'mc-voice-cache'));
   const voicePreGenerate = opts.mcVoice?.preGenerate ?? (voiceService ? new McVoicePreGenerateManager(voiceService, () => scheduler.now()) : null);
+  const nameFilter = new NameFilterStore(dirname(store.path), { now: () => scheduler.now() });
+  // Recheck old local databases before any public snapshot is served. A flagged source name is
+  // copied to RAM for the guarded operator channel, then immediately removed from name/history JSON.
+  for (const player of store.listPlayers()) {
+    const moderated = nameFilter.evaluate(player.displayName, player.id, scheduler.now());
+    if (moderated.flagged) nameFilter.rememberFlaggedName(player.id, player.displayName);
+    else nameFilter.forgetFlaggedName(player.id);
+    if (moderated.safeDisplayName !== player.displayName) {
+      store.transaction(() => {
+        store.scrubPlayerNameHistory(player.id, [player.displayName], moderated.safeDisplayName);
+        store.updatePlayerDisplayName(player.id, moderated.safeDisplayName);
+      });
+    }
+  }
   let primaryOverlayInstanceId: string | null = null;
 
   const app = Fastify({ logger: opts.logger ?? false, bodyLimit: 256 * 1024 });
+  app.addContentTypeParser(
+    ['application/octet-stream', 'image/png', 'image/jpeg', 'image/webp'],
+    { parseAs: 'buffer' },
+    (_req, body, done) => done(null, body),
+  );
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
 
   let rt: SessionRuntime | null = null;
@@ -152,6 +190,13 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   let ackPendingSinceMs = scheduler.now();
   let observedStateVersion = 0;
   let lastSelfTest: SelfTestResult | null = null;
+  const withHudVersion = (snapshot: PublicSnapshot): PublicSnapshot => ({ ...snapshot, hudVersion: hudStore.get().version });
+  const withHudVersionOnMessage = (message: WsMessage): WsMessage => {
+    if (message.type === 'STATE_SNAPSHOT') return { ...message, payload: withHudVersion(message.payload) };
+    if (message.type === 'ADMIN_SNAPSHOT')
+      return { ...message, payload: { ...message.payload, public: withHudVersion(message.payload.public) } };
+    return message;
+  };
   const pushOverlayInfo = () =>
     rt?.setOverlayInfo({
       clients: overlayClients.size,
@@ -175,7 +220,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         if (lastAck === null || lastAck.stateVersion < stateVersion) ackPendingSinceMs = scheduler.now();
       }
       for (const o of batch) {
-        const data = JSON.stringify(o.message);
+        const data = JSON.stringify(withHudVersionOnMessage(o.message));
         for (const ws of o.audience === 'public' ? overlayClients : adminClients) if (ws.readyState === 1) ws.send(data);
       }
     });
@@ -187,6 +232,16 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     for (const ws of overlayClients) if (ws.readyState === 1) ws.send(publicSnapshot);
     const adminSnapshot = JSON.stringify(next.wrap('ADMIN_SNAPSHOT', next.adminSnapshot()));
     for (const ws of adminClients) if (ws.readyState === 1) ws.send(adminSnapshot);
+  }
+
+  function pushHudSnapshots() {
+    if (!rt) return;
+    const publicSnapshot = withHudVersion(rt.publicSnapshot());
+    const publicMessage = JSON.stringify(rt.wrap('STATE_SNAPSHOT', publicSnapshot));
+    for (const ws of overlayClients) if (ws.readyState === 1) ws.send(publicMessage);
+    const adminSnapshot = { ...rt.adminSnapshot(), public: publicSnapshot };
+    const adminMessage = JSON.stringify(rt.wrap('ADMIN_SNAPSHOT', adminSnapshot));
+    for (const ws of adminClients) if (ws.readyState === 1) ws.send(adminMessage);
   }
 
   const isAdmin = (req: FastifyRequest) => {
@@ -226,6 +281,125 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     }
     return rt;
   }
+
+  app.get('/api/admin/name-filter', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return nameFilter.getAdminSettings();
+  });
+
+  app.put('/api/admin/name-filter', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    nameFilter.update(parsed.data, { actor });
+    rt?.refreshNameFilter();
+    return nameFilter.getAdminSettings();
+  });
+
+  app.get('/api/admin/name-filter/players', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const parsed = z.object({
+      q: z.string().trim().max(80).optional(),
+      risk: z.enum(['NONE', 'REVIEW', 'PARTIAL', 'HIGH', 'MANUAL_HIDE']).optional(),
+    }).strict().safeParse(req.query ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    return {
+      players: rt?.moderationPlayers(parsed.data.q ?? '', parsed.data.risk) ?? [],
+      policyVersion: nameFilter.get().version,
+      playerNameSpeech: 'UNSUPPORTED' as const,
+    };
+  });
+
+  app.post('/api/admin/name-filter/players/visibility', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterVisibilitySchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const playerIds = [...new Set(parsed.data.playerIds)];
+    if (playerIds.some((playerId) => !store.hasPlayer(playerId)))
+      return reply.code(404).send({ ok: false, code: 'PLAYER_NOT_FOUND', message: 'Có mã người chơi không tồn tại.' });
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.setPlayersHidden(playerIds, parsed.data.hidden, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/players/review', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterAllowReviewSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const playerIds = [...new Set(parsed.data.playerIds)];
+    if (playerIds.some((playerId) => !store.hasPlayer(playerId)))
+      return reply.code(404).send({ ok: false, code: 'PLAYER_NOT_FOUND', message: 'Có mã người chơi không tồn tại.' });
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.setReviewAllowed(playerIds, parsed.data.allowed, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/rules', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterCustomRuleSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.addRule(parsed.data, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/exceptions', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterExceptionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.addException(parsed.data, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/official-accounts', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = NameFilterOfficialAccountSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    const updated = nameFilter.addVerifiedOfficial(parsed.data, actor);
+    rt?.refreshNameFilter();
+    return updated;
+  });
+
+  app.post('/api/admin/name-filter/recheck', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const players = store.listPlayers();
+    let changed = 0;
+    let flagged = 0;
+    for (const player of players) {
+      const rawDisplayName = nameFilter.rawFlaggedName(player.id) ?? player.displayName;
+      const result = nameFilter.evaluate(rawDisplayName, player.id);
+      if (result.flagged) {
+        flagged += 1;
+        nameFilter.rememberFlaggedName(player.id, rawDisplayName);
+      } else nameFilter.forgetFlaggedName(player.id);
+      if (player.displayName !== result.safeDisplayName) {
+        store.transaction(() => {
+          store.scrubPlayerNameHistory(player.id, [rawDisplayName], result.safeDisplayName);
+          store.updatePlayerDisplayName(player.id, result.safeDisplayName);
+        });
+        changed += 1;
+      }
+    }
+    const actor = typeof req.headers['x-operator-id'] === 'string' ? req.headers['x-operator-id'] : 'operator';
+    nameFilter.recordAudit('NAMES_RECHECKED', actor, changed);
+    rt?.refreshNameFilter();
+    return { policyVersion: nameFilter.get().version, checked: players.length, changed, flagged };
+  });
+
+  app.get('/api/admin/name-filter/audit', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const parsed = z.object({ limit: z.coerce.number().int().min(1).max(1_000).optional() }).strict().safeParse(req.query ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const limit = parsed.data.limit ?? 100;
+    return { entries: nameFilter.listAudit().slice(-limit).reverse() };
+  });
 
   type PreflightStatus = 'PASS' | 'FAIL' | 'WARN';
   type PreflightCheck = { id: string; label: string; status: PreflightStatus; reason: string; audioState?: OverlayAudioState | null };
@@ -302,6 +476,14 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
 
     const assets = preflightAssets(opts.webRoots?.assets, repositoryRoot);
     check('assets', 'Asset bắt buộc', assets.status, assets.reason);
+
+    const hudIssues = hudStore.preflightIssues();
+    check(
+      'hudAssets',
+      'Ảnh HUD tuỳ chỉnh',
+      hudIssues.length > 0 ? 'WARN' : 'PASS',
+      hudIssues.length > 0 ? hudIssues.join(' ') : 'Ảnh HUD đã cấu hình đều tồn tại và nền gần đúng tỷ lệ 9:16.',
+    );
 
     if (!session) {
       check('overlayAck', 'Overlay đã ACK', 'WARN', 'Chưa có phiên mở để đối chiếu ACK với stateVersion.');
@@ -408,6 +590,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       hasToken: token !== null,
       ready: token !== null && voiceService !== null && voiceProfile !== null,
       primaryOverlayInstanceId,
+      playerNameSpeech: 'UNSUPPORTED' as const,
     };
   }
 
@@ -441,6 +624,55 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     sessionId: rt?.id ?? null,
     web: { dashboard: servedDashboard, overlay: servedOverlay },
   }));
+
+  app.get('/api/hud', async () => hudStore.get());
+
+  app.put('/api/hud', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = HudConfigUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    try {
+      const config = hudStore.save(parsed.data);
+      pushHudSnapshots();
+      return config;
+    } catch (error) {
+      if (error instanceof HudConfigError)
+        return reply.code(error.statusCode).send({ ok: false, code: error.code, message: error.message });
+      throw error;
+    }
+  });
+
+  app.post<{ Querystring: { slot?: string } }>('/api/hud/images', { bodyLimit: MAX_HUD_IMAGE_BYTES }, async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const slot = HudImageSlotSchema.safeParse(req.query.slot);
+    if (!slot.success) return reply.code(400).send({ ok: false, code: 'HUD_IMAGE_SLOT_INVALID', message: 'Slot ảnh HUD không hợp lệ.' });
+    try {
+      const result = hudStore.upload(slot.data, req.body, req.headers['content-type']);
+      pushHudSnapshots();
+      return reply.code(201).send(result);
+    } catch (error) {
+      if (error instanceof HudConfigError)
+        return reply.code(error.statusCode).send({ ok: false, code: error.code, message: error.message });
+      throw error;
+    }
+  });
+
+  app.post('/api/hud/reset', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const config = hudStore.reset();
+    pushHudSnapshots();
+    return config;
+  });
+
+  app.get<{ Params: { id: string } }>('/hud-assets/:id', async (req, reply) => {
+    const image = hudStore.getImage(req.params.id);
+    if (!image) return reply.code(404).send({ ok: false, code: 'HUD_IMAGE_NOT_FOUND', message: 'Không tìm thấy ảnh HUD.' });
+    return reply
+      .type(image.mimeType)
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .header('x-content-type-options', 'nosniff')
+      .send(image.bytes);
+  });
 
   app.get('/api/preflight', async (req, reply) => {
     if (!guard(req, reply, false)) return reply;
@@ -493,6 +725,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       const result = await voiceService.getOrCreate(
         {
           text,
+          voicePolicyVersion: MC_VOICE_POLICY_VERSION,
           provider: 'clipai',
           model: voiceProfile.model,
           voiceSettings: voiceProfile.voiceSettings,
@@ -529,10 +762,12 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (questions.length !== requested.size || questions.some((question) => question.approvalStatus !== 'APPROVED'))
       return reply.code(400).send({ ok: false, code: 'MC_VOICE_QUESTION_NOT_APPROVED', message: 'Chỉ có thể tạo audio cho câu đã được duyệt trong bộ câu hiện hành.' });
 
-    const makeLine = (lineId: string, text: string) => ({
+    const makeLine = (gameEvent: z.infer<typeof McVoiceEventSchema>, lineId: string, text: string) => ({
+      gameEvent,
       lineId,
       descriptor: {
         text,
+        voicePolicyVersion: MC_VOICE_POLICY_VERSION,
         provider: 'clipai' as const,
         model: voiceProfile.model,
         voiceSettings: voiceProfile.voiceSettings,
@@ -541,12 +776,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       },
       request: { text, voiceKey: voiceProfile.voiceKey, rate: voiceProfile.rate, format: 'mp3' as const },
     });
-    const items = questions.map((question) => ({
-      lines: [
-        makeLine('prompt', question.prompt),
-        ...question.options.map((option, index) => makeLine(`option-${index + 1}`, option.text)),
-      ],
-    }));
+    const items = questions.map((question) => {
+      const gameEvent = McVoiceEventSchema.parse({
+        type: 'QUESTION', questionInstanceId: question.id, approvedQuestionVersion: String(question.version),
+      });
+      return {
+        lines: [
+          makeLine(gameEvent, 'prompt', question.prompt),
+          ...question.options.map((option, index) => makeLine(gameEvent, `option-${index + 1}`, option.text)),
+        ],
+      };
+    });
     return reply.code(202).send(voicePreGenerate.start(items));
   });
 
@@ -583,6 +823,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       {
         store,
         scheduler,
+        nameFilter,
         characterPool: opts.characterPool,
         adapter: adapterFactory(parsed.data.config.mode, parsed.data.config),
         preflight: (session) => makePreflight(session),
@@ -826,14 +1067,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         }
         role = 'admin';
         adminClients.add(socket);
-        if (rt) socket.send(JSON.stringify(rt.wrap('ADMIN_SNAPSHOT', rt.adminSnapshot())));
+        if (rt) {
+          const publicSnapshot = withHudVersion(rt.publicSnapshot());
+          socket.send(JSON.stringify(rt.wrap('ADMIN_SNAPSHOT', { ...rt.adminSnapshot(), public: publicSnapshot })));
+        }
       } else {
         role = 'overlay';
         if (overlayClients.size === 0) ackPendingSinceMs = scheduler.now();
         overlayClients.add(socket);
         registerOverlaySession(overlaySessions, socket);
         pushOverlayInfo();
-        if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', rt.publicSnapshot())));
+        if (rt) socket.send(JSON.stringify(rt.wrap('STATE_SNAPSHOT', withHudVersion(rt.publicSnapshot()))));
       }
     });
     socket.on('close', () => {
@@ -855,6 +1099,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
         {
           store,
           scheduler,
+          nameFilter,
           characterPool: opts.characterPool,
           adapter: adapterFactory(row.mode === 'TIKTOK' ? 'TIKTOK' : 'MOCK', row.config),
           preflight: (session) => makePreflight(session),

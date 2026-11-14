@@ -15,6 +15,8 @@ import { mockClient } from './api/mockClient';
 import { adminTokenForRuntime, overlayUrlForRuntime, shouldPersistAdminToken, type StormArenaInfo } from './desktopBridge';
 import { SetupWizard } from './SetupWizard';
 import { QuestionReviewPage } from './QuestionReviewPage';
+import { NameModerationPage } from './NameModerationPage';
+import { createApiNameModerationDataSource, createApiNameModerationPolicyDataSource } from './nameModerationData';
 import { isSetupComplete, SETUP_DONE_KEY } from './setupWizardLogic';
 import { approvedQuestionCount, canCreateTikTokSession, displayTikTokUsername, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
 import {
@@ -54,6 +56,8 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [desktopAuthLoading, setDesktopAuthLoading] = useState(isDesktop);
   const [token, setToken] = useState(() => isDesktop ? '' : sessionStorage.getItem(TOKEN_KEY) ?? '');
+  const moderationDataSource = useMemo(() => isMock ? undefined : createApiNameModerationDataSource(token.trim()), [token]);
+  const moderationPolicyDataSource = useMemo(() => isMock ? undefined : createApiNameModerationPolicyDataSource(token.trim()), [token]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AdminSnapshot | null>(null);
   const [timerAnchor, setTimerAnchor] = useState({ serverTimeMs: Date.now(), offsetMs: 0 });
@@ -63,7 +67,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [needsSession, setNeedsSession] = useState(isMock);
-  const [page, setPage] = useState<'live' | 'checks' | 'obs' | 'questions'>('live');
+  const [page, setPage] = useState<'live' | 'checks' | 'obs' | 'questions' | 'moderation'>('live');
   const [createMode, setCreateMode] = useState<'MOCK' | 'TIKTOK'>('MOCK');
   const [questionsPerRound, setQuestionsPerRound] = useState(15);
   const [speedBonusMax, setSpeedBonusMax] = useState(50);
@@ -411,6 +415,7 @@ function App() {
           <button className={page === 'checks' ? 'is-active' : ''} type="button" aria-current={page === 'checks' ? 'page' : undefined} onClick={() => setPage('checks')}>Kiểm tra kết nối</button>
           <button className={page === 'obs' ? 'is-active' : ''} type="button" aria-current={page === 'obs' ? 'page' : undefined} onClick={() => setPage('obs')}>OBS / LIVE Studio</button>
           <button className={page === 'questions' ? 'is-active' : ''} type="button" aria-current={page === 'questions' ? 'page' : undefined} onClick={() => setPage('questions')}>Duyệt câu hỏi</button>
+          <button className={page === 'moderation' ? 'is-active' : ''} type="button" aria-current={page === 'moderation' ? 'page' : undefined} onClick={() => setPage('moderation')}>Kiểm duyệt tên</button>
         </nav>}
         <span className={`mode-pill ${isMock ? 'mode-mock' : ''}`}>{isMock ? 'MOCK · DEMO' : 'LOCAL SERVER'}</span>
         {sessionId && <span className={`socket-pill socket-${socketStatus}`}><i />{socketLabel(socketStatus)}</span>}
@@ -451,7 +456,7 @@ function App() {
         </div>
       </section>}
 
-      {page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'live' ? <div className="dashboard-grid">
+      {page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'moderation' ? <NameModerationPage overlayUrl={overlayUrl} isMock={isMock} dataSource={moderationDataSource} policyDataSource={moderationPolicyDataSource} /> : page === 'live' ? <div className="dashboard-grid">
         <div className="main-column">
           <section className="panel state-panel">
             <div className="panel-title"><div><span className="eyebrow">TRẠNG THÁI HIỆN TẠI</span><h2>{stateName(snapshot.public.state)}</h2></div><span className={`state-chip state-${snapshot.public.state.toLowerCase()}`}>{sceneName(snapshot.public.state, snapshot.public.scene)}</span></div>
@@ -527,7 +532,7 @@ function App() {
 
         <aside className="side-column">
           <section className="panel leaderboard-panel"><div className="panel-title"><div><span className="eyebrow">{leaderboardLabel(snapshot.public.state, snapshot.public.scene, snapshot.public.leaderboard?.kind)}</span><h2>Top 10</h2></div><span className="muted">{snapshot.public.leaderboard?.entries.length ?? 0} người</span></div>
-            {snapshot.public.leaderboard?.entries.length ? <div className="dashboard-leaderboard">{snapshot.public.leaderboard.entries.slice(0, 10).map((entry) => <div className="dashboard-leaderboard-row" key={entry.playerId}><b>{entry.rank}{entry.tied && <small>ĐỒNG HẠNG</small>}</b><span>{entry.displayName}</span><strong>{entry.score.toLocaleString('vi-VN')}<small>{entry.correctCount} đúng</small></strong></div>)}</div> : <p className="empty-state">Bảng xếp hạng xuất hiện sau khi bắt đầu chơi.</p>}
+            {snapshot.public.leaderboard?.entries.length ? <div className="dashboard-leaderboard">{snapshot.public.leaderboard.entries.slice(0, 10).map((entry) => <div className="dashboard-leaderboard-row" key={entry.playerId}><b>{entry.rank}{entry.tied && <small>ĐỒNG HẠNG</small>}</b><span>{entry.safeDisplayName}</span><strong>{entry.score.toLocaleString('vi-VN')}<small>{entry.correctCount} đúng</small></strong></div>)}</div> : <p className="empty-state">Bảng xếp hạng xuất hiện sau khi bắt đầu chơi.</p>}
             <div className="overlay-links"><a href={overlayUrl} target="_blank" rel="noreferrer">Mở overlay ↗</a><a href={`${overlayUrl}?guides=1`} target="_blank" rel="noreferrer">Overlay + lưới ↗</a></div>
           </section>
 

@@ -1,4 +1,4 @@
-import type { GameState, LeaderboardEntry, Podium, PublicSnapshot, Scene } from '@quiz/contracts';
+import type { GameState, PublicLeaderboardEntry, PublicPodium, PublicSnapshot, Scene } from '@quiz/contracts';
 import { INITIAL_TEST_SAFE_ZONE, type AudienceView } from '@quiz/contracts';
 import { createSlots } from '@quiz/audience-engine';
 
@@ -23,7 +23,7 @@ function mockAudience(withResults: boolean): AudienceView {
     seats: slots.map((slot, i) => ({
       ...slot,
       occupant: {
-        displayName: MOCK_NAMES[i % MOCK_NAMES.length]!,
+        safeDisplayName: MOCK_NAMES[i % MOCK_NAMES.length]!,
         characterId: MOCK_CHIBI[(i * 7) % MOCK_CHIBI.length]!,
         pinned: i < 3,
         result: withResults ? (i % 3 === 0 ? 'wrong' : i % 5 === 0 ? 'none' : 'correct') : null,
@@ -34,11 +34,11 @@ function mockAudience(withResults: boolean): AudienceView {
 
 const mockTopNames = ['FFVN.Kelly', 'StormKing', 'BVD.Champion', 'Choco.M', 'Hami', 'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy'];
 const mockTopScores = [1_500, 1_350, 1_300, 1_220, 1_180, 1_160, 1_120, 1_100, 1_080, 1_060];
-const leaderboard: LeaderboardEntry[] = Array.from({ length: 10 }, (_, index) => ({
+const leaderboard: PublicLeaderboardEntry[] = Array.from({ length: 10 }, (_, index) => ({
   rank: index + 1,
   tied: false,
   playerId: `demo-player-${index + 1}`,
-  displayName: mockTopNames[index]!,
+  safeDisplayName: mockTopNames[index]!,
   score: mockTopScores[index]!,
   correctCount: 15 - index,
   ...(index === 0 ? { top1Streak: 3 } : {}),
@@ -78,10 +78,10 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   paused: { scene: 'QUESTION', state: 'PAUSED' },
 };
 
-function podium(tied: boolean): Podium {
-  const first = { ...leaderboard[0]!, displayName: 'FFVN.Kelly', score: 1_500 };
-  const second = { ...leaderboard[1]!, displayName: 'StormKing', score: tied ? 1_500 : 1_350 };
-  const third = { ...leaderboard[2]!, displayName: 'BVD.Champion', score: 1_300 };
+function podium(tied: boolean): PublicPodium {
+  const first = { ...leaderboard[0]!, safeDisplayName: 'FFVN.Kelly', score: 1_500 };
+  const second = { ...leaderboard[1]!, safeDisplayName: 'StormKing', score: tied ? 1_500 : 1_350 };
+  const third = { ...leaderboard[2]!, safeDisplayName: 'BVD.Champion', score: 1_300 };
   return {
     tieAcrossCutoff: tied,
     slots: [
@@ -92,16 +92,16 @@ function podium(tied: boolean): Podium {
   };
 }
 
-function victoryNameTestPodium(): Podium {
+function victoryNameTestPodium(): PublicPodium {
   const demo = podium(true);
   return {
     ...demo,
     slots: demo.slots.map((slot) => {
-      const entries = slot.entries.map((entry) => ({ ...entry, displayName: 'BVD.Championship' }));
+      const entries = slot.entries.map((entry) => ({ ...entry, safeDisplayName: 'BVD.Championship' }));
       return {
         ...slot,
         entries: slot.place === 3
-          ? [...entries, { ...entries[0]!, playerId: 'demo-player-long-name', displayName: 'BVD.ChampionshipXYZ' }]
+          ? [...entries, { ...entries[0]!, playerId: 'demo-player-long-name', safeDisplayName: 'BVD.ChampionshipXYZ' }]
           : entries,
       };
     }),
@@ -146,13 +146,13 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
   const isReveal = name === 'reveal' || name === 'reveal-clamp-text';
   const visibleLeaderboard = name === 'question-long-name' || name === 'top10-long-name'
     ? leaderboard.map((entry, index) => index === 0
-      ? { ...entry, displayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
+      ? { ...entry, safeDisplayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
       : entry)
     : name === 'top10-xss'
       ? leaderboard.map((entry, index) => index === 2
-        ? { ...entry, displayName: '<script>window.__xss=1</script>' }
+        ? { ...entry, safeDisplayName: '<script>window.__xss=1</script>' }
         : index === 3
-          ? { ...entry, displayName: '<img src=x onerror="window.__xss=1">' }
+          ? { ...entry, safeDisplayName: '<img src=x onerror="window.__xss=1">' }
           : entry)
       : leaderboard;
   return {

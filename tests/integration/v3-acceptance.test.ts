@@ -106,7 +106,7 @@ function answerRows(h: Harness, questionId: string) {
 function audienceSignature(audience: NonNullable<PublicSnapshot['audience']>) {
   return audience.seats.map((seat) => [
     seat.slotId,
-    seat.occupant?.displayName ?? null,
+    seat.occupant?.safeDisplayName ?? null,
     seat.occupant?.characterId ?? null,
   ]);
 }
@@ -226,7 +226,7 @@ describe('V3 §17 — acceptance', () => {
     const after = r.publicSnapshot();
     expect(after.mc.state).toBe('react');
     expect(after.participantCount).toBe(2);
-    expect(after.leaderboard!.entries.map((entry) => entry.displayName).sort()).toEqual(['FFVN.Kelly', 'MC KELLY']);
+    expect(after.leaderboard!.entries.map((entry) => entry.safeDisplayName).sort()).toEqual(['FFVN.Kelly', 'MC KELLY']);
     expect(h.store.participantCount(r.engine.round!.roundId)).toBe(2);
   });
 
@@ -286,9 +286,11 @@ describe('V3 §17 — acceptance', () => {
     const entries = r.publicSnapshot().leaderboard!.entries;
     expect(entries).toHaveLength(10);
     expect(entries.every((entry) => entry.rank === 1 && entry.tied)).toBe(true);
-    expect(entries.map((entry) => entry.playerId)).toEqual(
-      Array.from({ length: 10 }, (_, index) => `MOCK:tie-${String(index).padStart(2, '0')}`),
+    expect(entries.map((entry) => entry.safeDisplayName)).toEqual(
+      Array.from({ length: 10 }, (_, index) => 'Đồng hạng ' + String(index).padStart(2, '0')),
     );
+    expect(entries.every((entry) => !entry.playerId.startsWith('MOCK:'))).toBe(true);
+    expect(r.publicSnapshot().leaderboard!.entries.map((entry) => entry.playerId)).toEqual(entries.map((entry) => entry.playerId));
   });
 
   it('crash ngay sau reveal rồi recovery không chấm lại score event', async () => {

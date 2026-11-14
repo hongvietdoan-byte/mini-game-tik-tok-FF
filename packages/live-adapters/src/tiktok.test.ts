@@ -63,11 +63,12 @@ describe('TikTokLiveAdapter (không chính thức, chỉ đọc)', () => {
     expect(mapTikTokChat(chat())).toEqual({ userId: '7123', displayName: 'Rồng Lửa', text: 'A', eventId: 'm1', createTimeMs: 1_800_000_000_000 });
     expect(mapTikTokChat({ user: { userId: '9', uniqueId: 'x' }, comment: 'b', msgId: 'q', createTime: 1_800_000_000 })).toEqual({
       userId: '9',
-      displayName: 'x',
+      displayName: '',
       text: 'b',
       eventId: 'q',
       createTimeMs: 1_800_000_000_000,
     });
+    expect(mapTikTokChat({ user: { id: '10', nickname: '   ', uniqueId: 'public_handle' }, content: 'A' })?.displayName).toBe('');
     expect(mapTikTokChat({ user: { nickname: 'không id' }, content: 'A' })).toBeNull();
     expect(mapTikTokChat({ user: { id: '0' }, content: 'A' })).toBeNull();
   });

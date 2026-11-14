@@ -1,4 +1,4 @@
-import type { GameState, Podium } from '@quiz/contracts';
+import type { GameState, PublicPodium } from '@quiz/contracts';
 
 export const MOCK_ROUND_PHASES: readonly GameState[] = [
   'READING',
@@ -14,7 +14,7 @@ export type MockRoundSample = {
   state: GameState;
   questionCount: number | null;
   acceptedAnswers: number;
-  podium: Podium | null;
+  podium: PublicPodium | null;
 };
 
 export type MockRoundAnalysis = {
@@ -24,7 +24,7 @@ export type MockRoundAnalysis = {
   phaseVisits: { state: GameState; durationMs: number }[];
   acceptedAnswers: number;
   questionCount: number | null;
-  top3: { place: number; rank: number; tied: boolean; displayName: string; score: number }[];
+  top3: { place: number; rank: number; tied: boolean; safeDisplayName: string; score: number }[];
 };
 
 export function analyzeMockRound(
@@ -61,7 +61,7 @@ export function analyzeMockRound(
     place: slot.place,
     rank: entry.rank,
     tied: slot.tied,
-    displayName: entry.displayName,
+    safeDisplayName: entry.safeDisplayName,
     score: entry.score,
   }))) ?? [];
   const acceptedAnswers = samples.reduce((highest, sample) => Math.max(highest, sample.acceptedAnswers), 0);

@@ -9,7 +9,7 @@ import {
   type CommandResult,
   type CreateSessionRequest,
   type GameState,
-  type LeaderboardEntry,
+  type PublicLeaderboardEntry,
   type LiveSourceHealth,
   type PublicQuestion,
   type PublicSnapshot,
@@ -67,11 +67,11 @@ const mockReviewQuestions: Question[] = Array.from({ length: 18 }, (_, index) =>
   };
 });
 
-function makeLeaderboard(): LeaderboardEntry[] {
+function makeLeaderboard(): PublicLeaderboardEntry[] {
   return [
-    { rank: 1, tied: false, playerId: 'demo-01', displayName: 'Chiến binh DEMO 01', score: 900, correctCount: 8 },
-    { rank: 2, tied: false, playerId: 'demo-02', displayName: 'Chiến binh DEMO 02', score: 700, correctCount: 7 },
-    { rank: 3, tied: false, playerId: 'demo-03', displayName: 'Chiến binh DEMO 03', score: 600, correctCount: 6 },
+    { rank: 1, tied: false, playerId: 'demo-01', safeDisplayName: 'Chiến binh DEMO 01', score: 900, correctCount: 8 },
+    { rank: 2, tied: false, playerId: 'demo-02', safeDisplayName: 'Chiến binh DEMO 02', score: 700, correctCount: 7 },
+    { rank: 3, tied: false, playerId: 'demo-03', safeDisplayName: 'Chiến binh DEMO 03', score: 600, correctCount: 6 },
   ];
 }
 
@@ -405,6 +405,7 @@ class MockDashboardClient implements DashboardClient {
     };
     return {
       public: publicSnapshot,
+      flaggedPlayers: [],
       sessionStatus: this.state === 'IDLE' && this.stateVersion > 0 ? 'CLOSED' : 'OPEN',
       autoMode: this.autoMode,
       recoveryPending: false,

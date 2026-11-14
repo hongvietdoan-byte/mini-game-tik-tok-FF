@@ -17,6 +17,7 @@
     "@quiz/live-adapters": "workspace:*",
     "@quiz/persistence": "workspace:*",
     "@quiz/quiz-core": "workspace:*",
+    "@quiz/name-filter": "workspace:*",
     "fastify": "^5.2.0",
     "zod": "^3.25.0",
     "@quiz/audience-engine": "workspace:*"
