@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
@@ -183,11 +183,55 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   );
 }
 
+export function McBubbleText({ text, playerNames = [], as = 'span', highlight = false }: {
+  text: string;
+  playerNames?: readonly string[];
+  as?: 'p' | 'span';
+  highlight?: boolean;
+}) {
+  const textElement = useRef<HTMLElement | null>(null);
+  const namesKey = playerNames.join('\u0000');
+  const [formatted, setFormatted] = useState(() => wrapMcBubbleText(text, playerNames));
+
+  useLayoutEffect(() => {
+    const element = textElement.current;
+    if (!element) return;
+
+    const update = () => {
+      const style = window.getComputedStyle(element);
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.font = style.font;
+      const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+      const next = wrapMcBubbleText(text, playerNames, {
+        maxWidth: element.clientWidth,
+        measureText: (value) => context.measureText(value).width + Math.max(0, Array.from(value).length - 1) * letterSpacing,
+      });
+      setFormatted((current) => current === next ? current : next);
+    };
+
+    update();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, [text, namesKey]);
+
+  const content = highlight
+    ? splitBubble(formatted).map((part, index) => part.hl
+      ? <em key={index}>{part.text}</em>
+      : <React.Fragment key={index}>{part.text}</React.Fragment>)
+    : formatted;
+  const setElement = (element: HTMLElement | null) => { textElement.current = element; };
+  return as === 'p' ? <p ref={setElement}>{content}</p> : <span ref={setElement}>{content}</span>;
+}
+
 export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b' }) {
-  const bubble = wrapMcBubbleText((bubbleOverride ?? '').replace(
+  const playerNames = snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName) ?? [];
+  const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
-  ), snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName));
+  );
   return (
     <section className={`v3-mc v3-mc-${snapshot.mc.state}`} data-layer="kelly">
       <div className="v3-mc-figure">
@@ -205,11 +249,7 @@ export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant }: {
           <b className="v3-fastest-name">{fastest.safeDisplayName}</b>
           <span>{fastestSeconds(fastest.responseMs)} giây</span>
         </div> :
-        <p>
-          {splitBubble(bubble).map((part, i) =>
-            part.hl ? <em key={i}>{part.text}</em> : <React.Fragment key={i}>{part.text}</React.Fragment>,
-          )}
-        </p>}
+        <McBubbleText as="p" text={bubble} playerNames={playerNames} highlight />}
       </div>}
     </section>
   );

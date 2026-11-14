@@ -6,13 +6,20 @@ import { expect, test } from '@playwright/test';
 import { makeMockSnapshot, MOCK_SCENES } from '../../apps/overlay/src/mock/snapshots';
 import { wrapMcBubbleText } from '../../apps/overlay/src/v3/arenaLogic';
 
-const reviewDirectory = join(process.cwd(), '.claude', 'review', 'C0223');
+const reviewDirectory = join(process.cwd(), '.claude', 'review', 'C0224');
 const ENGINE_STATES: readonly GameState[] = [
   'CONNECTION_INTERRUPTED', 'ERROR', 'PAUSED', 'IDLE', 'LOBBY', 'PREPARE', 'READING',
   'ACCEPTING', 'REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY', 'INTERMISSION',
 ];
 
-type Dialogue = { label: string; text: string };
+type BubbleLayout = 'lobby' | 'question' | 'top10';
+type Dialogue = { label: string; text: string; layout: BubbleLayout };
+
+function bubbleLayoutFor(label: string): BubbleLayout {
+  if (/lobby|sảnh chờ/iu.test(label)) return 'lobby';
+  if (/top\s*10|leaderboard|round_end/iu.test(label)) return 'top10';
+  return 'question';
+}
 
 function allCurrentMcDialogues(): Dialogue[] {
   const unique = new Map<string, string>();
@@ -40,31 +47,92 @@ function allCurrentMcDialogues(): Dialogue[] {
   add('UI · Top 10 giữa vòng', 'BXH trực tiếp! Cùng xem ai đang dẫn đầu và bám sát Top 10 nhé.');
   add('test · cụm và đơn vị', 'MC Kelly theo dõi Free Fire · Top 10 · 1,2 giây · A, B, C hoặc D cùng Hồ Anh Tuấn.');
 
-  return [...unique].map(([text, label]) => ({ label, text }));
+  return [...unique].map(([text, label]) => ({ label, text, layout: bubbleLayoutFor(label) }));
 }
 
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/gu, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 }
 
-test('C-0223 balances and protects MC dialogue on every bubble scene, with a full dialogue contact sheet', async ({ page }) => {
+function sentenceLineCandidates(text: string): string[] {
+  const candidates = new Set<string>();
+  for (const line of text.split('\n')) {
+    const sentences = line.split(/(?<=[.!?])\s+(?=\p{Lu})/u);
+    for (let start = 0; start < sentences.length; start++) {
+      let candidate = '';
+      for (let end = start; end < sentences.length; end++) {
+        candidate = candidate ? `${candidate} ${sentences[end]}` : sentences[end]!;
+        candidates.add(candidate);
+      }
+    }
+  }
+  return [...candidates];
+}
+
+async function wrapWithBrowserMetrics(page: import('@playwright/test').Page, paragraph: import('@playwright/test').Locator, text: string, playerNames: string[]) {
+  const protectedText = wrapMcBubbleText(text, playerNames);
+  const candidates = sentenceLineCandidates(protectedText);
+  const measurement = await paragraph.evaluate((element, lines) => {
+    const style = getComputedStyle(element);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d')!;
+    context.font = style.font;
+    const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+    return {
+      maxWidth: element.clientWidth,
+      widths: Object.fromEntries(lines.map((line) => [line, context.measureText(line).width + Math.max(0, Array.from(line).length - 1) * letterSpacing])),
+    };
+  }, candidates);
+  const result = wrapMcBubbleText(text, playerNames, {
+    maxWidth: measurement.maxWidth,
+    measureText: (line) => measurement.widths[line] ?? Number.POSITIVE_INFINITY,
+  });
+  return result;
+}
+
+async function renderedLines(paragraph: import('@playwright/test').Locator): Promise<string[]> {
+  return paragraph.evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const lines = new Map<number, string>();
+    const range = document.createRange();
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const text = node.textContent ?? '';
+      let offset = 0;
+      for (const char of Array.from(text)) {
+        const start = offset;
+        offset += char.length;
+        if (char === '\n') continue;
+        range.setStart(node, start);
+        range.setEnd(node, offset);
+        const rect = range.getBoundingClientRect();
+        if (!rect.height) continue;
+        const top = Math.round(rect.top * 10) / 10;
+        lines.set(top, `${lines.get(top) ?? ''}${char}`);
+      }
+    }
+    return [...lines.values()].map((line) => line.replace(/\u00a0/gu, ' ').trim()).filter(Boolean);
+  });
+}
+
+test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble sizes', async ({ page }) => {
   await mkdir(reviewDirectory, { recursive: true });
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
-  const scenes = [
-    { mock: 'lobby', file: 'lobby.png', scene: 'LOBBY' },
-    { mock: 'prepare', file: 'prepare.png', scene: 'QUESTION' },
+  const scenes: { mock: string; file: string; scene: string; expectedLines?: string[] }[] = [
+    { mock: 'lobby', file: 'lobby.png', scene: 'LOBBY', expectedLines: ['CHÀO MỪNG ĐẾN VỚI', 'ĐẤU TRƯỜNG BÃO TỐ!'] },
+    { mock: 'prepare', file: 'prepare.png', scene: 'QUESTION', expectedLines: ['Sẵn sàng nhé!', 'Câu hỏi Free Fire sắp bắt đầu.'] },
     { mock: 'reading', file: 'reading.png', scene: 'QUESTION' },
     { mock: 'question', file: 'question.png', scene: 'QUESTION' },
-    { mock: 'reveal', file: 'reveal.png', scene: 'REVEAL' },
+    { mock: 'reveal', file: 'reveal.png', scene: 'REVEAL', expectedLines: ['Chính xác! Đáp án B.', 'Cùng xem bảng xếp hạng nhé!'] },
     { mock: 'fastest-a', file: 'fastest.png', scene: 'REVEAL' },
     { mock: 'fastest-a-long', file: 'fastest-long-name.png', scene: 'REVEAL' },
     { mock: 'fastest-b', file: 'fastest-b.png', scene: 'REVEAL' },
     { mock: 'top10', file: 'top10-mid-round.png', scene: 'INTERIM_TOP10' },
     { mock: 'paused', file: 'paused.png', scene: 'QUESTION' },
   ];
-  const captures: { scene: string; bubble: { x: number; y: number; width: number; height: number }; image: string }[] = [];
+  const captures: { scene: string; bubble: { x: number; y: number; width: number; height: number; fontSize?: string }; image: string }[] = [];
 
   for (const item of scenes) {
     await page.goto(`/?mock=${item.mock}`, { waitUntil: 'domcontentloaded' });
@@ -79,6 +147,15 @@ test('C-0223 balances and protects MC dialogue on every bubble scene, with a ful
     });
     const box = await bubble.boundingBox();
     expect(box, `${item.mock}: MC bubble has geometry`).not.toBeNull();
+    let fontSize: string | undefined;
+    if (item.mock === 'lobby' || item.expectedLines) {
+      const paragraph = bubble.locator('p');
+      await expect(paragraph).toBeVisible();
+      const style = await paragraph.evaluate((element) => getComputedStyle(element).fontSize);
+      fontSize = style;
+      if (item.mock === 'lobby') expect(Number.parseFloat(style), 'lobby text restores readable scale').toBeGreaterThanOrEqual(36);
+      if (item.expectedLines) await expect.poll(() => renderedLines(paragraph)).toEqual(item.expectedLines);
+    }
     if (item.mock.startsWith('fastest')) {
       const noWrap = await bubble.evaluate((element) => ({
         playerName: getComputedStyle(element.querySelector('.v3-fastest-name')!).whiteSpace,
@@ -88,63 +165,70 @@ test('C-0223 balances and protects MC dialogue on every bubble scene, with a ful
     }
     const image = join(reviewDirectory, item.file);
     await page.screenshot({ path: image, animations: 'disabled' });
-    captures.push({ scene: item.mock, bubble: { x: box!.x, y: box!.y, width: box!.width, height: box!.height }, image: item.file });
+    captures.push({ scene: item.mock, bubble: { x: box!.x, y: box!.y, width: box!.width, height: box!.height, fontSize }, image: item.file });
   }
 
   const dialogues = allCurrentMcDialogues();
   expect(dialogues.length).toBeGreaterThanOrEqual(15);
-  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
-  const bubble = page.locator('[data-testid="mc-bubble"]');
-  const paragraph = bubble.locator('p');
-  await expect(paragraph).toBeVisible();
   const names = makeMockSnapshot('top10')?.leaderboard?.entries.map((entry) => entry.safeDisplayName) ?? [];
-  const gridClips: { label: string; src: string }[] = [];
-  const rendered: { label: string; text: string; lines: string[]; fontSize: string; overflow: number }[] = [];
+  const layoutDimensions: Record<BubbleLayout, { width: number; height: number; route: string; scene: string }> = {
+    lobby: { width: 560, height: 210, route: 'lobby', scene: 'LOBBY' },
+    question: { width: 575, height: 145, route: 'question', scene: 'QUESTION' },
+    top10: { width: 633, height: 145, route: 'top10', scene: 'INTERIM_TOP10' },
+  };
+  const gridClips: { label: string; src: string; layout: BubbleLayout; width: number; height: number; fontSize: string }[] = [];
+  const rendered: { label: string; text: string; lines: string[]; layout: BubbleLayout; width: number; height: number; fontSize: string; overflow: number }[] = [];
 
-  for (const dialogue of dialogues) {
-    const formatted = wrapMcBubbleText(dialogue.text, names);
-    await paragraph.evaluate((element, text) => {
-      element.replaceChildren(document.createTextNode(text));
-    }, formatted);
+  for (const layoutName of ['lobby', 'question', 'top10'] as const) {
+    const layoutSpec = layoutDimensions[layoutName];
+    const layoutDialogues = dialogues.filter((dialogue) => dialogue.layout === layoutName);
+    if (!layoutDialogues.length) continue;
+    await page.goto(`/?mock=${layoutSpec.route}`, { waitUntil: 'domcontentloaded' });
+    const stage = page.locator(`[data-testid="stage"][data-scene="${layoutSpec.scene}"]`);
+    const bubble = stage.locator('[data-testid="mc-bubble"]');
+    const paragraph = bubble.locator('p');
+    await expect(paragraph).toBeVisible();
+    await paragraph.evaluate((element, size) => {
+      const target = element.closest('[data-testid="mc-bubble"]') as HTMLElement;
+      target.style.boxSizing = 'border-box';
+      target.style.width = `${size.width}px`;
+      target.style.height = `${size.height}px`;
+    }, layoutSpec);
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    const layout = await paragraph.evaluate((element) => {
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-      const lines = new Map<number, string>();
-      const range = document.createRange();
-      let node: Node | null;
-      while ((node = walker.nextNode())) {
-        const text = node.textContent ?? '';
-        let offset = 0;
-        for (const char of Array.from(text)) {
-          const start = offset;
-          offset += char.length;
-          if (char === '\n') continue;
-          range.setStart(node, start);
-          range.setEnd(node, offset);
-          const rect = range.getBoundingClientRect();
-          if (!rect.height) continue;
-          const top = Math.round(rect.top * 10) / 10;
-          lines.set(top, `${lines.get(top) ?? ''}${char}`);
-        }
-      }
-      const paragraphBox = element.getBoundingClientRect();
-      const bubbleBox = element.closest('[data-testid="mc-bubble"]')!.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return {
-        lines: [...lines.values()].map((line) => line.replace(/\u00a0/gu, ' ').trim()).filter(Boolean),
-        fontSize: style.fontSize,
-        overflow: Math.max(0, paragraphBox.bottom - (bubbleBox.bottom - 8)),
-      };
-    });
 
-    expect(layout.overflow, `${dialogue.label}: text stays inside its bubble`).toBeLessThanOrEqual(1);
-    if (layout.lines.length > 1) {
-      const lastLineWords = layout.lines.at(-1)!.split(/\s+/u).filter(Boolean);
-      expect(lastLineWords.length, `${dialogue.label}: no one-word widow (${layout.lines.join(' / ')})`).toBeGreaterThan(1);
+    for (const dialogue of layoutDialogues) {
+      const formatted = await wrapWithBrowserMetrics(page, paragraph, dialogue.text, names);
+      await paragraph.evaluate((element, text) => {
+        element.replaceChildren(document.createTextNode(text));
+      }, formatted);
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const geometry = await bubble.evaluate((element) => {
+        const paragraph = element.querySelector('p')!;
+        const bubbleBox = element.getBoundingClientRect();
+        const paragraphBox = paragraph.getBoundingClientRect();
+        return {
+          width: bubbleBox.width,
+          height: bubbleBox.height,
+          fontSize: getComputedStyle(paragraph).fontSize,
+          overflow: Math.max(0, paragraphBox.bottom - (bubbleBox.bottom - 8)),
+          horizontalOverflow: Math.max(0, paragraph.scrollWidth - paragraph.clientWidth),
+        };
+      }, layoutSpec);
+      expect(geometry.width, `${layoutName} contact bubble width`).toBe(layoutSpec.width);
+      expect(geometry.height, `${layoutName} contact bubble height`).toBe(layoutSpec.height);
+      expect(geometry.overflow, `${dialogue.label}: text stays inside its bubble`).toBeLessThanOrEqual(1);
+      expect(geometry.horizontalOverflow, `${dialogue.label}: no horizontal text overflow`).toBeLessThanOrEqual(1);
+      const lines = await renderedLines(paragraph);
+      if (dialogue.label === 'mock · prepare') expect(lines).toEqual(['Sẵn sàng nhé!', 'Câu hỏi Free Fire sắp bắt đầu.']);
+      if (dialogue.label === 'mock · reveal') expect(lines).toEqual(['Chính xác! Đáp án B.', 'Cùng xem bảng xếp hạng nhé!']);
+      if (lines.length > 1) {
+        const lastLineWords = lines.at(-1)!.split(/\s+/u).filter(Boolean);
+        expect(lastLineWords.length, `${dialogue.label}: no one-word widow (${lines.join(' / ')})`).toBeGreaterThan(1);
+      }
+      rendered.push({ label: dialogue.label, text: formatted, lines, layout: layoutName, width: geometry.width, height: geometry.height, fontSize: geometry.fontSize, overflow: geometry.overflow });
+      const clip = await bubble.screenshot({ animations: 'disabled', scale: 'css' });
+      gridClips.push({ label: dialogue.label, src: `data:image/png;base64,${clip.toString('base64')}`, layout: layoutName, width: geometry.width, height: geometry.height, fontSize: geometry.fontSize });
     }
-    rendered.push({ label: dialogue.label, text: formatted, ...layout });
-    const clip = await bubble.screenshot({ animations: 'disabled' });
-    gridClips.push({ label: dialogue.label, src: `data:image/png;base64,${clip.toString('base64')}` });
   }
 
   const lobby = rendered.find((entry) => entry.label === 'UI · sảnh chờ');
@@ -160,20 +244,20 @@ test('C-0223 balances and protects MC dialogue on every bubble scene, with a ful
   }
 
   const columns = 2;
-  const gridCards = gridClips.map((clip) => `<article><h2>${escapeHtml(clip.label)}</h2><img src="${clip.src}" alt="${escapeHtml(clip.label)}" /></article>`).join('');
-  await page.setViewportSize({ width: 1210, height: 1900 });
+  const gridCards = gridClips.map((clip) => `<article><h2>${escapeHtml(clip.label)} · ${clip.layout} · ${clip.width}×${clip.height} · ${clip.fontSize}</h2><img src="${clip.src}" alt="${escapeHtml(clip.label)}" width="${clip.width}" height="${clip.height}" /></article>`).join('');
+  await page.setViewportSize({ width: 1360, height: 1900 });
   await page.setContent(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><style>
     *{box-sizing:border-box}body{margin:0;padding:18px;background:#0c102b;color:#f6f0ff;font:16px/1.3 Arial,sans-serif}
-    h1{margin:0 0 14px;font-size:22px}main{display:grid;grid-template-columns:repeat(${columns},575px);gap:14px;align-items:start}
-    article{width:575px;min-height:172px;padding:0;background:transparent;border:0;border-radius:0}
+    h1{margin:0 0 14px;font-size:22px}main{display:grid;grid-template-columns:repeat(${columns},max-content);gap:18px;align-items:start}
+    article{width:max-content;min-height:0;padding:0;background:transparent;border:0;border-radius:0}
     h2{height:22px;margin:0 0 5px;color:#ffdc69;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    img{display:block;width:575px;height:145px;object-fit:fill}
-  </style></head><body><h1>C-0223 · Lưới kiểm tra lời thoại MC · ${dialogues.length} lời thoại</h1><main>${gridCards}</main></body></html>`);
+    img{display:block;width:auto;height:auto;max-width:none;object-fit:unset}
+  </style></head><body><h1>C-0224 · Contact sheet lời thoại MC · ${dialogues.length} lời thoại</h1><main>${gridCards}</main></body></html>`);
   await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
   await page.screenshot({ path: join(reviewDirectory, 'dialogue-grid.png'), animations: 'disabled', fullPage: true });
 
   const report = [
-    '# C-0223 · Lời thoại MC',
+    '# C-0224 · Lời thoại MC',
     '',
     'Viewport scene: 1080×1920, ảnh sau khi chờ font/ảnh và tắt animation. Cụm Kelly, nền và khung lobby không bị di chuyển.',
     '',
@@ -183,15 +267,15 @@ test('C-0223 balances and protects MC dialogue on every bubble scene, with a ful
     '|---|---:|---|',
     ...captures.map((capture) => `| ${capture.scene} | ${capture.bubble.x.toFixed(1)}/${capture.bubble.y.toFixed(1)}/${capture.bubble.width.toFixed(1)}/${capture.bubble.height.toFixed(1)} | ${capture.image} |`),
     '',
-    `Lưới lời thoại (${dialogues.length} mẫu từ mọi trạng thái mcFor, snapshot mock, lời cố định lobby/Top 10/hướng dẫn): dialogue-grid.png.`,
+    `Lưới lời thoại (${dialogues.length} mẫu từ mọi trạng thái mcFor, snapshot mock, lời cố định lobby/Top 10/hướng dẫn): dialogue-grid.png. Mỗi ô dùng CSS scale gốc, không kéo giãn; lobby 560×210, question 575×145, Top 10 633×145.`,
     '',
     '## Số dòng và cỡ chữ thực tế',
     '',
-    '| Nguồn / trạng thái | Lời thoại | Dòng hiển thị | Cỡ chữ | Tràn khung (px) |',
-    '|---|---|---:|---:|---:|',
-    ...rendered.map((entry) => `| ${entry.label} | ${entry.text.replace(/\n/gu, '<br>').replace(/\u00a0/gu, ' ')} | ${entry.lines.length}: ${entry.lines.join(' / ')} | ${entry.fontSize} | ${entry.overflow.toFixed(1)} |`),
+    '| Nguồn / trạng thái | Bố cục | Kích thước | Lời thoại | Dòng hiển thị | Cỡ chữ | Tràn khung (px) |',
+    '|---|---|---:|---|---:|---:|---:|',
+    ...rendered.map((entry) => `| ${entry.label} | ${entry.layout} | ${entry.width}×${entry.height} | ${entry.text.replace(/\n/gu, '<br>').replace(/\u00a0/gu, ' ')} | ${entry.lines.length}: ${entry.lines.join(' / ')} | ${entry.fontSize} | ${entry.overflow.toFixed(1)} |`),
     '',
-    'Bong bóng dùng text-wrap: balance; helper wrapMcBubbleText giữ liền cụm bằng NBSP. Các hộp được kiểm tra không có chữ tràn hoặc dòng cuối một từ.',
+    'Bong bóng dùng text-wrap: balance; helper wrapMcBubbleText giữ liền cụm bằng NBSP và chủ động nhóm câu ở dấu câu nếu từng vế đo vừa một dòng. Contact sheet chụp các bong bóng thật, đúng cỡ và cỡ chữ, không kéo giãn.',
   ];
   await writeFile(join(reviewDirectory, 'measurements.md'), `${report.join('\n')}\n`, 'utf8');
 });

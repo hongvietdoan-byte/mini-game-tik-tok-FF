@@ -1889,3 +1889,8 @@
   clip-path: polygon(0 0, 0 100%, 100% 54%);
   background: linear-gradient(145deg, #242280, #11143f);
 }
+
+/* C-0224: let the live text measurer and CSS balance use the bubble's full text column. */
+.v3-bubble p { width: 100%; }
+/* The lobby bubble has ample room for the approved two-line welcome. */
+.v3-stage[data-scene="LOBBY"] .v3-mc .v3-bubble p { font-size: 36px; line-height: 1.1; }

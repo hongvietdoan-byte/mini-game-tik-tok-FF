@@ -49,11 +49,41 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
+export type McBubbleTextMetrics = {
+  maxWidth: number;
+  measureText: (text: string) => number;
+};
+
+function wrapSentenceGroups(line: string, metrics?: McBubbleTextMetrics): string {
+  if (!metrics || metrics.maxWidth <= 0) return line;
+
+  const sentences = line.split(/(?<=[.!?])\s+(?=\p{Lu})/u);
+  if (sentences.length < 2 || sentences.some((sentence) => metrics.measureText(sentence) > metrics.maxWidth)) return line;
+
+  const wrapped: string[] = [];
+  let current = '';
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (current && metrics.measureText(candidate) > metrics.maxWidth) {
+      wrapped.push(current);
+      current = sentence;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) wrapped.push(current);
+  return wrapped.join('\n');
+}
+
 /**
  * Chuẩn bị lời MC cho text-wrap: balance: chuẩn hoá khoảng trắng nhưng giữ newline đã biên tập,
- * đồng thời ghép các cụm tiếng Việt/tên người/chữ số + đơn vị bằng NBSP để chúng không bị xé đôi.
+ * ghép cụm quan trọng bằng NBSP và, khi có số đo thật, gom câu theo ranh giới dấu câu vừa khung.
  */
-export function wrapMcBubbleText(text: string, playerNames: readonly string[] = []): string {
+export function wrapMcBubbleText(
+  text: string,
+  playerNames: readonly string[] = [],
+  metrics?: McBubbleTextMetrics,
+): string {
   let output = text
     .replace(/\r\n?/gu, '\n')
     .split('\n')
@@ -78,7 +108,10 @@ export function wrapMcBubbleText(text: string, playerNames: readonly string[] = 
     output = output.replace(phrase, (match) => match.replace(/\s+/gu, '\u00a0'));
   }
 
-  return output;
+  return output
+    .split('\n')
+    .map((line) => wrapSentenceGroups(line, metrics))
+    .join('\n');
 }
 
 /** Tách lời MC để tô vàng các chữ cái đáp án A/B/C/D đứng riêng (vd "Bình luận A/B/C/D để tham gia"). */

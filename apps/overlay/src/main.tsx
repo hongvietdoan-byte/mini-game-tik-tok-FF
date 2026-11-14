@@ -4,11 +4,10 @@ import { McStateSchema, type PublicLeaderboardEntry, type PublicPodiumSlot, type
 import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './overlayLogic';
 import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
-import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
+import { ArenaStage, McBubbleText, V3_SCENES } from './v3/ArenaStage';
 import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
 import { AudioFxLayer } from './v3/AudioFxLayer';
-import { wrapMcBubbleText } from './v3/arenaLogic';
 import { overlayFitFromSearch, overlayRoleFromSearch, overlayStageScale } from './overlayRole';
 import { publicPlayerName } from './publicPlayerName';
 import { HudConfigProvider, useLiveHudConfig } from './hudConfig';
@@ -262,7 +261,7 @@ function App() {
       {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} allowLegacyNames={allowLegacyNames} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
         <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
-        {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{wrapMcBubbleText(snapshot.mc.bubble, snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName))}</span></aside>}
+        {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><McBubbleText text={snapshot.mc.bubble} playerNames={snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName)} /></aside>}
         <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} allowLegacyNames={allowLegacyNames} /></div>
         {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
       </>}

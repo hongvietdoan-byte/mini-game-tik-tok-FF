@@ -38,6 +38,22 @@ describe('V3 arena logic', () => {
     expect(wrapMcBubbleText('Câu ngắn!\nCâu sau, vẫn giữ nhịp.')).toBe('Câu ngắn!\nCâu sau, vẫn giữ nhịp.');
   });
 
+  it('ưu tiên ngắt sau dấu câu khi các vế vừa dòng và không ép ngắt vế quá dài', () => {
+    const metrics = { maxWidth: 400, measureText: (value: string) => Array.from(value).length * 10 };
+    expect(wrapMcBubbleText('Chính xác! Đáp án B. Cùng xem bảng xếp hạng nhé!', [], metrics)).toBe(
+      'Chính xác! Đáp án B.\nCùng xem bảng xếp hạng nhé!',
+    );
+    expect(wrapMcBubbleText('Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.', [], metrics)).toBe(
+      'Sẵn sàng nhé!\nCâu hỏi Free\u00a0Fire sắp bắt đầu.',
+    );
+    expect(wrapMcBubbleText('Ngắt sau câu. Vế sau vẫn đủ ngắn.', [], { ...metrics, maxWidth: 700 })).toBe(
+      'Ngắt sau câu. Vế sau vẫn đủ ngắn.',
+    );
+    expect(wrapMcBubbleText('Câu mở đầu. Một vế câu rất dài không thể nằm trọn trên một dòng.', [], metrics)).toBe(
+      'Câu mở đầu. Một vế câu rất dài không thể nằm trọn trên một dòng.',
+    );
+  });
+
   it('tô vàng đúng các chữ cái đáp án đứng riêng, không tô chữ cái trong từ', () => {
     expect(splitBubble('Bình luận A, B, C hoặc D để tham gia')).toEqual([
       { text: 'Bình luận ', hl: false },
