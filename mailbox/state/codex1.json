@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 201,
-  "heartbeat": "2026-11-14T10:58:51+07:00",
+  "heartbeat": "2026-11-14T11:02:17+07:00",
   "state": "working",
   "task": "C-0203",
-  "note": "Đã ack; chuẩn bị worktree riêng và merge release candidate theo thứ tự giao việc.",
+  "note": "Worktree đã tạo; đã merge integration-name-safety, safe-name-rules, fastest-correct, preview-fit và auto-sfx; đang tiếp tục các nhánh UI còn lại.",
   "done": []
 }
