@@ -327,7 +327,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
   const headerB = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('header')?.toLowerCase() === 'b';
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', headerB && 'v3-stage--header-b', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', headerB && 'v3-stage--header-b', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} loopVideo={snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL'} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
