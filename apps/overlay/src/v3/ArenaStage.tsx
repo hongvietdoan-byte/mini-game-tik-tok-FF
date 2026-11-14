@@ -18,6 +18,26 @@ import './arena.css';
 
 const ASSET_BASE = '/assets';
 
+type FastestCorrectAnswerView = {
+  questionInstanceId: string;
+  publicPlayerId: string;
+  seatId: string | null;
+  safeDisplayName: string;
+  responseMs: number;
+};
+
+function fastestCorrectFor(snapshot: PublicSnapshot): FastestCorrectAnswerView | null {
+  const fastest = (snapshot as PublicSnapshot & { fastestCorrectAnswer?: FastestCorrectAnswerView | null }).fastestCorrectAnswer;
+  if (snapshot.scene !== 'REVEAL' || !snapshot.reveal || !fastest ||
+    fastest.questionInstanceId !== snapshot.reveal.questionInstanceId ||
+    !fastest.safeDisplayName.trim() || !Number.isFinite(fastest.responseMs) || fastest.responseMs < 0) return null;
+  return fastest;
+}
+
+function fastestSeconds(ms: number) {
+  return new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(ms / 1000);
+}
+
 function formatTime(ms: number) {
   const s = Math.ceil(ms / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -52,7 +72,7 @@ export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
   </header>;
 }
 
-function Top10({ entries, allowLegacyNames }: { entries: PublicLeaderboardEntry[]; allowLegacyNames: boolean }) {
+function Top10({ entries, allowLegacyNames, fastestPublicPlayerId, showFastestBadge }: { entries: PublicLeaderboardEntry[]; allowLegacyNames: boolean; fastestPublicPlayerId?: string; showFastestBadge: boolean }) {
   const config = useHudConfig();
   return (
     <section className="v3-top10" data-layer="leaderboard" data-testid="v3-top10">
@@ -71,6 +91,7 @@ function Top10({ entries, allowLegacyNames }: { entries: PublicLeaderboardEntry[
                   x{e.top1Streak}
                 </b>
               )}
+              {showFastestBadge && e.playerId === fastestPublicPlayerId && <b className="v3-fastest-row-badge" data-testid="fastest-row-badge" aria-label="Người trả lời đúng nhanh nhất">⚡</b>}
             </span>
             <span className="v3-score">{e.score.toLocaleString('vi-VN')}</span>
           </li>
@@ -166,7 +187,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   );
 }
 
-export function McKelly({ snapshot, bubbleOverride }: { snapshot: PublicSnapshot; bubbleOverride?: string }) {
+export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b' }) {
   const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
@@ -182,12 +203,17 @@ export function McKelly({ snapshot, bubbleOverride }: { snapshot: PublicSnapshot
         </svg>
         MC KELLY
       </div>
-      {bubbleOverride !== undefined && <div className="v3-bubble" data-testid="mc-bubble">
+      {bubbleOverride !== undefined && <div className={`v3-bubble ${fastest ? `v3-fastest-callout v3-fastest-callout-${fastestVariant ?? 'a'}` : ''}`} data-testid="mc-bubble">
+        {fastest ? <div className="v3-fastest-copy" data-testid="fastest-callout">
+          <strong>{fastestVariant === 'b' ? '⚡ NHANH NHẤT' : 'NHANH NHẤT'}</strong>
+          <b className="v3-fastest-name">{fastest.safeDisplayName}</b>
+          <span>{fastestSeconds(fastest.responseMs)} giây</span>
+        </div> :
         <p>
           {splitBubble(bubble).map((part, i) =>
             part.hl ? <em key={i}>{part.text}</em> : <React.Fragment key={i}>{part.text}</React.Fragment>,
           )}
-        </p>
+        </p>}
       </div>}
     </section>
   );
@@ -220,7 +246,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
   );
 }
 
-type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; allowLegacyNames: boolean };
+type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; allowLegacyNames: boolean; fastestSeatId?: string | null };
 
 function sameSeat(previous: SeatProps, next: SeatProps) {
   const a = previous.seat;
@@ -232,14 +258,15 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
     left.characterId === right.characterId &&
     left.pinned === right.pinned &&
     left.result === right.result);
-  return previous.compactQuestion === next.compactQuestion && previous.allowLegacyNames === next.allowLegacyNames && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
+  return previous.compactQuestion === next.compactQuestion && previous.allowLegacyNames === next.allowLegacyNames && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
 }
 
-const Seat = React.memo(function Seat({ seat, compactQuestion }: SeatProps) {
+const Seat = React.memo(function Seat({ seat, compactQuestion, fastestSeatId }: SeatProps) {
   const o = seat.occupant;
+  const isFastest = !!fastestSeatId && seat.slotId === fastestSeatId;
   return (
     <div
-      className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''}`}
+      className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''} ${isFastest ? 'is-fastest' : ''}`}
       style={{
         left: seat.x,
         top: seatY(seat.y, compactQuestion),
@@ -258,16 +285,17 @@ const Seat = React.memo(function Seat({ seat, compactQuestion }: SeatProps) {
   );
 }, sameSeat);
 
-const SeatName = React.memo(function SeatName({ seat, compactQuestion, allowLegacyNames }: SeatProps) {
+const SeatName = React.memo(function SeatName({ seat, compactQuestion, allowLegacyNames, fastestSeatId }: SeatProps) {
   const occupant = seat.occupant;
   if (!occupant) return null;
-  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
+  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
     {shortName(publicPlayerName(occupant, `Khán giả ${seat.slotId}`, allowLegacyNames), 13)}
   </div>;
 }, sameSeat);
 
 function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; allowLegacyNames: boolean }) {
   const a = snapshot.audience;
+  const fastest = fastestCorrectFor(snapshot);
   const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const rows = a
     ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion)])).entries()].map(([row, y]) => ({ row, y }))
@@ -278,10 +306,10 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
       {rows.map((r) => (
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
-      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} />)}
+      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} />)}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} />)}
+        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} />)}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
@@ -290,6 +318,8 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
 
 export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNames = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; allowLegacyNames?: boolean }) {
   const config = useHudConfig();
+  const fastest = fastestCorrectFor(snapshot);
+  const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
     ? 'CHÀO MỪNG ĐẾN VỚI ĐẤU TRƯỜNG BÃO TỐ!'
@@ -395,9 +425,9 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
         </svg>
       </div>
       <BrandHeader snapshot={snapshot} />
-      <Top10 entries={snapshot.leaderboard?.entries ?? []} allowLegacyNames={allowLegacyNames} />
+      <Top10 entries={snapshot.leaderboard?.entries ?? []} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
-      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} />
+      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={fastest} fastestVariant={fastestVariant} />
       <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} />
     </div>
   );

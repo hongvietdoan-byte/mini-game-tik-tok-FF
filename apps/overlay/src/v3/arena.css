@@ -1604,3 +1604,32 @@
 .v3-stage--question-user.has-long-prompt .v3-options,
 .v3-stage--question-user.has-long-options .v3-options,
 .v3-stage--question-user.has-long-prompt.has-long-options .v3-options { top: 349px; }
+
+/* C-0197 B: vinh danh người trả lời đúng nhanh nhất, chỉ sau khi có kết quả công bố. */
+.v3-stage--question-user[data-scene="REVEAL"] .v3-fastest-callout {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  border: 3px solid rgba(255, 211, 88, .92);
+  border-radius: 20px;
+  background: linear-gradient(125deg, rgba(30, 17, 92, .97), rgba(64, 23, 134, .96) 58%, rgba(34, 24, 100, .97));
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.12), 0 0 30px rgba(255, 195, 47, .56);
+  color: #fff;
+  text-align: center;
+}
+.v3-fastest-copy { display: grid; justify-items: center; gap: 3px; width: 100%; }
+.v3-fastest-copy strong { color: #ffe47a; font-size: 23px; font-weight: 950; letter-spacing: .12em; line-height: 1; text-shadow: 0 2px 8px rgba(255, 193, 38, .42); }
+.v3-fastest-name { max-width: 100%; overflow: hidden; color: #fff; font-size: 40px; font-weight: 950; line-height: 1.08; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 3px 12px rgba(0,0,0,.65); }
+.v3-fastest-copy > span { color: #f3edff; font-size: 26px; font-weight: 800; line-height: 1.05; }
+.v3-fastest-callout-b { display: flex; justify-content: center; }
+.v3-fastest-callout-b .v3-fastest-copy { display: flex; align-items: center; justify-content: center; gap: 17px; white-space: nowrap; }
+.v3-fastest-callout-b .v3-fastest-copy strong { font-size: 20px; }
+.v3-fastest-callout-b .v3-fastest-name { max-width: 245px; font-size: 30px; }
+.v3-fastest-callout-b .v3-fastest-copy > span { font-size: 25px; }
+.v3-fastest-row-badge { display: inline-grid; place-items: center; flex: 0 0 25px; width: 25px; height: 25px; margin-left: 5px; border: 1px solid #ffe47a; border-radius: 50%; background: linear-gradient(140deg, #ffd44e, #ff8a30); color: #351550; font-size: 16px; line-height: 1; box-shadow: 0 0 10px rgba(255, 201, 66, .65); }
+.v3-seat.is-fastest { z-index: 80 !important; }
+.v3-seat.is-fastest .v3-seat-back { background: linear-gradient(180deg, #ffe26a, #ff9429); box-shadow: inset 0 0 0 3px #fff5bd, 0 0 20px 9px rgba(255, 204, 55, .92); }
+.v3-seat.is-fastest .v3-seat-back svg path { fill: rgba(255, 218, 89, .2); stroke: #fff2a8; stroke-width: 5; }
+.v3-seat.is-fastest .v3-chibi-img { filter: drop-shadow(0 0 16px rgba(255, 209, 59, .98)); }
+.v3-seat-name.is-fastest { z-index: 90; border: 3px solid #ffe47a; background: linear-gradient(180deg, #fffbdc, #ffe59a) padding-box, linear-gradient(110deg, #fff3a6, #ff9e27) border-box; box-shadow: 0 0 16px rgba(255, 201, 43, .95); }
