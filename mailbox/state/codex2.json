@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 202,
-  "heartbeat": "2026-11-14T11:43:26+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-14T11:43:38+07:00",
+  "state": "waiting",
   "task": "C-0202",
-  "note": "Đã sửa header A và fastest/MC A-B; e2e đầy đủ đang chạy trên nhánh C0197",
+  "note": "Hai nhánh đã push, báo cáo Y-0342 đã gửi; chờ người dùng chọn header A/B và fastest A/B. C0168 còn .tmp-test vì hệ thống chặn lệnh xóa tự động.",
   "done": []
 }
