@@ -202,7 +202,13 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     } : null,
     answerCount: name === 'prepare' || name === 'reading' ? 0 : 42,
     participantCount: short ? 3 : 57,
-    fastestCorrectAnswer: isReveal ? {
+    fastestCorrectAnswer: isFastestMock ? {
+      questionInstanceId: 'demo-question-5',
+      publicPlayerId: leaderboard[1]!.playerId,
+      seatId: mockAudience(true).seats.find((seat) => seat.occupant?.safeDisplayName === 'StormKing')?.slotId ?? null,
+      safeDisplayName: 'StormKing',
+      responseMs: 1_240,
+    } : isReveal ? {
       questionInstanceId: 'demo-question-5',
       publicPlayerId: visibleLeaderboard[0]!.playerId,
       seatId: null,
@@ -238,13 +244,6 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     },
     audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'fastest-a', 'fastest-b', 'paused'].includes(name) ? mockAudience(isReveal) : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
-    ...({ fastestCorrectAnswer: isFastestMock ? {
-      questionInstanceId: 'demo-question-5',
-      publicPlayerId: leaderboard[1]!.playerId,
-      seatId: mockAudience(true).seats.find((seat) => seat.occupant?.displayName === 'StormKing')?.slotId ?? null,
-      safeDisplayName: 'StormKing',
-      responseMs: 1_240,
-    } : null }),
   } as PublicSnapshot;
 }
 
