@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 220,
-  "heartbeat": "2026-11-14T20:09:49+07:00",
+  "heartbeat": "2026-11-14T20:11:36+07:00",
   "state": "working",
   "task": "C-0221",
-  "note": "Ảnh C-0221 đã chụp, Kelly bán thân và cụm Top 10 đã đúng vị trí; test hình mục tiêu đạt, đang chạy kiểm tra tổng thể",
+  "note": "typecheck/build:web/test đạt; đang chạy full E2E 90 test và kiểm tra ảnh nghiệm thu",
   "done": []
 }
