@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 
-const reviewDir = join(process.cwd(), '.claude', 'review', 'C0202');
+const reviewDir = join(process.cwd(), '.claude', 'review', 'C0205');
 
 for (const variant of ['a', 'b'] as const) {
   test(`C-0197 B option ${variant.toUpperCase()} — fastest correct callout`, async ({ page }) => {

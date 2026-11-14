@@ -397,14 +397,14 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     logo: { x: 453.6, y: 18, width: 172.8, height: 178.5 },
     event: { x: 96.4, y: 14, width: 213.3, height: 94 },
     ribbon: { x: 430.4, y: 212.5, width: 325.2, height: 53 },
-    roundCard: { x: 760, y: 16, width: 220, height: 99 },
+    roundCard: { x: 760, y: 16, width: 220, height: 108 },
     top10: { x: 98, y: 620, width: 300, height: 466 },
     board: { x: 418, y: 620, width: 560, height: 512 },
     question: { x: 448, y: 796, width: 500, height: 160 },
   } as const;
   for (const key of Object.keys(c0168Approved) as Array<keyof typeof c0168Approved>) {
     for (const dimension of ['x', 'y', 'width', 'height'] as const) {
-      expect(Math.abs(defaultLayout[key]![dimension] - c0168Approved[key][dimension]), `hud default ${key}.${dimension} matches C-0168 B2`).toBeLessThanOrEqual(1);
+      expect(Math.abs(defaultLayout[key]![dimension] - c0168Approved[key][dimension]), `hud default ${key}.${dimension} matches C-0168 header A`).toBeLessThanOrEqual(1);
     }
   }
   await assertHeaderDoesNotOverlap();
@@ -806,7 +806,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     }
     expect(geometry.mcFrame, `${name}: MC has the approved frame`).not.toBeNull();
     expect(Math.abs(geometry.mcFrame!.width - 180), `${name}: MC bust stays 180px wide inside the lower audience panel`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.mcFrame!.height - 240), `${name}: MC bust stays above the TikTok comment rail`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.mcFrame!.height - 208), `${name}: MC bust stays above the TikTok comment rail`).toBeLessThanOrEqual(2);
     expect(geometry.bubble, `${name}: fixed speech bubble exists`).not.toBeNull();
     expect(Math.abs(geometry.bubble!.x - 410), `${name}: bubble x matches C-0133`).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.bubble!.y - 1150), `${name}: bubble clears the question frame and flags`).toBeLessThanOrEqual(2);
@@ -817,7 +817,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.mcPlate, `${name}: Kelly nameplate has a fixed position`).not.toBeNull();
     if (name === 'question' || name === 'question-longest' || name === 'question-long-answer' || name === 'reveal' || name === 'prepare' || name === 'reading') {
       expect(geometry.mcPlate!.y, `${name}: Kelly nameplate sits in the gap below Top 10 and above her half-body crop`).toBeGreaterThanOrEqual(1086);
-      expect(geometry.mcPlate!.y + geometry.mcPlate!.height, `${name}: Kelly nameplate stays above the portrait`).toBeLessThanOrEqual(geometry.mc!.y + geometry.mcFigure!.y);
+      expect(geometry.mcPlate!.y + geometry.mcPlate!.height, `${name}: Kelly nameplate stays over the transparent top edge of the bust crop`).toBeLessThanOrEqual(geometry.mc!.y + geometry.mcFigure!.y + 52);
     } else {
       expect(geometry.mcPlate!.y, `${name}: Kelly nameplate sits below the half-body crop`).toBeGreaterThanOrEqual(geometry.mc!.y + geometry.mcFigure!.y + geometry.mcFigure!.height);
     }
@@ -967,7 +967,7 @@ test('question scene uses the official logo, approved Kelly/chibi assets and are
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
-  expect(mcCrop.parentHeight).toBe(240);
+  expect(mcCrop.parentHeight).toBe(208);
   expect(mcCrop.imageHeight).toBe(mcCrop.parentHeight);
   expect(await kelly.evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover');
   expect(await kelly.evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');

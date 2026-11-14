@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 
 const option = (process.env.C0194_OPTION ?? 'A').toLowerCase();
-const reviewDir = join(process.cwd(), '.claude', 'review', 'C0202');
+const reviewDir = join(process.cwd(), '.claude', 'review', 'C0205');
 
 test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, async ({ page }) => {
   await mkdir(reviewDir, { recursive: true });

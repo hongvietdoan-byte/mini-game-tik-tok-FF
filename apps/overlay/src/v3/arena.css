@@ -1587,8 +1587,8 @@
   padding: 8px 24px;
 }
 .v3-stage--question-user .v3-mc .v3-bubble p { font-size: 22px; line-height: 1.05; }
-.v3-stage--question-user.has-fastest-callout .v3-mc .v3-mc-figure { top: -64px; width: 180px; height: 208px; }
-.v3-stage--question-user.has-fastest-callout .v3-mc .v3-mc-figure img { width: 180px; height: 208px; }
+.v3-stage--question-user .v3-mc .v3-mc-figure { top: -64px; width: 180px; height: 208px; }
+.v3-stage--question-user .v3-mc .v3-mc-figure img { width: 180px; height: 208px; }
 .v3-stage--question-user .v3-mc .v3-mc-plate { left: 100px; top: -58px; width: 180px; height: 44px; font-size: 17px; }
 .v3-stage--question-user.has-long-prompt .v3-question,
 .v3-stage--question-user.has-long-prompt.has-long-options .v3-question { top: 174px; }
