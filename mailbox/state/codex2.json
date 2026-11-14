@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 210,
-  "heartbeat": "2026-11-14T15:32:13+07:00",
-  "state": "waiting",
-  "task": null,
-  "note": "Hộp thư trống; đã báo rảnh theo BOARD, chờ coordinator giao việc mới",
+  "heartbeat": "2026-11-14T15:52:59+07:00",
+  "state": "working",
+  "task": "C-0215",
+  "note": "Đã nhận C-0215/C-0216, tạo worktree codex2/c0214-user-mockup từ 6daa751; đang đo mock và rà bố cục hiện tại",
   "done": []
 }
