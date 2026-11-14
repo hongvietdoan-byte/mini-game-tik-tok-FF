@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 201,
-  "heartbeat": "2026-11-14T10:38:17+07:00",
-  "state": "waiting",
-  "task": "none",
-  "note": "Không có thư chưa xử lý; DP1/DP2 đã hoàn tất theo BOARD, chờ thư mới.",
+  "heartbeat": "2026-11-14T10:58:51+07:00",
+  "state": "working",
+  "task": "C-0203",
+  "note": "Đã ack; chuẩn bị worktree riêng và merge release candidate theo thứ tự giao việc.",
   "done": []
 }
