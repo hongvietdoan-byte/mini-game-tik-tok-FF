@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 220,
-  "heartbeat": "2026-11-14T17:18:52+07:00",
+  "heartbeat": "2026-11-14T17:19:55+07:00",
   "state": "waiting",
   "task": "C-0215",
-  "note": "Đã push nhánh codex2/c0214-user-mockup, gửi report Y-0360; chờ coordinator/người dùng duyệt ảnh trước khi gộp",
+  "note": "Không có thư mới; chờ coordinator/người dùng duyệt ảnh C-0215 trước khi gộp",
   "done": []
 }
