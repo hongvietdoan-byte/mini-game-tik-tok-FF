@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-14T23:50:21+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-14T23:51:01+07:00",
+  "state": "waiting",
   "task": "C-0224",
-  "note": "Đang sửa ngắt câu thoại, cỡ chữ lobby và contact sheet theo đúng geometry bong bóng",
+  "note": "Đã push e5b920c và gửi report Y-0372; C-0224 done, chờ điều phối tiếp theo",
   "done": []
 }
