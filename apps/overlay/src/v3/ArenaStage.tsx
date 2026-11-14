@@ -17,6 +17,26 @@ import './arena.css';
 
 const ASSET_BASE = '/assets';
 
+type FastestCorrectAnswerView = {
+  questionInstanceId: string;
+  publicPlayerId: string;
+  seatId: string | null;
+  safeDisplayName: string;
+  responseMs: number;
+};
+
+function fastestCorrectFor(snapshot: PublicSnapshot): FastestCorrectAnswerView | null {
+  const fastest = (snapshot as PublicSnapshot & { fastestCorrectAnswer?: FastestCorrectAnswerView | null }).fastestCorrectAnswer;
+  if (snapshot.scene !== 'REVEAL' || !snapshot.reveal || !fastest ||
+    fastest.questionInstanceId !== snapshot.reveal.questionInstanceId ||
+    !fastest.safeDisplayName.trim() || !Number.isFinite(fastest.responseMs) || fastest.responseMs < 0) return null;
+  return fastest;
+}
+
+function fastestSeconds(ms: number) {
+  return new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(ms / 1000);
+}
+
 function formatTime(ms: number) {
   const s = Math.ceil(ms / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -51,7 +71,7 @@ export function BrandHeader({ snapshot }: { snapshot: PublicSnapshot }) {
   </header>;
 }
 
-function Top10({ entries }: { entries: LeaderboardEntry[] }) {
+function Top10({ entries, fastestPublicPlayerId, showFastestBadge }: { entries: LeaderboardEntry[]; fastestPublicPlayerId?: string; showFastestBadge: boolean }) {
   const config = useHudConfig();
   return (
     <section className="v3-top10" data-layer="leaderboard" data-testid="v3-top10">
@@ -70,6 +90,7 @@ function Top10({ entries }: { entries: LeaderboardEntry[] }) {
                   x{e.top1Streak}
                 </b>
               )}
+              {showFastestBadge && e.playerId === fastestPublicPlayerId && <b className="v3-fastest-row-badge" data-testid="fastest-row-badge" aria-label="Người trả lời đúng nhanh nhất">⚡</b>}
             </span>
             <span className="v3-score">{e.score.toLocaleString('vi-VN')}</span>
           </li>
@@ -165,7 +186,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   );
 }
 
-export function McKelly({ snapshot, bubbleOverride }: { snapshot: PublicSnapshot; bubbleOverride?: string }) {
+export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b' }) {
   const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
@@ -181,12 +202,17 @@ export function McKelly({ snapshot, bubbleOverride }: { snapshot: PublicSnapshot
         </svg>
         MC KELLY
       </div>
-      {bubbleOverride !== undefined && <div className="v3-bubble" data-testid="mc-bubble">
+      {bubbleOverride !== undefined && <div className={`v3-bubble ${fastest ? `v3-fastest-callout v3-fastest-callout-${fastestVariant ?? 'a'}` : ''}`} data-testid="mc-bubble">
+        {fastest ? <div className="v3-fastest-copy" data-testid="fastest-callout">
+          <strong>{fastestVariant === 'b' ? '⚡ NHANH NHẤT' : 'NHANH NHẤT'}</strong>
+          <b className="v3-fastest-name">{fastest.safeDisplayName}</b>
+          <span>{fastestSeconds(fastest.responseMs)} giây</span>
+        </div> :
         <p>
           {splitBubble(bubble).map((part, i) =>
             part.hl ? <em key={i}>{part.text}</em> : <React.Fragment key={i}>{part.text}</React.Fragment>,
           )}
-        </p>
+        </p>}
       </div>}
     </section>
   );
@@ -200,9 +226,9 @@ export function McCelebration() {
   );
 }
 
-/** Dành lối cho bảng câu hỏi và MC: trong màn câu hỏi dồn hàng ghế vào vùng 1376–1860. */
-const seatY = (y: number, compactQuestion = false) => {
-  const top = compactQuestion ? 1376 : AUDIENCE_TOP_Y;
+/** Chừa lớp MC và thẻ vinh danh ở phía trên; 35 ghế vẫn nằm trọn trong vùng 1416–1860. */
+const seatY = (y: number, compactQuestion = false, reserveFastestCard = false) => {
+  const top = reserveFastestCard ? 1416 : compactQuestion ? 1376 : AUDIENCE_TOP_Y;
   const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
   return top + ((y - 1105) * (front - top)) / (1825 - 1105);
 };
@@ -219,7 +245,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
   );
 }
 
-type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean };
+type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; reserveFastestCard: boolean; fastestSeatId?: string | null };
 
 function sameSeat(previous: SeatProps, next: SeatProps) {
   const a = previous.seat;
@@ -231,17 +257,18 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
     left.characterId === right.characterId &&
     left.pinned === right.pinned &&
     left.result === right.result);
-  return previous.compactQuestion === next.compactQuestion && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
+  return previous.compactQuestion === next.compactQuestion && previous.reserveFastestCard === next.reserveFastestCard && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
 }
 
-const Seat = React.memo(function Seat({ seat, compactQuestion }: SeatProps) {
+const Seat = React.memo(function Seat({ seat, compactQuestion, reserveFastestCard, fastestSeatId }: SeatProps) {
   const o = seat.occupant;
+  const isFastest = !!fastestSeatId && seat.slotId === fastestSeatId;
   return (
     <div
-      className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''}`}
+      className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''} ${isFastest ? 'is-fastest' : ''}`}
       style={{
         left: seat.x,
-        top: seatY(seat.y, compactQuestion),
+        top: seatY(seat.y, compactQuestion, reserveFastestCard),
         zIndex: 10 + Math.round(seat.depth),
         ['--s' as string]: seat.scale,
       }}
@@ -257,19 +284,21 @@ const Seat = React.memo(function Seat({ seat, compactQuestion }: SeatProps) {
   );
 }, sameSeat);
 
-const SeatName = React.memo(function SeatName({ seat, compactQuestion }: SeatProps) {
+const SeatName = React.memo(function SeatName({ seat, compactQuestion, reserveFastestCard, fastestSeatId }: SeatProps) {
   const occupant = seat.occupant;
   if (!occupant) return null;
-  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
+  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion, reserveFastestCard), ['--s' as string]: seat.scale }}>
     {shortName(occupant.displayName, 13)}
   </div>;
 }, sameSeat);
 
 function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   const a = snapshot.audience;
+  const fastest = fastestCorrectFor(snapshot);
   const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
+  const reserveFastestCard = !!fastest;
   const rows = a
-    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion)])).entries()].map(([row, y]) => ({ row, y }))
+    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion, reserveFastestCard)])).entries()].map(([row, y]) => ({ row, y }))
     : [];
   return (
     <section className="v3-audience" data-layer="audience-seats">
@@ -277,10 +306,10 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
       {rows.map((r) => (
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
-      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} />)}
+      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} reserveFastestCard={reserveFastestCard} fastestSeatId={fastest?.seatId} />)}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} />)}
+        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} reserveFastestCard={reserveFastestCard} fastestSeatId={fastest?.seatId} />)}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
@@ -289,13 +318,15 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
 
 export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean }) {
   const config = useHudConfig();
+  const fastest = fastestCorrectFor(snapshot);
+  const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
     ? 'CHÀO MỪNG ĐẾN VỚI ĐẤU TRƯỜNG BÃO TỐ!'
     : questionBackground ? snapshot.mc.bubble : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
@@ -394,9 +425,9 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
         </svg>
       </div>
       <BrandHeader snapshot={snapshot} />
-      <Top10 entries={snapshot.leaderboard?.entries ?? []} />
+      <Top10 entries={snapshot.leaderboard?.entries ?? []} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
-      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} />
+      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={fastest} fastestVariant={fastestVariant} />
       <Audience snapshot={snapshot} />
     </div>
   );
