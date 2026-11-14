@@ -63,14 +63,31 @@ Mã HTTP của `/commands`:
    - `round.questionIndex` **bắt đầu từ 0** → hiển thị `questionIndex + 1` / `questionCount`.
    - `question`: có ở PREPARE, ACCEPTING, REVEAL và LEADERBOARD ngắn (kể cả khi đang PAUSED/CONNECTION_INTERRUPTED từ đó).
      **PREPARE: `options = []`, `optionsVisible = false`** — chỉ hiện câu hỏi; mở nhận đáp án (ACCEPTING) mới có 4 đáp án (người dùng chốt).
-   - Sau MỖI câu đã công bố có trạng thái `LEADERBOARD` ngắn (`leaderboardMs`, 4 s): `scene = 'REVEAL'` (giữ bố cục câu hỏi, đáp án đúng vẫn hiện, Top 10 gọn cập nhật).
+   - Sau MỖI câu đã công bố có trạng thái `LEADERBOARD` ngắn (`leaderboardMs`, 9 s): `scene = 'REVEAL'` (giữ bố cục câu hỏi, đáp án đúng vẫn hiện, Top 10 gọn cập nhật).
      Ở mốc (mỗi 5 câu + câu cuối): `scene = 'INTERIM_TOP10'`, BXH lớn (`bigLeaderboardMs`, mặc định 6 s). Câu bị huỷ trước công bố chỉ vào LEADERBOARD nếu là mốc.
    - `reveal`: chỉ có ở REVEAL và LEADERBOARD ngắn ngay sau đó.
+   - `fastestCorrectAnswer`: null ngoài công bố đáp án / BXH sau câu; nếu có đáp án đúng thì gồm `questionInstanceId`, `publicPlayerId`, `seatId`, `safeDisplayName`, `responseMs`. `publicPlayerId` là mã opaque cùng giá trị với `leaderboard.entries[].playerId`; `seatId` là `audience.seats[].slotId` hoặc null khi người thắng chưa có ghế. `responseMs` tính từ `opened_at_ms` tới thời điểm server nhận đáp án; cùng timestamp giữ đáp án được lưu trước.
    - `leaderboard`: `COMPACT` (≤ 10) trong mọi cảnh câu hỏi (PREPARE/ACCEPTING/REVEAL/LEADERBOARD ngắn) — chỉ đổi khi chốt câu;
      `FULL` (≤ 10) ở BXH lớn / ROUND_END / VICTORY / INTERMISSION; còn lại null.
    - `podium` chỉ ở ROUND_END / VICTORY. `answerCount` = tổng đáp án được nhận của câu hiện tại (0 ở PREPARE).
    - `mc: { state: 'idle'|'welcome'|'ask'|'react'|'celebrate', bubble }` — MC Kelly, không phải người chơi; lời thoại do server quyết định.
    - Mọi thông điệp có `seq` tăng đơn điệu trong một lần chạy server; client thấy `seq` hụt hoặc nhỏ hơn bản đang giữ (server khởi động lại) → dùng snapshot mới nhất.
+
+### Thời lượng mặc định có đồng hồ trên overlay
+
+| Pha / cấu hình | Cũ | Mới | Overlay có đồng hồ đếm giây |
+| --- | ---: | ---: | --- |
+| `lobbyMs` — sảnh chờ | 30 s | 30 s | Không |
+| `prepareMs` — chuẩn bị câu | 3 s | 8 s | Có |
+| `answerMs` — nhận đáp án | 15 s | 20 s | Có |
+| `revealMs` — công bố đáp án | 4 s | 9 s | Có |
+| `leaderboardMs` — BXH ngắn sau câu | 4 s | 9 s | Có |
+| `bigLeaderboardMs` — BXH lớn | 6 s | 6 s | Không |
+| `roundEndMs` — kết thúc vòng | 2 s | 2 s | Không |
+| `victoryMs` — vinh danh | 18 s | 18 s | Không |
+| `intermissionMs` — nghỉ giữa vòng | 25 s | 30 s | Có |
+
+Pha MC đọc câu dùng `MAX_MC_READING_MS = 20 s` nhưng overlay hiện trạng thái đọc, không hiện bộ đếm; giá trị này giữ nguyên. Session đã lưu với thời lượng tường minh tiếp tục giữ cấu hình cũ; giá trị mới chỉ điền cho cấu hình thiếu trường hoặc tạo session mới.
 8. **ACK của overlay (V3.1):** sau mỗi lần render xong một snapshot, overlay gửi `{ type: 'ACK', stateVersion, seq? }` (`ClientAckSchema`). Server dùng để chấm bước 9 "Overlay cập nhật đúng". Kênh admin gửi ACK bị bỏ qua.
 9. `AdminSnapshot.live` (`LiveSourceHealth`): `status`, `connectedSinceMs`, `lastCommentAtMs`, `commentsReceived`, `reconnects`, `detail`; `AdminSnapshot.overlay`: `{ clients, lastAckStateVersion, lastAckAtMs }` — số overlay đang kết nối, KHÔNG khẳng định OBS/LIVE Studio đang phát.
 10. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).

@@ -10,6 +10,7 @@ import {
   type CommandResult,
   type ConnectionStatus,
   type CreateSessionRequest,
+  type FastestCorrectAnswer,
   type IngestMetrics,
   type LiveSourceHealth,
   type LeaderboardEntry,
@@ -135,6 +136,7 @@ export class SessionRuntime {
   private ranked: LeaderboardEntry[] = [];
   private top1 = new Map<string, number>();
   private publicPlayerIds = new Map<string, string>();
+  private fastestCorrectByQuestion = new Map<string, { playerId: string; responseMs: number } | null>();
   private seenEvents = new Set<string>();
   private rejections: { atMs: number; reason: RejectReason }[] = [];
   private simulator: MockSimulator | null = null;
@@ -958,6 +960,60 @@ export class SessionRuntime {
     return this.counts.A + this.counts.B + this.counts.C + this.counts.D;
   }
 
+  private publicPlayerIdFor(playerId: string) {
+    let publicPlayerId = this.publicPlayerIds.get(playerId);
+    if (!publicPlayerId) {
+      publicPlayerId = randomUUID();
+      this.publicPlayerIds.set(playerId, publicPlayerId);
+    }
+    return publicPlayerId;
+  }
+
+  private safeDisplayNameFor(playerId: string, fallback: string, now: number) {
+    return this.playerNames.get(playerId)?.result.safeDisplayName ??
+      this.deps.nameFilter?.evaluate(fallback, playerId, now).safeDisplayName ??
+      fallback;
+  }
+
+  private fastestCorrectAnswerFor(
+    roundId: string,
+    questionInstanceId: string,
+    correctOptionId: OptionId,
+    now: number,
+  ): FastestCorrectAnswer | null {
+    let winner = this.fastestCorrectByQuestion.get(questionInstanceId);
+    if (!this.fastestCorrectByQuestion.has(questionInstanceId)) {
+      const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
+      if (!question || question.status !== 'CLOSED' || question.openedAtMs === null) {
+        this.fastestCorrectByQuestion.set(questionInstanceId, null);
+        return null;
+      }
+
+      let first: { playerId: string; receivedAtMs: number } | null = null;
+      // Store.answersForRound is ordered by insertion id. Equal millisecond receipts
+      // keep the answer the server accepted first.
+      for (const answer of this.store.answersForRound(roundId)) {
+        if (answer.questionInstanceId !== questionInstanceId || answer.option !== correctOptionId) continue;
+        if (first === null || answer.receivedAtMs < first.receivedAtMs) first = answer;
+      }
+      winner = first
+        ? { playerId: first.playerId, responseMs: Math.max(0, first.receivedAtMs - question.openedAtMs) }
+        : null;
+      this.fastestCorrectByQuestion.set(questionInstanceId, winner);
+    }
+    if (!winner) return null;
+
+    const ranked = this.ranked.find((entry) => entry.playerId === winner.playerId);
+    if (!ranked) return null;
+    return {
+      questionInstanceId,
+      publicPlayerId: this.publicPlayerIdFor(winner.playerId),
+      seatId: this.audience.seatForPlayer(winner.playerId)?.slotId ?? null,
+      safeDisplayName: this.safeDisplayNameFor(winner.playerId, ranked.displayName, now),
+      responseMs: winner.responseMs,
+    };
+  }
+
   /** Đánh giá lại tên của người chơi trong vòng hiện tại sau khi admin đổi luật. */
   refreshNameFilter(emit = true) {
     if (!this.engine.round || !this.deps.nameFilter) return;
@@ -1049,24 +1105,17 @@ export class SessionRuntime {
     // PREPARE chỉ hiện câu hỏi; READING hiện đủ bốn đáp án để MC đọc, chưa mở nhận comment.
     const showOptions = showQuestion && eff !== 'PREPARE';
     const showReveal = !!snap && postReveal;
+    const showFastestCorrect = !!snap && !!e.round && postReveal;
     let leaderboard: PublicSnapshot['leaderboard'] = null;
     const withChar = (list: LeaderboardEntry[]) =>
       list.map((x) => {
         const characterId = this.audience.characterOf(x.playerId);
         const top1Streak = this.top1.get(x.playerId);
-        const safeDisplayName = this.playerNames.get(x.playerId)?.result.safeDisplayName ??
-          this.deps.nameFilter?.evaluate(x.displayName, x.playerId, now).safeDisplayName ??
-          x.displayName;
-        let publicPlayerId = this.publicPlayerIds.get(x.playerId);
-        if (!publicPlayerId) {
-          publicPlayerId = randomUUID();
-          this.publicPlayerIds.set(x.playerId, publicPlayerId);
-        }
         return {
           rank: x.rank,
           tied: x.tied,
-          playerId: publicPlayerId,
-          safeDisplayName,
+          playerId: this.publicPlayerIdFor(x.playerId),
+          safeDisplayName: this.safeDisplayNameFor(x.playerId, x.displayName, now),
           score: x.score,
           correctCount: x.correctCount,
           ...(characterId ? { characterId } : {}),
@@ -1085,6 +1134,9 @@ export class SessionRuntime {
           optionCounts: { ...this.counts },
           explanation: snap!.explanation,
         }
+      : null;
+    const fastestCorrectAnswer = showFastestCorrect
+      ? this.fastestCorrectAnswerFor(e.round!.roundId, snap!.questionInstanceId, snap!.correctOptionId, now)
       : null;
     return {
       contractVersion: CONTRACT_VERSION,
@@ -1113,6 +1165,7 @@ export class SessionRuntime {
         : null,
       answerCount: showOptions ? this.answerCount() : 0,
       participantCount: e.round ? this.participants : 0,
+      fastestCorrectAnswer,
       reveal: revealView,
       leaderboard,
       podium:

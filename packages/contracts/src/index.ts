@@ -391,15 +391,15 @@ export type McView = { state: McState; bubble: string };
 
 export const TimingsSchema = z.object({
   lobbyMs: z.number().int().min(0).max(600_000).default(30_000),
-  prepareMs: z.number().int().min(500).max(60_000).default(3_000),
-  answerMs: z.number().int().min(3_000).max(120_000).default(15_000),
-  revealMs: z.number().int().min(500).max(60_000).default(4_000),
-  leaderboardMs: z.number().int().min(500).max(60_000).default(4_000),
+  prepareMs: z.number().int().min(500).max(60_000).default(8_000),
+  answerMs: z.number().int().min(3_000).max(120_000).default(20_000),
+  revealMs: z.number().int().min(500).max(60_000).default(9_000),
+  leaderboardMs: z.number().int().min(500).max(60_000).default(9_000),
   /** BXH lớn ở mốc (mỗi leaderboardInterval câu + câu cuối) — V3: 5–8 s. Thiếu → 6 s. */
   bigLeaderboardMs: z.number().int().min(500).max(60_000).optional(),
   roundEndMs: z.number().int().min(0).max(60_000).default(2_000),
   victoryMs: z.number().int().min(1_000).max(120_000).default(18_000),
-  intermissionMs: z.number().int().min(1_000).max(600_000).default(25_000),
+  intermissionMs: z.number().int().min(1_000).max(600_000).default(30_000),
 });
 export type Timings = z.infer<typeof TimingsSchema>;
 export const DEFAULT_TIMINGS: Timings = TimingsSchema.parse({});
@@ -830,6 +830,15 @@ export type RevealView = {
   explanation: string;
 };
 
+/** Public-safe winner of one question; `publicPlayerId` is opaque and `seatId` matches AudienceSeatView.slotId. */
+export type FastestCorrectAnswer = {
+  questionInstanceId: string;
+  publicPlayerId: string;
+  seatId: string | null;
+  safeDisplayName: string;
+  responseMs: number;
+};
+
 export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'BLOCKED';
 
 /** Một ghế khán giả trên overlay (V3 §6). KHÔNG chứa playerId/userId — chỉ dữ liệu hiển thị. */
@@ -873,6 +882,8 @@ export type PublicSnapshot = {
   question: PublicQuestion | null;
   answerCount: number;
   participantCount: number;
+  /** Present only while publishing a question result or its following leaderboard. */
+  fastestCorrectAnswer: FastestCorrectAnswer | null;
   reveal: RevealView | null;
   leaderboard: { kind: 'COMPACT' | 'FULL'; entries: PublicLeaderboardEntry[] } | null;
   podium: PublicPodium | null;

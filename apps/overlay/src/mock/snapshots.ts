@@ -164,8 +164,22 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     paused: name === 'paused',
     mode: 'MOCK',
     timer: {
-      durationMs: name === 'reading' || name === 'reading-longest' ? 20_000 : 15_000,
-      remainingMs: name === 'prepare' ? 3_000 : name === 'reading' || name === 'reading-longest' ? 19_000 : 12_000,
+      durationMs: name === 'lobby' ? 30_000
+        : name === 'prepare' ? 8_000
+          : name === 'reading' || name === 'reading-longest' ? 20_000
+            : isReveal ? 9_000
+              : name.startsWith('top10') ? 6_000
+                : name === 'intermission' ? 30_000
+                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 18_000
+                    : 20_000,
+      remainingMs: name === 'lobby' ? 30_000
+        : name === 'prepare' ? 8_000
+          : name === 'reading' || name === 'reading-longest' ? 19_000
+            : isReveal ? 9_000
+              : name.startsWith('top10') ? 6_000
+                : name === 'intermission' ? 30_000
+                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 18_000
+                    : 16_000,
       running: name !== 'paused',
     },
     round: { roundNumber: 1, questionIndex: 4, questionCount: 15 },
@@ -185,6 +199,13 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     } : null,
     answerCount: name === 'prepare' || name === 'reading' ? 0 : 42,
     participantCount: short ? 3 : 57,
+    fastestCorrectAnswer: isReveal ? {
+      questionInstanceId: 'demo-question-5',
+      publicPlayerId: visibleLeaderboard[0]!.playerId,
+      seatId: null,
+      safeDisplayName: visibleLeaderboard[0]!.safeDisplayName,
+      responseMs: 1_234,
+    } : null,
     reveal: isReveal ? {
       questionInstanceId: 'demo-question-5',
       correctOptionId: 'B',
