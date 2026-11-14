@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 
-const option = (process.env.C0194_OPTION ?? 'A').toLowerCase();
+  const option = (process.env.C0194_OPTION ?? 'A').toLowerCase();
 const reviewDir = join(process.cwd(), '.claude', 'review', 'C0205');
 
 test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, async ({ page }) => {
@@ -13,7 +13,7 @@ test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, a
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   const result = await stage.evaluate((root) => {
     const selectors = {
-      title: '.v3-title', logo: '[data-testid="brand-logo"]', ribbon: '.v3-title-ribbon',
+      title: '.v3-title', logo: '[data-testid="brand-logo-frame"]', ribbon: '.v3-title-ribbon',
       event: '.v3-event-mark', round: '.v3-round-card', top10: '.v3-top10',
       board: '.v3-board', question: '.v3-question', timer: '.v3-timer',
       host: '[data-testid="tiktok-live-info"]', viewers: '[data-testid="tiktok-viewers"]',
@@ -29,9 +29,9 @@ test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, a
   });
   console.log('C0194 geometry:', JSON.stringify(result));
   const roundCard = stage.getByTestId('round-card');
-  expect(await roundCard.locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize)).toBe(option === 'b' ? '24px' : '36px');
-  expect(await roundCard.getByTestId('participant-count').evaluate((element) => getComputedStyle(element).fontSize)).toBe(option === 'b' ? '34px' : '52px');
-  expect(await roundCard.locator('.v3-round-label').evaluate((element) => getComputedStyle(element).fontSize)).toBe(option === 'b' ? '18px' : '24px');
+  expect(await roundCard.locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize)).toBe('26px');
+  expect(await roundCard.getByTestId('participant-count').evaluate((element) => getComputedStyle(element).fontSize)).toBe('44px');
+  expect(await roundCard.locator('.v3-round-label').evaluate((element) => getComputedStyle(element).fontSize)).toBe('20px');
   const roundLines = await Promise.all([
     roundCard.locator('.v3-round-title'),
     roundCard.getByTestId('participant-count'),
@@ -46,15 +46,15 @@ test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, a
   const roundBounds = await roundCard.boundingBox();
   expect(roundBounds).not.toBeNull();
   expect(roundBounds!.y).toBeGreaterThanOrEqual(15);
-  expect(roundBounds!.y + roundBounds!.height).toBeLessThanOrEqual(option === 'a' ? 144 : 124);
+  expect(roundBounds, 'shared round card follows the user reference').toMatchObject({ x: 770, y: 133, width: 230, height: 95 });
   const expected = {
-    logo: { x: 453.6, y: 18, width: 172.8, height: 178.5 },
-    ribbon: { x: 430.4, y: 212.5, width: 325.2, height: 53 },
-    event: { x: 96.4, y: 14, width: 213.3, height: 94 },
-    round: { x: 760, y: 16, width: 220, height: option === 'a' ? 128 : 108 },
-    top10: { x: 98, y: 345, width: 300, height: 466 },
-    board: { x: 416, y: 345, width: 567, height: 470 },
-    question: { x: 436, y: 492, width: 527, height: 160 },
+    logo: { x: 400, y: 30, width: 255, height: 210 },
+    ribbon: { x: 220, y: 250, width: 635, height: 72 },
+    event: { x: 82, y: 133, width: 230, height: 92 },
+    round: { x: 770, y: 133, width: 230, height: 95 },
+    top10: { x: 88, y: 348, width: 317, height: 462 },
+    board: { x: 425, y: 348, width: 570, height: 465 },
+    question: { x: 450, y: 510, width: 525, height: 145 },
   } as const;
   for (const [element, dimensions] of Object.entries(expected)) {
     const actual = result[element as keyof typeof result] as { x: number; y: number; width: number; height: number } | null;

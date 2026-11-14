@@ -9,10 +9,13 @@ const MOCK_CHIBI = ['chibi-002-a124', 'chibi-004-alvaro', 'chibi-005-andrew', 'c
 
 /** 35 ghế mock (tên hư cấu, gồm tên dài / emoji / chuỗi giống HTML) — toạ độ lấy từ cùng audience-engine như server. */
 const MOCK_NAMES = [
-  'StormKing', 'Rồng Lửa', 'BoomBoom', 'Choco.M', 'Hami', 'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy',
-  'ThuyTrang', 'Hồ Anh Tuấn', 'Mai Linh', 'kho kho', 'TEENHAYQUAYCUOP', 'Nhân cách', 'Tú Toàn', 'Huy Vũ', 'thảo cute', 'Bé cua 2k',
-  'Phươngg', 'Xunx', 'Trần Khoa', 'sóng chó điên 99', '34a.', 'LMHxr76', 'Muốn học giỏi', 'Lananh', 'nguyenhuyen', 'Mai Trí Đức',
-  'Hoài Thương', 'Choco Mutt', '<b>bó đái</b>', 'LNH 👨‍👩‍👧', 'Misu',
+  'FFVN.Kelly', 'StormKing', 'BVD.Champion', 'Choco.M', 'Hami',
+  'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy',
+  'ThuyTrang', 'Hồ Anh Tuấn', 'Mai Linh', 'kho kho', 'TEENHAYQUAYCUOP',
+  'Nhân cách', 'Tú Toàn', 'Huy Vũ', 'thảo cute', 'Bé cua 2k',
+  'Phươngg', 'Xunx', 'Trần Khoa', 'sóng chó điên 99', '34a.',
+  'LMHxr76', 'Muốn học giỏi', 'Lananh', 'nguyenhuyen', 'Mai Trí Đức',
+  'Hoài Thương', 'Choco Mutt', 'bó dài về phố', 'LNH 👨‍👩‍👧', 'Misu',
 ];
 function mockAudience(withResults: boolean): AudienceView {
   const slots = createSlots();
@@ -23,7 +26,8 @@ function mockAudience(withResults: boolean): AudienceView {
     seats: slots.map((slot, i) => ({
       ...slot,
       occupant: {
-        safeDisplayName: MOCK_NAMES[i % MOCK_NAMES.length]!,
+        // createSlots() trả hàng 0 ở bục dưới; đảo chỉ thứ tự hàng để mock khớp ảnh mẫu trên→dưới.
+        safeDisplayName: MOCK_NAMES[(6 - slot.rowIndex) * 5 + (i % 5)]!,
         characterId: MOCK_CHIBI[(i * 7) % MOCK_CHIBI.length]!,
         pinned: i < 3,
         result: withResults ? (i % 3 === 0 ? 'wrong' : i % 5 === 0 ? 'none' : 'correct') : null,

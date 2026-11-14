@@ -386,12 +386,6 @@ function acceptedAnswerCount(running: RunningQuiz) {
   return counts.A + counts.B + counts.C + counts.D;
 }
 
-async function displayedAnswerCount(page: Page) {
-  const text = await page.getByTestId('answer-count').innerText();
-  const value = /[\d.,]+/.exec(text)?.[0]?.replaceAll('.', '').replaceAll(',', '') ?? '';
-  return Number(value);
-}
-
 async function measureTenSecondFps(page: Page) {
   return page.evaluate(() => new Promise<{ elapsedMs: number; frameCount: number; averageFps: number; secondBuckets: number[] }>((resolvePromise) => {
     const start = performance.now();
@@ -532,9 +526,8 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   expect(acceptedAnswerCount(running)).toBe(35);
   expect(runtime.metrics.accepted).toBe(35);
   running.scheduler.advance(300);
-  await expect(overlay.getByTestId('answer-count')).toBeVisible();
+  await expect(overlay.getByTestId('answer-count')).toHaveCount(0);
   expect(acceptedAnswerCount(running)).toBe(35);
-  await expect.poll(() => displayedAnswerCount(overlay)).toBe(35);
 
   const firstAcceptingSnapshot = [...frames].reverse().find((frame) => frame.payload.state === 'ACCEPTING');
   expect(firstAcceptingSnapshot).toBeDefined();
@@ -593,7 +586,7 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
     });
     expect(acceptedAnswerCount(running)).toBe(1);
     running.scheduler.advance(300);
-    await expect.poll(() => displayedAnswerCount(overlay)).toBe(acceptedAnswerCount(running));
+    await expect(overlay.getByTestId('answer-count')).toHaveCount(0);
     running.scheduler.advance(runtime.config.timings.answerMs);
     await expect.poll(() => runtime.engine.state).toBe('REVEAL');
     await expect(overlay.getByTestId('stage')).toHaveAttribute('data-scene', 'REVEAL');

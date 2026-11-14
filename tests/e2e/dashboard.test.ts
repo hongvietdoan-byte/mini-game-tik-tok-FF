@@ -578,10 +578,10 @@ test('Giao diện HUD đếm grapheme, lưu chữ, tải/reset ảnh và đổi 
   const waitForPreview = async () => {
     await expect(preview).toHaveAttribute('src', `http://127.0.0.1:${overlayPort}/?role=preview&mock=question`);
     await expect(previewFrame.locator('.v3-stage')).toBeVisible();
-    await expect(previewFrame.locator('.v3-title-ribbon')).toHaveCSS('font-size', '21px');
-    await expect(previewFrame.locator('.v3-round-title')).toHaveCSS('font-size', '36px');
-    await expect(previewFrame.getByTestId('participant-count')).toHaveCSS('font-size', '52px');
-    await expect(previewFrame.locator('.v3-round-label')).toHaveCSS('font-size', '24px');
+    await expect(previewFrame.locator('.v3-title-ribbon')).toHaveCSS('font-size', '38px');
+    await expect(previewFrame.locator('.v3-round-title')).toHaveCSS('font-size', '26px');
+    await expect(previewFrame.getByTestId('participant-count')).toHaveCSS('font-size', '44px');
+    await expect(previewFrame.locator('.v3-round-label')).toHaveCSS('font-size', '20px');
   };
 
   const kicker = page.getByLabel('Tên sự kiện góc trái');

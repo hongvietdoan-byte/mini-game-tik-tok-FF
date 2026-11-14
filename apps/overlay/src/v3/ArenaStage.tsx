@@ -178,11 +178,6 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
           })}
         </div>
       )}
-      {!isLobby && !isReading && !reveal && optionsVisible && (
-        <div className="v3-answer-count" data-testid="answer-count">
-          <b>{snapshot.answerCount.toLocaleString('vi-VN')}</b> câu trả lời
-        </div>
-      )}
       {q?.isDemo && debug && <div className="v3-demo" data-testid="demo-badge">DEMO</div>}
     </section>
   );
@@ -228,10 +223,10 @@ export function McCelebration() {
   );
 }
 
-/** Giữ tọa độ ghế của màn câu hỏi đúng theo bố cục đã duyệt trên main. */
-const seatY = (y: number, compactQuestion = false) => {
-  const top = compactQuestion ? 1330 : AUDIENCE_TOP_Y;
-  const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
+/** Nén riêng khoảng hàng ghế của màn câu hỏi theo lưới 7 hàng trong ảnh mẫu C-0216. */
+const seatY = (y: number, compactQuestion = false, userQuestionLayout = false) => {
+  const top = userQuestionLayout ? 1211 : compactQuestion ? 1330 : AUDIENCE_TOP_Y;
+  const front = userQuestionLayout ? 1839 : compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
   return top + ((y - 1105) * (front - top)) / (1825 - 1105);
 };
 const AUDIENCE_TOP_Y = 1190;
@@ -247,7 +242,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
   );
 }
 
-type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; allowLegacyNames: boolean; fastestSeatId?: string | null };
+type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; userQuestionLayout: boolean; allowLegacyNames: boolean; fastestSeatId?: string | null };
 
 function sameSeat(previous: SeatProps, next: SeatProps) {
   const a = previous.seat;
@@ -259,10 +254,10 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
     left.characterId === right.characterId &&
     left.pinned === right.pinned &&
     left.result === right.result);
-  return previous.compactQuestion === next.compactQuestion && previous.allowLegacyNames === next.allowLegacyNames && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
+  return previous.compactQuestion === next.compactQuestion && previous.userQuestionLayout === next.userQuestionLayout && previous.allowLegacyNames === next.allowLegacyNames && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
 }
 
-const Seat = React.memo(function Seat({ seat, compactQuestion, fastestSeatId }: SeatProps) {
+const Seat = React.memo(function Seat({ seat, compactQuestion, userQuestionLayout, fastestSeatId }: SeatProps) {
   const o = seat.occupant;
   const isFastest = !!fastestSeatId && seat.slotId === fastestSeatId;
   return (
@@ -270,11 +265,12 @@ const Seat = React.memo(function Seat({ seat, compactQuestion, fastestSeatId }: 
       className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''} ${isFastest ? 'is-fastest' : ''}`}
       style={{
         left: seat.x,
-        top: seatY(seat.y, compactQuestion),
+        top: seatY(seat.y, compactQuestion, userQuestionLayout),
         zIndex: 10 + Math.round(seat.depth),
         ['--s' as string]: seat.scale,
       }}
       data-testid="audience-seat"
+      data-row-index={seat.rowIndex}
     >
       {o && <SeatChibi characterId={o.characterId} />}
       <div className="v3-seat-back" aria-hidden="true">
@@ -286,10 +282,10 @@ const Seat = React.memo(function Seat({ seat, compactQuestion, fastestSeatId }: 
   );
 }, sameSeat);
 
-const SeatName = React.memo(function SeatName({ seat, compactQuestion, allowLegacyNames, fastestSeatId }: SeatProps) {
+const SeatName = React.memo(function SeatName({ seat, compactQuestion, userQuestionLayout, allowLegacyNames, fastestSeatId }: SeatProps) {
   const occupant = seat.occupant;
   if (!occupant) return null;
-  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
+  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} data-row-index={seat.rowIndex} style={{ left: seat.x, top: seatY(seat.y, compactQuestion, userQuestionLayout), ['--s' as string]: seat.scale }}>
     {shortName(publicPlayerName(occupant, `Khán giả ${seat.slotId}`, allowLegacyNames), 13)}
   </div>;
 }, sameSeat);
@@ -298,8 +294,9 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
   const a = snapshot.audience;
   const fastest = fastestCorrectFor(snapshot);
   const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
+  const userQuestionLayout = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const rows = a
-    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion)])).entries()].map(([row, y]) => ({ row, y }))
+    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion, userQuestionLayout)])).entries()].map(([row, y]) => ({ row, y }))
     : [];
   return (
     <section className="v3-audience" data-layer="audience-seats">
@@ -307,10 +304,10 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
       {rows.map((r) => (
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
-      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} />)}
+      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} userQuestionLayout={userQuestionLayout} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} />)}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} />)}
+        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} userQuestionLayout={userQuestionLayout} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} />)}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
@@ -327,8 +324,8 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
     : questionBackground ? snapshot.mc.bubble : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
-  const headerB = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('header')?.toLowerCase() === 'b';
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', headerB && 'v3-stage--header-b', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const userQuestionLayout = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', userQuestionLayout && 'v3-stage--user-question-layout', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} loopVideo={snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL'} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />

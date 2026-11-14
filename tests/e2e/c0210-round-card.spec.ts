@@ -45,7 +45,7 @@ async function useSnapshotsWithCounts(page: Page) {
   };
 }
 
-test('C-0210 header A giữ 36/52/24, nở riêng xuống dưới và chứa đủ các biến thể số', async ({ page }) => {
+test('C-0210 header A giữ kích thước chung 26/44/20 và chứa đủ các biến thể số', async ({ page }) => {
   await mkdir(join(reviewRoot, 'header-A'), { recursive: true });
   const publish = await useSnapshotsWithCounts(page);
   await page.goto('/?role=preview&header=a', { waitUntil: 'domcontentloaded' });
@@ -57,10 +57,10 @@ test('C-0210 header A giữ 36/52/24, nở riêng xuống dưới và chứa đ�
   const label = card.locator('.v3-round-label');
   await expect(stage).toBeVisible();
   await expect(title).toHaveText('VÒNG 1');
-  await expect(card).toHaveCSS('height', '128px');
-  await expect(title).toHaveCSS('font-size', '36px');
-  await expect(count).toHaveCSS('font-size', '52px');
-  await expect(label).toHaveCSS('font-size', '24px');
+  await expect(card).toHaveCSS('height', '95px');
+  await expect(title).toHaveCSS('font-size', '26px');
+  await expect(count).toHaveCSS('font-size', '44px');
+  await expect(label).toHaveCSS('font-size', '20px');
 
   const pill = stage.locator('.v3-title-ribbon');
   const logo = stage.locator('.v3-title.is-wide');
@@ -89,24 +89,25 @@ test('C-0210 header A giữ 36/52/24, nở riêng xuống dưới và chứa đ�
       };
     });
 
-    expect(geometry.card.height).toBe(128);
+    expect(geometry.card).toMatchObject({ x: 770, y: 133, width: 230, height: 95 });
     expect(geometry.children[0]!.y).toBeGreaterThanOrEqual(geometry.card.y);
     expect(geometry.children[0]!.bottom).toBeLessThanOrEqual(geometry.children[1]!.y);
     expect(geometry.children[1]!.bottom).toBeLessThanOrEqual(geometry.children[2]!.y);
     expect(geometry.children[2]!.bottom).toBeLessThanOrEqual(geometry.card.bottom);
-    expect(geometry.card.x).toBeGreaterThanOrEqual(geometry.pill.right);
+    const overlapsRibbon = geometry.card.x < geometry.pill.right && geometry.card.right > geometry.pill.x && geometry.card.y < geometry.pill.bottom && geometry.card.bottom > geometry.pill.y;
+    expect(overlapsRibbon).toBe(false);
     expect(geometry.card.x).toBeGreaterThanOrEqual(geometry.logo.right);
     expect(geometry.countOverflow).toBe(false);
-    expect([geometry.titleFont, geometry.countFont, geometry.labelFont]).toEqual(['36px', '52px', '24px']);
+    expect([geometry.titleFont, geometry.countFont, geometry.labelFont]).toEqual(['26px', '44px', '20px']);
 
     if (index === 0) {
-      console.log(`C-0210 Main · Branch A: ô VÒNG cao 108px → 128px, neo mép trên; ${JSON.stringify(geometry)}`);
+      console.log(`C-0210: ô VÒNG theo ảnh mẫu C-0216; ${JSON.stringify(geometry)}`);
       await stage.screenshot({ path: join(reviewRoot, 'header-A', 'question.png') });
     }
   }
 });
 
-test('C-0210 header B giữ 24/34/18, VÒNG có dấu và không tràn ở các biến thể số', async ({ page }) => {
+test('C-0210 header B URL cũ dùng cùng khung 26/44/20 và không tràn số', async ({ page }) => {
   await mkdir(join(reviewRoot, 'header-B'), { recursive: true });
   const publish = await useSnapshotsWithCounts(page);
   await page.goto('/?role=preview&header=b', { waitUntil: 'domcontentloaded' });
@@ -118,10 +119,10 @@ test('C-0210 header B giữ 24/34/18, VÒNG có dấu và không tràn ở các 
   const label = card.locator('.v3-round-label');
   await expect(stage).toBeVisible();
   await expect(title).toHaveText('VÒNG 1');
-  await expect(card).toHaveCSS('height', '108px');
-  await expect(title).toHaveCSS('font-size', '24px');
-  await expect(count).toHaveCSS('font-size', '34px');
-  await expect(label).toHaveCSS('font-size', '18px');
+  await expect(card).toHaveCSS('height', '95px');
+  await expect(title).toHaveCSS('font-size', '26px');
+  await expect(count).toHaveCSS('font-size', '44px');
+  await expect(label).toHaveCSS('font-size', '20px');
 
   for (let index = 0; index < countCases.length; index += 1) {
     const item = countCases[index]!;
@@ -130,6 +131,7 @@ test('C-0210 header B giữ 24/34/18, VÒNG có dấu và không tràn ở các 
     const rows = await Promise.all([title, count, label].map((element) => element.boundingBox()));
     const cardBox = await card.boundingBox();
     expect(cardBox).not.toBeNull();
+    expect(cardBox).toMatchObject({ x: 770, y: 133, width: 230, height: 95 });
     expect(rows.every(Boolean)).toBe(true);
     expect(rows[0]!.y).toBeGreaterThanOrEqual(cardBox!.y);
     expect(rows[0]!.y + rows[0]!.height).toBeLessThanOrEqual(rows[1]!.y);
@@ -137,7 +139,7 @@ test('C-0210 header B giữ 24/34/18, VÒNG có dấu và không tràn ở các 
     expect(rows[2]!.y + rows[2]!.height).toBeLessThanOrEqual(cardBox!.y + cardBox!.height);
 
     if (index === 0) {
-      console.log(`C-0210 Main · Branch B: ô VÒNG giữ 108px; ${JSON.stringify({ card: cardBox, rows })}`);
+      console.log(`C-0210: header=b tương thích, dùng chung ô VÒNG; ${JSON.stringify({ card: cardBox, rows })}`);
       await stage.screenshot({ path: join(reviewRoot, 'header-B', 'question.png') });
     }
   }

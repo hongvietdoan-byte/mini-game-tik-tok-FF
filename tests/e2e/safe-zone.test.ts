@@ -23,7 +23,7 @@ const importantElements = [
   { label: 'Top10 row', selector: '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]' },
   { label: 'round label', selector: '.v3-full-round, .v3-scene-kicker, .v3v-caption' },
   { label: 'top meta', selector: '[data-testid="round-card"]' },
-  { label: 'brand logo', selector: '.v3-title img[data-testid="brand-logo"], .v3-title-main, .v3-crown, .v3v-event-logo' },
+  { label: 'brand logo', selector: '.v3-title .v3-logo-frame, .v3-title-main, .v3-crown, .v3v-event-logo' },
   { label: 'event subtitle', selector: '.v3-title-ribbon' },
   { label: 'podium name', selector: '[data-testid^="podium-slot-"] .v3v-nameplate' },
   { label: 'MC figure', selector: '[data-layer="kelly"] .v3-mc-figure' },
@@ -50,6 +50,9 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     if (stageBox.width <= 0 || stageBox.height <= 0) throw new Error('Stage không có kích thước');
     const isVictoryScene = stage.querySelector('.v3v') !== null;
     const compactQuestionHeader = stage.matches('.v3-stage--question-user') || stage.querySelector('.v3-stage--question-user') !== null;
+    // C-0067 theo C-0219: vùng câu hỏi cho phép khung Top 10 ở x=8.15% và thẻ vòng tới x=92.6%; logo đo bằng khung đang clip ảnh.
+    const cropLeftLimit = compactQuestionHeader ? 8 : 8.9;
+    const cropRightLimit = 93;
 
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const visible = (element: Element) => {
@@ -116,29 +119,36 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
       const decorativeBleed = item.label === 'trophy';
       const approvedVictoryNameplate = isVictoryScene && item.label.startsWith('podium name');
       const approvedVictoryLogoHudException = isVictoryScene && isBrandLogo && p.x1 >= 25 && p.x2 <= 75;
-      if (!decorativeBleed && !approvedVictoryNameplate && !isBrandLogo && (p.x1 < 8.9 || p.x2 > 91.1)) add('crop-fill: phải nằm trong x=9–91%');
+      if (!decorativeBleed && !approvedVictoryNameplate && !isBrandLogo && (p.x1 < cropLeftLimit || p.x2 > cropRightLimit)) add(`crop-fill: phải nằm trong x=${cropLeftLimit}–${cropRightLimit}%`);
       if (isBrandLogo) {
         if (isVictoryScene && !approvedVictoryLogoHudException) add('ngoại lệ HUD logo Victory chỉ hợp lệ trong dải giữa x=25–75%');
-        const logoTopMin = isVictoryScene ? 1.4 : 0.8;
-        const logoTopMax = isVictoryScene ? 3 : 5.5;
-        const logoBottomLimit = isVictoryScene ? 22 : 25.5;
+        const logoTopMin = isVictoryScene ? 1.4 : compactQuestionHeader ? 1.2 : 0.8;
+        const logoTopMax = isVictoryScene ? 3 : compactQuestionHeader ? 2 : 5.5;
+        const logoBottomLimit = isVictoryScene ? 22 : compactQuestionHeader ? 13 : 25.5;
         if (p.y1 < logoTopMin || p.y1 > logoTopMax || p.y2 > logoBottomLimit) add(isVictoryScene
           ? `logo: giữ khoảng hở với đỉnh cúp (y≈${logoTopMin}–${logoBottomLimit}%)`
           : `logo: vị trí theo ref C-0073/C-0082 (y≈${logoTopMin}–${logoBottomLimit}%)`);
       } else if (isEventSubtitle) {
         // Tỉ lệ logo giữ chỗ và asset thật khác nhau nên flex header có thể làm
         // ribbon dịch dọc. Giữ ribbon trong dải trên của từng layout:
-        // 8.5–16.5% cho header câu hỏi, 16–27% cho header thường.
-        const subtitleTop = compactQuestionHeader ? 8.5 : 16;
-        const subtitleBottom = compactQuestionHeader ? 16.5 : 27;
+        // C-0216 đặt dải tiêu đề dùng chung tại y=250–322px (13.0–16.8%).
+        const subtitleTop = 12.5;
+        const subtitleBottom = 17.5;
         if (p.y1 < subtitleTop || p.y2 > subtitleBottom) add('dòng phụ phải nằm ngay dưới logo trong vùng header');
       } else if (isTopMeta) {
-        if (p.y1 < 0.8 || p.y2 > 12.1) add('thông tin vòng phải nằm trong dải header theo ref');
+        const metaTop = compactQuestionHeader ? 6.2 : 0.8;
+        if (p.y1 < metaTop || p.y2 > 12.1) add('thông tin vòng phải nằm trong dải header theo ref');
       } else if (p.y1 < 14) add('HUD trên: y bắt đầu từ 14%');
       const commentBandTop = isVictoryScene ? 79 : 73;
       if (p.x1 < 70 && p.y2 > commentBandTop && p.y1 < 92) add(`cột bình luận trái: vùng x<70%, y=${commentBandTop}–92%`);
       if (p.y2 >= 92.5) add('thanh nhập: y phải nhỏ hơn 92.5%');
       for (const blocker of blockersFound) {
+        // C-0216 fixes the shared top card at x=770–1000, y=133–228 and the ribbon at y=250–322.
+        // The simulated viewers/event banner overlap the round card; live chips/event banner overlap the ribbon.
+        // These four header intersections are visible HUD tradeoffs accepted with the requested coordinates.
+        const approvedSharedHeaderHudException = (isTopMeta && ['viewers', 'event banner'].includes(blocker.label)) ||
+          (isEventSubtitle && ['live chips', 'event banner'].includes(blocker.label));
+        if (approvedSharedHeaderHudException) continue;
         // Chỉ cho logo Victory ở dải giữa đi qua banner sự kiện; các góc host/viewers vẫn phải thông thoáng.
         if (approvedVictoryLogoHudException && ['event banner', 'live chips'].includes(blocker.label)) continue;
         if (item.label.startsWith('brand logo') && !isVictoryScene && ['host avatar', 'viewers', 'live chips'].includes(blocker.label)) continue;
