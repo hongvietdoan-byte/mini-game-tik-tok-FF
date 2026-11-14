@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 202,
-  "heartbeat": "2026-11-14T11:45:04+07:00",
+  "heartbeat": "2026-11-14T12:08:30+07:00",
   "state": "working",
-  "task": "C-0205",
-  "note": "Đã ack; kiểm tra hud-settings và áp dụng MC bán thân + vùng ghế ổn định cho mọi pha, kèm e2e/screenshots",
+  "task": "C-0207",
+  "note": "Đã ack đính chính; đang đối chiếu origin/main và hoàn nguyên khung đã duyệt trên các nhánh UI bị ảnh hưởng",
   "done": []
 }
