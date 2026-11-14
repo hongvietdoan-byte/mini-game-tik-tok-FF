@@ -249,7 +249,12 @@ test('C-0203: fastestCorrectAnswer từ server MOCK hiện trên overlay; mcVoic
   await commandMockRound(running, sessionId, { type: 'OPEN_LOBBY' });
   await expect(stage).toHaveAttribute('data-scene', 'LOBBY');
   await commandMockRound(running, sessionId, { type: 'START_ROUND', questionCount: 10 });
-  runUntil(running, () => runtime.engine.state === 'ACCEPTING');
+  let sawReading = runtime.engine.state === 'READING';
+  runUntil(running, () => {
+    if (runtime.engine.state === 'READING') sawReading = true;
+    return runtime.engine.state === 'ACCEPTING';
+  });
+  expect(sawReading).toBe(true);
   await expect(stage).toHaveAttribute('data-state', 'ACCEPTING');
 
   const correctOptionId = runtime.adminSnapshot().current!.correctOptionId;
