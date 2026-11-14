@@ -208,12 +208,6 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
       seatId: mockAudience(true).seats.find((seat) => seat.occupant?.safeDisplayName === 'StormKing')?.slotId ?? null,
       safeDisplayName: 'StormKing',
       responseMs: 1_240,
-    } : isReveal ? {
-      questionInstanceId: 'demo-question-5',
-      publicPlayerId: visibleLeaderboard[0]!.playerId,
-      seatId: null,
-      safeDisplayName: visibleLeaderboard[0]!.safeDisplayName,
-      responseMs: 1_234,
     } : null,
     reveal: isReveal ? {
       questionInstanceId: 'demo-question-5',
