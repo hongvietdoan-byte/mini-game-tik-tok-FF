@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 220,
-  "heartbeat": "2026-11-14T20:00:09+07:00",
+  "heartbeat": "2026-11-14T20:09:49+07:00",
   "state": "working",
   "task": "C-0221",
-  "note": "Đã ack Y-0362; sửa hai vị trí ảnh Kelly theo phạm vi C-0221 trong worktree c0214-user-mockup",
+  "note": "Ảnh C-0221 đã chụp, Kelly bán thân và cụm Top 10 đã đúng vị trí; test hình mục tiêu đạt, đang chạy kiểm tra tổng thể",
   "done": []
 }
