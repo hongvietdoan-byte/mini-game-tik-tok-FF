@@ -1,4 +1,4 @@
-import type { GameState, PublicLeaderboardEntry, PublicPodium, PublicSnapshot, Scene } from '@quiz/contracts';
+import type { GameState, McState, PublicLeaderboardEntry, PublicPodium, PublicSnapshot, Scene } from '@quiz/contracts';
 import { INITIAL_TEST_SAFE_ZONE, type AudienceView } from '@quiz/contracts';
 import { createSlots } from '@quiz/audience-engine';
 
@@ -114,7 +114,7 @@ function firstGraphemes(text: string, count: number): string {
     .join('');
 }
 
-export function makeMockSnapshot(name: string): PublicSnapshot | null {
+export function makeMockSnapshot(name: string, mcStateOverride?: McState): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
   const short = name === 'top10-short';
@@ -224,7 +224,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
         : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
-      state: name === 'prepare' || name === 'reading' || name === 'reading-longest' ? 'ask' : isReveal ? 'react' : 'idle',
+      state: mcStateOverride ?? (name === 'prepare' || name === 'reading' || name === 'reading-longest' ? 'ask' : isReveal ? 'react' : 'idle'),
       bubble: isReveal
         ? 'Chính xác! Đáp án B. Cùng xem bảng xếp hạng nhé!'
         : name === 'reading' || name === 'reading-longest'

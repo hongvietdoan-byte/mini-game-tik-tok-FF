@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PublicSnapshot, WsMessage } from '@quiz/contracts';
+import type { McState, PublicSnapshot, WsMessage } from '@quiz/contracts';
 import { selectNewestSnapshot, shouldAcceptSnapshotSeq } from '../overlayLogic';
 import { makeMockSnapshot } from '../mock/snapshots';
 import type { OverlayRole } from '../overlayRole';
@@ -54,7 +54,7 @@ export function applyAnswerCounts(
   };
 }
 
-export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, audioState: AudioEngineState) {
+export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, audioState: AudioEngineState, mockMcState?: McState) {
   const [snapshot, setSnapshot] = useState<PublicSnapshot | null>(null);
   const [connection, setConnection] = useState<SnapshotConnection>('connecting');
   const [serverTimeMs, setServerTimeMs] = useState(Date.now());
@@ -65,7 +65,7 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
 
   useEffect(() => {
     if (mockScene) {
-      const mock = makeMockSnapshot(mockScene);
+      const mock = makeMockSnapshot(mockScene, mockMcState);
       activeSocket.current = null;
       latest.current = mock;
       latestSeq.current = null;
@@ -148,7 +148,7 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
       if (activeSocket.current === socket) activeSocket.current = null;
       socket?.close();
     };
-  }, [mockScene]);
+  }, [mockScene, mockMcState]);
 
   useEffect(() => {
     if (mockScene || !snapshot) return;
