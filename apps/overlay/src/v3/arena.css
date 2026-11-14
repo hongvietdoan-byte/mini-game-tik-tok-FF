@@ -1559,17 +1559,17 @@
 .v3-stage--question-user .v3-header .v3-title.is-wide .v3-brand-logo { width: 100%; height: 100%; max-width: 100%; object-fit: contain; }
 .v3-stage--question-user .v3-header .v3-title.is-wide .v3-title-ribbon { width: 325.25px; min-width: 325.25px; max-width: 325.25px; box-sizing: border-box; text-align: center; }
 
-/* C-0194 A: giữ cỡ chữ B2, nén khoảng đệm của ô vòng để nằm trên HUD TikTok. */
+/* C-0210 A: giữ cỡ chữ duyệt và nở riêng ô vòng xuống dưới để tách ba dòng. */
 .v3-round-card {
   top: -16px;
-  height: 108px;
-  grid-template-rows: 25px 37px 19px;
-  gap: 11.5px;
+  height: 128px;
+  grid-template-rows: 36px 52px 24px;
+  gap: 4px;
   padding: 0 12px;
 }
 .v3-round-card .v3-round-title,
 .v3-round-card .v3-round-count,
-.v3-round-card .v3-round-label { display: grid; place-items: center; line-height: .8; }
+.v3-round-card .v3-round-label { display: grid; place-items: center; line-height: 1; }
 .v3-stage--question-user .v3-header .v3-title.is-wide { width: 16%; }
 .v3-header .v3-title.is-wide .v3-title-ribbon { padding: 16px 40px; font-size: 24px; line-height: 1; }
 .v3-stage--question-user .v3-header .v3-title.is-wide .v3-title-ribbon { position: relative; left: 53px; margin-top: 16px; font-size: 21px; }
@@ -1667,3 +1667,4 @@
 .v3-stage--header-b .v3-round-card .v3-round-label { font-size: 18px !important; }
 .v3-stage--question-user.has-fastest-callout .v3-mc .v3-mc-figure { left: 108px; top: 0; width: 280px; height: 390px; }
 .v3-stage--question-user.has-fastest-callout .v3-mc .v3-mc-figure img { left: 50%; top: 0; width: 280px; height: 390px; max-height: none; object-fit: cover; object-position: top center; transform: translateX(-50%); }
+.v3-stage--header-b .v3-round-card { height: 108px; grid-template-rows: 25px 37px 19px; gap: 11.5px; }
