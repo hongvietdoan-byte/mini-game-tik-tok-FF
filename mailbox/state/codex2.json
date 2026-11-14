@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 209,
-  "heartbeat": "2026-11-14T13:42:15+07:00",
+  "heartbeat": "2026-11-14T13:42:29+07:00",
   "state": "working",
-  "task": "C-0209",
-  "note": "Đang bắt đầu tiếng MC trên overlay theo mcVoiceCue; chỉ sửa âm thanh, giữ nguyên hình/CSS",
+  "task": "C-0210",
+  "note": "Đang sửa riêng ô VÒNG trên ba nhánh; giữ nguyên mọi khung khác",
   "done": []
 }
