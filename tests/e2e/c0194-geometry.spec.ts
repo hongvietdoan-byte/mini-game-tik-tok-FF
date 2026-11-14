@@ -7,7 +7,7 @@ const reviewDir = join(process.cwd(), '.claude', 'review', 'C0205');
 
 test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, async ({ page }) => {
   await mkdir(reviewDir, { recursive: true });
-  await page.goto('/?mock=question&hud=1', { waitUntil: 'domcontentloaded' });
+  await page.goto(`/?mock=question&hud=1&header=${option.toLowerCase()}`, { waitUntil: 'domcontentloaded' });
   const stage = page.getByTestId('stage');
   await expect(stage).toBeVisible();
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -46,12 +46,12 @@ test(`C-0194 option ${option.toUpperCase()} — geometry and review captures`, a
   const roundBounds = await roundCard.boundingBox();
   expect(roundBounds).not.toBeNull();
   expect(roundBounds!.y).toBeGreaterThanOrEqual(15);
-  expect(roundBounds!.y + roundBounds!.height).toBeLessThanOrEqual(124);
+  expect(roundBounds!.y + roundBounds!.height).toBeLessThanOrEqual(option === 'b' ? 124 : 144);
   const expected = {
     logo: { x: 453.6, y: 18, width: 172.8, height: 178.5 },
     ribbon: { x: 430.4, y: 212.5, width: 325.2, height: 53 },
     event: { x: 96.4, y: 14, width: 213.3, height: 94 },
-    round: { x: 760, y: 16, width: 220, height: 108 },
+    round: { x: 760, y: 16, width: 220, height: option === 'b' ? 108 : 128 },
     top10: { x: 98, y: 345, width: 300, height: 466 },
     board: { x: 416, y: 345, width: 567, height: 470 },
     question: { x: 436, y: 492, width: 527, height: 160 },
