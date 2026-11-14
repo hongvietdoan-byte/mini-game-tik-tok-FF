@@ -6,6 +6,7 @@ import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle, hudImageUrl } from './hudText';
+import { ArenaLoopVideo } from './ArenaLoopVideo';
 
 const ASSET = '/assets';
 const VICTORY_BACKGROUND = `${ASSET}/victory/bg-user-cover.jpg`;
@@ -171,6 +172,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene}>
       <img className="v3v-bg-image" src={backgroundSource} alt="" draggable={false} decoding="async" data-testid="victory-background" onError={() => { if (customBackground && !failedCustomBackground) setFailedCustomBackground(true); }} />
+      <ArenaLoopVideo poster={backgroundSource} className="v3v-bg-video" testId="victory-background-video" />
       <VictoryConfetti />
       <header className="v3v-header">
         <VictoryLogo />

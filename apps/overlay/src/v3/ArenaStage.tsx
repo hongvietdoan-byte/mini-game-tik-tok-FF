@@ -299,7 +299,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
-      <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
+      <ArenaBackdrop arena questionBackground={questionBackground} loopVideo={snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL'} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
       <div className="v3-env-wrap" data-layer="arena-geometry" aria-hidden="true">
         <svg className="v3-arena-environment" viewBox="0 0 1080 1920" preserveAspectRatio="none">
           <defs>
