@@ -1054,7 +1054,7 @@
   filter: drop-shadow(0 0 7px rgba(185, 74, 255, .82));
 }
 .v3-bubble p { position: relative; z-index: 1; }
-.v3-bubble p { max-width: 520px; margin: 0 auto; white-space: pre-line; font-size: 30px; line-height: 1.22; }
+.v3-bubble p { max-width: 520px; margin: 0 auto; white-space: pre-line; text-wrap: balance; font-size: 30px; line-height: 1.22; }
 
 /* C-0080: bám cấu trúc ref Storm Arena, chừa riêng hàng trên cho đồng hồ và giữ chữ đủ khung. */
 .v3-header { top: 32px; height: 208px; }
@@ -1627,7 +1627,7 @@
 .v3-fastest-copy { display: grid; justify-items: center; gap: 3px; width: 100%; }
 .v3-fastest-copy strong { color: #ffe47a; font-size: 23px; font-weight: 950; letter-spacing: .12em; line-height: 1; text-shadow: 0 2px 8px rgba(255, 193, 38, .42); }
 .v3-fastest-name { max-width: 100%; overflow: hidden; color: #fff; font-size: 40px; font-weight: 950; line-height: 1.08; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 3px 12px rgba(0,0,0,.65); }
-.v3-fastest-copy > span { color: #f3edff; font-size: 26px; font-weight: 800; line-height: 1.05; }
+.v3-fastest-copy > span { color: #f3edff; font-size: 26px; font-weight: 800; line-height: 1.05; white-space: nowrap; }
 .v3-fastest-callout-b { display: flex; justify-content: center; }
 .v3-fastest-callout-b .v3-fastest-copy { display: flex; align-items: center; justify-content: center; gap: 17px; white-space: nowrap; }
 .v3-fastest-callout-b .v3-fastest-copy strong { font-size: 20px; }

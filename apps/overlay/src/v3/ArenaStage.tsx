@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
-import { shortName, splitBubble, truncateGraphemeText } from './arenaLogic';
+import { shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
 import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
@@ -184,10 +184,10 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
 }
 
 export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b' }) {
-  const bubble = (bubbleOverride ?? '').replace(
+  const bubble = wrapMcBubbleText((bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
-  );
+  ), snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName));
   return (
     <section className={`v3-mc v3-mc-${snapshot.mc.state}`} data-layer="kelly">
       <div className="v3-mc-figure">
@@ -320,7 +320,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
-    ? 'CHÀO MỪNG ĐẾN VỚI ĐẤU TRƯỜNG BÃO TỐ!'
+    ? 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!'
     : questionBackground ? snapshot.mc.bubble : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;

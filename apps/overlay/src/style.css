@@ -23,7 +23,7 @@ body { color: var(--paper); }
 .brand-lockup b { color: var(--gold); }
 .mc-bubble { position: absolute; z-index: 3; top: 94px; right: calc(var(--safe-right) + 24px); width: 430px; min-height: 76px; padding: 12px 18px; display: flex; flex-direction: column; justify-content: center; gap: 5px; border: 1px solid rgba(140,200,251,.38); border-left: 5px solid var(--gold); background: rgba(18,22,50,.9); box-shadow: 0 12px 34px rgba(18,22,50,.28); }
 .mc-bubble small { color: var(--sky); font-size: 14px; font-weight: 900; letter-spacing: 3px; }
-.mc-bubble span { color: var(--paper); font-size: 20px; font-weight: 650; line-height: 1.15; }
+.mc-bubble span { color: var(--paper); font-size: 20px; font-weight: 650; line-height: 1.15; white-space: pre-line; text-wrap: balance; }
 .brand-mark { display: grid; place-items: center; width: 54px; height: 54px; border: 2px solid var(--gold); transform: rotate(45deg); color: var(--gold); font-size: 17px; font-weight: 900; letter-spacing: 0; }
 .brand-mark::first-letter { transform: rotate(-45deg); }
 .scene-content { position: absolute; z-index: 1; inset: 0; animation: scene-in 320ms ease-out; }
