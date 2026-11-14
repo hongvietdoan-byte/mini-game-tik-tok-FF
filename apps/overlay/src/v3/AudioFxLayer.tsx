@@ -1,8 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { PublicSnapshot } from '@quiz/contracts';
-import { AudioCueTracker, mcDuckingGain, parseAudioMix, type AudioCue, type VisualCue } from '../audio/audio-cues';
+import { AudioCueTracker, parseAudioMix, type AudioCue, type VisualCue } from '../audio/audio-cues';
 import { OverlayAudioEngine, type AudioEngineState } from '../audio/audio-engine';
+import { McVoiceCueScheduler } from '../audio/mc-voice';
+import type { OverlayRole } from '../overlayRole';
 
 const MIX = parseAudioMix(location.search);
 const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
@@ -18,8 +20,9 @@ function useReducedMotion() {
   return reduced;
 }
 
-export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, onAudioStateChange }: { snapshot: PublicSnapshot; remainingMs: number; onAudioStateChange?: (state: AudioEngineState) => void }) {
+export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, clockOffsetMs, role, onAudioStateChange }: { snapshot: PublicSnapshot; remainingMs: number; clockOffsetMs: number; role: OverlayRole; onAudioStateChange?: (state: AudioEngineState) => void }) {
   const tracker = useRef(new AudioCueTracker());
+  const voiceScheduler = useRef(new McVoiceCueScheduler());
   const engine = useRef<OverlayAudioEngine | null>(null);
   const cleanupTimer = useRef<number | null>(null);
   const lastResumePhase = useRef<string | null>(null);
@@ -35,6 +38,10 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
   }, [onAudioStateChange]);
 
   useEffect(() => {
+    if (role !== 'program') {
+      publishAudioState('disabled');
+      return;
+    }
     if (cleanupTimer.current !== null) window.clearTimeout(cleanupTimer.current);
     const instance = engine.current ?? new OverlayAudioEngine(MIX, publishAudioState);
     engine.current = instance;
@@ -45,7 +52,17 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
         cleanupTimer.current = null;
       }, 0);
     };
-  }, [publishAudioState]);
+  }, [publishAudioState, role]);
+
+  useEffect(() => {
+    if (role !== 'program') return;
+    const plan = voiceScheduler.current.consume(snapshot.mcVoiceCue, Date.now() + clockOffsetMs);
+    if (!plan) return;
+    const audio = engine.current;
+    audio?.stopMcVoice();
+    if (plan.remainingMs <= 0) return;
+    void audio?.playMcVoice(plan.cue, clockOffsetMs);
+  }, [clockOffsetMs, role, snapshot.mcVoiceCue]);
 
   useEffect(() => {
     const audio = engine.current;
@@ -60,7 +77,6 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       lastResumePhase.current = phase;
       void audio?.unlock();
     }
-    audio?.setDucking(mcDuckingGain(snapshot));
     const decision = tracker.current.consume(snapshot, second * 1_000);
     if (decision.cues.length) {
       for (const cue of decision.cues) void audio?.play(cue, second);
@@ -127,4 +143,4 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       data-volume={MIX.volume}
     />
   </>;
-}, (previous, next) => previous.snapshot === next.snapshot && previous.onAudioStateChange === next.onAudioStateChange && Math.ceil(previous.remainingMs / 1_000) === Math.ceil(next.remainingMs / 1_000));
+}, (previous, next) => previous.snapshot === next.snapshot && previous.onAudioStateChange === next.onAudioStateChange && previous.role === next.role && previous.clockOffsetMs === next.clockOffsetMs && Math.ceil(previous.remainingMs / 1_000) === Math.ceil(next.remainingMs / 1_000));

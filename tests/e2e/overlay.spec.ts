@@ -1336,7 +1336,7 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   await page.route('**/assets/audio/**', (route) => route.fulfill({ status: 404, body: 'optional audio absent' }));
   await page.route('**/assets/audio/question-enter.mp3', (route) => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: 'mock audio file' }));
   const errors = watchPageErrors(page);
-  await page.goto('/?mock=cycle&cycleMs=250&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
+  await page.goto('/?mock=cycle&cycleMs=250&role=program&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
   const runtime = page.getByTestId('overlay-audio-runtime');
   await expect(runtime).toHaveAttribute('data-audio-state', 'running');
   await expect(runtime).toHaveAttribute('data-bgm', '0');
@@ -1358,7 +1358,7 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   expect(errors).toEqual([]);
 });
 
-test('audio retries silently at phase changes without an unlock hint in any overlay role', async ({ page }) => {
+test('program audio retries silently at phase changes without an unlock hint', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(() => {
     const testWindow = window as typeof window & { __audioProbe?: { resumePhases: string[]; oscillatorStarts: number } };
@@ -1396,21 +1396,18 @@ test('audio retries silently at phase changes without an unlock hint in any over
     (window as typeof window & { AudioContext: typeof AudioContext }).AudioContext = SuspendedAudioContext as unknown as typeof AudioContext;
   });
   await page.route('**/assets/audio/**', (route) => route.fulfill({ status: 404, body: 'optional audio absent' }));
-  for (const role of ['', '&role=program', '&source=1']) {
-    await page.goto(`/?mock=cycle&cycleMs=250&sfx=0.6&bgm=0&fx=low${role}`, { waitUntil: 'domcontentloaded' });
-    const runtime = page.getByTestId('overlay-audio-runtime');
-    await expect(page.locator('.overlay-fx-particle')).toHaveCount(0);
-    await expect(page.locator('.overlay-fx-confetti')).toHaveCount(0);
-    await expect(page.getByTestId('audio-unlock')).toHaveCount(0);
-    await expect(page.getByText(/bấm để bật âm/i)).toHaveCount(0);
-    await expect(runtime).toHaveAttribute('data-bgm', '0');
-    await expect(runtime).toHaveAttribute('data-audio-state', 'running', { timeout: 10_000 });
-    await expect.poll(() => page.evaluate(() => (window as typeof window & { __audioProbe: { oscillatorStarts: number } }).__audioProbe.oscillatorStarts)).toBeGreaterThan(0);
-    if (role === '')
-      await page.screenshot({ path: join(c0166ReviewDirectory, 'no-audio-button-bottom-left.png'), clip: { x: 0, y: 1500, width: 440, height: 420 }, animations: 'disabled' });
-    const resumePhases = await page.evaluate(() => (window as typeof window & { __audioProbe: { resumePhases: string[] } }).__audioProbe.resumePhases);
-    expect(new Set(resumePhases).size).toBeGreaterThanOrEqual(2);
-  }
+  await page.goto('/?mock=cycle&cycleMs=250&role=program&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
+  const runtime = page.getByTestId('overlay-audio-runtime');
+  await expect(page.locator('.overlay-fx-particle')).toHaveCount(0);
+  await expect(page.locator('.overlay-fx-confetti')).toHaveCount(0);
+  await expect(page.getByTestId('audio-unlock')).toHaveCount(0);
+  await expect(page.getByText(/bấm để bật âm/i)).toHaveCount(0);
+  await expect(runtime).toHaveAttribute('data-bgm', '0');
+  await expect(runtime).toHaveAttribute('data-audio-state', 'running', { timeout: 10_000 });
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __audioProbe: { oscillatorStarts: number } }).__audioProbe.oscillatorStarts)).toBeGreaterThan(0);
+  await page.screenshot({ path: join(c0166ReviewDirectory, 'no-audio-button-bottom-left.png'), clip: { x: 0, y: 1500, width: 440, height: 420 }, animations: 'disabled' });
+  const resumePhases = await page.evaluate(() => (window as typeof window & { __audioProbe: { resumePhases: string[] } }).__audioProbe.resumePhases);
+  expect(new Set(resumePhases).size).toBeGreaterThanOrEqual(2);
 });
 
 test('victory-tie labels the tie and orders podium slots by x coordinate', async ({ page }) => {

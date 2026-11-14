@@ -272,7 +272,7 @@ function App() {
       {hud && <TikTokHudSimulator debug={debug} />}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
-    {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} onAudioStateChange={setAudioState} />}
+    {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} clockOffsetMs={clockOffsetMs} role={overlayRole} onAudioStateChange={setAudioState} />}
   </main></HudConfigProvider>;
 }
 

@@ -15,6 +15,7 @@ export type AudioSlot = AudioCue | 'bgm';
 export type VisualCue = 'question' | 'reveal' | 'top10' | 'victory' | 'transition';
 export type AudioMix = { volume: number; sfx: number; bgm: number };
 export type CountdownPulse = { offsetMs: number; frequency: number; duration: number };
+export const MC_VOICE_DUCKING_GAIN = 0.22;
 
 function level(params: URLSearchParams, key: string, fallback: number) {
   const raw = params.get(key);
@@ -43,10 +44,6 @@ export function countdownTickPattern(remainingSeconds: number): CountdownPulse[]
     frequency: 650 + (5 - seconds) * 65 + index * 24,
     duration: Math.max(0.045, 0.09 - (5 - seconds) * 0.008),
   }));
-}
-
-export function mcDuckingGain(snapshot: Pick<PublicSnapshot, 'state' | 'mc'>): number {
-  return snapshot.state === 'READING' && snapshot.mc.state === 'ask' ? 0.22 : 1;
 }
 
 export type AudioCueDecision = { cues: AudioCue[]; visualCue: VisualCue | null };

@@ -1,4 +1,6 @@
 import { countdownTickPattern, type AudioCue, type AudioMix, type AudioSlot } from './audio-cues';
+import { MC_VOICE_DUCKING_GAIN } from './audio-cues';
+import type { McVoiceCue } from '@quiz/contracts';
 
 export type AudioEngineState = 'disabled' | 'running' | 'suspended' | 'unavailable';
 
@@ -11,17 +13,22 @@ export class OverlayAudioEngine {
   private readonly master: GainNode | null;
   private readonly sfx: GainNode | null;
   private readonly bgm: GainNode | null;
+  private readonly voice: GainNode | null;
   private readonly buffers = new Map<AudioSlot, Promise<AudioBuffer | null>>();
+  private readonly voiceBuffers = new Map<string, Promise<AudioBuffer | null>>();
   private readonly activeSources = new Set<AudioScheduledSourceNode>();
+  private voiceSource: AudioBufferSourceNode | null = null;
+  private voiceGeneration = 0;
   private destroyed = false;
   private ducking = 1;
 
   constructor(private readonly mix: AudioMix, private readonly onState: StateListener) {
-    if (mix.volume <= 0 || (mix.sfx <= 0 && mix.bgm <= 0)) {
+    if (mix.volume <= 0) {
       this.context = null;
       this.master = null;
       this.sfx = null;
       this.bgm = null;
+      this.voice = null;
       onState('disabled');
       return;
     }
@@ -35,6 +42,7 @@ export class OverlayAudioEngine {
       this.master = null;
       this.sfx = null;
       this.bgm = null;
+      this.voice = null;
       onState('unavailable');
       return;
     }
@@ -42,11 +50,14 @@ export class OverlayAudioEngine {
     this.master = this.context.createGain();
     this.sfx = this.context.createGain();
     this.bgm = this.context.createGain();
+    this.voice = this.context.createGain();
     this.master.gain.value = mix.volume;
     this.sfx.gain.value = mix.sfx;
     this.bgm.gain.value = mix.bgm;
+    this.voice.gain.value = 1;
     this.sfx.connect(this.master);
     this.bgm.connect(this.master);
+    this.voice.connect(this.master);
     this.master.connect(this.context.destination);
     this.context.onstatechange = () => this.publishState();
     this.publishState();
@@ -96,6 +107,94 @@ export class OverlayAudioEngine {
       return;
     }
     this.synthesize(cue, remainingSecond);
+  }
+
+  async playMcVoice(cue: McVoiceCue, clockOffsetMs: number) {
+    this.stopMcVoice();
+    const context = this.context;
+    const voice = this.voice;
+    if (!context || !voice || this.destroyed || this.mix.volume <= 0) return;
+
+    const generation = this.voiceGeneration;
+    if (context.state !== 'running') await this.unlock();
+    if (generation !== this.voiceGeneration || this.destroyed || context.state !== 'running') return;
+
+    const buffer = await this.loadMcVoice(cue.assetUrl);
+    if (generation !== this.voiceGeneration || this.destroyed || !buffer || context.state !== 'running') return;
+
+    const serverNowMs = Date.now() + clockOffsetMs;
+    const elapsedMs = Math.max(0, serverNowMs - cue.startsAtServerMs);
+    const remainingMs = cue.durationMs - elapsedMs;
+    const offsetSeconds = elapsedMs / 1_000;
+    if (remainingMs <= 0 || offsetSeconds >= buffer.duration) return;
+
+    const startAt = context.currentTime + Math.max(0, cue.startsAtServerMs - serverNowMs) / 1_000;
+    const playbackSeconds = Math.min(remainingMs, buffer.duration * 1_000 - elapsedMs) / 1_000;
+    if (playbackSeconds <= 0) return;
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(voice);
+    source.onended = () => {
+      this.activeSources.delete(source);
+      if (this.voiceSource === source) {
+        this.voiceSource = null;
+        this.setDucking(this.ducking);
+      }
+    };
+    this.voiceSource = source;
+    this.activeSources.add(source);
+    this.scheduleVoiceDucking(startAt, startAt + playbackSeconds);
+    try {
+      source.start(startAt, offsetSeconds, playbackSeconds);
+    } catch {
+      this.activeSources.delete(source);
+      if (this.voiceSource === source) this.voiceSource = null;
+      this.setDucking(this.ducking);
+    }
+  }
+
+  stopMcVoice() {
+    this.voiceGeneration += 1;
+    const source = this.voiceSource;
+    this.voiceSource = null;
+    if (source) {
+      this.activeSources.delete(source);
+      source.onended = null;
+      try { source.stop(); } catch { /* Scheduled/ended sources are already silent. */ }
+    }
+    this.setDucking(this.ducking);
+  }
+
+  private loadMcVoice(assetUrl: string): Promise<AudioBuffer | null> {
+    if (!/^\/api\/mc-voice\/assets\/[a-f0-9]{64}$/.test(assetUrl)) return Promise.resolve(null);
+    const cached = this.voiceBuffers.get(assetUrl);
+    if (cached) return cached;
+
+    const request = (async () => {
+      if (!this.context) return null;
+      try {
+        const response = await fetch(assetUrl, { cache: 'force-cache' });
+        if (!response.ok) return null;
+        return await this.context.decodeAudioData(await response.arrayBuffer());
+      } catch {
+        // Giọng MC là asset tùy chọn; lỗi tải/giải mã không làm gián đoạn overlay.
+        return null;
+      }
+    })();
+    this.voiceBuffers.set(assetUrl, request);
+    return request;
+  }
+
+  private scheduleVoiceDucking(startAt: number, endAt: number) {
+    const context = this.context;
+    const sfx = this.sfx;
+    if (!context || !sfx || this.mix.sfx <= 0) return;
+    const now = context.currentTime;
+    sfx.gain.cancelScheduledValues(now);
+    sfx.gain.setValueAtTime(sfx.gain.value, now);
+    sfx.gain.setTargetAtTime(this.mix.sfx * MC_VOICE_DUCKING_GAIN, startAt, 0.035);
+    sfx.gain.setTargetAtTime(this.mix.sfx * this.ducking, endAt, 0.035);
   }
 
   private loadFile(slot: AudioSlot): Promise<AudioBuffer | null> {
@@ -250,6 +349,7 @@ export class OverlayAudioEngine {
 
   destroy() {
     this.destroyed = true;
+    this.stopMcVoice();
     this.context?.close().catch(() => undefined);
     this.activeSources.clear();
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeMockSnapshot } from '../mock/snapshots';
-import { AudioCueTracker, countdownTickPattern, mcDuckingGain, parseAudioMix } from './audio-cues';
+import { AudioCueTracker, countdownTickPattern, MC_VOICE_DUCKING_GAIN, parseAudioMix } from './audio-cues';
 
 function mock(name: string) {
   const snapshot = makeMockSnapshot(name);
@@ -53,9 +53,7 @@ describe('overlay audio cues', () => {
     expect(tracker.consume(mock('victory'), 0).cues).toEqual(['victory']);
   });
 
-  it('ducks SFX only while Kelly reads the question', () => {
-    const reading = mock('reading');
-    expect(mcDuckingGain(reading)).toBe(0.22);
-    expect(mcDuckingGain(mock('question'))).toBe(1);
+  it('sets a quiet SFX gain while a voice cue plays', () => {
+    expect(MC_VOICE_DUCKING_GAIN).toBe(0.22);
   });
 });
