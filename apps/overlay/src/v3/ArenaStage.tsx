@@ -226,9 +226,9 @@ export function McCelebration() {
   );
 }
 
-/** Chừa lớp MC và thẻ vinh danh ở phía trên; 35 ghế vẫn nằm trọn trong vùng 1416–1860. */
-const seatY = (y: number, compactQuestion = false, reserveFastestCard = false) => {
-  const top = reserveFastestCard ? 1416 : compactQuestion ? 1376 : AUDIENCE_TOP_Y;
+/** Giữ tọa độ ghế màn câu hỏi đúng như bố cục đã duyệt trên main, có hay không thẻ fastest. */
+const seatY = (y: number, compactQuestion = false) => {
+  const top = compactQuestion ? 1330 : AUDIENCE_TOP_Y;
   const front = compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
   return top + ((y - 1105) * (front - top)) / (1825 - 1105);
 };
@@ -245,7 +245,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
   );
 }
 
-type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; reserveFastestCard: boolean; fastestSeatId?: string | null };
+type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; fastestSeatId?: string | null };
 
 function sameSeat(previous: SeatProps, next: SeatProps) {
   const a = previous.seat;
@@ -257,10 +257,10 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
     left.characterId === right.characterId &&
     left.pinned === right.pinned &&
     left.result === right.result);
-  return previous.compactQuestion === next.compactQuestion && previous.reserveFastestCard === next.reserveFastestCard && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
+  return previous.compactQuestion === next.compactQuestion && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant;
 }
 
-const Seat = React.memo(function Seat({ seat, compactQuestion, reserveFastestCard, fastestSeatId }: SeatProps) {
+const Seat = React.memo(function Seat({ seat, compactQuestion, fastestSeatId }: SeatProps) {
   const o = seat.occupant;
   const isFastest = !!fastestSeatId && seat.slotId === fastestSeatId;
   return (
@@ -268,7 +268,7 @@ const Seat = React.memo(function Seat({ seat, compactQuestion, reserveFastestCar
       className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''} ${isFastest ? 'is-fastest' : ''}`}
       style={{
         left: seat.x,
-        top: seatY(seat.y, compactQuestion, reserveFastestCard),
+        top: seatY(seat.y, compactQuestion),
         zIndex: 10 + Math.round(seat.depth),
         ['--s' as string]: seat.scale,
       }}
@@ -284,10 +284,10 @@ const Seat = React.memo(function Seat({ seat, compactQuestion, reserveFastestCar
   );
 }, sameSeat);
 
-const SeatName = React.memo(function SeatName({ seat, compactQuestion, reserveFastestCard, fastestSeatId }: SeatProps) {
+const SeatName = React.memo(function SeatName({ seat, compactQuestion, fastestSeatId }: SeatProps) {
   const occupant = seat.occupant;
   if (!occupant) return null;
-  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion, reserveFastestCard), ['--s' as string]: seat.scale }}>
+  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} style={{ left: seat.x, top: seatY(seat.y, compactQuestion), ['--s' as string]: seat.scale }}>
     {shortName(occupant.displayName, 13)}
   </div>;
 }, sameSeat);
@@ -296,9 +296,8 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
   const a = snapshot.audience;
   const fastest = fastestCorrectFor(snapshot);
   const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
-  const reserveFastestCard = !!fastest;
   const rows = a
-    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion, reserveFastestCard)])).entries()].map(([row, y]) => ({ row, y }))
+    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion)])).entries()].map(([row, y]) => ({ row, y }))
     : [];
   return (
     <section className="v3-audience" data-layer="audience-seats">
@@ -306,10 +305,10 @@ function Audience({ snapshot }: { snapshot: PublicSnapshot }) {
       {rows.map((r) => (
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
-      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} reserveFastestCard={reserveFastestCard} fastestSeatId={fastest?.seatId} />)}
+      {a?.seats.map((s) => <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} fastestSeatId={fastest?.seatId} />)}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} reserveFastestCard={reserveFastestCard} fastestSeatId={fastest?.seatId} />)}
+        {a?.seats.map((s) => <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} fastestSeatId={fastest?.seatId} />)}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
@@ -326,7 +325,8 @@ export function ArenaStage({ snapshot, remainingMs, debug = false }: { snapshot:
     : questionBackground ? snapshot.mc.bubble : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const headerB = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('header')?.toLowerCase() === 'b';
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', headerB && 'v3-stage--header-b', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
