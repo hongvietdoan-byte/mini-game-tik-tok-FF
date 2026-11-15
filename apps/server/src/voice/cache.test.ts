@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
@@ -19,6 +19,8 @@ async function cache() {
 function descriptor(overrides: Partial<McVoiceCacheDescriptor> = {}): McVoiceCacheDescriptor {
   return {
     text: 'Câu hỏi thử nghiệm?',
+    voicePolicyVersion: 1,
+    voiceKey: 'hashed-runtime-profile',
     provider: 'clipai',
     model: 'runtime-model',
     voiceSettings: { runtimeVoice: 'private-value', rate: 1 },
@@ -40,9 +42,10 @@ describe('McVoiceCache', () => {
     expect(mcVoiceCacheKey(first)).toMatch(/^[a-f0-9]{64}$/);
     expect(mcVoiceCacheKey(first)).not.toContain('private-value');
     expect(mcVoiceCacheKey(first)).not.toBe(mcVoiceCacheKey(descriptor({ voiceSettings: { b: 2, a: 'y' } })));
+    expect(mcVoiceCacheKey(first)).not.toBe(mcVoiceCacheKey(descriptor({ voiceKey: 'different-hash' })));
   });
 
-  it('ghi audio và metadata hạn chế quyền, kiểm checksum khi đọc; không lưu text/voice key', async () => {
+  it('ghi audio và metadata hạn chế quyền, kiểm checksum khi đọc; không lưu text/profile key', async () => {
     const { directory, cache: store } = await cache();
     const key = mcVoiceCacheKey(descriptor());
     const written = await store.put(key, audio());
@@ -52,6 +55,7 @@ describe('McVoiceCache', () => {
     const metadata = await readFile(join(directory, key, 'metadata.json'), 'utf8');
     expect(metadata).not.toContain('Câu hỏi thử nghiệm');
     expect(metadata).not.toContain('private-value');
+    expect(metadata).not.toContain('hashed-runtime-profile');
 
     await writeFile(join(directory, key, 'audio.mp3'), 'tampered');
     expect(await store.get(key)).toBeNull();
@@ -71,5 +75,18 @@ describe('McVoiceCache', () => {
     await expect(store.get('../escape')).resolves.toBeNull();
     await expect(store.put('../escape', audio())).rejects.toThrow('Cache key MC Voice không hợp lệ');
     await expect(store.put(mcVoiceCacheKey(descriptor()), audio(20_001))).rejects.toThrow('Audio vượt giới hạn');
+  });
+
+  it('bỏ qua cache cũ thiếu voicePolicyVersion để không phát lại audio theo policy cũ', async () => {
+    const { directory, cache: store } = await cache();
+    const assetId = 'a'.repeat(64);
+    const entryDir = join(directory, assetId);
+    const bytes = audio().bytes;
+    await mkdir(entryDir);
+    await writeFile(join(entryDir, 'audio.mp3'), bytes);
+    await writeFile(join(entryDir, 'metadata.json'), JSON.stringify({
+      assetId, durationMs: 1_500, format: 'mp3', checksum: 'b'.repeat(64), sizeBytes: bytes.byteLength,
+    }));
+    await expect(store.get(assetId)).resolves.toBeNull();
   });
 });

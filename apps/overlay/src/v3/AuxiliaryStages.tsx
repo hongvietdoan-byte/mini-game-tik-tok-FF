@@ -1,15 +1,19 @@
 import React from 'react';
-import type { LeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
+import type { PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { BrandHeader, McKelly } from './ArenaStage';
 import { ArenaBackdrop } from './ArenaBackdrop';
+import { publicPlayerName } from '../publicPlayerName';
+import { useHudConfig } from '../hudConfig';
+import { fitHudTextStyle } from './hudText';
 import { shortName } from './arenaLogic';
 import './arena.css';
 
-function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: number }) {
+function FullLeaderboardRow({ entry, index, allowLegacyNames }: { entry: PublicLeaderboardEntry; index: number; allowLegacyNames: boolean }) {
+  const name = publicPlayerName(entry, `Người chơi ${entry.rank}`, allowLegacyNames);
   return <li className={`v3-full-row v3-full-rank-${entry.rank <= 3 ? entry.rank : 'n'}`} data-testid="leaderboard-row" style={{ '--row-index': index } as React.CSSProperties}>
     <span className="v3-full-rank">{entry.rank}</span>
     <span className="v3-full-name">
-      <span className="v3-full-name-text player-name" title={entry.displayName}>{shortName(entry.displayName, 16)}</span>
+      <span className="v3-full-name-text player-name" title={name}>{shortName(name, 16)}</span>
       {(entry.top1Streak ?? 0) >= 2 && <b className="v3-top1-badge" data-testid="top1-badge" title={`Top 1 liên tiếp ${entry.top1Streak} lần`}>x{entry.top1Streak}</b>}
       {entry.tied && <small>ĐỒNG HẠNG</small>}
     </span>
@@ -17,18 +21,19 @@ function FullLeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: 
   </li>;
 }
 
-export function LeaderboardStage({ snapshot }: { snapshot: PublicSnapshot }) {
+export function LeaderboardStage({ snapshot, allowLegacyNames = false }: { snapshot: PublicSnapshot; allowLegacyNames?: boolean }) {
+  const config = useHudConfig();
   const entries = snapshot.leaderboard?.entries ?? [];
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <ArenaBackdrop arena questionBackground showFlags={false} />
+    <ArenaBackdrop arena questionBackground showFlags={false} backgroundId={config.images.bgLobby} />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-leaderboard-full" data-layer="leaderboard-full" data-testid="v3-top10-large">
       <header className="v3-full-heading">
-        <span className="eyebrow">BXH TRỰC TIẾP</span>
+        <span className="eyebrow" title={config.texts.leaderboardTitle} style={fitHudTextStyle(config.texts.leaderboardTitle, 600, 20, 10)}>{config.texts.leaderboardTitle}</span>
         <h1>TOP <b>10</b></h1>
         <span className="v3-full-round">SAU CÂU {String((snapshot.round?.questionIndex ?? 0) + 1).padStart(2, '0')}</span>
       </header>
-      <ol className="v3-full-list">{entries.slice(0, 10).map((entry, index) => <FullLeaderboardRow key={entry.playerId} entry={entry} index={index} />)}</ol>
+      <ol className="v3-full-list">{entries.slice(0, 10).map((entry, index) => <FullLeaderboardRow key={entry.playerId} entry={entry} index={index} allowLegacyNames={allowLegacyNames} />)}</ol>
       {entries.length === 0 && <p className="v3-full-empty">Chưa có người chơi</p>}
       <p className="v3-full-footnote">TÍCH LŨY ĐIỂM · TIẾP TỤC CHIẾN ĐẤU</p>
     </section>
@@ -55,8 +60,9 @@ function FullTimer({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remain
 }
 
 export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
+  const config = useHudConfig();
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <ArenaBackdrop arena questionBackground showFlags={false} />
+    <ArenaBackdrop arena questionBackground showFlags={false} backgroundId={config.images.bgLobby} />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-intermission" data-layer="intermission" data-testid="intermission-message">
       <span className="v3-scene-kicker">HẾT VÒNG {snapshot.round?.roundNumber ?? 1}</span>
@@ -69,9 +75,10 @@ export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicS
 }
 
 export function ConnectionLostStage({ snapshot }: { snapshot: PublicSnapshot }) {
+  const config = useHudConfig();
   const failed = snapshot.state === 'ERROR';
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
-    <ArenaBackdrop arena questionBackground showFlags={false} />
+    <ArenaBackdrop arena questionBackground showFlags={false} backgroundId={config.images.bgLobby} />
     <BrandHeader snapshot={snapshot} />
     <section className="v3-connection-lost" data-layer="connection-lost" data-testid="connection-lost-message">
       <div className="v3-connection-emblem" aria-hidden="true"><span /><i /></div>

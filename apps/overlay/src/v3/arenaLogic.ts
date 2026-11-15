@@ -34,6 +34,86 @@ export function shortName(name: string, max = 13): string {
   return parts.length <= max ? parts.join('') : truncatedText(parts, max - 1, false);
 }
 
+const UNBREAKABLE_MC_PHRASES = [
+  /Đấu\s+Trường\s+Bão\s+Tố/giu,
+  /Đấu\s+Trường/giu,
+  /Bão\s+Tố/giu,
+  /Top\s+10/giu,
+  /Free\s+Fire/giu,
+  /MC\s+Kelly/giu,
+  /Bình\s+luận/giu,
+  /A\s*,\s*B\s*,\s*C\s+hoặc\s+D/giu,
+] as const;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+export type McBubbleTextMetrics = {
+  maxWidth: number;
+  measureText: (text: string) => number;
+};
+
+function wrapSentenceGroups(line: string, metrics?: McBubbleTextMetrics): string {
+  if (!metrics || metrics.maxWidth <= 0) return line;
+
+  const sentences = line.split(/(?<=[.!?])\s+(?=\p{Lu})/u);
+  if (sentences.length < 2 || sentences.some((sentence) => metrics.measureText(sentence) > metrics.maxWidth)) return line;
+
+  const wrapped: string[] = [];
+  let current = '';
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (current && metrics.measureText(candidate) > metrics.maxWidth) {
+      wrapped.push(current);
+      current = sentence;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) wrapped.push(current);
+  return wrapped.join('\n');
+}
+
+/**
+ * Chuẩn bị lời MC cho text-wrap: balance: chuẩn hoá khoảng trắng nhưng giữ newline đã biên tập,
+ * ghép cụm quan trọng bằng NBSP và, khi có số đo thật, gom câu theo ranh giới dấu câu vừa khung.
+ */
+export function wrapMcBubbleText(
+  text: string,
+  playerNames: readonly string[] = [],
+  metrics?: McBubbleTextMetrics,
+): string {
+  let output = text
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[\t ]+/gu, ' ').trim())
+    .join('\n')
+    .trim();
+
+  for (const phrase of UNBREAKABLE_MC_PHRASES)
+    output = output.replace(phrase, (match) => match.replace(/\s+/gu, '\u00a0'));
+
+  output = output.replace(
+    /(\d+(?:[.,]\d+)?)\s+(giây|phút|giờ|điểm|người|câu|vòng|lượt|ngày|tuần|tháng|năm|phần trăm)/giu,
+    (_match, amount: string, unit: string) => `${amount}\u00a0${unit}`,
+  );
+
+  const names = [...new Set(playerNames.map((name) => name.trim()).filter(Boolean))]
+    .filter((name) => /\s/u.test(name))
+    .sort((left, right) => right.length - left.length);
+  for (const name of names) {
+    const words = name.split(/\s+/u).map(escapeRegExp);
+    const phrase = new RegExp(`(?<![\\p{L}\\p{N}])${words.join('\\s+')}(?![\\p{L}\\p{N}])`, 'giu');
+    output = output.replace(phrase, (match) => match.replace(/\s+/gu, '\u00a0'));
+  }
+
+  return output
+    .split('\n')
+    .map((line) => wrapSentenceGroups(line, metrics))
+    .join('\n');
+}
+
 /** Tách lời MC để tô vàng các chữ cái đáp án A/B/C/D đứng riêng (vd "Bình luận A/B/C/D để tham gia"). */
 export function splitBubble(text: string): { text: string; hl: boolean }[] {
   const out: { text: string; hl: boolean }[] = [];

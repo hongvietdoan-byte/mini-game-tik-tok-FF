@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getE2eAssetDirectory } from './tests/e2e/assets';
+import { getE2eAssetDirectory, getE2eTempDirectory } from './tests/e2e/assets';
 
 const repoRoot = dirname(fileURLToPath(import.meta.url));
 const repoTempRoot = resolve(repoRoot, '.tmp-test');
@@ -11,6 +11,7 @@ process.env.TMP = repoTempRoot;
 process.env.TEMP = repoTempRoot;
 
 const localAssetDirectory = getE2eAssetDirectory();
+const e2eTempDirectory = getE2eTempDirectory();
 const serverPort = Number(process.env.PLAYWRIGHT_SERVER_PORT ?? 18787);
 const overlayPort = Number(process.env.PLAYWRIGHT_OVERLAY_PORT ?? 15176);
 if (!Number.isInteger(serverPort) || !Number.isInteger(overlayPort) || serverPort === overlayPort)
@@ -21,7 +22,7 @@ const overlayUrl = 'http://127.0.0.1:' + overlayPort;
 export default defineConfig({
   globalSetup: './tests/support/playwright-temp-global.ts',
   testDir: 'tests/e2e',
-  outputDir: '.tmp-test/playwright-results',
+  outputDir: resolve(e2eTempDirectory, 'playwright'),
   snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
   fullyParallel: false,
   workers: 1,
@@ -41,7 +42,7 @@ export default defineConfig({
       env: {
         QUIZ_PORT: String(serverPort),
         QUIZ_DB: ':memory:',
-        QUIZ_DATA_DIR: resolve(repoTempRoot, 'playwright-server-data'),
+        QUIZ_DATA_DIR: resolve(e2eTempDirectory, 'server-data'),
         QUIZ_ASSETS_DIR: localAssetDirectory,
       },
     },

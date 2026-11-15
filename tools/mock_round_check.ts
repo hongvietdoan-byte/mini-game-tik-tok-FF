@@ -337,7 +337,7 @@ export async function runMockRoundCheck(args: readonly string[] = process.argv.s
     for (const visit of analysis.phaseVisits) console.log(`  ${visit.state.padEnd(12)} ${formatDuration(visit.durationMs)}`);
     console.log('Top 3 cuối:');
     if (analysis.top3.length === 0) console.log('  (không có người chơi trên bục)');
-    for (const player of analysis.top3) console.log(`  #${player.rank} ${player.displayName} — ${player.score} điểm${player.tied ? ' (đồng hạng)' : ''}`);
+    for (const player of analysis.top3) console.log(`  #${player.rank} ${player.safeDisplayName} — ${player.score} điểm${player.tied ? ' (đồng hạng)' : ''}`);
 
     const failures = [
       ...(analysis.missingPhases.length ? [`thiếu pha ${analysis.missingPhases.join(', ')}`] : []),

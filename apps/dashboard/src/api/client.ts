@@ -3,6 +3,9 @@ import type {
   CommandEnvelope,
   CommandResult,
   CreateSessionRequest,
+  HudConfig,
+  HudConfigUpdate,
+  HudImageSlot,
   LiveSourceHealth,
   OverlayAudioState,
   Question,
@@ -25,6 +28,10 @@ export type PreflightResponse = {
 };
 export type SelfTestResponse = { ok: boolean; mockComment: boolean; engineRecorded: boolean; detail: string; durationMs: number };
 export type HealthResponse = { ok: boolean; contractVersion: number; sessionId: string | null };
+export type HudImageUploadResponse = {
+  image: { id: string; width: number; height: number; mimeType: string };
+  config: HudConfig;
+};
 
 export interface DashboardClient {
   getHealth(): Promise<HealthResponse>;
@@ -41,6 +48,10 @@ export interface DashboardClient {
   getSystemChecks(token: string): Promise<SystemChecksResponse>;
   getPreflight(token: string): Promise<PreflightResponse>;
   runSystemSelfTest(token: string): Promise<SelfTestResponse>;
+  getHud(): Promise<HudConfig>;
+  saveHud(token: string, update: HudConfigUpdate): Promise<HudConfig>;
+  uploadHudImage(token: string, slot: HudImageSlot, file: File): Promise<HudImageUploadResponse>;
+  resetHud(token: string): Promise<HudConfig>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
 }
 
@@ -148,6 +159,34 @@ export const apiClient: DashboardClient = {
 
   runSystemSelfTest(token) {
     return jsonRequest('/api/system/selftest', token, { method: 'POST', body: '{}' });
+  },
+
+  getHud() {
+    return jsonRequest('/api/hud', null);
+  },
+
+  saveHud(token, update) {
+    return jsonRequest('/api/hud', token, { method: 'PUT', body: JSON.stringify(update) });
+  },
+
+  async uploadHudImage(token, slot, file) {
+    const headers = new Headers({ 'Content-Type': file.type || 'application/octet-stream' });
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const response = await fetch(`/api/hud/images?slot=${encodeURIComponent(slot)}`, {
+      method: 'POST',
+      headers,
+      body: file,
+    });
+    const body = await response.json().catch(() => null) as HudImageUploadResponse | { code?: string; message?: string } | null;
+    if (!response.ok || !body || !('config' in body)) {
+      const error = body && 'message' in body && typeof body.message === 'string' ? body.message : `Tải ảnh thất bại (${response.status}).`;
+      throw new ApiError(error, response.status, body && 'code' in body ? body.code : undefined, body);
+    }
+    return body;
+  },
+
+  resetHud(token) {
+    return jsonRequest('/api/hud/reset', token, { method: 'POST', body: '{}' });
   },
 
   subscribe(token, onSnapshot, onStatus) {

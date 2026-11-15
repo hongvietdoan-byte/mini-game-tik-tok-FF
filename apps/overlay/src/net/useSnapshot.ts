@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PublicSnapshot, WsMessage } from '@quiz/contracts';
+import type { McState, PublicSnapshot, WsMessage } from '@quiz/contracts';
 import { selectNewestSnapshot, shouldAcceptSnapshotSeq } from '../overlayLogic';
 import { makeMockSnapshot } from '../mock/snapshots';
 import type { OverlayRole } from '../overlayRole';
@@ -54,7 +54,7 @@ export function applyAnswerCounts(
   };
 }
 
-export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, audioState: AudioEngineState) {
+export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, audioState: AudioEngineState, mockMcState?: McState) {
   const [snapshot, setSnapshot] = useState<PublicSnapshot | null>(null);
   const [connection, setConnection] = useState<SnapshotConnection>('connecting');
   const [serverTimeMs, setServerTimeMs] = useState(Date.now());
@@ -65,11 +65,15 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
 
   useEffect(() => {
     if (mockScene) {
-      const mock = makeMockSnapshot(mockScene);
+      const referenceMock = mockScene.endsWith('-ref');
+      const mock = makeMockSnapshot(referenceMock ? mockScene.slice(0, -4) : mockScene, mockMcState);
+      const referenceSnapshot = referenceMock && mock?.timer
+        ? { ...mock, timer: { ...mock.timer, remainingMs: 12_000, running: false } }
+        : mock;
       activeSocket.current = null;
-      latest.current = mock;
+      latest.current = referenceSnapshot;
       latestSeq.current = null;
-      setSnapshot(mock);
+      setSnapshot(referenceSnapshot);
       setServerTimeMs(Date.now());
       setClockOffsetMs(0);
       setConnection('connected');
@@ -148,7 +152,7 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
       if (activeSocket.current === socket) activeSocket.current = null;
       socket?.close();
     };
-  }, [mockScene]);
+  }, [mockScene, mockMcState]);
 
   useEffect(() => {
     if (mockScene || !snapshot) return;

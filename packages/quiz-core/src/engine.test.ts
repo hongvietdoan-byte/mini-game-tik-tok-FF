@@ -196,6 +196,20 @@ describe('transition/version và truy vấn scene', () => {
 });
 
 describe('MC Voice — pha READING', () => {
+  it('rút ngắn READING theo thời lượng audio, tính thời gian đã trôi và giữ trần 20 giây', () => {
+    const reading = reachReading(2);
+    const qid = reading.round!.questionInstanceIds[reading.round!.questionIndex]!;
+    const shortened = transition(reading, {
+      kind: 'MC_READING_DURATION_SET', expectedStateVersion: reading.stateVersion,
+      questionInstanceId: qid, durationMs: 3_200, elapsedMs: 700,
+    }, 1_000);
+    expect(shortened).toMatchObject({ ok: true, state: { state: 'READING', timer: { durationMs: 3_200, remainingMs: 2_500, deadlineMs: 3_500 } } });
+    expect(transition(reading, {
+      kind: 'MC_READING_DURATION_SET', expectedStateVersion: reading.stateVersion,
+      questionInstanceId: qid, durationMs: MAX_MC_READING_MS + 1, elapsedMs: 0,
+    }, 1_000)).toMatchObject({ ok: false, code: 'ILLEGAL_TRANSITION' });
+  });
+
   it('chỉ mở pha đọc khi phiên bật voice; ACK đúng câu mở ACCEPTING đúng một lần', () => {
     const legacy = ok(elapse(beginRound(2)));
     expect(legacy.state).toBe('ACCEPTING');

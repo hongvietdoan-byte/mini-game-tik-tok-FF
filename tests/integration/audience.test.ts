@@ -19,7 +19,7 @@ async function session(dbPath?: string) {
 const seatedKey = (h: Harness) =>
   rt(h)
     .publicSnapshot()
-    .audience!.seats.map((s) => `${s.slotId}=${s.occupant ? `${s.occupant.displayName}|${s.occupant.characterId}` : '-'}`)
+    .audience!.seats.map((s) => `${s.slotId}=${s.occupant ? `${s.occupant.safeDisplayName}|${s.occupant.characterId}` : '-'}`)
     .join(',');
 
 describe('V3 §6 — 35 ghế khán giả', () => {
@@ -38,9 +38,9 @@ describe('V3 §6 — 35 ghế khán giả', () => {
     expect(a.seats.filter((s) => s.occupant)).toHaveLength(35);
     expect(a.queued).toBe(465);
     expect(a.total).toBe(500);
-    expect(new Set(a.seats.map((s) => s.occupant?.displayName)).size).toBe(35);
+    expect(new Set(a.seats.map((s) => s.occupant?.safeDisplayName)).size).toBe(35);
     // ghế đầu tiên là hàng trước, giữa
-    expect(a.seats.find((s) => s.occupant?.displayName === 'Khán giả 0')).toMatchObject({ rowIndex: 0, seatIndex: 2 });
+    expect(a.seats.find((s) => s.occupant?.safeDisplayName === 'Khán giả 0')).toMatchObject({ rowIndex: 0, seatIndex: 2 });
     // Trước công bố: không có đúng/sai
     expect(a.seats.every((s) => s.occupant?.result === null)).toBe(true);
     // Overlay không bao giờ thấy playerId / userId
@@ -50,8 +50,8 @@ describe('V3 §6 — 35 ghế khán giả', () => {
 
     runUntil(h, () => r.engine.state === 'REVEAL');
     const after = r.publicSnapshot().audience!;
-    const k0 = after.seats.find((s) => s.occupant?.displayName === 'Khán giả 0')!;
-    const k1 = after.seats.find((s) => s.occupant?.displayName === 'Khán giả 1')!;
+    const k0 = after.seats.find((s) => s.occupant?.safeDisplayName === 'Khán giả 0')!;
+    const k1 = after.seats.find((s) => s.occupant?.safeDisplayName === 'Khán giả 1')!;
     expect(k0.occupant!.result).toBe('wrong');
     expect(k1.occupant!.result).toBe('correct');
     // Người không có ghế vẫn được chấm điểm như người có ghế
@@ -80,11 +80,11 @@ describe('V3 §6 — 35 ghế khán giả', () => {
     runUntil(h, () => r.engine.state === 'PREPARE' && r.engine.round!.questionIndex === 2); // xoay khi vào câu 3
     const after = r.publicSnapshot().audience!;
     expect(after.rotationId).toBe(before.rotationId + 1);
-    const changed = after.seats.filter((s, i) => s.occupant?.displayName !== before.seats[i]!.occupant?.displayName);
+    const changed = after.seats.filter((s, i) => s.occupant?.safeDisplayName !== before.seats[i]!.occupant?.safeDisplayName);
     expect(changed.length).toBeGreaterThan(0);
     expect(changed.length).toBeLessThanOrEqual(5);
-    for (const top of ['P0', 'P1', 'P2']) expect(after.seats.find((s) => s.occupant?.displayName === top)?.occupant?.pinned).toBe(true);
-    const names = after.seats.flatMap((s) => (s.occupant ? [s.occupant.displayName] : []));
+    for (const top of ['P0', 'P1', 'P2']) expect(after.seats.find((s) => s.occupant?.safeDisplayName === top)?.occupant?.pinned).toBe(true);
+    const names = after.seats.flatMap((s) => (s.occupant ? [s.occupant.safeDisplayName] : []));
     expect(new Set(names).size).toBe(names.length);
     expect(after.queued + names.length).toBe(65);
   });

@@ -1,13 +1,15 @@
 import type { CachedMcVoiceAudio, McVoiceAudio, McVoiceCacheDescriptor, McVoiceProvider, McVoiceSynthesisRequest, McVoiceCredentialStore } from './types';
 import { McVoiceProviderError } from './types';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
-import { MAX_MC_READING_MS } from '@quiz/contracts';
+import { MAX_MC_READING_MS, MC_VOICE_POLICY_VERSION, McVoiceEventSchema, type McVoiceEvent } from '@quiz/contracts';
 
 export interface McVoiceAudioNormalizer {
   normalize(audio: McVoiceAudio, signal?: AbortSignal): Promise<McVoiceAudio>;
 }
 
 export type McVoiceReadingLine = {
+  /** Event đã qua schema allowlist; không chứa tên/ID/điểm người chơi. */
+  gameEvent: McVoiceEvent;
   lineId: string;
   descriptor: McVoiceCacheDescriptor;
   request: McVoiceSynthesisRequest;
@@ -30,7 +32,9 @@ export class McVoiceService {
     request: McVoiceSynthesisRequest,
     signal?: AbortSignal,
   ): Promise<{ asset: CachedMcVoiceAudio; cacheHit: boolean }> {
-    if (descriptor.text !== request.text)
+    if (descriptor.voicePolicyVersion !== MC_VOICE_POLICY_VERSION)
+      throw new McVoiceProviderError('INVALID_RESPONSE', 'Voice policy version MC Voice không được hỗ trợ.');
+    if (descriptor.text !== request.text || descriptor.voiceKey !== request.voiceKey)
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Nội dung MC Voice không khớp cache key.');
     const assetId = mcVoiceCacheKey(descriptor);
     const cached = await this.cache.get(assetId);
@@ -55,7 +59,12 @@ export class McVoiceService {
     let token: string | null = null;
     let credentialsLoaded = false;
     for (const line of lines) {
-      if (line.descriptor.text !== line.request.text)
+      const parsedEvent = McVoiceEventSchema.safeParse(line.gameEvent);
+      if (!parsedEvent.success || parsedEvent.data.type !== 'QUESTION')
+        throw new McVoiceProviderError('INVALID_RESPONSE', 'Sự kiện MC Voice không nằm trong allowlist câu hỏi đã duyệt.');
+      if (line.descriptor.voicePolicyVersion !== MC_VOICE_POLICY_VERSION)
+        throw new McVoiceProviderError('INVALID_RESPONSE', 'Voice policy version MC Voice không được hỗ trợ.');
+      if (line.descriptor.text !== line.request.text || line.descriptor.voiceKey !== line.request.voiceKey)
         throw new McVoiceProviderError('INVALID_RESPONSE', 'Nội dung MC Voice không khớp cache key.');
       const assetId = mcVoiceCacheKey(line.descriptor);
       const cached = await this.cache.get(assetId);

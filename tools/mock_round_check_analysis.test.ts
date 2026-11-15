@@ -21,9 +21,9 @@ test('analyzeMockRound finds ordered phases, durations, accepted answers and the
     sample(130, 'VICTORY', 9, {
       tieAcrossCutoff: false,
       slots: [
-        { place: 1, rank: 1, tied: false, entries: [{ rank: 1, tied: false, playerId: 'p1', displayName: 'Linh', score: 900, correctCount: 3 }] },
-        { place: 2, rank: 2, tied: false, entries: [{ rank: 2, tied: false, playerId: 'p2', displayName: 'Minh', score: 700, correctCount: 2 }] },
-        { place: 3, rank: 3, tied: false, entries: [{ rank: 3, tied: false, playerId: 'p3', displayName: 'An', score: 500, correctCount: 2 }] },
+        { place: 1, rank: 1, tied: false, entries: [{ rank: 1, tied: false, playerId: 'p1', safeDisplayName: 'Linh', score: 900, correctCount: 3 }] },
+        { place: 2, rank: 2, tied: false, entries: [{ rank: 2, tied: false, playerId: 'p2', safeDisplayName: 'Minh', score: 700, correctCount: 2 }] },
+        { place: 3, rank: 3, tied: false, entries: [{ rank: 3, tied: false, playerId: 'p3', safeDisplayName: 'An', score: 500, correctCount: 2 }] },
       ],
     }),
   ], 3, 150);
@@ -36,7 +36,7 @@ test('analyzeMockRound finds ordered phases, durations, accepted answers and the
   assert.deepEqual(analysis.phaseVisits.map(({ state, durationMs }) => [state, durationMs]), [
     ['READING', 20], ['ACCEPTING', 20], ['REVEAL', 20], ['LEADERBOARD', 30], ['ROUND_END', 30], ['VICTORY', 20],
   ]);
-  assert.deepEqual(analysis.top3.map(({ place, displayName }) => [place, displayName]), [
+  assert.deepEqual(analysis.top3.map(({ place, safeDisplayName }) => [place, safeDisplayName]), [
     [1, 'Linh'], [2, 'Minh'], [3, 'An'],
   ]);
 });

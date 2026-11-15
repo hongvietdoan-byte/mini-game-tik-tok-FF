@@ -134,17 +134,18 @@ export function McSequence({
 
   if (staticUnavailable) return null;
   return (
-    <img
-      className="mc-sequence"
-      src={requestedSrc}
-      alt=""
-      aria-hidden="true"
-      draggable={false}
-      data-mc-animation={playback?.name ?? 'fallback'}
-      onError={() => {
-        if (requestedSrc !== staticFallbackSrc) setFailedOver(true);
-        else setStaticUnavailable(true);
-      }}
-    />
+    <div className="mc-pose-transition" key={`${state}:${requestedSrc}`} data-mc-state={state} aria-hidden="true">
+      <img
+        className="mc-sequence"
+        src={requestedSrc}
+        alt=""
+        draggable={false}
+        data-mc-animation={playback?.name ?? 'fallback'}
+        onError={() => {
+          if (requestedSrc !== staticFallbackSrc) setFailedOver(true);
+          else setStaticUnavailable(true);
+        }}
+      />
+    </div>
   );
 }

@@ -46,6 +46,17 @@ export type RoundQuestionRow = {
 
 export type StoredAnswer = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs: number };
 
+function collectPlayerNames(value: unknown, playerId: string, names: Set<string>) {
+  if (Array.isArray(value)) {
+    for (const child of value) collectPlayerNames(child, playerId, names);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  const record = value as Record<string, unknown>;
+  if (record.playerId === playerId && typeof record.displayName === 'string') names.add(record.displayName);
+  for (const child of Object.values(record)) collectPlayerNames(child, playerId, names);
+}
+
 function prepareStatements(r: Database.Database) {
   return {
     playerGet: r.prepare('SELECT id FROM players WHERE source = ? AND source_user_id = ?'),
@@ -405,8 +416,96 @@ export class Store {
     return id;
   }
 
+  findPlayerId(source: string, sourceUserId: string): string | null {
+    const found = this.stmt.playerGet.get(source, sourceUserId) as { id: string } | undefined;
+    return found?.id ?? null;
+  }
+
+  hasPlayer(playerId: string): boolean {
+    return !!this.raw.prepare('SELECT 1 AS found FROM players WHERE id = ?').get(playerId);
+  }
+
+  listPlayers(): {
+    id: string;
+    source: string;
+    sourceUserId: string;
+    displayName: string;
+    firstSeenAtMs: number;
+    lastSeenAtMs: number;
+  }[] {
+    return this.raw.prepare(
+      'SELECT id, source, source_user_id AS sourceUserId, display_name AS displayName, first_seen_at_ms AS firstSeenAtMs, last_seen_at_ms AS lastSeenAtMs FROM players ORDER BY last_seen_at_ms DESC',
+    ).all() as {
+      id: string;
+      source: string;
+      sourceUserId: string;
+      displayName: string;
+      firstSeenAtMs: number;
+      lastSeenAtMs: number;
+    }[];
+  }
+
+  /** Người chơi đã gửi ít nhất một câu trả lời trong phiên, kể cả khi sai và không có điểm. */
+  listPlayerIdsInSession(sessionId: string): string[] {
+    return (this.raw.prepare(
+      `SELECT DISTINCT a.player_id AS playerId
+       FROM answers a JOIN rounds r ON r.id = a.round_id
+       WHERE r.session_id = ? ORDER BY a.player_id`,
+    ).all(sessionId) as { playerId: string }[]).map((row) => row.playerId);
+  }
+
   touchPlayer(id: string, displayName: string, now: number) {
     this.stmt.playerTouch.run(displayName, now, id);
+  }
+
+  updatePlayerDisplayName(id: string, displayName: string) {
+    this.raw.prepare('UPDATE players SET display_name = ? WHERE id = ?').run(displayName, id);
+  }
+
+  /** Che các bản sao tên cũ trong snapshot/outbox trước khi tên đó bị gắn cờ. */
+  scrubPlayerNameHistory(id: string, candidateNames: readonly string[], replacement: string) {
+    const names = new Set(candidateNames.filter(Boolean));
+    const current = this.raw.prepare('SELECT display_name AS n FROM players WHERE id = ?').get(id) as { n: string } | undefined;
+    if (current?.n) names.add(current.n);
+
+    const snapshots = this.raw.prepare('SELECT id, entries_json AS json FROM leaderboard_snapshots').all() as { id: number; json: string }[];
+    for (const row of snapshots) {
+      try {
+        const parsed: unknown = JSON.parse(row.json);
+        collectPlayerNames(parsed, id, names);
+      } catch {
+        // Bản cũ hỏng không được làm hỏng đường nhận comment; vẫn cập nhật các dòng hợp lệ khác.
+      }
+    }
+    const replace = (value: unknown): unknown => {
+      if (typeof value === 'string') return names.has(value) ? replacement : value;
+      if (Array.isArray(value)) return value.map(replace);
+      if (value && typeof value === 'object')
+        return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, replace(child)]));
+      return value;
+    };
+
+    const updateSnapshot = this.raw.prepare('UPDATE leaderboard_snapshots SET entries_json = ? WHERE id = ?');
+    for (const row of snapshots) {
+      try {
+        const parsed: unknown = JSON.parse(row.json);
+        const next = JSON.stringify(replace(parsed));
+        if (next !== row.json) updateSnapshot.run(next, row.id);
+      } catch {
+        // Bỏ qua dữ liệu lịch sử lỗi định dạng.
+      }
+    }
+    const outbox = this.raw.prepare('SELECT id, payload_json AS json FROM outbox_events').all() as { id: number; json: string }[];
+    const updateOutbox = this.raw.prepare('UPDATE outbox_events SET payload_json = ? WHERE id = ?');
+    for (const row of outbox) {
+      try {
+        const parsed: unknown = JSON.parse(row.json);
+        const next = JSON.stringify(replace(parsed));
+        if (next !== row.json) updateOutbox.run(next, row.id);
+      } catch {
+        // Bỏ qua dữ liệu lịch sử lỗi định dạng.
+      }
+    }
   }
 
   /** @returns true nếu đây là đáp án ĐẦU TIÊN của người chơi cho câu này (được chấp nhận). */

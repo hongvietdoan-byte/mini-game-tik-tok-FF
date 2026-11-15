@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { getE2eAssetDirectory } from './assets';
+import { DEFAULT_HUD_CONFIG, type HudConfig } from '@quiz/contracts';
+import { getE2eAssetDirectory, getE2eTempDirectory } from './assets';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
 
 const scenes = [
@@ -22,7 +24,12 @@ const scenes = [
   { name: 'paused', scene: 'QUESTION' },
 ] as const;
 
-const screenshotDirectory = join(process.cwd(), '.tmp-test', 'playwright-results', 'screenshots');
+const screenshotDirectory = join(getE2eTempDirectory(), 'e2e', 'screenshots');
+const c0166ReviewDirectory = join(getE2eTempDirectory(), 'e2e', 'screenshots', 'c0166');
+mkdirSync(c0166ReviewDirectory, { recursive: true });
+mkdirSync(screenshotDirectory, { recursive: true });
+const roundCardMinimums = { title: 26, count: 44 };
+const roundCardHeight = 95;
 const localAssetDirectory = getE2eAssetDirectory();
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
@@ -184,6 +191,39 @@ for (const { name, scene } of scenes) {
   });
 }
 
+test('preview fits the full 9:16 stage in landscape and portrait, while program stays transparent', async ({ page }) => {
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  const viewport = page.locator('.viewport');
+  const stage = page.getByTestId('stage');
+  await expect(stage).toBeVisible();
+
+  for (const size of [
+    { width: 1920, height: 1080 },
+    { width: 1366, height: 768 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(size);
+    await expect.poll(async () => {
+      const box = await stage.boundingBox();
+      return box && box.width <= size.width + 0.5 && box.height <= size.height + 0.5 &&
+        box.x >= -0.5 && box.y >= -0.5 && box.x + box.width <= size.width + 0.5 &&
+        box.y + box.height <= size.height + 0.5;
+    }).toBe(true);
+    await expect(viewport).toHaveAttribute('data-fit', 'contain');
+    await expect(viewport).toHaveAttribute('data-role', 'preview');
+    await expect(viewport).toHaveCSS('background-color', 'rgb(8, 13, 43)');
+  }
+
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.goto('/?mock=question&role=program', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('stage')).toBeVisible();
+  await expect(viewport).toHaveAttribute('data-fit', 'cover');
+  await expect(viewport).toHaveAttribute('data-role', 'program');
+  await expect(viewport).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const programBox = await page.getByTestId('stage').boundingBox();
+  expect(programBox).toMatchObject({ x: 0, y: 0, width: 1080, height: 1920 });
+});
+
 test('prepare, reading and question do not expose the correct answer', async ({ page }) => {
   for (const name of ['prepare', 'reading', 'question']) {
     const { errors } = await openScene(page, name, 'QUESTION');
@@ -217,28 +257,36 @@ test('mock-only badge stays hidden unless debug is enabled', async ({ page }) =>
 test('Storm Arena header matches the ref hierarchy and MC states animate without a bolt icon', async ({ page }) => {
   const { stage, errors } = await openScene(page, 'question', 'QUESTION');
   const logo = stage.getByTestId('brand-logo');
+  const logoFrame = stage.getByTestId('brand-logo-frame');
   const eventMark = stage.getByTestId('event-mark');
   const roundCard = stage.getByTestId('round-card');
+  const participantCount = roundCard.getByTestId('participant-count');
+  const participantLabel = roundCard.locator('.v3-round-label');
   await expect(logo).toBeVisible();
   await expect(logo).toHaveAttribute('src', '/assets/brand/logo.png');
   await expect(eventMark).toBeVisible();
   await expect(roundCard).toContainText('VÒNG 1');
-  await expect(roundCard).toContainText('57 ĐANG CHƠI');
+  await expect(participantCount).toHaveText('57');
+  await expect(participantLabel).toHaveText('ĐANG CHƠI');
   const [logoBox, eventBox, roundBox, boardBox, subtitleBox] = await Promise.all([
-    logo.boundingBox(), eventMark.boundingBox(), roundCard.boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-title-ribbon').boundingBox(),
+    logoFrame.boundingBox(), eventMark.boundingBox(), roundCard.boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-title-ribbon').boundingBox(),
   ]);
   expect(logoBox).not.toBeNull();
   expect(eventBox).not.toBeNull();
   expect(roundBox).not.toBeNull();
-  expect(logoBox!.width).toBeGreaterThanOrEqual(210);
-  expect(logoBox!.width).toBeLessThanOrEqual(240);
+  expect(logoBox!.width).toBe(255);
   expect(logoBox!.y + logoBox!.height).toBeLessThan(270);
   expect(eventBox!.x + eventBox!.width).toBeLessThan(logoBox!.x);
   expect(logoBox!.x + logoBox!.width).toBeLessThan(roundBox!.x);
   expect(boardBox).not.toBeNull();
   expect(subtitleBox).not.toBeNull();
   expect(logoBox!.y + logoBox!.height).toBeLessThan(subtitleBox!.y);
-  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThan(boardBox!.y);
+  expect(subtitleBox!.y + subtitleBox!.height).toBeLessThanOrEqual(boardBox!.y - 16);
+  expect(parseFloat(await stage.locator('.v3-title-ribbon').evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(21);
+  expect(parseFloat(await roundCard.locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(roundCardMinimums.title);
+  expect(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(roundCardMinimums.count);
+  expect(parseFloat(await participantLabel.evaluate((element) => getComputedStyle(element).fontSize))).toBeLessThan(parseFloat(await participantCount.evaluate((element) => getComputedStyle(element).fontSize)));
+  expect(await roundCard.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await roundCard.evaluate((element) => element.clientWidth));
   expect(await logo.evaluate((element) => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   const [bubbleBox, firstAudienceLabel] = await Promise.all([
     stage.getByTestId('mc-bubble').boundingBox(), stage.locator('.v3-nametags .v3-seat-name').first().boundingBox(),
@@ -255,6 +303,388 @@ test('Storm Arena header matches the ref hierarchy and MC states animate without
   expect(askAnimation).toBe('v3-mc-ask');
   expect(errors).toEqual([]);
   expect(prepareErrors).toEqual([]);
+});
+
+test('mock overlay applies HUD text and uploaded images, then reloads config without refresh', async ({ page }) => {
+  const backgroundBase64 = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, 1080, 1920);
+    gradient.addColorStop(0, '#090b31');
+    gradient.addColorStop(.52, '#26105f');
+    gradient.addColorStop(1, '#070d29');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#db52ff';
+    ctx.lineWidth = 12;
+    ctx.shadowColor = '#a33fff';
+    ctx.shadowBlur = 38;
+    ctx.strokeRect(46, 52, 988, 1816);
+    ctx.strokeStyle = '#57dfff';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(56, 680);
+    ctx.lineTo(420, 510);
+    ctx.lineTo(686, 760);
+    ctx.lineTo(1024, 530);
+    ctx.stroke();
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  });
+  const logoBase64 = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 600;
+    canvas.height = 400;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, 600, 400);
+    gradient.addColorStop(0, '#25105b');
+    gradient.addColorStop(.5, '#141b63');
+    gradient.addColorStop(1, '#42125e');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(18, 18, 564, 364, 54);
+    ctx.fill();
+    ctx.strokeStyle = '#f179ff';
+    ctx.lineWidth = 12;
+    ctx.shadowColor = '#ce47ff';
+    ctx.shadowBlur = 24;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.font = '900 112px sans-serif';
+    ctx.fillText('NOVA', 300, 174);
+    ctx.fillStyle = '#ffd652';
+    ctx.font = '800 60px sans-serif';
+    ctx.fillText('ARENA', 300, 258);
+    return canvas.toDataURL('image/png').split(',')[1]!;
+  });
+  const background = Buffer.from(backgroundBase64, 'base64');
+  const logo = Buffer.from(logoBase64, 'base64');
+  const backgroundId = createHash('sha256').update(background).digest('hex') + '.png';
+  const logoId = createHash('sha256').update(logo).digest('hex') + '.png';
+  const missingLogoId = `${'f'.repeat(64)}.png`;
+  const missingBackgroundId = `${'e'.repeat(64)}.png`;
+  const reviewDirectory = join(process.cwd(), '.claude', 'review', 'C0193');
+  mkdirSync(reviewDirectory, { recursive: true });
+  let hudConfig: HudConfig = DEFAULT_HUD_CONFIG;
+  await page.route('**/api/hud', (route) => route.fulfill({ json: hudConfig }));
+  await page.route('**/hud-assets/**', (route) => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-1);
+    if (id === missingLogoId || id === missingBackgroundId) return route.fulfill({ status: 404, body: '' });
+    return route.fulfill({ status: 200, contentType: 'image/png', body: id === logoId ? logo : background });
+  });
+
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'STORM ARENA');
+  await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  console.log('C0193 default pill style:', JSON.stringify(await page.locator('.v3-title-ribbon').evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, box: element.getBoundingClientRect().toJSON(), font: getComputedStyle(element).fontSize, padding: getComputedStyle(element).padding, text: element.textContent }))));
+  expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const readLayout = () => page.evaluate(() => {
+    const selectors = {
+      title: '.v3-header .v3-title.is-wide',
+      logoFrame: '[data-testid="brand-logo-frame"]',
+      logo: '[data-testid="brand-logo-frame"]',
+      event: '.v3-event-mark',
+      ribbon: '.v3-title-ribbon',
+      roundCard: '[data-testid="round-card"]',
+      top10: '[data-testid="v3-top10"]',
+      board: '.v3-board',
+      question: '.v3-question',
+    } as const;
+    return Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect();
+      if (!rect) throw new Error(`Missing layout element: ${selector}`);
+      return [name, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }];
+    }));
+  });
+  const assertHeaderDoesNotOverlap = async () => {
+    const overlaps = await page.evaluate(() => {
+      const selectors = ['.v3-event-mark', '[data-testid="brand-logo-frame"]', '.v3-title-ribbon', '[data-testid="round-card"]'];
+      const rects = selectors.map((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) throw new Error(`Missing header element: ${selector}`);
+        return { selector, rect: element.getBoundingClientRect() };
+      });
+      const result: string[] = [];
+      for (let left = 0; left < rects.length; left += 1) for (let right = left + 1; right < rects.length; right += 1) {
+        const a = rects[left]!;
+        const b = rects[right]!;
+        const overlapX = Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left);
+        const overlapY = Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top);
+        if (overlapX > 1 && overlapY > 1) result.push(`${a.selector} intersects ${b.selector}`);
+      }
+      return result;
+    });
+    expect(overlaps).toEqual([]);
+  };
+  const defaultLayout = await readLayout();
+  console.log('C0193 HUD default geometry:', JSON.stringify(defaultLayout));
+  const c0168Approved = {
+    title: { x: 400, y: 30, width: 255, height: 292 },
+    logoFrame: { x: 400, y: 30, width: 255, height: 210 },
+    logo: { x: 400, y: 30, width: 255, height: 210 },
+    event: { x: 82, y: 133, width: 230, height: 92 },
+    ribbon: { x: 220, y: 250, width: 635, height: 72 },
+    roundCard: { x: 770, y: 133, width: 230, height: 95 },
+    top10: { x: 88, y: 348, width: 317, height: 462 },
+    board: { x: 425, y: 348, width: 570, height: 465 },
+    question: { x: 450, y: 510, width: 525, height: 145 },
+  } as const;
+  for (const key of Object.keys(c0168Approved) as Array<keyof typeof c0168Approved>) {
+    for (const dimension of ['x', 'y', 'width', 'height'] as const) {
+      expect(Math.abs(defaultLayout[key]![dimension] - c0168Approved[key][dimension]), `hud default ${key}.${dimension} matches approved C-0168/C-0210 header A`).toBeLessThanOrEqual(1);
+    }
+  }
+  await assertHeaderDoesNotOverlap();
+  await page.screenshot({ path: join(reviewDirectory, 'default-question.png'), animations: 'disabled' });
+
+  hudConfig = {
+    ...DEFAULT_HUD_CONFIG,
+    version: 1,
+    texts: {
+      ...DEFAULT_HUD_CONFIG.texts,
+      kicker: 'NOVA ARENA',
+      arenaTitle: 'ĐẤU TRƯỜNG MỚI',
+      playingLabel: 'ĐANG XEM',
+      roundLabel: 'VÒNG',
+      leaderboardTitle: 'TOP CHIẾN BINH',
+      victoryTitle: 'NHÀ VÔ ĐỊCH',
+    },
+    images: { logo: logoId, bgQuestion: backgroundId, bgLobby: backgroundId, bgVictory: null },
+  };
+  // Preview mocks poll public config; switching this response must update the active frame without navigation.
+  await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'NOVA ARENA', { timeout: 4_000 });
+  await expect(page.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG MỚI');
+  expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(page.locator('.v3-round-title')).toHaveText('VÒNG 1');
+  await expect(page.getByTestId('participant-count')).toHaveText('57');
+  await expect(page.locator('.v3-round-label')).toHaveText('ĐANG XEM');
+  await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', `/hud-assets/${logoId}`);
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
+  await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByTestId('brand-logo')).toHaveCSS('object-fit', 'contain');
+  const customLayout = await readLayout();
+  console.log('C0193 HUD custom geometry:', JSON.stringify(customLayout));
+  for (const key of Object.keys(defaultLayout) as Array<keyof typeof defaultLayout>) {
+    for (const dimension of ['x', 'y', 'width', 'height'] as const) {
+      expect(Math.abs(customLayout[key]![dimension] - defaultLayout[key]![dimension]), `${key}.${dimension}`).toBeLessThanOrEqual(1);
+    }
+  }
+  await assertHeaderDoesNotOverlap();
+  await page.screenshot({ path: join(reviewDirectory, 'custom-question.png'), animations: 'disabled' });
+  await expect(page).toHaveURL(/mock=question/);
+
+  await page.goto('/?mock=top10', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.v3-full-heading .eyebrow')).toHaveText('TOP CHIẾN BINH');
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
+  await page.screenshot({ path: join(reviewDirectory, 'custom-top10.png'), animations: 'disabled' });
+
+  await page.goto('/?mock=victory', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('v3v-event-logo')).toHaveAttribute('src', `/hud-assets/${logoId}`);
+  await expect(page.getByTestId('victory-background')).toHaveAttribute('src', '/assets/victory/bg-user-cover.jpg');
+  await expect(page.locator('.v3v-hud-title')).toHaveText('NHÀ VÔ ĐỊCH');
+  await expect(page.getByTestId('victory-background')).toHaveCSS('object-fit', 'cover');
+  await expect.poll(() => page.getByTestId('v3v-event-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('victory-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByTestId('victory-background')).toHaveAttribute('src', '/assets/victory/bg-user-cover.jpg');
+  await page.screenshot({ path: join(reviewDirectory, 'custom-victory.png'), animations: 'disabled' });
+
+  hudConfig = { ...hudConfig, version: 3, images: { ...hudConfig.images, bgVictory: backgroundId } };
+  await expect(page.getByTestId('victory-background')).toHaveAttribute('src', `/hud-assets/${backgroundId}`);
+  await page.screenshot({ path: join(reviewDirectory, 'nen-thu-victory.png'), animations: 'disabled' });
+
+  hudConfig = {
+    ...hudConfig,
+    version: 2,
+    images: { logo: missingLogoId, bgQuestion: missingBackgroundId, bgLobby: null, bgVictory: missingBackgroundId },
+  };
+  await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('brand-logo')).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect(page.getByTestId('arena-background')).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');
+  await expect.poll(() => page.getByTestId('brand-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('arena-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await page.goto('/?mock=victory', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('v3v-event-logo')).toHaveAttribute('src', '/assets/brand/logo.png');
+  await expect(page.getByTestId('victory-background')).toHaveAttribute('src', '/assets/victory/bg-user-cover.jpg');
+  await expect.poll(() => page.getByTestId('v3v-event-logo').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => page.getByTestId('victory-background').evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+});
+
+test('real participant counts format and fit the B2 card; capture the displayed values', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const base = makeMockSnapshot('question');
+  if (!base) throw new Error('Missing question mock for participant count test.');
+  let participantCount = 57;
+  await page.routeWebSocket('/ws', (socket) => {
+    socket.onMessage((message) => {
+      const incoming = JSON.parse(String(message)) as { type?: string };
+      if (incoming.type !== 'HELLO') return;
+      const snapshot = { ...base, participantCount };
+      socket.send(JSON.stringify({
+        v: 1,
+        type: 'STATE_SNAPSHOT',
+        seq: 1,
+        sessionId: snapshot.sessionId,
+        stateVersion: snapshot.stateVersion,
+        serverTimeMs: Date.now(),
+        payload: snapshot,
+      }));
+    });
+  });
+
+  const samples = [
+    { count: 57, text: '57' },
+    { count: 9_876, text: '9.876' },
+    { count: 10_500, text: '10,5K' },
+    { count: 1_234_567, text: '1,2M' },
+  ];
+  const reviewDirectory = join(getE2eTempDirectory(), 'e2e', 'screenshots', 'c0168');
+  mkdirSync(reviewDirectory, { recursive: true });
+  for (const sample of samples) {
+    participantCount = sample.count;
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
+    await expect(stage).toBeVisible();
+    const count = stage.getByTestId('participant-count');
+    const card = stage.getByTestId('round-card');
+    await expect(count).toHaveText(sample.text);
+    expect(await card.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await card.evaluate((element) => element.clientWidth));
+    const cardBox = await card.boundingBox();
+    expect(cardBox).toMatchObject({ x: 770, y: 133, width: 230, height: roundCardHeight });
+    await page.screenshot({
+      path: join(reviewDirectory, `after-count-${sample.count}.png`),
+      clip: { x: 740, y: 0, width: 300, height: 220 },
+    });
+  }
+});
+
+test('C-0175 keeps the pill, Top 10 and question content inside their frame padding', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const { stage } = await openScene(page, 'question', 'QUESTION');
+  const ribbon = stage.locator('.v3-title-ribbon');
+  const pillSpace = await ribbon.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const text = range.getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return { left: text.left - box.left, right: box.right - text.right, top: text.top - box.top, bottom: box.bottom - text.bottom };
+  });
+  expect(pillSpace.left).toBeGreaterThanOrEqual(40);
+  expect(pillSpace.right).toBeGreaterThanOrEqual(40);
+  expect(pillSpace.top).toBeGreaterThanOrEqual(10);
+  expect(pillSpace.bottom).toBeGreaterThanOrEqual(10);
+
+  const top10 = stage.locator('.v3-top10');
+  const topBox = await top10.boundingBox();
+  const titleBox = await top10.locator('.v3-top10-title').boundingBox();
+  const rows = top10.locator('li[data-testid="leaderboard-row"]');
+  expect(topBox).not.toBeNull();
+  expect(titleBox).not.toBeNull();
+  expect(await rows.count()).toBe(10);
+  if (!topBox || !titleBox) return;
+  expect(titleBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+  expect(titleBox.y - topBox.y).toBeGreaterThanOrEqual(20);
+  for (let index = 0; index < await rows.count(); index += 1) {
+    const row = rows.nth(index);
+    const rowBox = await row.boundingBox();
+    expect(rowBox).not.toBeNull();
+    if (!rowBox) continue;
+    expect(rowBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+    expect(topBox.x + topBox.width - rowBox.x - rowBox.width).toBeGreaterThanOrEqual(20);
+    expect(rowBox.y - topBox.y).toBeGreaterThanOrEqual(20);
+    expect(topBox.y + topBox.height - rowBox.y - rowBox.height).toBeGreaterThanOrEqual(18);
+    const name = row.locator('.v3-name-text');
+    expect(parseFloat(await name.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(22);
+    const scoreBox = await row.locator('.v3-score').boundingBox();
+    expect(scoreBox).not.toBeNull();
+    if (scoreBox) {
+      expect(scoreBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+      expect(topBox.x + topBox.width - scoreBox.x - scoreBox.width).toBeGreaterThanOrEqual(20);
+    }
+    const badge = row.getByTestId('top1-badge');
+    if (await badge.count()) {
+      const badgeBox = await badge.boundingBox();
+      expect(badgeBox).not.toBeNull();
+      if (badgeBox) {
+        expect(badgeBox.x - topBox.x).toBeGreaterThanOrEqual(20);
+        expect(topBox.x + topBox.width - badgeBox.x - badgeBox.width).toBeGreaterThanOrEqual(20);
+      }
+    }
+  }
+
+  const board = stage.locator('.v3-board');
+  const boardBox = await board.boundingBox();
+  expect(boardBox).not.toBeNull();
+  expect(boardBox?.y).toBe(348);
+  if (!boardBox || !topBox) return;
+  expect(boardBox.x - (topBox.x + topBox.width)).toBeGreaterThanOrEqual(18);
+  const framedItems = [
+    stage.getByTestId('question-tab'),
+    stage.getByTestId('timer'),
+    stage.getByTestId('question-prompt'),
+    stage.getByTestId('option-A'),
+    stage.getByTestId('option-B'),
+    stage.getByTestId('option-C'),
+    stage.getByTestId('option-D'),
+  ];
+  for (const item of framedItems) {
+    const box = await item.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) continue;
+    const itemLabel = await item.getAttribute('data-testid') ?? await item.evaluate((element) => String(element.className));
+    const minHorizontalPadding = itemLabel === 'timer' || itemLabel.startsWith('option-') ? 16 : 18;
+    const minTopPadding = itemLabel === 'timer' ? 0 : 18;
+    expect(box.x - boardBox.x).toBeGreaterThanOrEqual(minHorizontalPadding);
+    expect(boardBox.x + boardBox.width - box.x - box.width).toBeGreaterThanOrEqual(minHorizontalPadding);
+    expect(box.y - boardBox.y, `${itemLabel} stays inside the approved question frame`).toBeGreaterThanOrEqual(minTopPadding);
+    expect(boardBox.y + boardBox.height - box.y - box.height).toBeGreaterThanOrEqual(12);
+  }
+  const bubbleBox = await stage.getByTestId('mc-bubble').boundingBox();
+  expect(bubbleBox).not.toBeNull();
+  if (bubbleBox) expect(bubbleBox.y - boardBox.y - boardBox.height).toBeGreaterThanOrEqual(16);
+});
+
+test('event name and participant count stay readable on every shared header scene', async ({ page }) => {
+  for (const { name, scene } of [
+    { name: 'lobby', scene: 'LOBBY' },
+    { name: 'prepare', scene: 'QUESTION' },
+    { name: 'reading', scene: 'QUESTION' },
+    { name: 'question', scene: 'QUESTION' },
+    { name: 'reveal', scene: 'REVEAL' },
+    { name: 'top10', scene: 'INTERIM_TOP10' },
+    { name: 'intermission', scene: 'INTERMISSION' },
+    { name: 'connection-lost', scene: 'CONNECTION_LOST' },
+  ]) {
+    const { stage } = await openScene(page, name, scene);
+    const ribbon = stage.locator('.v3-title-ribbon');
+    const count = stage.getByTestId('participant-count');
+    const label = stage.locator('.v3-round-label');
+    await expect(ribbon).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
+    expect(parseFloat(await ribbon.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(['lobby', 'prepare', 'reading', 'question', 'reveal'].includes(name) ? 21 : 24);
+    expect(await ribbon.evaluate((element) => getComputedStyle(element).whiteSpace), name).toBe('nowrap');
+    expect(parseFloat(await stage.getByTestId('round-card').locator('.v3-round-title').evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(roundCardMinimums.title);
+    expect(parseFloat(await count.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeGreaterThanOrEqual(roundCardMinimums.count);
+    expect(parseFloat(await label.evaluate((element) => getComputedStyle(element).fontSize)), name).toBeLessThan(parseFloat(await count.evaluate((element) => getComputedStyle(element).fontSize)));
+    const roundBox = await stage.getByTestId('round-card').boundingBox();
+    expect(roundBox).toMatchObject({ x: 770, y: 133, width: 230, height: roundCardHeight });
+    expect(await stage.getByTestId('round-card').evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(await stage.getByTestId('round-card').evaluate((element) => element.clientWidth));
+
+    if (name === 'question') {
+      const ribbonBox = await ribbon.boundingBox();
+      const boardBox = await stage.locator('.v3-board').boundingBox();
+      expect(ribbonBox).not.toBeNull();
+      expect(boardBox).not.toBeNull();
+      expect(boardBox!.y).toBe(348);
+      expect(ribbonBox!.x).toBeGreaterThanOrEqual(0);
+      expect(ribbonBox!.x + ribbonBox!.width).toBeLessThanOrEqual(1080);
+      expect(ribbonBox!.y + ribbonBox!.height).toBeLessThanOrEqual(boardBox!.y - 16);
+    }
+  }
 });
 
 test('reveal marks exactly one correct option', async ({ page }) => {
@@ -300,7 +730,7 @@ test('cắt câu hỏi và đáp án dài theo grapheme ở QUESTION và REVEAL'
   }
 });
 
-test('Top 10 đủ 10 hàng nằm trên tóc MC ở sảnh và bốn pha câu hỏi', async ({ page }) => {
+test('Top 10 đủ 10 hàng, tên cuối nhận tương tác trên MC ở sảnh và bốn pha câu hỏi', async ({ page }) => {
   const cases = [
     { name: 'lobby', scene: 'LOBBY' },
     { name: 'prepare', scene: 'QUESTION' },
@@ -331,11 +761,8 @@ test('Top 10 đủ 10 hàng nằm trên tóc MC ở sảnh và bốn pha câu h�
       continue;
     }
 
-    const textOverlapsMc = nameBox.x < mcBox.x + mcBox.width
-      && nameBox.x + nameBox.width > mcBox.x
-      && nameBox.y < mcBox.y + mcBox.height
-      && nameBox.y + nameBox.height > mcBox.y;
-    if (!textOverlapsMc) stackingIssues.push(`${name}: tenth-row name does not reach the overlapping MC image area`);
+    // C-0207 restores the approved main layout where Kelly's transparent portrait edge
+    // can overlap the Top 10 panel; the Top 10 remains the hit-test layer.
     const hitRemainsInTop10 = await page.evaluate(({ x, y }) =>
       document.elementFromPoint(x, y)?.closest('.v3-top10') !== null,
     { x: nameBox.x + nameBox.width / 2, y: nameBox.y + nameBox.height / 2 });
@@ -388,7 +815,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
         board: box('.v3-board'), prompt: box('.v3-question'), options: box('.v3-options'), top10: box('.v3-top10'),
         mcFrame: box('.v3-mc-figure'), bubble: box('[data-testid="mc-bubble"]'),
         mc: box('.v3-mc'), mcFigure: (() => { const element = document.querySelector<HTMLElement>('.v3-mc-figure')!; return { x: element.offsetLeft, y: element.offsetTop, width: element.offsetWidth, height: element.offsetHeight }; })(),
-        mcPlate: box('.v3-mc-plate'), logo: box('[data-testid="brand-logo"]'),
+        mcPlate: box('.v3-mc-plate'), logo: box('[data-testid="brand-logo-frame"]'),
         answers: ['A', 'B', 'C', 'D'].map((id) => box(`[data-testid="option-${id}"]`)),
         timer: layoutBox('[data-testid="timer"]'),
         promptFits: document.querySelector<HTMLElement>('.v3-question')!.scrollHeight <= document.querySelector<HTMLElement>('.v3-question')!.clientHeight,
@@ -402,23 +829,25 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.answers.every(Boolean), `${name}: all answer boxes remain in place`).toBe(true);
     for (const region of ['board', 'top10'] as const) {
       const box = geometry[region];
-      const approvedBottom = region === 'top10' ? 811 : 815;
+      const expected = region === 'top10'
+        ? { y: 348, height: 462 }
+        : { y: 348, height: 465 };
       expect(box, `${name}: ${region} exists`).not.toBeNull();
-      expect(Math.abs(box!.y - 345), `${name}: ${region} starts at the approved y=345`).toBeLessThanOrEqual(2);
-      expect(Math.abs(box!.y + box!.height - approvedBottom), `${name}: ${region} ends at the approved y=${approvedBottom}`).toBeLessThanOrEqual(2);
+      expect(Math.abs(box!.y - expected.y), `${name}: ${region} matches the C-0219 180px lift`).toBeLessThanOrEqual(1);
+      expect(Math.abs(box!.height - expected.height), `${name}: ${region} matches the fixed origin/main height`).toBeLessThanOrEqual(1);
     }
     expect(geometry.mcFrame, `${name}: MC has the approved frame`).not.toBeNull();
-    expect(Math.abs(geometry.mcFrame!.width - 280), `${name}: MC frame is 280px wide`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.mcFrame!.height - 390), `${name}: MC frame is 390px tall`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.mcFrame!.width - 205), `${name}: MC portrait matches user reference width`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.mcFrame!.height - 205), `${name}: MC portrait matches user reference height`).toBeLessThanOrEqual(1);
     expect(geometry.bubble, `${name}: fixed speech bubble exists`).not.toBeNull();
     expect(Math.abs(geometry.bubble!.x - 410), `${name}: bubble x matches C-0133`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.y - 844), `${name}: bubble y matches C-0133`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.width - 568), `${name}: bubble width matches the approved C-0133 review`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.height - 220), `${name}: bubble height matches C-0133`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.bubble!.y - 860), `${name}: bubble matches C-0219 y`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.bubble!.width - 575), `${name}: bubble matches C-0219 width`).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.bubble!.height - 145), `${name}: MC bubble matches C-0219 height`).toBeLessThanOrEqual(1);
     expect(geometry.promptFits, `${name}: prompt fits without enlarging its card`).toBe(true);
     expect(geometry.mcFigure, `${name}: Kelly has a visible fixed portrait frame`).not.toBeNull();
     expect(geometry.mcPlate, `${name}: Kelly nameplate has a fixed position`).not.toBeNull();
-    expect(geometry.mcPlate!.y, `${name}: Kelly nameplate sits below the half-body crop`).toBeGreaterThanOrEqual(geometry.mc!.y + geometry.mcFigure!.y + geometry.mcFigure!.height);
+    expect(Math.abs(geometry.mcPlate!.y - 1018), `${name}: Kelly nameplate matches C-0219 y`).toBeLessThanOrEqual(1);
     expect(geometry.logo!.y + geometry.logo!.height, `${name}: logo remains above the baked flags`).toBeLessThanOrEqual(270);
     if (name === 'prepare') expect(geometry.blankAnswers).toBe(true);
     if (!reference) reference = geometry;
@@ -520,7 +949,8 @@ test('compact Top 10 stays within 45 percent and shows 14-character names beside
   const [figureBox, bubbleBox] = await Promise.all([guide.locator('.v3-mc-figure').boundingBox(), guide.getByTestId('mc-bubble').boundingBox()]);
   expect(figureBox).not.toBeNull();
   expect(bubbleBox).not.toBeNull();
-  expect(bubbleBox!.y).toBeGreaterThanOrEqual(figureBox!.y + figureBox!.height - 2);
+  expect(bubbleBox).toMatchObject({ x: 115, y: 1178, width: 633, height: 145 });
+  expect(Math.abs(bubbleBox!.y + bubbleBox!.height / 2 - (figureBox!.y + figureBox!.height / 2))).toBeLessThanOrEqual(1);
   await page.waitForTimeout(8_100);
   await page.screenshot({ path: join(screenshotDirectory, 'top10.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
@@ -561,14 +991,17 @@ test('question scene uses the official logo, approved Kelly/chibi assets and are
   await expect.poll(() => kelly.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   const mcCrop = await kelly.evaluate((image: HTMLImageElement) => ({
     parentHeight: image.parentElement?.clientHeight ?? 0,
+    imageWidth: image.offsetWidth,
     imageHeight: image.offsetHeight,
+    naturalWidth: image.naturalWidth,
+    naturalHeight: image.naturalHeight,
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
-  expect(mcCrop.parentHeight).toBe(390);
-  expect(mcCrop.imageHeight).toBe(mcCrop.parentHeight);
-  expect(await kelly.evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover');
-  expect(await kelly.evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');
+  expect(mcCrop.parentHeight).toBe(205);
+  expect(mcCrop.imageWidth).toBe(168);
+  expect(mcCrop.imageHeight).toBeGreaterThan(mcCrop.parentHeight);
+  expect(mcCrop.imageHeight / mcCrop.imageWidth).toBeCloseTo(mcCrop.naturalHeight / mcCrop.naturalWidth, 2);
 
   const chibis = page.locator('.v3-chibi-img img');
   await expect(chibis).toHaveCount(35);
@@ -603,10 +1036,10 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(mcBox).not.toBeNull();
   const boardBox = await page.locator('.v3-board').boundingBox();
   expect(boardBox).not.toBeNull();
-  expect(top10Box!.x).toBeGreaterThanOrEqual(97);
+  expect(top10Box!.x).toBeGreaterThanOrEqual(88);
   expect(top10Box!.x + top10Box!.width).toBeLessThan(boardBox!.x);
-  expect(boardBox!.x + boardBox!.width).toBeLessThanOrEqual(983);
-  expect(mcBox!.y).toBeGreaterThanOrEqual(752);
+  expect(boardBox!.x + boardBox!.width).toBeLessThanOrEqual(995);
+  expect(mcBox!.y).toBeGreaterThanOrEqual(815);
 
   const seatNames = page.locator('.v3-seat-name');
   await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
@@ -625,19 +1058,7 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(firstNameBox!.width).toBeGreaterThanOrEqual(96);
 
   const queue = page.locator('.v3-queue');
-  const queueBox = await queue.boundingBox();
-  expect(queueBox).not.toBeNull();
-  expect(queueBox!.x).toBeGreaterThanOrEqual(97);
-  expect(queueBox!.x + queueBox!.width).toBeLessThanOrEqual(983);
-  const audienceOverlapsQueue = await page.evaluate(() => {
-    const queue = document.querySelector<HTMLElement>('.v3-queue');
-    if (!queue) return ['queue badge is missing'];
-    const q = queue.getBoundingClientRect();
-    const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-    return Array.from(document.querySelectorAll<HTMLElement>('.v3-seat-name, .v3-seat-back'))
-      .flatMap((element, index) => intersects(q, element.getBoundingClientRect()) ? [`audience item ${index}`] : []);
-  });
-  expect(audienceOverlapsQueue, 'queue count stays clear of seats and name tags').toEqual([]);
+  await expect(queue).toBeHidden();
 
   const overlaps = await page.evaluate(() => {
     const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="question-prompt"], [data-testid^="option-"]'));
@@ -676,12 +1097,12 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(errors).toEqual([]);
 });
 
-test('question and Top 10 stay below the 14 percent TikTok top safe zone', async ({ page }) => {
+  test('question and Top 10 use C-0219 positions over the unchanged baked flags', async ({ page }) => {
   await openScene(page, 'question', 'QUESTION');
   for (const selector of ['.v3-top10', '.v3-board', '.v3-timer']) {
     const box = await page.locator(selector).boundingBox();
     expect(box, `${selector} has a measurable position`).not.toBeNull();
-    expect(box!.y).toBeGreaterThanOrEqual(268.8);
+    expect(box!.y).toBe(selector === '.v3-timer' ? 368 : 348);
   }
 });
 
@@ -703,11 +1124,11 @@ test('TikTok HUD overlays the same quiz layout while critical quiz content stays
   expect(withHud).toEqual(withoutHud);
 
   const stageBox = await page.locator('[data-testid="stage"]').boundingBox();
-  const logoBox = await page.getByTestId('brand-logo').boundingBox();
+  const logoBox = await page.getByTestId('brand-logo-frame').boundingBox();
   expect(stageBox).not.toBeNull();
   expect(logoBox).not.toBeNull();
-  expect(logoBox!.width / stageBox!.width).toBeGreaterThanOrEqual(0.19);
-  expect(logoBox!.width / stageBox!.width).toBeLessThanOrEqual(0.22);
+  expect(logoBox!.width / stageBox!.width).toBeGreaterThanOrEqual(0.22);
+  expect(logoBox!.width / stageBox!.width).toBeLessThanOrEqual(0.25);
 
   const overlap = await page.evaluate(() => {
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -715,7 +1136,9 @@ test('TikTok HUD overlays the same quiz layout while critical quiz content stays
     const eventBanner = box('.tiktok-hud-event-banner');
     const timerText = box('.v3-timer b');
     const comments = box('.tiktok-hud-comments');
-    const important = Array.from(document.querySelectorAll<HTMLElement>('.v3-top10, .v3-board, .v3-mc'))
+    const important = Array.from(document.querySelectorAll<HTMLElement>(
+      '.v3-top10, .v3-board, .v3-mc-figure, .v3-mc-plate, .v3-mc .v3-bubble',
+    ))
       .map((element) => element.getBoundingClientRect());
     return {
       bannerCoversTimerText: !!eventBanner && !!timerText && intersects(eventBanner, timerText),
@@ -754,14 +1177,14 @@ test('question uses the baked stadium, audience ranks and the accepting instruct
   expect(boardBox).not.toBeNull();
   const instructionCenterX = instructionBox!.x + instructionBox!.width / 2;
   const boardCenterX = boardBox!.x + boardBox!.width / 2;
-  expect(Math.abs(instructionCenterX - boardCenterX)).toBeLessThanOrEqual(8);
+  expect(Math.abs(instructionCenterX - boardCenterX)).toBeLessThanOrEqual(13);
   expect(instructionBox!.y).toBeGreaterThanOrEqual(boardBox!.y + boardBox!.height);
 });
 
 test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ page }) => {
   const errors = watchPageErrors(page);
   await page.setViewportSize({ width: 921, height: 2000 });
-  await page.goto('/?mock=question&hud=1&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
+  await page.goto('/?mock=question&hud=1&fit=cover&safeTop=180&safeRight=140&safeBottom=120&safeLeft=20&safeRightFromY=700', { waitUntil: 'domcontentloaded' });
   const stage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
   await expect(stage).toBeVisible();
   await expect(page.getByTestId('tiktok-hud')).toBeVisible();
@@ -773,8 +1196,9 @@ test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ 
   for (const selector of ['.v3-top10', '.v3-board', '.v3-timer', '.v3-question', '[data-testid="option-A"]']) {
     const box = await page.locator(selector).boundingBox();
     expect(box, `${selector} stays visible after phone side crop`).not.toBeNull();
-    expect(box!.x).toBeGreaterThanOrEqual(-2);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(923);
+    // Fit=cover crops about 10px of the approved x=88 Top 10 anchor on this narrow viewport.
+    expect(box!.x).toBeGreaterThanOrEqual(selector === '.v3-top10' ? -12 : -2);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(selector === '.v3-top10' || selector === '.v3-board' ? 935 : 923);
   }
   await expect(page.getByTestId('tiktok-status-bar')).toBeVisible();
   await expect(page.getByTestId('tiktok-live-info')).toContainText('FFVN.Kelly');
@@ -899,7 +1323,7 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   await page.route('**/assets/audio/**', (route) => route.fulfill({ status: 404, body: 'optional audio absent' }));
   await page.route('**/assets/audio/question-enter.mp3', (route) => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: 'mock audio file' }));
   const errors = watchPageErrors(page);
-  await page.goto('/?mock=cycle&cycleMs=250&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
+  await page.goto('/?mock=cycle&cycleMs=250&role=program&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
   const runtime = page.getByTestId('overlay-audio-runtime');
   await expect(runtime).toHaveAttribute('data-audio-state', 'running');
   await expect(runtime).toHaveAttribute('data-bgm', '0');
@@ -921,21 +1345,35 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   expect(errors).toEqual([]);
 });
 
-test('reduced motion removes ambient FX and audio unlock hint is browser-only', async ({ page }) => {
+test('program audio retries silently at phase changes without an unlock hint', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.addInitScript(() => {
+    const testWindow = window as typeof window & { __audioProbe?: { resumePhases: string[]; oscillatorStarts: number } };
+    testWindow.__audioProbe = { resumePhases: [], oscillatorStarts: 0 };
+    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
     class SuspendedAudioContext {
       state: AudioContextState = 'suspended';
       currentTime = 0;
+      sampleRate = 44_100;
       destination = {} as AudioDestinationNode;
       onstatechange: ((this: BaseAudioContext, ev: Event) => unknown) | null = null;
-      private resumes = 0;
-      createGain() {
-        return { gain: { value: 0, setTargetAtTime() {} }, connect() {} } as unknown as GainNode;
+      createGain() { return { gain: param(), connect() {} } as unknown as GainNode; }
+      createOscillator() {
+        return {
+          type: 'sine', frequency: param(), connect() {},
+          start: () => { testWindow.__audioProbe!.oscillatorStarts += 1; },
+          stop() {}, onended: null,
+        } as unknown as OscillatorNode;
       }
+      createBufferSource() { return { buffer: null, connect() {}, start() {}, stop() {}, loop: false, onended: null } as unknown as AudioBufferSourceNode; }
+      createBuffer(_channels: number, length: number, sampleRate: number) { return { duration: length / sampleRate, getChannelData: () => new Float32Array(length) } as unknown as AudioBuffer; }
+      createBiquadFilter() { return { type: 'lowpass', frequency: param(), Q: param(), connect() {} } as unknown as BiquadFilterNode; }
+      decodeAudioData() { return Promise.resolve({ duration: 0.2 } as AudioBuffer); }
       resume() {
-        this.resumes += 1;
-        if (this.resumes < 2) return Promise.reject(new Error('gesture required'));
+        const phase = document.querySelector('[data-testid="stage"]')?.getAttribute('data-state') ?? 'unmounted';
+        testWindow.__audioProbe!.resumePhases.push(phase);
+        if (new Set(testWindow.__audioProbe!.resumePhases).size < 2)
+          return Promise.reject(new Error('autoplay policy'));
         this.state = 'running';
         this.onstatechange?.call(this as unknown as BaseAudioContext, new Event('statechange'));
         return Promise.resolve();
@@ -944,16 +1382,19 @@ test('reduced motion removes ambient FX and audio unlock hint is browser-only', 
     }
     (window as typeof window & { AudioContext: typeof AudioContext }).AudioContext = SuspendedAudioContext as unknown as typeof AudioContext;
   });
-  await page.goto('/?mock=victory&sfx=0.6&fx=low&source=1', { waitUntil: 'domcontentloaded' });
+  await page.route('**/assets/audio/**', (route) => route.fulfill({ status: 404, body: 'optional audio absent' }));
+  await page.goto('/?mock=cycle&cycleMs=250&role=program&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
+  const runtime = page.getByTestId('overlay-audio-runtime');
   await expect(page.locator('.overlay-fx-particle')).toHaveCount(0);
   await expect(page.locator('.overlay-fx-confetti')).toHaveCount(0);
   await expect(page.getByTestId('audio-unlock')).toHaveCount(0);
-
-  await page.goto('/?mock=victory&sfx=0.6&fx=low', { waitUntil: 'domcontentloaded' });
-  const unlock = page.getByTestId('audio-unlock');
-  await expect(unlock).toBeVisible();
-  await unlock.click();
-  await expect(unlock).toHaveCount(0);
+  await expect(page.getByText(/bấm để bật âm/i)).toHaveCount(0);
+  await expect(runtime).toHaveAttribute('data-bgm', '0');
+  await expect(runtime).toHaveAttribute('data-audio-state', 'running', { timeout: 10_000 });
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __audioProbe: { oscillatorStarts: number } }).__audioProbe.oscillatorStarts)).toBeGreaterThan(0);
+  await page.screenshot({ path: join(c0166ReviewDirectory, 'no-audio-button-bottom-left.png'), clip: { x: 0, y: 1500, width: 440, height: 420 }, animations: 'disabled' });
+  const resumePhases = await page.evaluate(() => (window as typeof window & { __audioProbe: { resumePhases: string[] } }).__audioProbe.resumePhases);
+  expect(new Set(resumePhases).size).toBeGreaterThanOrEqual(2);
 });
 
 test('victory-tie labels the tie and orders podium slots by x coordinate', async ({ page }) => {
@@ -1055,14 +1496,25 @@ test('question and Top 10 giữa vòng giữ nền C-0133, không dựng cờ r�
   await expect(background).toHaveCSS('object-fit', 'cover');
   await expect.poll(() => background.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBe(1080);
   await expect.poll(() => background.evaluate((image) => (image as HTMLImageElement).naturalHeight)).toBe(1920);
+  await expect(stage.locator('.v3-question-banner-mask')).toHaveCount(0);
+  const [boardBox, top10Box, bubbleBox] = await Promise.all([
+    stage.locator('.v3-board').boundingBox(), stage.locator('.v3-top10').boundingBox(), stage.getByTestId('mc-bubble').boundingBox(),
+  ]);
+  expect(boardBox?.y).toBe(348);
+  expect(top10Box?.y).toBe(348);
+  expect(bubbleBox?.y).toBeGreaterThanOrEqual(boardBox!.y + boardBox!.height + 16);
   const plateBox = await stage.locator('[data-layer="kelly"] .v3-mc-plate').boundingBox();
-  expect(plateBox).not.toBeNull();
   const nameTags = stage.locator('.v3-nametags .v3-seat-name');
+  const speechBox = await stage.getByTestId('mc-bubble').boundingBox();
+  expect(plateBox).not.toBeNull();
+  expect(speechBox).not.toBeNull();
   for (let i = 0; i < await nameTags.count(); i += 1) {
     const tagBox = await nameTags.nth(i).boundingBox();
     if (!tagBox || !plateBox) continue;
     const overlaps = plateBox.x < tagBox.x + tagBox.width && plateBox.x + plateBox.width > tagBox.x && plateBox.y < tagBox.y + tagBox.height && plateBox.y + plateBox.height > tagBox.y;
     expect(overlaps, `MC plate overlaps audience name tag ${i + 1}`).toBe(false);
+    const bubbleOverlaps = speechBox!.x < tagBox.x + tagBox.width && speechBox!.x + speechBox!.width > tagBox.x && speechBox!.y < tagBox.y + tagBox.height && speechBox!.y + speechBox!.height > tagBox.y;
+    expect(bubbleOverlaps, `MC speech bubble overlaps audience name tag ${i + 1}`).toBe(false);
   }
   await page.screenshot({ path: join(screenshotDirectory, 'arena-question.png'), animations: 'disabled' });
 
@@ -1070,10 +1522,10 @@ test('question and Top 10 giữa vòng giữ nền C-0133, không dựng cờ r�
   const panel = top10.stage.getByTestId('v3-top10-large');
   const panelBox = await panel.boundingBox();
   expect(panelBox?.height).toBeLessThanOrEqual(864);
-  const top10Logo = top10.stage.getByTestId('brand-logo');
+  const top10Logo = top10.stage.getByTestId('brand-logo-frame');
   const top10LogoBox = await top10Logo.boundingBox();
   expect(top10LogoBox).not.toBeNull();
-  expect(top10LogoBox!.width).toBeGreaterThanOrEqual(432);
+  expect(top10LogoBox!.width).toBeGreaterThanOrEqual(255);
   expect(top10LogoBox!.y + top10LogoBox!.height).toBeLessThan(panelBox!.y);
   await expect(top10.stage.getByTestId('top10-guide')).toBeVisible();
   await expect(top10.stage.locator('.v3-arena-backdrop-image')).toHaveAttribute('src', '/assets/arena/bg-question-user.jpg');

@@ -49,7 +49,8 @@ export function mapTikTokChat(data: any): (Omit<RawComment, 'source'> & { create
   const userId = str(user.id ?? user.userId);
   if (!userId || userId === '0') return null; // không có mã ổn định → không chấm điểm (V3 §5)
   const text = str(data?.content ?? data?.comment);
-  const displayName = str(user.nickname || user.uniqueId || user.displayId) || 'Khán giả';
+  // uniqueId/displayId có thể là @handle; không sử dụng làm tên công khai khi nickname trống.
+  const displayName = str(user.nickname).trim();
   const msgId = str(data?.common?.msgId ?? data?.msgId);
   const rawTime = Number(data?.common?.createTime ?? data?.createTime);
   // createTime có thể là giây hoặc mili-giây tuỳ phiên bản giao thức

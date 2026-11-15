@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
 
 export function selectNewestSnapshot(
   current: PublicSnapshot | null,
@@ -27,15 +27,15 @@ export function interpolateRemainingMs(
   return Math.max(0, remainingMs - Math.max(0, elapsedMs));
 }
 
-export function leaderboardPages(entries: LeaderboardEntry[], pageSize = 5): LeaderboardEntry[][] {
+export function leaderboardPages(entries: PublicLeaderboardEntry[], pageSize = 5): PublicLeaderboardEntry[][] {
   const safeSize = Math.max(1, Math.floor(pageSize));
   if (entries.length <= safeSize) return [entries];
-  const pages: LeaderboardEntry[][] = [];
+  const pages: PublicLeaderboardEntry[][] = [];
   for (let i = 0; i < entries.length; i += safeSize) pages.push(entries.slice(i, i + safeSize));
   return pages;
 }
 
-export function podiumLeftToRight(slots: PodiumSlot[]): PodiumSlot[] {
-  const order: Record<PodiumSlot['place'], number> = { 2: 0, 1: 1, 3: 2 };
+export function podiumLeftToRight(slots: PublicPodiumSlot[]): PublicPodiumSlot[] {
+  const order: Record<PublicPodiumSlot['place'], number> = { 2: 0, 1: 1, 3: 2 };
   return [...slots].sort((a, b) => order[a.place] - order[b.place]);
 }

@@ -1,29 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { LeaderboardEntry, PodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import { McStateSchema, type PublicLeaderboardEntry, type PublicPodiumSlot, type PublicSnapshot } from '@quiz/contracts';
 import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './overlayLogic';
 import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
-import { ArenaStage, V3_SCENES } from './v3/ArenaStage';
+import { ArenaStage, McBubbleText, V3_SCENES } from './v3/ArenaStage';
 import { V3_VICTORY_SCENES, VictoryStage } from './v3/Victory';
 import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES } from './v3/AuxiliaryStages';
 import { AudioFxLayer } from './v3/AudioFxLayer';
-import { overlayRoleFromSearch } from './overlayRole';
+import { overlayFitFromSearch, overlayRoleFromSearch, overlayStageScale } from './overlayRole';
+import { publicPlayerName } from './publicPlayerName';
+import { HudConfigProvider, useLiveHudConfig } from './hudConfig';
 import type { AudioEngineState } from './audio/audio-engine';
 import './style.css';
 
-function useStageScale() {
-  const [scale, setScale] = useState(1);
+function useStageScale(fit: 'contain' | 'cover') {
+  const [scale, setScale] = useState(() => overlayStageScale(window.innerWidth, window.innerHeight, fit));
   useEffect(() => {
     const resize = () => {
-      const widthScale = window.innerWidth / 1080;
-      const heightScale = window.innerHeight / 1920;
-      setScale(Math.max(widthScale, heightScale));
+      setScale(overlayStageScale(window.innerWidth, window.innerHeight, fit));
     };
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
-  }, []);
+  }, [fit]);
   return scale;
 }
 
@@ -44,22 +44,22 @@ function useTimer(snapshot: PublicSnapshot, serverTimeMs: number, clockOffsetMs:
   return interpolateRemainingMs(snapshot.timer.remainingMs, snapshot.timer.running, now + clockOffsetMs - serverTimeMs);
 }
 
-function Leaderboard({ entries, compact = false }: { entries: LeaderboardEntry[]; compact?: boolean }) {
+function Leaderboard({ entries, compact = false, allowLegacyNames }: { entries: PublicLeaderboardEntry[]; compact?: boolean; allowLegacyNames: boolean }) {
   return <div className={`leaderboard ${compact ? 'leaderboard-compact' : ''}`}>
     {entries.map((entry) => <div className="leaderboard-row" data-testid="leaderboard-row" key={entry.playerId}>
       <span className="rank">{entry.rank}</span>
-      <span className="player-name" title={entry.displayName}>{entry.displayName}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>
+      {(() => { const name = publicPlayerName(entry, `Người chơi ${entry.rank}`, allowLegacyNames); return <span className="player-name" title={name}>{name}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>; })()}
       <span className="score">{entry.score.toLocaleString('vi-VN')}<small>điểm</small></span>
     </div>)}
   </div>;
 }
 
-function Podium({ slots, tied }: { slots: PodiumSlot[]; tied: boolean }) {
+function Podium({ slots, tied, allowLegacyNames }: { slots: PublicPodiumSlot[]; tied: boolean; allowLegacyNames: boolean }) {
   return <div className="podium-row">
     {podiumLeftToRight(slots).map((slot) => <div className={`podium-card place-${slot.place}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} key={slot.place}>
       <div className="avatar-silhouette" aria-hidden="true"><span /></div>
       <div className="nameplate">
-        {slot.entries.map((entry) => <div className="podium-name" key={entry.playerId}>{entry.displayName}</div>)}
+        {slot.entries.map((entry, index) => <div className="podium-name" key={entry.playerId}>{publicPlayerName(entry, `Người chơi hạng ${slot.rank}${slot.entries.length > 1 ? ` · ${index + 1}` : ''}`, allowLegacyNames)}</div>)}
         <b>{slot.entries.map((entry) => entry.score.toLocaleString('vi-VN')).join(' · ')} điểm</b>
         {(slot.tied || (tied && slot.entries.length > 1)) && <strong className="tie-label">ĐỒNG HẠNG</strong>}
       </div>
@@ -68,7 +68,7 @@ function Podium({ slots, tied }: { slots: PodiumSlot[]; tied: boolean }) {
   </div>;
 }
 
-function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
+function SceneContent({ snapshot, remainingMs, allowLegacyNames }: { snapshot: PublicSnapshot; remainingMs: number; allowLegacyNames: boolean }) {
   const { scene } = snapshot;
   const [page, setPage] = useState(0);
   const entries = snapshot.leaderboard?.entries ?? [];
@@ -117,7 +117,7 @@ function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; rem
         <p className="explanation">{reveal.explanation}</p>
         <div className="reveal-top10" data-testid="reveal-top10">
           <div className="section-label">BẢNG XẾP HẠNG NHANH · TOP 10</div>
-          <Leaderboard entries={entries.slice(0, 10)} compact />
+          <Leaderboard entries={entries.slice(0, 10)} compact allowLegacyNames={allowLegacyNames} />
         </div>
       </>}
     </section>;
@@ -126,18 +126,18 @@ function SceneContent({ snapshot, remainingMs }: { snapshot: PublicSnapshot; rem
   if (scene === 'INTERIM_TOP10') return <section className="top10-scene">
     <div className="eyebrow">BẢNG XẾP HẠNG</div><h2>TOP <span>10</span></h2>
     <p className="round-caption">SAU CÂU {((snapshot.round?.questionIndex ?? 0) + 1).toString().padStart(2, '0')}</p>
-    <Leaderboard entries={pages[page] ?? []} />
+    <Leaderboard entries={pages[page] ?? []} allowLegacyNames={allowLegacyNames} />
     {pages.length > 1 && <div className="page-indicator">{page + 1} / {pages.length}</div>}
   </section>;
 
   if (scene === 'ROUND_WINNER') return <section className="winner-scene">
     <div className="eyebrow">VÒNG {snapshot.round?.roundNumber ?? 1}</div><h2>KẾT THÚC<br /><span>VÒNG ĐẤU</span></h2>
-    <Leaderboard entries={entries.slice(0, 3)} compact />
+    <Leaderboard entries={entries.slice(0, 3)} compact allowLegacyNames={allowLegacyNames} />
   </section>;
 
   if (scene === 'VICTORY') return <section className="victory-scene">
     <div className="eyebrow">VINH DANH NHÀ VÔ ĐỊCH</div><h2>VINH QUANG<br /><span>THUỘC VỀ</span></h2>
-    {snapshot.podium && <Podium slots={snapshot.podium.slots} tied={snapshot.podium.tieAcrossCutoff} />}
+    {snapshot.podium && <Podium slots={snapshot.podium.slots} tied={snapshot.podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />}
   </section>;
 
   if (scene === 'INTERMISSION') return <section className="intermission-scene">
@@ -207,16 +207,20 @@ function TikTokHudSimulator({ debug }: { debug: boolean }) {
 function App() {
   const query = new URLSearchParams(location.search);
   const hud = query.get('hud') === '1';
-  const scale = useStageScale();
+  const overlayRole = overlayRoleFromSearch(location.search);
+  const fit = overlayFitFromSearch(location.search, overlayRole);
+  const scale = useStageScale(fit);
   const requestedMock = query.get('mock');
+  const allowLegacyNames = requestedMock === 'cycle' || (requestedMock !== null && MOCK_SCENES.includes(requestedMock));
+  const requestedMcState = McStateSchema.safeParse(query.get('mc')).data;
   const requestedCycleMs = Number(query.get('cycleMs'));
   const cycleIntervalMs = Number.isFinite(requestedCycleMs) && requestedCycleMs >= 100 && requestedCycleMs <= 10_000 ? requestedCycleMs : 3_000;
   const fxLow = query.get('fx') === 'low';
-  const overlayRole = overlayRoleFromSearch(location.search);
   const [audioState, setAudioState] = useState<AudioEngineState>('disabled');
   const [cycleScene, setCycleScene] = useState('lobby');
   const mockScene = requestedMock === 'cycle' ? cycleScene : requestedMock;
-  const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene, overlayRole, audioState);
+  const { snapshot: networkSnapshot, connection, serverTimeMs, clockOffsetMs } = useSnapshot(mockScene, overlayRole, audioState, requestedMcState);
+  const hudConfig = useLiveHudConfig(networkSnapshot?.hudVersion, mockScene !== null);
   useEffect(() => {
     if (requestedMock !== 'cycle') return;
     const available = MOCK_SCENES.filter((scene) => scene !== 'paused');
@@ -245,7 +249,7 @@ function App() {
     rightFromY: queryPixelOverride(query, 'safeRightFromY', snapshot.safeZone.rightFromY ?? 0, 1920),
   } : undefined;
 
-  return <main className="viewport">
+  return <HudConfigProvider config={hudConfig}><main className={`viewport viewport-${overlayRole}`} data-fit={fit} data-role={overlayRole}>
     {snapshot ? <div id="stage" className={fxLow ? 'fx-low' : undefined} data-testid="stage" data-scene={snapshot.scene} data-state={snapshot.state} data-fx-level={fxLow ? 'low' : 'full'} style={{
       transform: `translate(-50%, -50%) scale(${scale})`,
       '--safe-top': `${safeZone!.top}px`,
@@ -254,11 +258,11 @@ function App() {
       '--safe-right': `${safeZone!.right}px`,
       '--safe-right-from-y': `${safeZone!.rightFromY ?? 0}px`,
     } as React.CSSProperties}>
-      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
+      {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} allowLegacyNames={allowLegacyNames} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
         <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
-        {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><span>{snapshot.mc.bubble}</span></aside>}
-        <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} /></div>
+        {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><McBubbleText text={snapshot.mc.bubble} playerNames={snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName)} /></aside>}
+        <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} allowLegacyNames={allowLegacyNames} /></div>
         {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}
       </>}
       {guides && safeZone && <>
@@ -268,8 +272,8 @@ function App() {
       {hud && <TikTokHudSimulator debug={debug} />}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
-    {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} onAudioStateChange={setAudioState} />}
-  </main>;
+    {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} clockOffsetMs={clockOffsetMs} role={overlayRole} onAudioStateChange={setAudioState} />}
+  </main></HudConfigProvider>;
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

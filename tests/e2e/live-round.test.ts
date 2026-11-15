@@ -1,12 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { createServer as createNetServer } from 'node:net';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
-import { testTempRoot } from '../support/repoTemp';
-import { ManualScheduler, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
+import { removeTestTempRoot, testTempRoot } from '../support/repoTemp';
+import { ManualScheduler, MockAdapter, TikTokLiveAdapter, type TikTokConnectionLike } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
-import type { PublicSnapshot } from '@quiz/contracts';
+import type { CommandBody, PublicSnapshot } from '@quiz/contracts';
 import { expect, test, type Page } from '@playwright/test';
 import { makeQuestions, TOKEN } from '../integration/helpers';
 import { getE2eAssetDirectory, usesE2ePlaceholderAssets } from './assets';
@@ -134,8 +135,9 @@ async function closeResources(closers: (() => Promise<void>)[]) {
 
 async function boot(): Promise<RunningQuiz> {
   const closers: (() => Promise<void>)[] = [];
+  let scratchDirectory = '';
   try {
-    const scratchDirectory = testTempRoot('playwright-c0062-');
+    scratchDirectory = testTempRoot('playwright-c0062-');
     const dbPath = join(scratchDirectory, 'quiz.sqlite');
     const [backendPort, dashboardPort, overlayPort] = await Promise.all([freePort(), freePort(), freePort()]);
     const backendUrl = 'http://127.0.0.1:' + backendPort;
@@ -166,12 +168,14 @@ async function boot(): Promise<RunningQuiz> {
       allowedOrigins: [dashboardOrigin, overlayOrigin],
       webRoots: { assets: assetDirectory },
       ...(characterPool?.length ? { characterPool } : {}),
-      adapterFactory: (_mode, config) => new TikTokLiveAdapter({
-        username: config.tiktokUsername ?? 'synthetic_live',
-        scheduler,
-        createConnection: () => connection,
-        reconnect: { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
-      }),
+      adapterFactory: (mode, config) => mode === 'MOCK'
+        ? new MockAdapter()
+        : new TikTokLiveAdapter({
+          username: config.tiktokUsername ?? 'synthetic_live',
+          scheduler,
+          createConnection: () => connection,
+          reconnect: { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
+        }),
     });
     closers.push(async () => { await app.close(); });
     await app.app.listen({ host: '127.0.0.1', port: backendPort });
@@ -190,17 +194,95 @@ async function boot(): Promise<RunningQuiz> {
     };
     cleanup.push(async () => {
       const errors = await closeResources(closers);
+      removeTestTempRoot(scratchDirectory);
       if (errors.length) throw new AggregateError(errors, 'Không đóng sạch được stack live-round.');
     });
     return running;
   } catch (error) {
     await closeResources(closers);
+    if (scratchDirectory) removeTestTempRoot(scratchDirectory);
     throw error;
   }
 }
 test.afterEach(async () => {
   const errors = await closeResources(cleanup.splice(0));
   if (errors.length) throw new AggregateError(errors, 'Lỗi khi dọn E2E sau test.');
+});
+
+test('C-0203: fastestCorrectAnswer từ server MOCK hiện trên overlay; mcVoiceEnabled không tự phát giọng', async ({ page }) => {
+  test.setTimeout(90_000);
+  const running = await boot();
+  const created = await running.app.app.inject({
+    method: 'POST',
+    url: '/api/sessions',
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      name: 'C-0203 kiểm tra overlay MOCK',
+      config: {
+        mode: 'MOCK',
+        packId: 'demo',
+        questionsPerRound: 10,
+        allowDemoQuestions: true,
+        seed: 42,
+        mcVoiceEnabled: true,
+        timings: { lobbyMs: 0, prepareMs: 500, answerMs: 20_000, revealMs: 500 },
+      },
+    },
+  });
+  expect(created.statusCode).toBe(201);
+  const sessionId = (created.json() as { sessionId: string }).sessionId;
+  const runtime = currentRuntime(running.app);
+  expect(runtime.config.mcVoiceEnabled).toBe(true);
+  await expect.poll(() => runtime.liveHealth().status).toBe('CONNECTED');
+
+  const overlay = await page.context().newPage();
+  await overlay.setViewportSize({ width: 1080, height: 1920 });
+  const voiceRequests: string[] = [];
+  overlay.on('request', (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (/\/(?:api\/mc-voice|assets\/mc\/voice)(?:\/|$)/.test(pathname)) voiceRequests.push(pathname);
+  });
+  await overlay.goto(running.overlayUrl);
+  const stage = overlay.getByTestId('stage');
+  await expect(stage).toBeVisible();
+
+  await commandMockRound(running, sessionId, { type: 'OPEN_LOBBY' });
+  await expect(stage).toHaveAttribute('data-scene', 'LOBBY');
+  await commandMockRound(running, sessionId, { type: 'START_ROUND', questionCount: 10 });
+  let sawReading = runtime.engine.state === 'READING';
+  runUntil(running, () => {
+    if (runtime.engine.state === 'READING') sawReading = true;
+    return runtime.engine.state === 'ACCEPTING';
+  });
+  expect(sawReading).toBe(true);
+  await expect(stage).toHaveAttribute('data-state', 'ACCEPTING');
+
+  const correctOptionId = runtime.adminSnapshot().current!.correctOptionId;
+  expect(runtime.mockComment({
+    userId: 'c0203-synthetic-player',
+    displayName: 'StormKing',
+    text: correctOptionId,
+    eventId: 'c0203-fastest-correct',
+  }).ok).toBe(true);
+  running.scheduler.advance(runtime.config.timings.answerMs);
+  expect(runtime.engine.state).toBe('REVEAL');
+  await expect(stage).toHaveAttribute('data-scene', 'REVEAL');
+
+  const fastest = runtime.adminSnapshot().public.fastestCorrectAnswer;
+  expect(fastest).toMatchObject({ safeDisplayName: 'StormKing', responseMs: expect.any(Number) });
+  const callout = stage.getByTestId('fastest-callout');
+  await expect(callout).toContainText('StormKing');
+  await expect(callout).toContainText('NHANH NHẤT');
+  await expect(stage.locator('.v3-seat-name.is-fastest')).toHaveCount(1);
+  expect(JSON.stringify(runtime.adminSnapshot().public.fastestCorrectAnswer)).not.toContain('c0203-synthetic-player');
+
+  const reviewDirectory = join(process.cwd(), '.claude', 'review', 'C0203');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const screenshotPath = join(reviewDirectory, 'mock-server-fastest-overlay.png');
+  await stage.screenshot({ path: screenshotPath, animations: 'disabled' });
+  expect(voiceRequests).toEqual([]);
+  await expect(overlay.locator('audio')).toHaveCount(0);
+  console.log(`C-0203 MOCK server round: mcVoiceEnabled=true; fastest shown for StormKing; MC Voice requests=0; audio elements=0; screenshot=${screenshotPath}`);
 });
 
 function watchPage(
@@ -281,16 +363,27 @@ function emitComment(
   });
 }
 
+async function commandMockRound(running: RunningQuiz, sessionId: string, command: CommandBody) {
+  const runtime = currentRuntime(running.app);
+  const response = await running.app.app.inject({
+    method: 'POST',
+    url: `/api/sessions/${encodeURIComponent(sessionId)}/commands`,
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      commandId: randomUUID(),
+      expectedStateVersion: runtime.engine.stateVersion,
+      operatorId: 'c0203-e2e',
+      requestedAtMs: running.scheduler.now(),
+      command,
+    },
+  });
+  if (response.statusCode !== 200) throw new Error(`Lệnh MOCK lỗi ${response.statusCode}: ${response.body}`);
+}
+
 function acceptedAnswerCount(running: RunningQuiz) {
   const counts = currentRuntime(running.app).adminSnapshot().current?.optionCounts;
   if (!counts) throw new Error('Chưa có câu hỏi mở để đọc số câu trả lời.');
   return counts.A + counts.B + counts.C + counts.D;
-}
-
-async function displayedAnswerCount(page: Page) {
-  const text = await page.getByTestId('answer-count').innerText();
-  const value = /[\d.,]+/.exec(text)?.[0]?.replaceAll('.', '').replaceAll(',', '') ?? '';
-  return Number(value);
 }
 
 async function measureTenSecondFps(page: Page) {
@@ -433,9 +526,8 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   expect(acceptedAnswerCount(running)).toBe(35);
   expect(runtime.metrics.accepted).toBe(35);
   running.scheduler.advance(300);
-  await expect(overlay.getByTestId('answer-count')).toBeVisible();
+  await expect(overlay.getByTestId('answer-count')).toHaveCount(0);
   expect(acceptedAnswerCount(running)).toBe(35);
-  await expect.poll(() => displayedAnswerCount(overlay)).toBe(35);
 
   const firstAcceptingSnapshot = [...frames].reverse().find((frame) => frame.payload.state === 'ACCEPTING');
   expect(firstAcceptingSnapshot).toBeDefined();
@@ -494,7 +586,7 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
     });
     expect(acceptedAnswerCount(running)).toBe(1);
     running.scheduler.advance(300);
-    await expect.poll(() => displayedAnswerCount(overlay)).toBe(acceptedAnswerCount(running));
+    await expect(overlay.getByTestId('answer-count')).toHaveCount(0);
     running.scheduler.advance(runtime.config.timings.answerMs);
     await expect.poll(() => runtime.engine.state).toBe('REVEAL');
     await expect(overlay.getByTestId('stage')).toHaveAttribute('data-scene', 'REVEAL');
@@ -515,24 +607,24 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
         const row = overlayRows.nth(index);
         const rowText = normalized(await row.innerText());
         const overlayName = row.locator('.v3-full-name-text');
-        const displayName = overlayDisplayName(entry.displayName);
+        const displayName = overlayDisplayName(entry.safeDisplayName);
         expect(rowText).toContain(String(entry.rank));
-        await expect(overlayName).toHaveAttribute('title', entry.displayName);
+        await expect(overlayName).toHaveAttribute('title', entry.safeDisplayName);
         await expect(overlayName).toHaveText(displayName);
         expect(rowText).toContain(displayName);
         expect(rowText).toContain(entry.score.toLocaleString('vi-VN'));
       }
 
-      const dashboardBoard = page.getByRole('heading', { name: 'Top 10' }).locator('xpath=../..');
-      for (const entry of entries) {
-        const dashboardName = page.getByText(entry.displayName, { exact: true });
-        await expect(dashboardName).toBeVisible();
-        const dashboardRow = normalized(await dashboardName.locator('xpath=..').innerText());
+      const dashboardRows = page.locator('.dashboard-leaderboard-row');
+      await expect(dashboardRows).toHaveCount(entries.length);
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index]!;
+        const dashboardRow = normalized(await dashboardRows.nth(index).innerText());
         expect(dashboardRow).toContain(String(entry.rank));
-        expect(dashboardRow).toContain(entry.displayName);
+        expect(dashboardRow).toContain(entry.safeDisplayName);
         expect(dashboardRow).toContain(entry.score.toLocaleString('vi-VN'));
       }
-      await expect(dashboardBoard).toContainText('Top 10');
+      await expect(page.getByRole('heading', { name: 'Top 10' })).toBeVisible();
     }
   }
 
@@ -555,14 +647,15 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
     const pathname = new URL(url).pathname;
     return /^\/assets\/audio\/(question-enter|countdown-tick|timeout|correct-answer|top10|victory|transition|bgm)\.(mp3|ogg)$/.test(pathname);
   });
-  const unexpected404s = response404s.filter((url) => url !== missingKellyManifestUrl && !optionalAudio404s.includes(url));
+  const optionalVideo404s = response404s.filter((url) => /^\/assets\/arena\/bg-loop\.(webm|mp4)$/.test(new URL(url).pathname));
+  const unexpected404s = response404s.filter((url) => url !== missingKellyManifestUrl && !optionalAudio404s.includes(url) && !optionalVideo404s.includes(url));
   const uniqueAsset404s = [...asset404s].sort();
-  const expected404Assets = [...new Set([...(optionalManifest404s.length ? [missingKellyManifestUrl] : []), ...optionalAudio404s])].sort();
+  const expected404Assets = [...new Set([...(optionalManifest404s.length ? [missingKellyManifestUrl] : []), ...optionalAudio404s, ...optionalVideo404s])].sort();
   // Có hai document overlay vì bài test ngắt rồi mở lại page; mỗi module/document chỉ tải manifest một lần.
   expect(assetManifestRequests, 'Mỗi document overlay chỉ được yêu cầu manifest MC một lần').toHaveLength(2);
-  expect(unexpected404s, 'Chỉ chấp nhận 404 cho manifest MC và các khe audio tuỳ chọn không có file').toEqual([]);
+  expect(unexpected404s, 'Chỉ chấp nhận 404 cho manifest MC, các khe audio và video loop tuỳ chọn không có file').toEqual([]);
   expect(optionalManifest404s.length).toBe(asset404s.has(missingKellyManifestUrl) ? assetManifestRequests.length : 0);
-  expect(resource404Messages, 'Mỗi resource 404 tuỳ chọn có một console resource error').toHaveLength(optionalManifest404s.length + optionalAudio404s.length);
+  expect(resource404Messages, 'Mỗi resource 404 tuỳ chọn có một console resource error').toHaveLength(optionalManifest404s.length + optionalAudio404s.length + optionalVideo404s.length);
   expect(uniqueAsset404s).toEqual(expected404Assets);
   console.log(`C-0062 hoàn tất vòng 10 câu; FPS trung bình=${fps.averageFps.toFixed(1)}; manifestRequests=${assetManifestRequests.length}; asset404=${JSON.stringify(uniqueAsset404s)}; DB scratch=${running.dbPath}.`);
 });

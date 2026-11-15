@@ -450,7 +450,9 @@ describe('C-0057 — luồng operator TIKTOK qua HTTP API và WebSocket', () => 
       if (!boards[index]!.some((entry) => entry.playerId === 'TIKTOK:winner' && entry.rank === 1)) break;
       expectedTop1 += 1;
     }
-    const winnerEntry = publicState.body.leaderboard.entries.find((entry: any) => entry.playerId === 'TIKTOK:winner');
+    const winnerEntry = publicState.body.leaderboard.entries.find((entry: any) => entry.safeDisplayName === 'Khán giả winner');
+    expect(winnerEntry?.playerId).not.toBe('TIKTOK:winner');
+    expect(winnerEntry).toBeDefined();
     expect(winnerEntry.top1Streak).toBe(expectedTop1);
     expect(expectedTop1).toBeGreaterThan(1);
     await closeSocket(overlay.socket);

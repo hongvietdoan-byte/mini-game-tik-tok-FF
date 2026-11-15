@@ -1,4 +1,4 @@
-import type { GameState, LeaderboardEntry, Podium, PublicSnapshot, Scene } from '@quiz/contracts';
+import type { GameState, McState, PublicLeaderboardEntry, PublicPodium, PublicSnapshot, Scene } from '@quiz/contracts';
 import { INITIAL_TEST_SAFE_ZONE, type AudienceView } from '@quiz/contracts';
 import { createSlots } from '@quiz/audience-engine';
 
@@ -9,10 +9,13 @@ const MOCK_CHIBI = ['chibi-002-a124', 'chibi-004-alvaro', 'chibi-005-andrew', 'c
 
 /** 35 ghế mock (tên hư cấu, gồm tên dài / emoji / chuỗi giống HTML) — toạ độ lấy từ cùng audience-engine như server. */
 const MOCK_NAMES = [
-  'StormKing', 'Rồng Lửa', 'BoomBoom', 'Choco.M', 'Hami', 'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy',
-  'ThuyTrang', 'Hồ Anh Tuấn', 'Mai Linh', 'kho kho', 'TEENHAYQUAYCUOP', 'Nhân cách', 'Tú Toàn', 'Huy Vũ', 'thảo cute', 'Bé cua 2k',
-  'Phươngg', 'Xunx', 'Trần Khoa', 'sóng chó điên 99', '34a.', 'LMHxr76', 'Muốn học giỏi', 'Lananh', 'nguyenhuyen', 'Mai Trí Đức',
-  'Hoài Thương', 'Choco Mutt', '<b>bó đái</b>', 'LNH 👨‍👩‍👧', 'Misu',
+  'FFVN.Kelly', 'StormKing', 'BVD.Champion', 'Choco.M', 'Hami',
+  'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy',
+  'ThuyTrang', 'Hồ Anh Tuấn', 'Mai Linh', 'kho kho', 'TEENHAYQUAYCUOP',
+  'Nhân cách', 'Tú Toàn', 'Huy Vũ', 'thảo cute', 'Bé cua 2k',
+  'Phươngg', 'Xunx', 'Trần Khoa', 'sóng chó điên 99', '34a.',
+  'LMHxr76', 'Muốn học giỏi', 'Lananh', 'nguyenhuyen', 'Mai Trí Đức',
+  'Hoài Thương', 'Choco Mutt', 'bó dài về phố', 'LNH 👨‍👩‍👧', 'Misu',
 ];
 function mockAudience(withResults: boolean): AudienceView {
   const slots = createSlots();
@@ -23,7 +26,8 @@ function mockAudience(withResults: boolean): AudienceView {
     seats: slots.map((slot, i) => ({
       ...slot,
       occupant: {
-        displayName: MOCK_NAMES[i % MOCK_NAMES.length]!,
+        // createSlots() trả hàng 0 ở bục dưới; đảo chỉ thứ tự hàng để mock khớp ảnh mẫu trên→dưới.
+        safeDisplayName: MOCK_NAMES[(6 - slot.rowIndex) * 5 + (i % 5)]!,
         characterId: MOCK_CHIBI[(i * 7) % MOCK_CHIBI.length]!,
         pinned: i < 3,
         result: withResults ? (i % 3 === 0 ? 'wrong' : i % 5 === 0 ? 'none' : 'correct') : null,
@@ -34,11 +38,11 @@ function mockAudience(withResults: boolean): AudienceView {
 
 const mockTopNames = ['FFVN.Kelly', 'StormKing', 'BVD.Champion', 'Choco.M', 'Hami', 'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy'];
 const mockTopScores = [1_500, 1_350, 1_300, 1_220, 1_180, 1_160, 1_120, 1_100, 1_080, 1_060];
-const leaderboard: LeaderboardEntry[] = Array.from({ length: 10 }, (_, index) => ({
+const leaderboard: PublicLeaderboardEntry[] = Array.from({ length: 10 }, (_, index) => ({
   rank: index + 1,
   tied: false,
   playerId: `demo-player-${index + 1}`,
-  displayName: mockTopNames[index]!,
+  safeDisplayName: mockTopNames[index]!,
   score: mockTopScores[index]!,
   correctCount: 15 - index,
   ...(index === 0 ? { top1Streak: 3 } : {}),
@@ -65,6 +69,9 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
   reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
   'reveal-clamp-text': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'fastest-a': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'fastest-a-long': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'fastest-b': { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-short': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-long-name': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
@@ -78,10 +85,10 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   paused: { scene: 'QUESTION', state: 'PAUSED' },
 };
 
-function podium(tied: boolean): Podium {
-  const first = { ...leaderboard[0]!, displayName: 'FFVN.Kelly', score: 1_500 };
-  const second = { ...leaderboard[1]!, displayName: 'StormKing', score: tied ? 1_500 : 1_350 };
-  const third = { ...leaderboard[2]!, displayName: 'BVD.Champion', score: 1_300 };
+function podium(tied: boolean): PublicPodium {
+  const first = { ...leaderboard[0]!, safeDisplayName: 'FFVN.Kelly', score: 1_500 };
+  const second = { ...leaderboard[1]!, safeDisplayName: 'StormKing', score: tied ? 1_500 : 1_350 };
+  const third = { ...leaderboard[2]!, safeDisplayName: 'BVD.Champion', score: 1_300 };
   return {
     tieAcrossCutoff: tied,
     slots: [
@@ -92,16 +99,16 @@ function podium(tied: boolean): Podium {
   };
 }
 
-function victoryNameTestPodium(): Podium {
+function victoryNameTestPodium(): PublicPodium {
   const demo = podium(true);
   return {
     ...demo,
     slots: demo.slots.map((slot) => {
-      const entries = slot.entries.map((entry) => ({ ...entry, displayName: 'BVD.Championship' }));
+      const entries = slot.entries.map((entry) => ({ ...entry, safeDisplayName: 'BVD.Championship' }));
       return {
         ...slot,
         entries: slot.place === 3
-          ? [...entries, { ...entries[0]!, playerId: 'demo-player-long-name', displayName: 'BVD.ChampionshipXYZ' }]
+          ? [...entries, { ...entries[0]!, playerId: 'demo-player-long-name', safeDisplayName: 'BVD.ChampionshipXYZ' }]
           : entries,
       };
     }),
@@ -114,11 +121,12 @@ function firstGraphemes(text: string, count: number): string {
     .join('');
 }
 
-export function makeMockSnapshot(name: string): PublicSnapshot | null {
+export function makeMockSnapshot(name: string, mcStateOverride?: McState): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
   const short = name === 'top10-short';
-  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'paused'].includes(name);
+  const isFastestMock = name === 'fastest-a' || name === 'fastest-a-long' || name === 'fastest-b';
+  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'paused'].includes(name);
   const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
   const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
@@ -143,16 +151,16 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     { id: 'D' as const, text: 'Bỏ qua vùng an toàn để tiếp tục nhặt thêm trang bị.' },
   ];
   const optionsVisible = name !== 'prepare';
-  const isReveal = name === 'reveal' || name === 'reveal-clamp-text';
+  const isReveal = name === 'reveal' || name === 'reveal-clamp-text' || isFastestMock;
   const visibleLeaderboard = name === 'question-long-name' || name === 'top10-long-name'
     ? leaderboard.map((entry, index) => index === 0
-      ? { ...entry, displayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
+      ? { ...entry, safeDisplayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
       : entry)
     : name === 'top10-xss'
       ? leaderboard.map((entry, index) => index === 2
-        ? { ...entry, displayName: '<script>window.__xss=1</script>' }
+        ? { ...entry, safeDisplayName: '<script>window.__xss=1</script>' }
         : index === 3
-          ? { ...entry, displayName: '<img src=x onerror="window.__xss=1">' }
+          ? { ...entry, safeDisplayName: '<img src=x onerror="window.__xss=1">' }
           : entry)
       : leaderboard;
   return {
@@ -164,8 +172,22 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     paused: name === 'paused',
     mode: 'MOCK',
     timer: {
-      durationMs: name === 'reading' || name === 'reading-longest' ? 20_000 : 15_000,
-      remainingMs: name === 'prepare' ? 3_000 : name === 'reading' || name === 'reading-longest' ? 19_000 : 12_000,
+      durationMs: name === 'lobby' ? 30_000
+        : name === 'prepare' ? 8_000
+          : name === 'reading' || name === 'reading-longest' ? 20_000
+            : isReveal ? 9_000
+              : name.startsWith('top10') ? 6_000
+                : name === 'intermission' ? 30_000
+                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 18_000
+                    : 20_000,
+      remainingMs: name === 'lobby' ? 30_000
+        : name === 'prepare' ? 8_000
+          : name === 'reading' || name === 'reading-longest' ? 19_000
+            : isReveal ? 9_000
+              : name.startsWith('top10') ? 6_000
+                : name === 'intermission' ? 30_000
+                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 18_000
+                    : 16_000,
       running: name !== 'paused',
     },
     round: { roundNumber: 1, questionIndex: 4, questionCount: 15 },
@@ -185,6 +207,13 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
     } : null,
     answerCount: name === 'prepare' || name === 'reading' ? 0 : 42,
     participantCount: short ? 3 : 57,
+    fastestCorrectAnswer: isFastestMock ? {
+      questionInstanceId: 'demo-question-5',
+      publicPlayerId: leaderboard[1]!.playerId,
+      seatId: mockAudience(true).seats.find((seat) => seat.occupant?.safeDisplayName === 'StormKing')?.slotId ?? null,
+      safeDisplayName: name === 'fastest-a-long' ? 'StormKingChampion123456' : 'StormKing',
+      responseMs: name === 'fastest-a-long' ? 12_300 : 1_240,
+    } : null,
     reveal: isReveal ? {
       questionInstanceId: 'demo-question-5',
       correctOptionId: 'B',
@@ -203,7 +232,7 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
         : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
-      state: name === 'prepare' || name === 'reading' || name === 'reading-longest' ? 'ask' : isReveal ? 'react' : 'idle',
+      state: mcStateOverride ?? (name === 'prepare' || name === 'reading' || name === 'reading-longest' ? 'ask' : isReveal ? 'react' : 'idle'),
       bubble: isReveal
         ? 'Chính xác! Đáp án B. Cùng xem bảng xếp hạng nhé!'
         : name === 'reading' || name === 'reading-longest'
@@ -212,9 +241,9 @@ export function makeMockSnapshot(name: string): PublicSnapshot | null {
           ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
           : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
-    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'paused'].includes(name) ? mockAudience(isReveal) : null,
+    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'paused'].includes(name) ? mockAudience(isReveal) : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
-  };
+  } as PublicSnapshot;
 }
 
 export const MOCK_SCENES = Object.keys(sceneMap);

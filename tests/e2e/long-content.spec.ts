@@ -50,14 +50,14 @@ function namesSnapshot(sceneName: 'top10-long-name' | 'victory-name-test'): Publ
   const snapshot = makeMockSnapshot(sceneName);
   if (!snapshot) throw new Error(`Thiếu mock snapshot cho ${sceneName}.`);
   const leaderboard = snapshot.leaderboard
-    ? { ...snapshot.leaderboard, entries: snapshot.leaderboard.entries.map((entry) => ({ ...entry, displayName: playerName })) }
+    ? { ...snapshot.leaderboard, entries: snapshot.leaderboard.entries.map((entry) => ({ ...entry, safeDisplayName: playerName })) }
     : null;
   const podium = snapshot.podium
     ? {
       ...snapshot.podium,
       slots: snapshot.podium.slots.map((slot) => ({
         ...slot,
-        entries: slot.entries.map((entry) => ({ ...entry, displayName: playerName })),
+        entries: slot.entries.map((entry) => ({ ...entry, safeDisplayName: playerName })),
       })),
     }
     : null;
@@ -183,6 +183,13 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
       stage.locator('.v3-title').boundingBox(),
       stage.locator('.v3-mc-figure').boundingBox(),
     ]);
+    const promptBox = content[0];
+    const timerBox = blockers[0];
+    expect(promptBox, `${sceneName}: question frame is measurable`).not.toBeNull();
+    expect(timerBox, `${sceneName}: timer is measurable`).not.toBeNull();
+    if (promptBox && timerBox) {
+      expect(promptBox.y - (timerBox.y + timerBox.height), `${sceneName}: question frame keeps the origin/main spacing from timer`).toBeGreaterThanOrEqual(5);
+    }
     for (const textBox of content) {
       if (!textBox) continue;
       for (const blocker of blockers) {

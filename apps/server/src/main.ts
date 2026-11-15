@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { questionLengthWarnings } from '@quiz/contracts';
 import { RealScheduler } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, loadOrCreateAdminToken } from './app';
+import { configuredMcVoiceRuntime } from './voice/configured-runtime';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 const DATA = process.env.QUIZ_DATA_DIR ?? join(ROOT, 'data');
@@ -18,6 +19,9 @@ if (HOST !== '127.0.0.1' && HOST !== 'localhost' && process.env.QUIZ_ALLOW_REMOT
 
 const scheduler = new RealScheduler();
 const store = new Store(process.env.QUIZ_DB ?? join(DATA, 'quiz.db'));
+const mcVoice = await configuredMcVoiceRuntime({ cacheDirectory: join(dirname(store.path), 'mc-voice-cache') });
+if (!mcVoice && process.env.CLIPAI_TOKEN?.trim())
+  console.warn('[quiz] MC Voice chưa sẵn sàng; cần cấu hình runtime cục bộ đã duyệt. Không có chi tiết provider nào được ghi log.');
 const tokenPath = join(DATA, 'admin-token.txt');
 const adminToken = loadOrCreateAdminToken(tokenPath);
 
@@ -56,7 +60,7 @@ try {
 } catch {
   console.log('[quiz] chưa có kho chibi (assets-local/chibi/manifest.json) — dùng hình giữ chỗ');
 }
-const quiz = await buildApp({ store, scheduler, adminToken, repositoryRoot: ROOT, webRoots, characterPool, logger: process.env.QUIZ_LOG === '1' });
+const quiz = await buildApp({ store, scheduler, adminToken, repositoryRoot: ROOT, webRoots, characterPool, mcVoice: mcVoice ?? undefined, logger: process.env.QUIZ_LOG === '1' });
 const recovered = await quiz.recover();
 if (recovered)
   console.log(`[quiz] khôi phục phiên ${recovered.id} → ${recovered.engine.state} (chờ operator chọn Tiếp tục / Huỷ câu / Dừng)`);

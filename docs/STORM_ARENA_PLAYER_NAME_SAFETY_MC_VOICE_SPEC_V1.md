@@ -51,6 +51,16 @@ Nguồn DOCX đề xuất năm nhóm: (1) profanity, (2) NSFW/sexual, (3) hate s
 | HIGH | Tục tĩu nặng, thù ghét, đe dọa, NSFW nặng, mạo danh rõ ràng | Thay toàn bộ bằng alias an toàn |
 | MANUAL_HIDE | Operator yêu cầu ẩn | Thay toàn bộ bằng alias an toàn |
 
+Mức nền của bộ luật mặc định (từng luật có thể ghi đè):
+
+| Nhóm | Mức nền | Ngoại lệ có chủ đích |
+|---|---|---|
+| PROFANITY | PARTIAL | Tục nặng dùng HIGH; câu chửi ngắn chỉ che đúng cụm. |
+| NSFW_SEXUAL | HIGH | Cụm tình dục rõ ràng thay toàn bộ bằng alias. |
+| HATE_SPEECH | HIGH | Cụm miệt thị có ngữ cảnh có thể PARTIAL; tên vùng miền/giới/khuyết tật riêng lẻ không bị gắn cờ. |
+| ILLEGAL_HARMFUL | REVIEW | Cờ bạc, quảng cáo, đường dẫn, số liên hệ và cụm chính trị nhạy cảm chuyển người vận hành duyệt; đe dọa cụ thể dùng HIGH. |
+| IMPERSONATION | REVIEW | Thực thể bảo vệ đơn lẻ cần duyệt; dấu hiệu giả mạo ghép ngữ cảnh có thể nâng mức. |
+
 **Quy tắc ưu tiên:** manual hide > full mask > partial mask > review > allow. Whitelist chỉ là ngoại lệ theo rule/chuỗi và phạm vi cụ thể, không được vô hiệu hóa các quy tắc mức HIGH khác. Tên nghi vấn nhưng chưa xác định vi phạm không được mặc nhiên kết luận người dùng mạo danh.
 
 ## 5. Protected Entity Registry
@@ -73,9 +83,9 @@ Protected entity match tự nó không đồng nghĩa tên xấu. Phải đánh 
    - Original-normalized (giữ dấu tiếng Việt).
    - Accent-insensitive (bỏ dấu) với word boundary/rule nghiêm ngặt.
    - Separator-insensitive (dấu chấm, gạch dưới, khoảng trắng, emoji xen giữa).
-   - Leetspeak/homoglyph theo ánh xạ có kiểm soát.
+   - Leetspeak/homoglyph theo ánh xạ có kiểm soát; alias phía luật bắt thêm `đ → dz`, `c → k`, `ph → f`, `s → x` mà không gộp các cặp này trên mọi tên sạch.
    - Repeated-character collapsed.
-   - Teencode patterns được liệt kê rõ, tránh biến đổi toàn bộ `k/q/w` một cách mù quáng.
+   - Teencode patterns được liệt kê rõ, tránh biến đổi toàn bộ `k/q/w` một cách mù quáng; dấu chấm, gạch và khoảng trắng xen giữa ký tự được bỏ khỏi representation tìm kiếm.
 5. Đối chiếu profanity/NSFW/hate/harmful/impersonation/protected entity; lưu rule ID và confidence/priority (nếu có).
 6. Áp dụng ngoại lệ whitelist có phạm vi và manual override.
 7. Tạo `safeDisplayName` không quá 16 ký tự hiển thị theo quy tắc Unicode grapheme (không cắt giữa emoji/tổ hợp dấu), hoặc alias ổn định `Người chơi 128`.

@@ -1,12 +1,12 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { PublicSnapshot } from '@quiz/contracts';
-import { AudioCueTracker, mcDuckingGain, parseAudioMix, type AudioCue, type VisualCue } from '../audio/audio-cues';
+import { AudioCueTracker, parseAudioMix, type AudioCue, type VisualCue } from '../audio/audio-cues';
 import { OverlayAudioEngine, type AudioEngineState } from '../audio/audio-engine';
+import { McVoiceCueScheduler } from '../audio/mc-voice';
+import type { OverlayRole } from '../overlayRole';
 
 const MIX = parseAudioMix(location.search);
-const SOURCE_MODE = new URLSearchParams(location.search).get('source') === '1' || 'obsstudio' in window;
-const PROGRAM_MODE = new URLSearchParams(location.search).get('role') === 'program';
 const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
 
 function useReducedMotion() {
@@ -20,10 +20,12 @@ function useReducedMotion() {
   return reduced;
 }
 
-export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, onAudioStateChange }: { snapshot: PublicSnapshot; remainingMs: number; onAudioStateChange?: (state: AudioEngineState) => void }) {
+export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, clockOffsetMs, role, onAudioStateChange }: { snapshot: PublicSnapshot; remainingMs: number; clockOffsetMs: number; role: OverlayRole; onAudioStateChange?: (state: AudioEngineState) => void }) {
   const tracker = useRef(new AudioCueTracker());
+  const voiceScheduler = useRef(new McVoiceCueScheduler());
   const engine = useRef<OverlayAudioEngine | null>(null);
   const cleanupTimer = useRef<number | null>(null);
+  const lastResumePhase = useRef<string | null>(null);
   const reducedMotion = useReducedMotion();
   const [audioState, setAudioState] = useState<AudioEngineState>('disabled');
   const [cues, setCues] = useState<AudioCue[]>([]);
@@ -36,6 +38,10 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
   }, [onAudioStateChange]);
 
   useEffect(() => {
+    if (role !== 'program') {
+      publishAudioState('disabled');
+      return;
+    }
     if (cleanupTimer.current !== null) window.clearTimeout(cleanupTimer.current);
     const instance = engine.current ?? new OverlayAudioEngine(MIX, publishAudioState);
     engine.current = instance;
@@ -46,11 +52,31 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
         cleanupTimer.current = null;
       }, 0);
     };
-  }, [publishAudioState]);
+  }, [publishAudioState, role]);
+
+  useEffect(() => {
+    if (role !== 'program') return;
+    const plan = voiceScheduler.current.consume(snapshot.mcVoiceCue, Date.now() + clockOffsetMs);
+    if (!plan) return;
+    const audio = engine.current;
+    audio?.stopMcVoice();
+    if (plan.remainingMs <= 0) return;
+    void audio?.playMcVoice(plan.cue, clockOffsetMs);
+  }, [clockOffsetMs, role, snapshot.mcVoiceCue]);
 
   useEffect(() => {
     const audio = engine.current;
-    audio?.setDucking(mcDuckingGain(snapshot));
+    const phase = [
+      snapshot.scene,
+      snapshot.state,
+      snapshot.stateVersion,
+      snapshot.question?.questionInstanceId ?? '',
+      snapshot.round?.roundNumber ?? '',
+    ].join(':');
+    if (phase !== lastResumePhase.current) {
+      lastResumePhase.current = phase;
+      void audio?.unlock();
+    }
     const decision = tracker.current.consume(snapshot, second * 1_000);
     if (decision.cues.length) {
       for (const cue of decision.cues) void audio?.play(cue, second);
@@ -70,7 +96,6 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
     snapshot.round?.roundNumber,
   ]);
 
-  const hintVisible = !PROGRAM_MODE && !SOURCE_MODE && audioState === 'suspended' && MIX.volume > 0 && (MIX.sfx > 0 || MIX.bgm > 0);
   const particleCount = reducedMotion ? 0 : FX_LOW ? 4 : 16;
   const confettiCount = snapshot.scene === 'VICTORY' && !reducedMotion && !FX_LOW ? 20 : 0;
 
@@ -106,9 +131,6 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
         return <i key={`confetti-${index}`} className="overlay-fx-confetti" style={style} />;
       })}
     </div>
-    {hintVisible && <button type="button" className="audio-unlock-hint" data-testid="audio-unlock" onClick={() => void engine.current?.unlock()}>
-      ♪ Bấm để bật âm
-    </button>}
     <output
       hidden
       data-testid="overlay-audio-runtime"
@@ -121,4 +143,4 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       data-volume={MIX.volume}
     />
   </>;
-}, (previous, next) => previous.snapshot === next.snapshot && previous.onAudioStateChange === next.onAudioStateChange && Math.ceil(previous.remainingMs / 1_000) === Math.ceil(next.remainingMs / 1_000));
+}, (previous, next) => previous.snapshot === next.snapshot && previous.onAudioStateChange === next.onAudioStateChange && previous.role === next.role && previous.clockOffsetMs === next.clockOffsetMs && Math.ceil(previous.remainingMs / 1_000) === Math.ceil(next.remainingMs / 1_000));

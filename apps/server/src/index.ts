@@ -2,6 +2,8 @@ export * from './app';
 export * from './runtime';
 export * from './voice/cache';
 export * from './voice/clipai-provider';
+export * from './voice/clipai-http-transport';
+export * from './voice/configured-runtime';
 export * from './voice/ffmpeg-normalizer';
 export * from './voice/pre-generate';
 export * from './voice/safe-storage';

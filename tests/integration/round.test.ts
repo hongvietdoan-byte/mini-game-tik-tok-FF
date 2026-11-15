@@ -77,6 +77,68 @@ async function startRound(h: Harness, simPlayers = 100) {
   expect(rt(h).engine.state).toBe('PREPARE');
 }
 
+describe('kết quả người trả lời đúng nhanh nhất', () => {
+  it('công bố thời gian, mã ghế và tên alias an toàn từ REVEAL sang BXH ngắn', async () => {
+    const h = await session();
+    await startRound(h, 0);
+    const runtime = rt(h);
+    runUntil(h, () => runtime.engine.state === 'ACCEPTING');
+
+    const question = h.store.roundQuestions(roundId(h))[0]!;
+    const correctOptionId = question.snapshot.correctOptionId;
+    const wrongOptionId = correctOptionId === 'A' ? 'B' : 'A';
+    runtime.ingest({ source: 'TIKTOK', userId: 'raw-user-too-early', displayName: 'Too Early', text: wrongOptionId, eventId: 'fastest-wrong' });
+    h.scheduler.advance(1_234);
+    expect(runtime.ingest({ source: 'TIKTOK', userId: 'raw-user-fast', displayName: 'Fast Player', text: correctOptionId, eventId: 'fastest-first' })).toEqual({ accepted: true });
+    expect(runtime.ingest({ source: 'TIKTOK', userId: 'raw-user-tie', displayName: 'Tie Player', text: correctOptionId, eventId: 'fastest-tie' })).toEqual({ accepted: true });
+    expect(runtime.publicSnapshot().fastestCorrectAnswer).toBeNull();
+
+    const internalPlayerId = h.store.findPlayerId('TIKTOK', 'raw-user-fast')!;
+    const hidden = await h.quiz.app.inject({
+      method: 'POST',
+      url: '/api/admin/name-filter/players/visibility',
+      headers: AUTH,
+      payload: { playerIds: [internalPlayerId], hidden: true },
+    });
+    expect(hidden.statusCode).toBe(200);
+    runUntil(h, () => runtime.engine.state === 'REVEAL');
+
+    const atReveal = runtime.publicSnapshot();
+    const fastest = atReveal.fastestCorrectAnswer!;
+    expect(fastest).toMatchObject({
+      questionInstanceId: question.id,
+      publicPlayerId: expect.any(String),
+      seatId: expect.any(String),
+      safeDisplayName: 'Người chơi 1',
+      responseMs: 1_234,
+    });
+    expect(atReveal.leaderboard!.entries.find((entry) => entry.playerId === fastest.publicPlayerId)?.safeDisplayName)
+      .toBe(fastest.safeDisplayName);
+    expect(atReveal.audience!.seats.find((seat) => seat.slotId === fastest.seatId)?.occupant?.safeDisplayName)
+      .toBe(fastest.safeDisplayName);
+    const publicJson = JSON.stringify(atReveal);
+    expect(publicJson).not.toContain('TIKTOK:');
+    expect(publicJson).not.toContain('raw-user-');
+    expect(publicJson).not.toContain('Fast Player');
+
+    runUntil(h, () => runtime.engine.state === 'LEADERBOARD');
+    expect(runtime.publicSnapshot().fastestCorrectAnswer).toEqual(fastest);
+  });
+
+  it('returns null when nobody answers correctly', async () => {
+    const h = await session();
+    await startRound(h, 0);
+    const runtime = rt(h);
+    runUntil(h, () => runtime.engine.state === 'ACCEPTING');
+    const question = h.store.roundQuestions(roundId(h))[0]!;
+    const wrongOptionId = question.snapshot.correctOptionId === 'A' ? 'B' : 'A';
+    runtime.ingest({ source: 'MOCK', userId: 'wrong-only', displayName: 'Wrong Only', text: wrongOptionId, eventId: 'fastest-no-correct' });
+    runUntil(h, () => runtime.engine.state === 'REVEAL');
+
+    expect(runtime.publicSnapshot().fastestCorrectAnswer).toBeNull();
+  });
+});
+
 describe('Vòng MOCK 15 câu × 100 người chơi mô phỏng', () => {
   it('chạy trọn vòng, điểm khớp bản tính tham chiếu độc lập, không chấm trùng', async () => {
     const h = await session();

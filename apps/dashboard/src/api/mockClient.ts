@@ -1,4 +1,6 @@
 import {
+  DEFAULT_HUD_CONFIG,
+  HudConfigSchema,
   INITIAL_TEST_SAFE_ZONE,
   SessionConfigSchema,
   SYSTEM_CHECK_IDS,
@@ -9,7 +11,11 @@ import {
   type CommandResult,
   type CreateSessionRequest,
   type GameState,
+  type HudConfig,
+  type HudConfigUpdate,
+  type HudImageSlot,
   type LeaderboardEntry,
+  type PublicLeaderboardEntry,
   type LiveSourceHealth,
   type PublicQuestion,
   type PublicSnapshot,
@@ -19,7 +25,7 @@ import {
   type SimulatorRequest,
   type SystemCheck,
 } from '@quiz/contracts';
-import type { CommandResponse, DashboardClient, SelfTestResponse, SocketStatus, SourceControlAction, SystemChecksResponse } from './client';
+import { ApiError, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './client';
 
 const rejectReasons: RejectReason[] = [
   'INVALID_EVENT', 'NOT_AN_ANSWER', 'NOT_ACCEPTING', 'EARLY', 'LATE',
@@ -67,16 +73,17 @@ const mockReviewQuestions: Question[] = Array.from({ length: 18 }, (_, index) =>
   };
 });
 
-function makeLeaderboard(): LeaderboardEntry[] {
+function makeLeaderboard(): PublicLeaderboardEntry[] {
   return [
-    { rank: 1, tied: false, playerId: 'demo-01', displayName: 'Chiến binh DEMO 01', score: 900, correctCount: 8 },
-    { rank: 2, tied: false, playerId: 'demo-02', displayName: 'Chiến binh DEMO 02', score: 700, correctCount: 7 },
-    { rank: 3, tied: false, playerId: 'demo-03', displayName: 'Chiến binh DEMO 03', score: 600, correctCount: 6 },
+    { rank: 1, tied: false, playerId: 'demo-01', safeDisplayName: 'Chiến binh DEMO 01', score: 900, correctCount: 8 },
+    { rank: 2, tied: false, playerId: 'demo-02', safeDisplayName: 'Chiến binh DEMO 02', score: 700, correctCount: 7 },
+    { rank: 3, tied: false, playerId: 'demo-03', safeDisplayName: 'Chiến binh DEMO 03', score: 600, correctCount: 6 },
   ];
 }
 
 class MockDashboardClient implements DashboardClient {
   private config = SessionConfigSchema.parse({ mode: 'MOCK', allowDemoQuestions: true });
+  private hudConfig = HudConfigSchema.parse(DEFAULT_HUD_CONFIG);
   private sessionId: string | null = null;
   private state: GameState = 'IDLE';
   private suspendedFrom: GameState | null = null;
@@ -234,6 +241,39 @@ class MockDashboardClient implements DashboardClient {
     return this.selfTestResult;
   }
 
+  async getHud(): Promise<HudConfig> {
+    return JSON.parse(JSON.stringify(this.hudConfig)) as HudConfig;
+  }
+
+  async saveHud(_token: string, update: HudConfigUpdate): Promise<HudConfig> {
+    this.hudConfig = HudConfigSchema.parse({ ...update, version: this.hudConfig.version + 1 });
+    return this.getHud();
+  }
+
+  async uploadHudImage(_token: string, slot: HudImageSlot, file: File): Promise<HudImageUploadResponse> {
+    const mimeType = file.type.toLowerCase();
+    if (file.size === 0 || file.size > 8 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(mimeType))
+      throw new ApiError('Chọn ảnh PNG, JPG hoặc WEBP có dung lượng tối đa 8 MB.', 400, 'HUD_IMAGE_INVALID');
+    const bitmap = await createImageBitmap(file);
+    const width = bitmap.width;
+    const height = bitmap.height;
+    bitmap.close();
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType.slice('image/'.length);
+    const id = `${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}.${extension}`;
+    this.hudConfig = HudConfigSchema.parse({
+      ...this.hudConfig,
+      images: { ...this.hudConfig.images, [slot]: id },
+      version: this.hudConfig.version + 1,
+    });
+    return { image: { id, width, height, mimeType }, config: await this.getHud() };
+  }
+
+  async resetHud(_token: string): Promise<HudConfig> {
+    this.hudConfig = HudConfigSchema.parse({ ...DEFAULT_HUD_CONFIG, version: this.hudConfig.version + 1 });
+    return this.getHud();
+  }
+
   async sendComment(_token: string, sessionId: string, comment: { userId: string; displayName: string; text: string }) {
     this.assertSession(sessionId);
     if (this.connection === 'CONNECTED') {
@@ -346,7 +386,7 @@ class MockDashboardClient implements DashboardClient {
     const scene = this.state === 'CONNECTION_INTERRUPTED' ? 'CONNECTION_LOST' : this.sceneFor(effectiveState);
     const shortLeaderboard = effectiveState === 'LEADERBOARD' && !this.isFullLeaderboard();
     const fullLeaderboard = effectiveState === 'LEADERBOARD' && this.isFullLeaderboard();
-    const questionVisible = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING' || shortLeaderboard;
+    const questionVisible = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING' || effectiveState === 'REVEAL' || shortLeaderboard;
     const leaderboardEntries = makeLeaderboard();
     const questionState = effectiveState === 'PREPARE' || effectiveState === 'ACCEPTING';
     const publicSnapshot: PublicSnapshot = {
@@ -357,12 +397,12 @@ class MockDashboardClient implements DashboardClient {
       scene,
       paused: this.state === 'PAUSED',
       mode: 'MOCK',
-      timer: questionState
-        ? { durationMs: effectiveState === 'PREPARE' ? 3_000 : 15_000, remainingMs: effectiveState === 'PREPARE' ? 3_000 : 11_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+      timer: questionState || effectiveState === 'REVEAL'
+        ? { durationMs: effectiveState === 'PREPARE' ? 8_000 : effectiveState === 'REVEAL' ? 9_000 : 20_000, remainingMs: effectiveState === 'PREPARE' ? 8_000 : effectiveState === 'REVEAL' ? 9_000 : 16_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
         : shortLeaderboard || fullLeaderboard
-          ? { durationMs: fullLeaderboard ? 6_000 : 4_000, remainingMs: fullLeaderboard ? 6_000 : 4_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+          ? { durationMs: fullLeaderboard ? 6_000 : 9_000, remainingMs: fullLeaderboard ? 6_000 : 9_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
           : effectiveState === 'INTERMISSION'
-            ? { durationMs: 25_000, remainingMs: 25_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
+            ? { durationMs: 30_000, remainingMs: 30_000, running: this.state !== 'PAUSED' && this.state !== 'CONNECTION_INTERRUPTED' }
             : null,
       round: { roundNumber: this.roundNumber, questionIndex: this.questionIndex, questionCount: this.config.questionsPerRound },
       question: questionVisible ? {
@@ -372,7 +412,14 @@ class MockDashboardClient implements DashboardClient {
       } : null,
       answerCount: this.answerCount,
       participantCount: this.participantCount,
-      reveal: shortLeaderboard && !this.voidedCurrent ? {
+      fastestCorrectAnswer: !this.voidedCurrent && ['REVEAL', 'LEADERBOARD'].includes(effectiveState) ? {
+        questionInstanceId: demoQuestion.questionInstanceId,
+        publicPlayerId: leaderboardEntries[0]!.playerId,
+        seatId: null,
+        safeDisplayName: leaderboardEntries[0]!.safeDisplayName,
+        responseMs: 1_234,
+      } : null,
+      reveal: (effectiveState === 'REVEAL' || shortLeaderboard) && !this.voidedCurrent ? {
         questionInstanceId: demoQuestion.questionInstanceId,
         correctOptionId: 'B',
         optionCounts: { ...this.optionCounts },
@@ -405,6 +452,7 @@ class MockDashboardClient implements DashboardClient {
     };
     return {
       public: publicSnapshot,
+      flaggedPlayers: [],
       sessionStatus: this.state === 'IDLE' && this.stateVersion > 0 ? 'CLOSED' : 'OPEN',
       autoMode: this.autoMode,
       recoveryPending: false,

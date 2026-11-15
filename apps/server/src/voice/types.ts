@@ -41,6 +41,9 @@ export interface McVoiceProvider {
 
 export type McVoiceCacheDescriptor = {
   text: string;
+  voicePolicyVersion: number;
+  /** Dấu vân tay đã băm của cấu hình voice; cache không lưu ID/profile dạng thô. */
+  voiceKey: string;
   provider: 'clipai';
   model: string;
   voiceSettings: Readonly<Record<string, string | number | boolean>>;
@@ -58,6 +61,7 @@ export type McVoiceProfile = {
 
 export type CachedMcVoiceAudio = {
   assetId: string;
+  voicePolicyVersion: number;
   durationMs: number;
   format: McVoiceAudioFormat;
   checksum: string;

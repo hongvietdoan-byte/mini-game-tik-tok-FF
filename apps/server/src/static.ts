@@ -22,7 +22,12 @@ const AUDIO_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',
   '.ogg': 'audio/ogg',
 };
+const ARENA_VIDEO_TYPES: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+};
 const MAX_AUDIO_ASSET_BYTES = 5 * 1024 * 1024;
+const MAX_ARENA_VIDEO_ASSET_BYTES = 30 * 1024 * 1024;
 
 /**
  * Phục vụ bản build của một SPA dưới tiền tố (vd `/overlay/`) — không cần @fastify/static.
@@ -70,11 +75,15 @@ export function serveAssets(app: FastifyInstance, prefix: '/assets', root: strin
     if (stats.isDirectory()) return reply.code(404).send('Not found');
     const extension = extname(target).toLowerCase();
     const audioDirectory = `${resolve(base, 'audio')}${sep}`;
+    const arenaDirectory = `${resolve(base, 'arena')}${sep}`;
     const audioType = AUDIO_TYPES[extension];
     const isSupportedAudio = target.startsWith(audioDirectory) && audioType !== undefined;
-    const type = isSupportedAudio ? audioType : TYPES[extension];
-    if (!type || (!/^(image|font)\//.test(type) && !isSupportedAudio)) return reply.code(415).send('Unsupported');
+    const videoType = ARENA_VIDEO_TYPES[extension];
+    const isSupportedArenaVideo = target.startsWith(arenaDirectory) && videoType !== undefined;
+    const type = isSupportedAudio ? audioType : isSupportedArenaVideo ? videoType : TYPES[extension];
+    if (!type || (!/^(image|font)\//.test(type) && !isSupportedAudio && !isSupportedArenaVideo)) return reply.code(415).send('Unsupported');
     if (isSupportedAudio && stats.size > MAX_AUDIO_ASSET_BYTES) return reply.code(413).send('Audio asset too large');
+    if (isSupportedArenaVideo && stats.size > MAX_ARENA_VIDEO_ASSET_BYTES) return reply.code(413).send('Arena video asset too large');
     return reply.header('content-type', type).header('cache-control', 'public, max-age=300').header('x-content-type-options', 'nosniff').send(readFileSync(target));
   });
   return true;
