@@ -5,6 +5,7 @@ import { McVoiceCache, mcVoiceCacheKey } from './cache';
 import { McVoiceService, type McVoiceReadingLine } from './service';
 import { type McVoiceAudio, type McVoiceCredentialStore, type McVoiceProvider } from './types';
 import { testTempRootAsync } from '../../../../tests/support/tempRoot';
+import { MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -26,7 +27,7 @@ function line(index: number): McVoiceReadingLine {
     gameEvent: { type: 'QUESTION', questionInstanceId: 'approved-question-1', approvedQuestionVersion: '1' },
     descriptor: {
       text,
-      voicePolicyVersion: 1,
+      voicePolicyVersion: MC_VOICE_POLICY_VERSION,
       voiceKey: 'runtime-only',
       provider: 'clipai',
       model: 'runtime-model',
@@ -34,7 +35,7 @@ function line(index: number): McVoiceReadingLine {
       rate: 1,
       format: 'mp3',
     },
-    request: { text, voiceKey: 'runtime-only', rate: 1, format: 'mp3' },
+    request: { text, voiceKey: 'runtime-only', voiceSettings: { voiceProfile: 'runtime-only', rate: 1 }, rate: 1, format: 'mp3' },
   };
 }
 
@@ -55,6 +56,15 @@ describe('McVoiceService', () => {
     expect(normalizer.normalize).toHaveBeenCalledTimes(1);
     expect(credentials.get).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(second)).not.toContain('test-secret');
+  });
+
+  it('từ chối request không dùng đúng settings đã băm trong cache key', async () => {
+    const provider = { synthesize: vi.fn(async () => audio(1_000)) };
+    const { service } = await makeService(provider);
+    const input = line(1);
+    await expect(service.getOrCreate(input.descriptor, { ...input.request, voiceSettings: { voiceProfile: 'other' } }))
+      .rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    expect(provider.synthesize).not.toHaveBeenCalled();
   });
 
   it('tạo bundle câu hỏi tuần tự và không ghi bất kỳ line mới nào nếu tổng quá 20 giây', async () => {

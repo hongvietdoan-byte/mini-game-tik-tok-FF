@@ -150,7 +150,7 @@ export class ClipAiHttpTransport implements ClipAiTransport {
 
   async submit(input: McVoiceSynthesisRequest, token: string, signal?: AbortSignal) {
     if (input.text.length > 2_000 || input.format !== 'mp3') throw new ClipAiTransportError('FAILED');
-    const inputParams = { output_format: 'mp3', ...this.profile.voiceSettings };
+    const inputParams = { output_format: 'mp3', ...this.profile.voiceSettings, ...input.voiceSettings };
     const data = await this.json('/api/sound/generate', 'POST', token, {
       name: 'quiz-mc-voice', provider: this.profile.apiProvider, type: 'tts', model: this.profile.model,
       text: input.text, voice_actor_id: this.profile.voiceId, input_params: inputParams,

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import { join, resolve } from 'node:path';
+import { McVoiceCueEventTypeSchema, type McVoiceCueEventType } from '@quiz/contracts';
 import { McVoiceCache } from './cache';
 import { ClipAiMcVoiceProvider } from './clipai-provider';
 import { ClipAiHttpTransport } from './clipai-http-transport';
@@ -22,6 +23,7 @@ type LocalProfile = {
   model: string;
   voiceId: string;
   voiceSettings: Readonly<Record<string, string | number | boolean>>;
+  voiceSettingsByEvent: Partial<Record<McVoiceCueEventType, Readonly<Record<string, string | number | boolean>>>>;
   allowedCdnHosts: readonly string[];
 };
 
@@ -44,15 +46,29 @@ function voiceSettings(value: unknown): Readonly<Record<string, string | number 
   return Object.fromEntries(entries) as Record<string, string | number | boolean>;
 }
 
+function voiceSettingsByEvent(value: unknown): LocalProfile['voiceSettingsByEvent'] | null {
+  if (value === undefined) return {};
+  if (!isRecord(value)) return null;
+  const output: LocalProfile['voiceSettingsByEvent'] = {};
+  for (const [eventType, rawSettings] of Object.entries(value)) {
+    const parsedEventType = McVoiceCueEventTypeSchema.safeParse(eventType);
+    const settings = voiceSettings(rawSettings);
+    if (!parsedEventType.success || !settings) return null;
+    output[parsedEventType.data] = settings;
+  }
+  return output;
+}
+
 function localProfile(value: unknown): LocalProfile | null {
   if (!isRecord(value)) return null;
-  const expected = new Set(['baseUrl', 'provider', 'model', 'voiceId', 'voiceSettings', 'allowedCdnHosts']);
+  const expected = new Set(['baseUrl', 'provider', 'model', 'voiceId', 'voiceSettings', 'voiceSettingsByEvent', 'allowedCdnHosts']);
   if (Object.keys(value).some((key) => !expected.has(key)) ||
     !boundedText(value.provider, 100) || !boundedText(value.model, 100) ||
     !boundedText(value.voiceId, 200) || !Array.isArray(value.allowedCdnHosts) ||
     !value.allowedCdnHosts.length || value.allowedCdnHosts.length > 32) return null;
   const settings = voiceSettings(value.voiceSettings);
-  if (!settings) return null;
+  const settingsByEvent = voiceSettingsByEvent(value.voiceSettingsByEvent);
+  if (!settings || !settingsByEvent) return null;
 
   let base: URL;
   try {
@@ -72,6 +88,7 @@ function localProfile(value: unknown): LocalProfile | null {
     model: value.model.trim(),
     voiceId: value.voiceId.trim(),
     voiceSettings: settings,
+    voiceSettingsByEvent: settingsByEvent,
     allowedCdnHosts: [...new Set(hosts)],
   };
 }
@@ -97,6 +114,7 @@ export async function configuredMcVoiceRuntime(options: { cacheDirectory: string
       ])).digest('hex'),
       rate: 1,
       voiceSettings: profile.voiceSettings,
+      voiceSettingsByEvent: profile.voiceSettingsByEvent,
     };
     const transport = new ClipAiHttpTransport({
       baseUrl: profile.baseUrl,
