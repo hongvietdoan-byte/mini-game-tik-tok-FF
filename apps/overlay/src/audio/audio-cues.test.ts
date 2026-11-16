@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeMockSnapshot } from '../mock/snapshots';
-import { AudioCueTracker, countdownTickPattern, MC_VOICE_DUCKING_GAIN, parseAudioMix } from './audio-cues';
+import { AudioCueTracker, bgmFallbackCandidates, countdownTickPattern, loadBgmWithFallback, MC_VOICE_DUCKING_GAIN, parseAudioMix, selectBgmTrack } from './audio-cues';
 
 function mock(name: string) {
   const snapshot = makeMockSnapshot(name);
@@ -9,10 +9,39 @@ function mock(name: string) {
 }
 
 describe('overlay audio cues', () => {
-  it('parses bounded levels and uses quiet, muted-music defaults', () => {
-    expect(parseAudioMix('')).toEqual({ volume: 1, sfx: 0.6, bgm: 0 });
+  it('parses bounded levels and defaults to low background music', () => {
+    expect(parseAudioMix('')).toEqual({ volume: 1, sfx: 0.6, bgm: 0.18 });
     expect(parseAudioMix('?volume=0.5&sfx=2&bgm=-1')).toEqual({ volume: 0.5, sfx: 1, bgm: 0 });
+    expect(parseAudioMix('?bgm=0').bgm).toBe(0);
     expect(parseAudioMix('?sfx=nope&bgm=0.25').sfx).toBe(0.6);
+  });
+
+  it('selects the lobby loop before a round and the game loop during gameplay, leaving victory to its jingle', () => {
+    const activeRound = mock('question');
+    expect(selectBgmTrack(mock('lobby'))).toBe('bgm-lobby');
+    for (const state of ['PREPARE', 'READING', 'ACCEPTING', 'REVEAL', 'LEADERBOARD'] as const)
+      expect(selectBgmTrack({ ...activeRound, state }), state).toBe('bgm-game');
+    expect(selectBgmTrack({ ...activeRound, round: null })).toBe('bgm-lobby');
+    expect(selectBgmTrack(mock('victory'))).toBeNull();
+  });
+
+  it('prioritizes the restored CC0 gameplay OGG before the legacy loop and user MP3 fallback', async () => {
+    expect(bgmFallbackCandidates('bgm-game')).toEqual([
+      { slot: 'bgm-game', extension: 'ogg' },
+      { slot: 'bgm', extension: 'ogg' },
+      { slot: 'bgm-game', extension: 'mp3' },
+      { slot: 'bgm', extension: 'mp3' },
+    ]);
+    const tried: string[] = [];
+    const legacy = await loadBgmWithFallback('bgm-game', async (slot, extension) => {
+      tried.push(`${slot}.${extension}`);
+      return slot === 'bgm' && extension === 'ogg' ? 'legacy-loop' : null;
+    });
+    expect(tried).toEqual(['bgm-game.ogg', 'bgm.ogg']);
+    expect(legacy).toEqual({ slot: 'bgm', extension: 'ogg', value: 'legacy-loop' });
+
+    const noFiles = await loadBgmWithFallback('bgm-game', async () => null);
+    expect(noFiles).toBeNull();
   });
 
   it('accelerates the synthetic tick pattern toward zero', () => {

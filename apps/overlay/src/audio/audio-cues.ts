@@ -11,11 +11,51 @@ export const AUDIO_CUES = [
 ] as const;
 
 export type AudioCue = typeof AUDIO_CUES[number];
-export type AudioSlot = AudioCue | 'bgm';
+export type BgmTrack = 'bgm-lobby' | 'bgm-game';
+export type BgmFileSlot = BgmTrack | 'bgm';
+export type BgmFileExtension = 'mp3' | 'ogg';
+export type BgmFileCandidate = { slot: BgmFileSlot; extension: BgmFileExtension };
+export type AudioSlot = AudioCue | BgmFileSlot;
 export type VisualCue = 'question' | 'reveal' | 'top10' | 'victory' | 'transition';
 export type AudioMix = { volume: number; sfx: number; bgm: number };
 export type CountdownPulse = { offsetMs: number; frequency: number; duration: number };
 export const MC_VOICE_DUCKING_GAIN = 0.22;
+
+/** The legacy loop remains the fallback for either phase-specific music file. */
+export function bgmFallbackCandidates(track: BgmTrack): readonly BgmFileCandidate[] {
+  return track === 'bgm-game'
+    ? [
+        { slot: 'bgm-game', extension: 'ogg' },
+        { slot: 'bgm', extension: 'ogg' },
+        { slot: 'bgm-game', extension: 'mp3' },
+        { slot: 'bgm', extension: 'mp3' },
+      ]
+    : [
+        { slot: 'bgm-lobby', extension: 'mp3' },
+        { slot: 'bgm-lobby', extension: 'ogg' },
+        { slot: 'bgm', extension: 'mp3' },
+        { slot: 'bgm', extension: 'ogg' },
+      ];
+}
+
+/** Resolves a phase to its loop; VICTORY deliberately leaves room for its jingle. */
+export function selectBgmTrack(snapshot: Pick<PublicSnapshot, 'state' | 'scene' | 'round'>): BgmTrack | null {
+  if (snapshot.state === 'VICTORY' || snapshot.scene === 'VICTORY') return null;
+  if (snapshot.state === 'IDLE' || snapshot.state === 'LOBBY' || !snapshot.round) return 'bgm-lobby';
+  return 'bgm-game';
+}
+
+/** Load the phase track first and then the backward-compatible shared music slot. */
+export async function loadBgmWithFallback<T>(
+  track: BgmTrack,
+  load: (slot: BgmFileSlot, extension: BgmFileExtension) => Promise<T | null>,
+): Promise<{ slot: BgmFileSlot; extension: BgmFileExtension; value: T } | null> {
+  for (const { slot, extension } of bgmFallbackCandidates(track)) {
+    const value = await load(slot, extension);
+    if (value !== null) return { slot, extension, value };
+  }
+  return null;
+}
 
 function level(params: URLSearchParams, key: string, fallback: number) {
   const raw = params.get(key);
@@ -29,7 +69,7 @@ export function parseAudioMix(search: string): AudioMix {
   return {
     volume: level(params, 'volume', 1),
     sfx: level(params, 'sfx', 0.6),
-    bgm: level(params, 'bgm', 0),
+    bgm: level(params, 'bgm', 0.18),
   };
 }
 
