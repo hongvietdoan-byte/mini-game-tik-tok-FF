@@ -277,7 +277,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
   if (!ok) return null;
   return (
     <div className="v3-chibi-img" aria-hidden="true">
-      <img src={`${ASSET_BASE}/chibi/${characterId}.png`} alt="" width={92} height={104} loading="lazy" decoding="async" draggable={false} onError={() => setOk(false)} />
+      <img src={`${ASSET_BASE}/chibi/${characterId}.png`} alt="" width={92} height={104} decoding="async" draggable={false} onError={() => setOk(false)} />
     </div>
   );
 }

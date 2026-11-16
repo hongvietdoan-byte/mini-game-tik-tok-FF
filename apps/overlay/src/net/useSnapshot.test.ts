@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PublicSnapshot, WsMessage } from '@quiz/contracts';
-import { applyAnswerCounts, applySnapshot } from './useSnapshot';
+import type { AudienceView, PublicSnapshot, WsMessage } from '@quiz/contracts';
+import { applyAnswerCounts, applyAudienceUpdated, applySnapshot } from './useSnapshot';
 
 function snapshot(overrides: Partial<PublicSnapshot> = {}) {
   return {
@@ -40,6 +40,31 @@ function snapshotMessage(overrides: Partial<WsMessage<'STATE_SNAPSHOT'>> = {}): 
     stateVersion: 7,
     serverTimeMs: 1_800_000_000_000,
     payload: snapshot(),
+    ...overrides,
+  };
+}
+
+function audience(rotationId = 0, safeDisplayName = 'StormKing'): AudienceView {
+  return {
+    rotationId,
+    seats: [{
+      slotId: 'seat-1', rowIndex: 0, seatIndex: 0, x: 50, y: 100, scale: 1, depth: 0,
+      occupant: { safeDisplayName, characterId: 'chibi-01', pinned: false, result: null },
+    }],
+    queued: 0,
+    total: 1,
+  };
+}
+
+function audienceMessage(overrides: Partial<WsMessage<'AUDIENCE_UPDATED'>> = {}): WsMessage<'AUDIENCE_UPDATED'> {
+  return {
+    v: 1,
+    type: 'AUDIENCE_UPDATED',
+    seq: 12,
+    sessionId: 'session-1',
+    stateVersion: 7,
+    serverTimeMs: 1_800_000_000_000,
+    payload: audience(),
     ...overrides,
   };
 }
@@ -105,6 +130,51 @@ describe('overlay ANSWER_COUNTS', () => {
     expect(applyAnswerCounts(current, 11, false, countsMessage({ stateVersion: 6 })))
       .toEqual({ snapshot: current, seq: 12 });
     expect(applyAnswerCounts(current, 11, true, countsMessage()))
+      .toEqual({ snapshot: current, seq: 11 });
+  });
+});
+
+describe('overlay AUDIENCE_UPDATED', () => {
+  it('merges live seats without replacing the other snapshot fields', () => {
+    const current = snapshot({ timer: { remainingMs: 12_000, running: true } as PublicSnapshot['timer'], audience: { ...audience(), seats: [] } });
+    const incoming = audience(0, 'StormKing');
+    const result = applyAudienceUpdated(current, 11, false, audienceMessage({ payload: incoming }));
+
+    expect(result).toEqual({ snapshot: { ...current, audience: incoming }, seq: 12 });
+    expect(result.snapshot).not.toBe(current);
+    expect(result.snapshot?.timer).toBe(current.timer);
+    expect(current.audience?.seats).toEqual([]);
+  });
+
+  it('rejects old or duplicate sequence numbers', () => {
+    const current = snapshot({ audience: audience(2) });
+    expect(applyAudienceUpdated(current, 12, false, audienceMessage({ seq: 11 })))
+      .toEqual({ snapshot: current, seq: 12 });
+  });
+
+  it('accepts a newer rotation while keeping the current game state', () => {
+    const current = snapshot({ audience: audience(2) });
+    const incoming = audience(3, 'Mira');
+    const result = applyAudienceUpdated(current, 11, false, audienceMessage({ payload: incoming }));
+
+    expect(result).toEqual({ snapshot: { ...current, audience: incoming }, seq: 12 });
+    expect(result.snapshot?.state).toBe(current.state);
+    expect(result.snapshot?.stateVersion).toBe(current.stateVersion);
+  });
+
+  it('does not apply a previous rotation or state version but consumes its newer sequence', () => {
+    const current = snapshot({ audience: audience(3) });
+    expect(applyAudienceUpdated(current, 11, false, audienceMessage({ payload: audience(2) })))
+      .toEqual({ snapshot: current, seq: 12 });
+    expect(applyAudienceUpdated(current, 11, false, audienceMessage({ stateVersion: 6 })))
+      .toEqual({ snapshot: current, seq: 12 });
+  });
+
+  it('ignores another session and updates received before the fresh reconnect snapshot', () => {
+    const current = snapshot({ audience: audience() });
+    expect(applyAudienceUpdated(current, 11, false, audienceMessage({ sessionId: 'session-2' })))
+      .toEqual({ snapshot: current, seq: 11 });
+    expect(applyAudienceUpdated(current, 11, true, audienceMessage()))
       .toEqual({ snapshot: current, seq: 11 });
   });
 });
