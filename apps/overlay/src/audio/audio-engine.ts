@@ -1,11 +1,22 @@
-import { countdownTickPattern, type AudioCue, type AudioMix, type AudioSlot } from './audio-cues';
+import { countdownTickPattern, loadBgmWithFallback, selectBgmTrack, type AudioCue, type AudioMix, type AudioSlot, type BgmFileExtension, type BgmTrack } from './audio-cues';
 import { MC_VOICE_DUCKING_GAIN } from './audio-cues';
 import type { McVoiceCue } from '@quiz/contracts';
+import type { PublicSnapshot } from '@quiz/contracts';
 
 export type AudioEngineState = 'disabled' | 'running' | 'suspended' | 'unavailable';
 
 type StateListener = (state: AudioEngineState) => void;
 const AUDIO_FILE_EXTENSIONS = ['mp3', 'ogg'] as const;
+const BGM_CROSSFADE_SECONDS = 1;
+const BGM_STOP_GRACE_SECONDS = 0.025;
+
+type ActiveBgm = {
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+  buffer: AudioBuffer;
+  slot: string;
+  targetGain: 0 | 1;
+};
 
 /** WebAudio playback with generated cues as the always-available fallback. */
 export class OverlayAudioEngine {
@@ -14,9 +25,12 @@ export class OverlayAudioEngine {
   private readonly sfx: GainNode | null;
   private readonly bgm: GainNode | null;
   private readonly voice: GainNode | null;
-  private readonly buffers = new Map<AudioSlot, Promise<AudioBuffer | null>>();
+  private readonly buffers = new Map<string, Promise<AudioBuffer | null>>();
   private readonly voiceBuffers = new Map<string, Promise<AudioBuffer | null>>();
   private readonly activeSources = new Set<AudioScheduledSourceNode>();
+  private readonly activeBgmSources = new Set<ActiveBgm>();
+  private requestedBgmTrack: BgmTrack | null | undefined;
+  private bgmGeneration = 0;
   private voiceSource: AudioBufferSourceNode | null = null;
   private voiceGeneration = 0;
   private destroyed = false;
@@ -62,7 +76,6 @@ export class OverlayAudioEngine {
     this.context.onstatechange = () => this.publishState();
     this.publishState();
 
-    if (mix.bgm > 0) this.startBgm();
     if (this.context.state === 'suspended') void this.unlock();
   }
 
@@ -79,12 +92,124 @@ export class OverlayAudioEngine {
       // Browser autoplay policy keeps the context suspended until a user gesture.
     }
     this.publishState();
+    if (this.context.state === 'running') this.ensureBgm();
+  }
+
+  syncBgm(snapshot: Pick<PublicSnapshot, 'state' | 'scene' | 'round'>) {
+    const track = selectBgmTrack(snapshot);
+    if (track === this.requestedBgmTrack) return;
+    this.requestedBgmTrack = track;
+    const generation = ++this.bgmGeneration;
+    void this.transitionBgm(track, generation);
+  }
+
+  private ensureBgm() {
+    if (this.requestedBgmTrack === undefined || !this.context || this.mix.bgm <= 0 || this.destroyed) return;
+    void this.transitionBgm(this.requestedBgmTrack, this.bgmGeneration);
+  }
+
+  private async transitionBgm(track: BgmTrack | null, generation: number) {
+    const context = this.context;
+    if (!context || !this.bgm || this.mix.bgm <= 0 || this.destroyed || context.state !== 'running') return;
+    if (!track) {
+      this.fadeOutBgm();
+      return;
+    }
+
+    const loaded = await loadBgmWithFallback(track, (slot, extension) => this.loadFile(slot, [extension]));
+    if (generation !== this.bgmGeneration || this.requestedBgmTrack !== track || this.destroyed || context.state !== 'running') return;
+    const buffer = loaded?.value ?? this.createBgmLoop();
+    if (!buffer) return;
+
+    const resolvedSlot = loaded ? `${loaded.slot}.${loaded.extension}` : 'synth';
+    let alreadyPlaying: ActiveBgm | undefined;
+    for (const active of this.activeBgmSources) {
+      if (active.targetGain !== 1) continue;
+      if (active.slot === resolvedSlot || await this.sameBgmAudio(active.buffer, buffer)) {
+        alreadyPlaying = active;
+        break;
+      }
+    }
+    if (generation !== this.bgmGeneration || this.requestedBgmTrack !== track || this.destroyed || context.state !== 'running') return;
+    if (alreadyPlaying) return;
+
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    gain.gain.setValueAtTime(0, context.currentTime);
+    gain.gain.linearRampToValueAtTime(1, context.currentTime + BGM_CROSSFADE_SECONDS);
+    source.connect(gain);
+    gain.connect(this.bgm);
+    const active: ActiveBgm = { source, gain, buffer, slot: resolvedSlot, targetGain: 1 };
+    source.onended = () => {
+      this.activeSources.delete(source);
+      this.activeBgmSources.delete(active);
+    };
+    this.activeSources.add(source);
+    this.activeBgmSources.add(active);
+    try {
+      source.start(context.currentTime);
+    } catch {
+      this.activeSources.delete(source);
+      this.activeBgmSources.delete(active);
+      return;
+    }
+    this.fadeOutBgm(active);
+  }
+
+  /** Same content in the two configured phase slots should continue without a restart. */
+  private async sameBgmAudio(left: AudioBuffer, right: AudioBuffer) {
+    if (left === right) return true;
+    if (left.duration !== right.duration || left.length !== right.length || left.numberOfChannels !== right.numberOfChannels || left.sampleRate !== right.sampleRate)
+      return false;
+    const sampleCount = left.length;
+    if (sampleCount === 0) return true;
+    // Compare every decoded sample without monopolizing the UI thread for long tracks.
+    const chunkSize = 1_048_576;
+    for (let channel = 0; channel < left.numberOfChannels; channel += 1) {
+      const leftData = left.getChannelData(channel);
+      const rightData = right.getChannelData(channel);
+      for (let start = 0; start < sampleCount; start += chunkSize) {
+        const end = Math.min(sampleCount, start + chunkSize);
+        for (let index = start; index < end; index += 1) {
+          if (leftData[index] !== rightData[index]) return false;
+        }
+        if (end < sampleCount) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    }
+    return true;
+  }
+
+  private fadeOutBgm(except?: ActiveBgm) {
+    const context = this.context;
+    if (!context) return;
+    const now = context.currentTime;
+    for (const active of this.activeBgmSources) {
+      if (active === except || active.targetGain === 0) continue;
+      const parameter = active.gain.gain;
+      parameter.cancelScheduledValues(now);
+      parameter.setValueAtTime(parameter.value, now);
+      parameter.linearRampToValueAtTime(0, now + BGM_CROSSFADE_SECONDS);
+      active.targetGain = 0;
+      try {
+        active.source.stop(now + BGM_CROSSFADE_SECONDS + BGM_STOP_GRACE_SECONDS);
+      } catch {
+        // The source may have ended while its fade was being scheduled.
+      }
+    }
   }
 
   setDucking(gain: number) {
     this.ducking = Math.max(0, Math.min(1, gain));
-    if (this.context && this.sfx)
-      this.sfx.gain.setTargetAtTime(this.mix.sfx * this.ducking, this.context.currentTime, 0.035);
+    const now = this.context?.currentTime;
+    if (now === undefined) return;
+    for (const [bus, volume] of [[this.sfx, this.mix.sfx], [this.bgm, this.mix.bgm]] as const) {
+      if (!bus || volume <= 0) continue;
+      bus.gain.cancelScheduledValues(now);
+      bus.gain.setValueAtTime(bus.gain.value, now);
+      bus.gain.setTargetAtTime(volume * this.ducking, now, 0.035);
+    }
   }
 
   async play(cue: AudioCue, remainingSecond = 0) {
@@ -189,21 +314,25 @@ export class OverlayAudioEngine {
   private scheduleVoiceDucking(startAt: number, endAt: number) {
     const context = this.context;
     const sfx = this.sfx;
-    if (!context || !sfx || this.mix.sfx <= 0) return;
+    if (!context) return;
     const now = context.currentTime;
-    sfx.gain.cancelScheduledValues(now);
-    sfx.gain.setValueAtTime(sfx.gain.value, now);
-    sfx.gain.setTargetAtTime(this.mix.sfx * MC_VOICE_DUCKING_GAIN, startAt, 0.035);
-    sfx.gain.setTargetAtTime(this.mix.sfx * this.ducking, endAt, 0.035);
+    for (const [bus, volume] of [[sfx, this.mix.sfx], [this.bgm, this.mix.bgm]] as const) {
+      if (!bus || volume <= 0) continue;
+      bus.gain.cancelScheduledValues(now);
+      bus.gain.setValueAtTime(bus.gain.value, now);
+      bus.gain.setTargetAtTime(volume * MC_VOICE_DUCKING_GAIN, startAt, 0.035);
+      bus.gain.setTargetAtTime(volume * this.ducking, endAt, 0.035);
+    }
   }
 
-  private loadFile(slot: AudioSlot): Promise<AudioBuffer | null> {
-    const cached = this.buffers.get(slot);
+  private loadFile(slot: AudioSlot, extensions: readonly BgmFileExtension[] = AUDIO_FILE_EXTENSIONS): Promise<AudioBuffer | null> {
+    const cacheKey = `${slot}:${extensions.join(',')}`;
+    const cached = this.buffers.get(cacheKey);
     if (cached) return cached;
 
     const request = (async () => {
       if (!this.context) return null;
-      for (const extension of AUDIO_FILE_EXTENSIONS) {
+      for (const extension of extensions) {
         try {
           const response = await fetch(`/assets/audio/${slot}.${extension}`, { cache: 'force-cache' });
           if (!response.ok) continue;
@@ -214,7 +343,7 @@ export class OverlayAudioEngine {
       }
       return null;
     })();
-    this.buffers.set(slot, request);
+    this.buffers.set(cacheKey, request);
     return request;
   }
 
@@ -332,25 +461,16 @@ export class OverlayAudioEngine {
     }
   }
 
-  private startBgm() {
-    void this.loadFile('bgm').then((file) => {
-      const context = this.context;
-      const bus = this.bgm;
-      if (!context || !bus || this.destroyed || this.mix.bgm <= 0) return;
-      const source = context.createBufferSource();
-      source.buffer = file ?? this.createBgmLoop();
-      if (!source.buffer) return;
-      source.loop = true;
-      source.connect(bus);
-      this.track(source);
-      source.start();
-    });
-  }
-
   destroy() {
     this.destroyed = true;
+    this.bgmGeneration += 1;
     this.stopMcVoice();
+    for (const source of this.activeSources) {
+      source.onended = null;
+      try { source.stop(); } catch { /* Already ended or stopped sources are silent. */ }
+    }
     this.context?.close().catch(() => undefined);
     this.activeSources.clear();
+    this.activeBgmSources.clear();
   }
 }

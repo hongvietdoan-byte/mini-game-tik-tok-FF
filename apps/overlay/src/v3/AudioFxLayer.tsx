@@ -73,6 +73,7 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       snapshot.question?.questionInstanceId ?? '',
       snapshot.round?.roundNumber ?? '',
     ].join(':');
+    audio?.syncBgm(snapshot);
     if (phase !== lastResumePhase.current) {
       lastResumePhase.current = phase;
       void audio?.unlock();
