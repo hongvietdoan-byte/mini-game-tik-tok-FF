@@ -163,7 +163,7 @@ test('program phát một lần cho mỗi cueId trùng trong snapshot và duck S
   const result = await probe(page);
   expect(result.contexts).toBe(1);
   expect(result.maxConcurrentVoices).toBe(1);
-  expect(result.sfxTargets.some((value) => Math.abs(value - 0.6 * 0.22) < 0.00001)).toBe(true);
+  expect(result.sfxTargets.some((value) => Math.abs(value - 0.6 * 0.18) < 0.00001)).toBe(true);
   expect(result.sfxTargets.some((value) => Math.abs(value - 0.6) < 0.00001)).toBe(true);
 });
 

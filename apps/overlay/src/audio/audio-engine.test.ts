@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeMockSnapshot } from '../mock/snapshots';
 import { OverlayAudioEngine } from './audio-engine';
-import { parseAudioMix } from './audio-cues';
+import { MC_VOICE_DUCKING_GAIN, parseAudioMix } from './audio-cues';
 
 type AudioProbe = {
   fetched: string[];
@@ -125,7 +125,7 @@ describe('overlay BGM playback', () => {
       durationMs: 1_000, startsAtServerMs: Date.now(),
     };
     await engine.playMcVoice(voiceCue, 0);
-    expect(probe.gainTargets).toContainEqual({ gain: 2, value: 0.18 * 0.22 });
+    expect(probe.gainTargets).toContainEqual({ gain: 2, value: 0.18 * MC_VOICE_DUCKING_GAIN });
 
     engine.syncBgm(mock('victory'));
     expect(probe.starts).toHaveLength(3); // Victory adds no BGM source; only the MC voice was added.

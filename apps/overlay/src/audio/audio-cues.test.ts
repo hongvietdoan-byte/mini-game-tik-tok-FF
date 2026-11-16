@@ -83,6 +83,6 @@ describe('overlay audio cues', () => {
   });
 
   it('sets a quiet SFX gain while a voice cue plays', () => {
-    expect(MC_VOICE_DUCKING_GAIN).toBe(0.22);
+    expect(MC_VOICE_DUCKING_GAIN).toBe(0.18);
   });
 });
