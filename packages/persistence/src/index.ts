@@ -15,6 +15,12 @@ import {
 import type { EngineState, LedgerEntry, PlayerTotals } from '@quiz/quiz-core';
 import * as schema from './schema';
 
+// better-sqlite3 v12 ships SQLite with a 32,766-variable default limit;
+// 5,000 rows × 6 values stays below it and reduces scoring statement overhead.
+const SCORE_WRITE_BATCH_SIZE = 5_000;
+const BATCH_VALUES = (width: number, count: number) =>
+  Array.from({ length: count }, () => `(${Array.from({ length: width }, () => '?').join(', ')})`).join(', ');
+
 export { schema };
 
 /** Bản đóng gói (Electron) đặt QUIZ_MIGRATIONS_DIR vì không còn đường dẫn source. Đọc lúc mở Store, không lúc nạp module. */
@@ -45,6 +51,7 @@ export type RoundQuestionRow = {
 };
 
 export type StoredAnswer = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs: number };
+export type QuestionScoringRow = StoredAnswer & PlayerTotals;
 
 function collectPlayerNames(value: unknown, playerId: string, names: Set<string>) {
   if (Array.isArray(value)) {
@@ -75,13 +82,49 @@ function prepareStatements(r: Database.Database) {
     ledgerInsert: r.prepare(
       `INSERT INTO score_events (round_id, question_instance_id, player_id, score_reason, points, created_at_ms)
        VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (round_id, question_instance_id, player_id, score_reason) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
+    ),
+    ledgerInsertBatch: r.prepare(
+      `INSERT INTO score_events (round_id, question_instance_id, player_id, score_reason, points, created_at_ms)
+       VALUES ${BATCH_VALUES(6, SCORE_WRITE_BATCH_SIZE)}
+       ON CONFLICT DO NOTHING`,
     ),
     roundPlayerUpsert: r.prepare(
       `INSERT INTO round_players (round_id, player_id, score, correct_count, streak, joined_at_ms)
        VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (round_id, player_id) DO UPDATE SET score = excluded.score,
          correct_count = excluded.correct_count, streak = excluded.streak`,
+    ),
+    roundPlayerUpsertBatch: r.prepare(
+      `INSERT INTO round_players (round_id, player_id, score, correct_count, streak, joined_at_ms)
+       VALUES ${BATCH_VALUES(6, SCORE_WRITE_BATCH_SIZE)}
+       ON CONFLICT (round_id, player_id) DO UPDATE SET score = excluded.score,
+         correct_count = excluded.correct_count, streak = excluded.streak`,
+    ),
+    roundPlayerScoreUpdate: r.prepare(
+      `UPDATE round_players SET score = ?, correct_count = ?, streak = ?
+       WHERE round_id = ? AND player_id = ?`,
+    ),
+    roundPlayerScoreUpdateBatch: r.prepare(
+      `WITH totals(player_id, score, correct_count, streak) AS (VALUES ${BATCH_VALUES(4, SCORE_WRITE_BATCH_SIZE)})
+       UPDATE round_players
+       SET score = totals.score, correct_count = totals.correct_count, streak = totals.streak
+       FROM totals WHERE round_players.round_id = ? AND round_players.player_id = totals.player_id`,
+    ),
+    roundPlayerResetQuestionMisses: r.prepare(
+      `UPDATE round_players SET streak = 0
+       WHERE round_id = ? AND streak <> 0 AND player_id NOT IN (
+         SELECT player_id FROM answers
+         WHERE round_id = ? AND question_instance_id = ? AND option_id = ?
+       )`,
+    ),
+    questionScoringRows: r.prepare(
+      `SELECT a.question_instance_id AS questionInstanceId, a.player_id AS playerId,
+              a.option_id AS option, a.received_at_ms AS receivedAtMs,
+              rp.score AS score, rp.correct_count AS correctCount, rp.streak AS streak
+       FROM answers a
+       JOIN round_players rp ON rp.round_id = a.round_id AND rp.player_id = a.player_id
+       WHERE a.round_id = ? AND a.question_instance_id = ? AND a.option_id = ?`,
     ),
     heartbeat: r.prepare('UPDATE live_sessions SET last_heartbeat_ms = ? WHERE id = ?'),
     eventMark: r.prepare(
@@ -570,6 +613,32 @@ export class Store {
       .all(roundId) as StoredAnswer[];
   }
 
+  scoringRowsForQuestion(roundId: string, questionInstanceId: string, correctOptionId: OptionId): QuestionScoringRow[] {
+    return this.stmt.questionScoringRows.all(roundId, questionInstanceId, correctOptionId) as QuestionScoringRow[];
+  }
+
+  /** Cập nhật điểm đúng theo lô và ngắt chuỗi của người sai/bỏ lỡ câu hỏi. */
+  applyQuestionTotals(
+    roundId: string,
+    questionInstanceId: string,
+    correctOptionId: OptionId,
+    totals: Iterable<PlayerTotals>,
+  ) {
+    this.stmt.roundPlayerResetQuestionMisses.run(roundId, roundId, questionInstanceId, correctOptionId);
+    const entries = [...totals];
+    let i = 0;
+    for (; i + SCORE_WRITE_BATCH_SIZE <= entries.length; i += SCORE_WRITE_BATCH_SIZE) {
+      const values = entries.slice(i, i + SCORE_WRITE_BATCH_SIZE).flatMap((total) => [
+        total.playerId, total.score, total.correctCount, total.streak,
+      ]);
+      this.stmt.roundPlayerScoreUpdateBatch.run(...values, roundId);
+    }
+    for (; i < entries.length; i += 1) {
+      const total = entries[i]!;
+      this.stmt.roundPlayerScoreUpdate.run(total.score, total.correctCount, total.streak, roundId, total.playerId);
+    }
+  }
+
   optionCounts(questionInstanceId: string): Record<OptionId, number> {
     const out: Record<OptionId, number> = { A: 0, B: 0, C: 0, D: 0 };
     const rows = this.raw
@@ -588,8 +657,17 @@ export class Store {
   /** Ghi các dòng sổ cái còn thiếu (idempotent nhờ UNIQUE). @returns số dòng mới. */
   insertLedger(roundId: string, entries: LedgerEntry[], now: number): number {
     let n = 0;
-    for (const e of entries)
-      n += this.stmt.ledgerInsert.run(roundId, e.questionInstanceId, e.playerId, e.reason, e.points, now).changes;
+    let i = 0;
+    for (; i + SCORE_WRITE_BATCH_SIZE <= entries.length; i += SCORE_WRITE_BATCH_SIZE) {
+      const values = entries.slice(i, i + SCORE_WRITE_BATCH_SIZE).flatMap((entry) => [
+        roundId, entry.questionInstanceId, entry.playerId, entry.reason, entry.points, now,
+      ]);
+      n += this.stmt.ledgerInsertBatch.run(...values).changes;
+    }
+    for (; i < entries.length; i += 1) {
+      const entry = entries[i]!;
+      n += this.stmt.ledgerInsert.run(roundId, entry.questionInstanceId, entry.playerId, entry.reason, entry.points, now).changes;
+    }
     return n;
   }
 
@@ -625,7 +703,18 @@ export class Store {
   }
 
   saveRoundPlayers(roundId: string, totals: Iterable<PlayerTotals>, now: number) {
-    for (const t of totals) this.stmt.roundPlayerUpsert.run(roundId, t.playerId, t.score, t.correctCount, t.streak, now);
+    const entries = [...totals];
+    let i = 0;
+    for (; i + SCORE_WRITE_BATCH_SIZE <= entries.length; i += SCORE_WRITE_BATCH_SIZE) {
+      const values = entries.slice(i, i + SCORE_WRITE_BATCH_SIZE).flatMap((total) => [
+        roundId, total.playerId, total.score, total.correctCount, total.streak, now,
+      ]);
+      this.stmt.roundPlayerUpsertBatch.run(...values);
+    }
+    for (; i < entries.length; i += 1) {
+      const total = entries[i]!;
+      this.stmt.roundPlayerUpsert.run(roundId, total.playerId, total.score, total.correctCount, total.streak, now);
+    }
   }
 
   standings(roundId: string): { playerId: string; displayName: string; score: number; correctCount: number }[] {
@@ -633,6 +722,16 @@ export class Store {
       .prepare(
         `SELECT rp.player_id AS playerId, p.display_name AS displayName, rp.score AS score, rp.correct_count AS correctCount
          FROM round_players rp JOIN players p ON p.id = rp.player_id WHERE rp.round_id = ?`,
+      )
+      .all(roundId) as any[];
+  }
+
+  rankedStandings(roundId: string): { playerId: string; displayName: string; score: number; correctCount: number }[] {
+    return this.raw
+      .prepare(
+        `SELECT rp.player_id AS playerId, p.display_name AS displayName, rp.score AS score, rp.correct_count AS correctCount
+         FROM round_players rp JOIN players p ON p.id = rp.player_id WHERE rp.round_id = ?
+         ORDER BY rp.score DESC, rp.correct_count DESC, rp.player_id COLLATE BINARY ASC`,
       )
       .all(roundId) as any[];
   }

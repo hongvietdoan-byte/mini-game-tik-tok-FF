@@ -7,6 +7,8 @@ export interface LiveAdapter {
   disconnect(): Promise<void>;
   status(): ConnectionStatus;
   onComment(cb: (comment: RawComment) => void): () => void;
+  /** Optional simulator fast path; real connectors may keep delivering one event at a time. */
+  onCommentBatch?(cb: (comments: RawComment[]) => void): () => void;
   onStatus(cb: (status: ConnectionStatus) => void): () => void;
   healthCheck(): Promise<{ ok: boolean; detail: string }>;
   /** Lỗi/ghi chú gần nhất của nguồn (tuỳ chọn) — hiển thị ở Connection Manager. */
@@ -22,6 +24,7 @@ class Emitter<T> {
     };
   }
   emit(v: T) {
+    if (this.subs.size === 0) return;
     for (const cb of [...this.subs]) cb(v);
   }
 }
@@ -31,6 +34,7 @@ export class MockAdapter implements LiveAdapter {
   readonly source = 'MOCK' as const;
   private st: ConnectionStatus = 'DISCONNECTED';
   private comments = new Emitter<RawComment>();
+  private commentBatches = new Emitter<RawComment[]>();
   private statuses = new Emitter<ConnectionStatus>();
   /** Số comment bị mất do đang mất kết nối (mô phỏng giới hạn của connector thật). */
   dropped = 0;
@@ -47,6 +51,9 @@ export class MockAdapter implements LiveAdapter {
   onComment(cb: (c: RawComment) => void) {
     return this.comments.on(cb);
   }
+  onCommentBatch(cb: (comments: RawComment[]) => void) {
+    return this.commentBatches.on(cb);
+  }
   onStatus(cb: (s: ConnectionStatus) => void) {
     return this.statuses.on(cb);
   }
@@ -56,11 +63,19 @@ export class MockAdapter implements LiveAdapter {
 
   /** Bơm một comment (chỉ tới được server khi đang CONNECTED). */
   emit(c: Omit<RawComment, 'source'>) {
+    return this.emitBatch([c]);
+  }
+
+  /** Bơm một nhịp mô phỏng thành một transaction DB, nhưng vẫn phát từng comment cho listener thường. */
+  emitBatch(comments: readonly Omit<RawComment, 'source'>[]) {
     if (this.st !== 'CONNECTED') {
-      this.dropped += 1;
+      this.dropped += comments.length;
       return false;
     }
-    this.comments.emit({ ...c, source: 'MOCK' });
+    if (comments.length === 0) return true;
+    const batch = comments.map((comment) => ({ ...comment, source: 'MOCK' as const }));
+    this.commentBatches.emit(batch);
+    for (const comment of batch) this.comments.emit(comment);
     return true;
   }
   /** Mô phỏng rớt mạng / có mạng lại. */
