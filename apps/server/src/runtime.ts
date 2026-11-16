@@ -26,6 +26,7 @@ import {
   type QuestionSnapshot,
   type RawComment,
   type RejectReason,
+  type SpamWarningReason,
   type SessionConfig,
   type SimulatorRequest,
   type WsMessage,
@@ -93,8 +94,25 @@ type PreparedLobbyRound = {
   signature: string;
 };
 type RoundVoicePreparation = { signature: string; promise: Promise<void> };
+type SpamAttempt = { atMs: number; reason: SpamWarningReason };
+type SpamWarning = NonNullable<AdminSnapshot['spamWarnings']>[number];
+type SpamAttemptState = {
+  source: string;
+  userId: string;
+  playerId: string | null;
+  displayName: string | null;
+  safeDisplayName: string | null;
+  attempts: SpamAttempt[];
+  head: number;
+  reasonCounts: Record<SpamWarningReason, number>;
+  lastAtMs: number;
+  latestReasonSequence: Partial<Record<SpamWarningReason, number>>;
+  sequence: number;
+};
 
 const ZERO_COUNTS = (): Record<OptionId, number> => ({ A: 0, B: 0, C: 0, D: 0 });
+const SPAM_WARNING_REASONS = ['DUPLICATE_ANSWER', 'NOT_ACCEPTING', 'EARLY', 'LATE'] as const satisfies readonly SpamWarningReason[];
+const SPAM_WARNING_REASON_SET: ReadonlySet<string> = new Set(SPAM_WARNING_REASONS);
 const REJECT_REASONS: RejectReason[] = [
   'INVALID_EVENT',
   'NOT_AN_ANSWER',
@@ -109,6 +127,7 @@ const MAX_REJECTIONS = 50;
 const MAX_SEEN_EVENTS = 100_000;
 const HEARTBEAT_MS = 1_000;
 const COUNTS_THROTTLE_MS = 250;
+const SPAM_CLEANUP_MS = 1_000;
 const MC_VOICE_TELEMETRY_REASONS = new Set([
   'UNSAFE_PLAYER_IDENTITY', 'TOO_LONG', 'NOT_CONFIGURED', 'LATE_AUDIO', 'AUTH', 'NO_CREDIT', 'RATE_LIMITED', 'FAILED', 'TIMEOUT', 'DOWNLOAD_FAILED', 'INVALID_RESPONSE',
 ]);
@@ -151,6 +170,8 @@ export class SessionRuntime {
   private timerHandle: unknown = null;
   private heartbeatHandle: unknown = null;
   private countsHandle: unknown = null;
+  private spamCleanupHandle: unknown = null;
+  private spamSnapshotHandle: unknown = null;
   private readingStartedAtMs: number | null = null;
   private questionVoiceBundles = new Map<string, Promise<McVoiceReadingBundle | null>>();
   private voiceAssetPromises = new Map<string, Promise<{ assetId: string; durationMs: number } | null>>();
@@ -171,6 +192,9 @@ export class SessionRuntime {
   private fastestCorrectByQuestion = new Map<string, { playerId: string; responseMs: number } | null>();
   private seenEvents = new Set<string>();
   private rejections: { atMs: number; reason: RejectReason }[] = [];
+  /** Khóa gồm source + TikTok ID chỉ tồn tại nội bộ; snapshot admin dùng playerId opaque. */
+  private spamAttempts = new Map<string, SpamAttemptState>();
+  private spamSequence = 0;
   private simulator: MockSimulator | null = null;
   private notice: { code: string; message: string } | null = null;
   private poolCache: AdminSnapshot['pool'] | null = null;
@@ -322,9 +346,16 @@ export class SessionRuntime {
 
   dispose() {
     this.disposed = true;
-    for (const h of [this.timerHandle, this.heartbeatHandle, this.countsHandle, ...this.voiceHandles])
+    for (const h of [
+      this.timerHandle,
+      this.heartbeatHandle,
+      this.countsHandle,
+      this.spamCleanupHandle,
+      this.spamSnapshotHandle,
+      ...this.voiceHandles,
+    ])
       if (h !== null) this.scheduler.clearTimeout(h);
-    this.timerHandle = this.heartbeatHandle = this.countsHandle = null;
+    this.timerHandle = this.heartbeatHandle = this.countsHandle = this.spamCleanupHandle = this.spamSnapshotHandle = null;
     this.voiceHandles.clear();
     this.simulator?.stop();
     this.simulator = null;
@@ -1179,7 +1210,11 @@ export class SessionRuntime {
     const decision = decideComment(ev, win ? { accepting: true, ...win } : null, {
       maxSourceLagMs: this.config.maxSourceLagMs,
     });
-    if (!decision.ok) return this.reject(decision.reason, now);
+    if (!decision.ok) {
+      if (SPAM_WARNING_REASON_SET.has(decision.reason))
+        return this.rejectAnswer(decision.reason as SpamWarningReason, now, ev);
+      return this.reject(decision.reason, now);
+    }
 
     const qid = currentQuestionInstanceId(this.engine)!;
     const roundId = this.engine.round!.roundId;
@@ -1229,13 +1264,15 @@ export class SessionRuntime {
       return { playerId, filtered, inserted: outcome.inserted, participantAdded: outcome.participantAdded };
     });
     if (accepted === 'DUP_EVENT') return this.reject('DUPLICATE_EVENT', now);
-    if (!accepted) return this.reject('DUPLICATE_ANSWER', now);
+    if (!accepted) return this.rejectAnswer('DUPLICATE_ANSWER', now, ev);
+    if (this.spamAttempts.size)
+      this.associateSpamPlayer(ev.source, ev.userId, accepted.playerId, accepted.filtered.safeDisplayName);
     if (accepted.filtered.flagged)
       this.playerNames.set(accepted.playerId, { originalName, result: accepted.filtered });
     else this.playerNames.delete(accepted.playerId);
     if (accepted.filtered.flagged) this.deps.nameFilter?.rememberFlaggedName(accepted.playerId, originalName);
     else this.deps.nameFilter?.forgetFlaggedName(accepted.playerId);
-    if (!accepted.inserted) return this.reject('DUPLICATE_ANSWER', now);
+    if (!accepted.inserted) return this.rejectAnswer('DUPLICATE_ANSWER', now, ev, accepted.playerId, accepted.filtered.safeDisplayName);
     if (accepted.participantAdded) this.participants += 1;
     if (this.audience.onAccepted(accepted.playerId, accepted.filtered.safeDisplayName, now)) this.audienceChanged = true;
 
@@ -1250,6 +1287,158 @@ export class SessionRuntime {
     this.rejections.push({ atMs: now, reason });
     if (this.rejections.length > MAX_REJECTIONS) this.rejections.shift();
     return { accepted: false as const, reason };
+  }
+
+  private rejectAnswer(
+    reason: SpamWarningReason,
+    now: number,
+    event: Pick<RawComment, 'source' | 'userId' | 'displayName'>,
+    playerId?: string,
+    safeDisplayName?: string,
+  ) {
+    const result = this.reject(reason, now);
+    this.recordSpamAttempt(event, reason, now, playerId, safeDisplayName);
+    return result;
+  }
+
+  private spamKey(source: string, userId: string) {
+    // source has a fixed enum prefix, so the compound key stays unambiguous without JSON allocation.
+    return `${source}:${userId}`;
+  }
+
+  private associateSpamPlayer(source: string, userId: string, playerId: string, safeDisplayName: string) {
+    const state = this.spamAttempts.get(this.spamKey(source, userId));
+    if (!state) return;
+    state.playerId = playerId;
+    state.safeDisplayName = safeDisplayName;
+  }
+
+  private recordSpamAttempt(
+    event: Pick<RawComment, 'source' | 'userId' | 'displayName'>,
+    reason: SpamWarningReason,
+    now: number,
+    knownPlayerId?: string,
+    knownSafeDisplayName?: string,
+  ) {
+    if (this.disposed) return;
+    const key = this.spamKey(event.source, event.userId);
+    let state = this.spamAttempts.get(key);
+    const newState = !state;
+    if (!state) {
+      state = {
+        source: event.source,
+        userId: event.userId,
+        playerId: knownPlayerId ?? null,
+        displayName: null,
+        safeDisplayName: knownSafeDisplayName ?? null,
+        attempts: [],
+        head: 0,
+        reasonCounts: { DUPLICATE_ANSWER: 0, NOT_ACCEPTING: 0, EARLY: 0, LATE: 0 },
+        latestReasonSequence: {},
+        lastAtMs: now,
+        sequence: 0,
+      };
+      this.spamAttempts.set(key, state);
+    }
+    if (knownPlayerId) state.playerId = knownPlayerId;
+    if (knownSafeDisplayName) state.safeDisplayName = knownSafeDisplayName;
+    state.attempts.push({ atMs: now, reason });
+    state.reasonCounts[reason] += 1;
+    state.lastAtMs = now;
+    state.sequence = ++this.spamSequence;
+    state.latestReasonSequence[reason] = state.sequence;
+
+    if (this.spamCount(state) >= (this.config.spamWarningThreshold ?? 5)) {
+      // Match the store's stable player ID convention without a DB read/write on the comment path.
+      // This value is only returned on the admin snapshot; public snapshots never contain it.
+      state.playerId ??= `${state.source}:${state.userId}`;
+      const displayName = sanitizeDisplayName(String(event.displayName ?? ''));
+      const displayNameChanged = state.displayName !== displayName;
+      state.displayName = displayName;
+      if (knownSafeDisplayName) state.safeDisplayName = knownSafeDisplayName;
+      else if (!state.safeDisplayName || displayNameChanged)
+        state.safeDisplayName = this.deps.nameFilter?.evaluateTransient(displayName, state.playerId, now).safeDisplayName
+          ?? displayName;
+      this.scheduleSpamSnapshot();
+    }
+    if (newState) this.scheduleSpamCleanup();
+  }
+
+  private spamCount(state: SpamAttemptState) {
+    return state.attempts.length - state.head;
+  }
+
+  private pruneSpamAttempts(now: number) {
+    const threshold = this.config.spamWarningThreshold ?? 5;
+    const cutoff = now - (this.config.spamWarningWindowMs ?? 30_000);
+    let warningsChanged = false;
+    for (const [key, state] of this.spamAttempts) {
+      const before = this.spamCount(state);
+      const wasWarning = before >= threshold;
+      while (state.head < state.attempts.length && state.attempts[state.head]!.atMs <= cutoff) {
+        state.reasonCounts[state.attempts[state.head]!.reason] -= 1;
+        state.head += 1;
+      }
+      const after = this.spamCount(state);
+      const isWarning = after >= threshold;
+      if (wasWarning && (before !== after || !isWarning)) warningsChanged = true;
+      if (after === 0) {
+        this.spamAttempts.delete(key);
+        continue;
+      }
+      // Compact only during the cleanup cadence, never in the comment hot path.
+      if (state.head >= 64 && state.head * 2 >= state.attempts.length) {
+        state.attempts = state.attempts.slice(state.head);
+        state.head = 0;
+      }
+    }
+    return warningsChanged;
+  }
+
+  private scheduleSpamCleanup() {
+    if (this.spamCleanupHandle !== null || this.disposed) return;
+    this.spamCleanupHandle = this.scheduler.setTimeout(() => {
+      this.spamCleanupHandle = null;
+      const changed = this.pruneSpamAttempts(this.scheduler.now());
+      if (changed) this.scheduleSpamSnapshot();
+      if (this.spamAttempts.size) this.scheduleSpamCleanup();
+    }, SPAM_CLEANUP_MS);
+  }
+
+  private scheduleSpamSnapshot() {
+    if (this.spamSnapshotHandle !== null || this.disposed) return;
+    this.spamSnapshotHandle = this.scheduler.setTimeout(() => {
+      this.spamSnapshotHandle = null;
+      if (!this.disposed) this.emitAdmin();
+    }, COUNTS_THROTTLE_MS);
+  }
+
+  private spamWarnings(): SpamWarning[] {
+    const threshold = this.config.spamWarningThreshold ?? 5;
+    return [...this.spamAttempts.values()]
+      .filter((state) => this.spamCount(state) >= threshold && state.playerId && state.safeDisplayName)
+      .map((state) => {
+        let primaryReason: SpamWarningReason = SPAM_WARNING_REASONS[0]!;
+        for (const reason of SPAM_WARNING_REASONS.slice(1)) {
+          if (state.reasonCounts[reason] > state.reasonCounts[primaryReason] ||
+            (state.reasonCounts[reason] === state.reasonCounts[primaryReason] &&
+              (state.latestReasonSequence[reason] ?? -1) > (state.latestReasonSequence[primaryReason] ?? -1)))
+            primaryReason = reason;
+        }
+        return {
+          warning: {
+            playerId: state.playerId!,
+            safeDisplayName: state.safeDisplayName!,
+            count: this.spamCount(state),
+            primaryReason,
+            lastAtMs: state.lastAtMs,
+          },
+          sequence: state.sequence,
+        };
+      })
+      .sort((a, b) => b.warning.lastAtMs - a.warning.lastAtMs || b.sequence - a.sequence)
+      .slice(0, 20)
+      .map(({ warning }) => warning);
   }
 
   private scheduleCounts() {
@@ -1624,6 +1813,7 @@ export class SessionRuntime {
         : null,
       metrics: { ...this.metrics, rejected: { ...this.metrics.rejected } },
       recentRejections: [...this.rejections].reverse().slice(0, 20),
+      spamWarnings: this.spamWarnings(),
       pool: this.pool(now),
       simulator: this.simulator ? { running: this.simulator.running, players: this.simulator.opts.players.length } : null,
       error: e.error ?? this.notice,

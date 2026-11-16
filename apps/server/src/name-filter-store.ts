@@ -249,6 +249,15 @@ export class NameFilterStore {
     });
   }
 
+  /** Lọc tên tạm trong RAM, không cấp alias bền vững cho người chưa được nhận vào phiên. */
+  evaluateTransient(name: string, playerId: string | null, checkedAt = this.now()): NameModerationResult {
+    return filterPlayerName(name, playerId, this.current, DEFAULT_NAME_FILTER_RULES, {
+      alias: 'Người chơi',
+      checkedAt,
+      protectedEntities: this.protectedEntities,
+    });
+  }
+
   rememberFlaggedName(playerId: string, originalName: string) {
     this.rawFlaggedNames.set(playerId, originalName);
   }

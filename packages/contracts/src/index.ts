@@ -241,6 +241,9 @@ export const RejectReasonSchema = z.enum([
 ]);
 export type RejectReason = z.infer<typeof RejectReasonSchema>;
 
+export const SpamWarningReasonSchema = z.enum(['DUPLICATE_ANSWER', 'NOT_ACCEPTING', 'EARLY', 'LATE']);
+export type SpamWarningReason = z.infer<typeof SpamWarningReasonSchema>;
+
 export type IngestMetrics = {
   received: number;
   accepted: number;
@@ -450,6 +453,9 @@ export const SessionConfigSchema = z
     seed: z.number().int().optional(),
     /** Bỏ comment có sourceTimestamp cũ hơn ngưỡng này so với lúc nhận (cách ly sự kiện trễ). */
     maxSourceLagMs: z.number().int().min(0).max(60_000).default(5_000),
+    /** Ngưỡng cảnh báo comment đáp án bị từ chối trong cửa sổ trượt; chỉ cảnh báo, không xử phạt. */
+    spamWarningThreshold: z.number().int().min(1).max(10_000).default(5),
+    spamWarningWindowMs: z.number().int().min(1_000).max(600_000).default(30_000),
     /** @username tài khoản TikTok đang phát LIVE — bắt buộc khi mode = TIKTOK. */
     /** Bộ mã nhân vật chibi để gán cho khán giả (Theme Pack sẽ cung cấp; mặc định chibi-01..12). */
     characterPool: z.array(z.string().min(1).max(64)).min(1).max(200).optional(),
@@ -481,8 +487,17 @@ export const QuestionReviewSchema = z.object({
 export type QuestionReview = z.infer<typeof QuestionReviewSchema>;
 type SessionConfigOutput = z.infer<typeof SessionConfigSchema>;
 /** Các trường mới có schema default vẫn optional ở type đầu vào để giữ tương thích caller cũ. */
-export type SessionConfig = Omit<SessionConfigOutput, 'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance'> &
-  Partial<Pick<SessionConfigOutput, 'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance'>>;
+export type SessionConfig =
+  Omit<
+    SessionConfigOutput,
+    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs'
+  > &
+  Partial<
+    Pick<
+      SessionConfigOutput,
+      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs'
+    >
+  >;
 
 /**
  * Vùng an toàn (px trên khung 1080×1920). GIÁ TRỊ MẶC ĐỊNH LÀ PRESET THỬ NGHIỆM BẢO THỦ,
@@ -942,6 +957,14 @@ export type AdminSnapshot = {
   } | null;
   metrics: IngestMetrics;
   recentRejections: { atMs: number; reason: RejectReason }[];
+  /** Tương thích với snapshot cũ; SessionRuntime luôn trả mảng. */
+  spamWarnings?: {
+    playerId: string;
+    safeDisplayName: string;
+    count: number;
+    primaryReason: SpamWarningReason;
+    lastAtMs: number;
+  }[];
   pool: { eligible: number; unusedInSession: number; requiredNextRound: number; lowPoolWarning: boolean };
   simulator: { running: boolean; players: number } | null;
   error: { code: string; message: string } | null;
