@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:24:14+07:00",
+  "heartbeat": "2026-11-16T15:26:36+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Đã thêm chọn nhạc theo snapshot, fallback và crossfade; bắt đầu cài dependencies worktree để chạy kiểm tra",
+  "note": "Worktree/nhánh riêng đã tạo; dependencies đang được cài từ lockfile, sau đó chạy typecheck/unit/e2e/privacy",
   "done": []
 }
