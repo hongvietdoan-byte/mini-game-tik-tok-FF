@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:38:06+07:00",
+  "heartbeat": "2026-11-16T15:42:09+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Đã áp dụng C-0231: BGM mặc định 0,18, MP3 ưu tiên, lặp và duck BGM theo MC; tiếp tục kiểm thử",
+  "note": "Đã thêm xử lý giữ nguyên nguồn khi hai slot có cùng nội dung; unit audio xanh, đang xác nhận typecheck và full test sau ghi chú C-0231",
   "done": []
 }
