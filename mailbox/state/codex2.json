@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:35:25+07:00",
+  "heartbeat": "2026-11-16T15:38:06+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Typecheck và 445 unit/integration test đã xanh; đang chạy 93 Playwright E2E mặc định, tiếp theo thử placeholder và privacy",
+  "note": "Đã áp dụng C-0231: BGM mặc định 0,18, MP3 ưu tiên, lặp và duck BGM theo MC; tiếp tục kiểm thử",
   "done": []
 }
