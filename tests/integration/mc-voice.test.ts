@@ -179,7 +179,8 @@ describe('MC Voice server API', () => {
     expect(assetResults.filter((result) => result.status === 'rejected')).toHaveLength(0);
     expect(runtime.engine.timer?.durationMs).toBeGreaterThanOrEqual(6_000);
     expect(runtime.engine.timer?.durationMs).toBeLessThanOrEqual(20_000);
-    expect(h.provider.synthesize).toHaveBeenCalledTimes(expectedSyntheses); // 8 câu chung/đếm ngược + 5 dòng READING + 1 lời công bố mỗi câu.
+    // Lời dẫn chung xếp sau reveal trong hàng đợi (C-0227) nên chờ tới khi đủ lượt thay vì đọc ngay.
+    await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalledTimes(expectedSyntheses), { timeout: 5_000 }); // 8 câu chung/đếm ngược + 5 dòng READING + 1 lời công bố mỗi câu.
 
     h.scheduler.advance(1_500);
     const cueMessage = publicMessages.find((message) => message.type === 'STATE_SNAPSHOT' && message.payload.mcVoiceCue &&
