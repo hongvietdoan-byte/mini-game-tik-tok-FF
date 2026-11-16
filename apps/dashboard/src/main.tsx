@@ -516,7 +516,7 @@ function App() {
           <section className="panel simulator-panel">
             <div className="panel-title"><div><span className="eyebrow">CHỈ DÙNG TRONG MOCK</span><h2>Giả lập tương tác</h2></div><span className={`simulator-status ${snapshot.simulator?.running ? 'is-running' : ''}`}>{snapshot.simulator?.running ? `ĐANG CHẠY · ${snapshot.simulator.players} người` : 'ĐANG TẮT'}</span></div>
             <form className="simulator-form" onSubmit={(event) => void controlSimulator(event)}>
-              <label>Số người<input name="players" type="number" min={1} max={2000} defaultValue={100} /></label>
+              <label>Số người<input name="players" type="number" min={1} max={20_000} defaultValue={100} /></label>
               <label>Độ chính xác<input name="accuracy" type="number" min={0} max={1} step={0.05} defaultValue={0.6} /></label>
               <label>Tỉ lệ tham gia<input name="participation" type="number" min={0} max={1} step={0.05} defaultValue={0.9} /></label>
               <button type="submit" className={snapshot.simulator?.running ? 'secondary-button' : 'primary-button'} disabled={busy}>{snapshot.simulator?.running ? 'Dừng mô phỏng' : 'Bắt đầu mô phỏng'}</button>

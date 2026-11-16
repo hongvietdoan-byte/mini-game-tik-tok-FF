@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createPrng } from './selection';
 import {
   buildPodium,
+  computeQuestionScoreDelta,
+  computeQuestionScoreDeltaFromCorrectRows,
   computeRoundScores,
   rankPlayers,
   topN,
@@ -111,6 +113,61 @@ describe('computeRoundScores', () => {
         const entries = result.ledger.filter((entry) => entry.playerId === total.playerId);
         expect(entries.reduce((sum, entry) => sum + entry.points, 0)).toBe(total.score);
         expect(entries.filter((entry) => entry.reason === 'CORRECT')).toHaveLength(total.correctCount);
+      }
+    }
+  });
+});
+
+describe('computeQuestionScoreDelta', () => {
+  it('khớp tính lại toàn vòng cho điểm, tốc độ, streak, câu bỏ lỡ và người vào muộn', () => {
+    const qs = questions(6).map((question, index) => ({
+      ...question,
+      correctOptionId: (['A', 'B', 'C', 'D', 'A', 'B'] as const)[index]!,
+      openedAtMs: 1_000 + index * 20_000,
+      windowMs: 20_000,
+    }));
+    const answers: AnswerInput[] = [
+      { questionInstanceId: 'q1', playerId: 'early', option: 'A', receivedAtMs: 1_500 },
+      { questionInstanceId: 'q1', playerId: 'misses-q2', option: 'A', receivedAtMs: 2_000 },
+      { questionInstanceId: 'q2', playerId: 'early', option: 'B', receivedAtMs: 22_000 },
+      { questionInstanceId: 'q2', playerId: 'misses-q2', option: 'A', receivedAtMs: 23_000 },
+      { questionInstanceId: 'q2', playerId: 'late', option: 'B', receivedAtMs: 24_000 },
+      { questionInstanceId: 'q3', playerId: 'early', option: 'C', receivedAtMs: 42_000 },
+      { questionInstanceId: 'q3', playerId: 'late', option: 'C', receivedAtMs: 43_000 },
+      { questionInstanceId: 'q4', playerId: 'early', option: 'D', receivedAtMs: 62_000 },
+      { questionInstanceId: 'q4', playerId: 'misses-q2', option: 'C', receivedAtMs: 63_000 },
+      { questionInstanceId: 'q4', playerId: 'late', option: 'C', receivedAtMs: 64_000 },
+      { questionInstanceId: 'q5', playerId: 'early', option: 'A', receivedAtMs: 82_000 },
+      { questionInstanceId: 'q5', playerId: 'late', option: 'A', receivedAtMs: 83_000 },
+      { questionInstanceId: 'q6', playerId: 'early', option: 'B', receivedAtMs: 102_000 },
+      { questionInstanceId: 'q6', playerId: 'misses-q2', option: 'B', receivedAtMs: 103_000 },
+      { questionInstanceId: 'q6', playerId: 'late', option: 'B', receivedAtMs: 104_000 },
+    ];
+
+    for (const options of [{ mode: 'CLASSIC' as const, speedBonusMax: 50 }, { mode: 'KAHOOT' as const }]) {
+      let totals = new Map<string, { playerId: string; score: number; correctCount: number; streak: number }>();
+      for (let index = 0; index < qs.length; index += 1) {
+        const question = qs[index]!;
+        const currentAnswers = answers.filter((answer) => answer.questionInstanceId === question.questionInstanceId);
+        const delta = computeQuestionScoreDelta(question, totals.values(), currentAnswers, options);
+        const history = computeRoundScores(qs.slice(0, index + 1), answers.filter((answer) =>
+          qs.slice(0, index + 1).some((closedQuestion) => closedQuestion.questionInstanceId === answer.questionInstanceId),
+        ), options);
+        expect(delta.ledger).toEqual(history.ledger.filter((entry) => entry.questionInstanceId === question.questionInstanceId));
+        expect(delta.totals).toEqual(history.totals);
+
+        const correctRows = currentAnswers
+          .filter((answer) => answer.option === question.correctOptionId)
+          .map((answer) => ({
+            ...answer,
+            ...(totals.get(answer.playerId) ?? { playerId: answer.playerId, score: 0, correctCount: 0, streak: 0 }),
+          }));
+        const fast = computeQuestionScoreDeltaFromCorrectRows(question, correctRows, options);
+        expect(fast.ledger).toEqual(delta.ledger);
+        expect(new Map(fast.totals.map((total) => [total.playerId, total]))).toEqual(
+          new Map([...delta.totals].filter(([playerId]) => correctRows.some((row) => row.playerId === playerId))),
+        );
+        totals = delta.totals;
       }
     }
   });

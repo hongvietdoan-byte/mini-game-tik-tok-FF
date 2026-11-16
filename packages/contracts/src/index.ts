@@ -1090,7 +1090,7 @@ export type CreateSessionRequest = Omit<CreateSessionRequestOutput, 'config'> & 
 
 export const SimulatorRequestSchema = z.object({
   action: z.enum(['START', 'STOP']),
-  players: z.number().int().min(1).max(2000).default(100),
+  players: z.number().int().min(1).max(20_000).default(100),
   accuracy: z.number().min(0).max(1).default(0.6),
   participation: z.number().min(0).max(1).default(0.9),
   spamRate: z.number().min(0).max(1).default(0.15),

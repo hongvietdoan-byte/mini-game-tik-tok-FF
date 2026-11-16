@@ -101,9 +101,6 @@ export function computeRoundScores(
       if (a.receivedAtMs !== undefined) receivedAt.set(`${a.questionInstanceId}\u0000${a.playerId}`, a.receivedAtMs);
     }
   }
-  const speedMax = opts.speedBonusMax ?? 0;
-  const kahoot = opts.mode === 'KAHOOT';
-
   const ordered = [...questions].sort((x, y) => x.index - y.index);
   const totals = new Map<string, PlayerTotals>();
   const ledger: LedgerEntry[] = [];
@@ -118,57 +115,126 @@ export function computeRoundScores(
 
     for (const t of totals.values()) {
       const option = qa.get(t.playerId);
-      if (option !== undefined && option === q.correctOptionId && kahoot) {
-        t.streak += 1;
-        t.correctCount += 1;
-        const at = receivedAt.get(`${q.questionInstanceId}\u0000${t.playerId}`);
-        const elapsed = q.openedAtMs != null && at !== undefined ? at - q.openedAtMs : null;
-        const pts = kahootPoints(elapsed, q.windowMs ?? 0);
-        const base = KAHOOT_RULES.maxPoints / 2;
-        t.score += pts;
-        ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'CORRECT', points: base });
-        if (pts > base)
-          ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'SPEED', points: pts - base });
-        const sb = kahootStreakBonus(t.streak);
-        if (sb > 0) {
-          t.score += sb;
-          ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'STREAK', points: sb });
-        }
-      } else if (option !== undefined && option === q.correctOptionId) {
-        t.streak += 1;
-        t.correctCount += 1;
-        t.score += SCORE_RULES.correct;
-        ledger.push({
-          questionInstanceId: q.questionInstanceId,
-          playerId: t.playerId,
-          reason: 'CORRECT',
-          points: SCORE_RULES.correct,
-        });
-        const at = receivedAt.get(`${q.questionInstanceId}\u0000${t.playerId}`);
-        if (speedMax > 0 && q.openedAtMs != null && q.windowMs && at !== undefined) {
-          const b = speedBonus(at - q.openedAtMs, q.windowMs, speedMax);
-          if (b > 0) {
-            t.score += b;
-            ledger.push({ questionInstanceId: q.questionInstanceId, playerId: t.playerId, reason: 'SPEED', points: b });
-          }
-        }
-        const m = SCORE_RULES.streakMilestones.find((x) => x.streak === t.streak);
-        if (m) {
-          t.score += m.bonus;
-          ledger.push({
-            questionInstanceId: q.questionInstanceId,
-            playerId: t.playerId,
-            reason: `STREAK_${m.streak}` as ScoreReason,
-            points: m.bonus,
-          });
-        }
-      } else {
-        // sai hoặc bỏ lỡ
-        t.streak = 0;
-      }
+      const at = receivedAt.get(`${q.questionInstanceId}\u0000${t.playerId}`);
+      appendQuestionScore(t, q, option, at, opts, ledger);
     }
   }
   return { ledger, totals };
+}
+
+/** Chấm một câu đã đóng từ tổng vòng trước và đáp án câu hiện tại. */
+export function computeQuestionScoreDelta(
+  question: RoundQuestionInput,
+  previousTotals: Iterable<PlayerTotals>,
+  answers: AnswerInput[],
+  opts: ScoringOptions = {},
+): { ledger: LedgerEntry[]; totals: Map<string, PlayerTotals> } {
+  const totals = new Map<string, PlayerTotals>();
+  for (const total of previousTotals) totals.set(total.playerId, { ...total });
+
+  const answersByPlayer = new Map<string, AnswerInput>();
+  for (const answer of answers) {
+    if (answer.questionInstanceId === question.questionInstanceId && !answersByPlayer.has(answer.playerId))
+      answersByPlayer.set(answer.playerId, answer);
+  }
+  for (const playerId of answersByPlayer.keys()) {
+    if (!totals.has(playerId)) totals.set(playerId, { playerId, score: 0, correctCount: 0, streak: 0 });
+  }
+
+  const ledger: LedgerEntry[] = [];
+  if (!question.closed || question.voided) return { ledger, totals };
+  for (const total of totals.values()) {
+    const answer = answersByPlayer.get(total.playerId);
+    appendQuestionScore(total, question, answer?.option, answer?.receivedAtMs, opts, ledger);
+  }
+  return { ledger, totals };
+}
+
+/**
+ * Đường chấm nhanh khi kho đã lọc sẵn đáp án đúng và kèm tổng điểm hiện tại.
+ * Không dựng hai Map trung gian như hàm tổng quát; giữ nguyên quy tắc tạo sổ cái.
+ */
+export function computeQuestionScoreDeltaFromCorrectRows(
+  question: RoundQuestionInput,
+  rows: Array<AnswerInput & PlayerTotals>,
+  opts: ScoringOptions = {},
+): { ledger: LedgerEntry[]; totals: PlayerTotals[] } {
+  const ledger: LedgerEntry[] = [];
+  const totals: PlayerTotals[] = [];
+  if (!question.closed || question.voided) return { ledger, totals };
+
+  for (const row of rows) {
+    if (row.questionInstanceId !== question.questionInstanceId || row.option !== question.correctOptionId) continue;
+    const total = {
+      playerId: row.playerId,
+      score: row.score,
+      correctCount: row.correctCount,
+      streak: row.streak,
+    };
+    appendQuestionScore(total, question, row.option, row.receivedAtMs, opts, ledger);
+    totals.push(total);
+  }
+  return { ledger, totals };
+}
+
+function appendQuestionScore(
+  total: PlayerTotals,
+  question: RoundQuestionInput,
+  option: OptionId | undefined,
+  receivedAtMs: number | undefined,
+  opts: ScoringOptions,
+  ledger: LedgerEntry[],
+) {
+  if (option === undefined || option !== question.correctOptionId) {
+    // Sai hoặc bỏ lỡ câu đã chốt sẽ ngắt chuỗi.
+    total.streak = 0;
+    return;
+  }
+
+  total.streak += 1;
+  total.correctCount += 1;
+  if (opts.mode === 'KAHOOT') {
+    const elapsed = question.openedAtMs != null && receivedAtMs !== undefined
+      ? receivedAtMs - question.openedAtMs
+      : null;
+    const points = kahootPoints(elapsed, question.windowMs ?? 0);
+    const base = KAHOOT_RULES.maxPoints / 2;
+    total.score += points;
+    ledger.push({ questionInstanceId: question.questionInstanceId, playerId: total.playerId, reason: 'CORRECT', points: base });
+    if (points > base)
+      ledger.push({ questionInstanceId: question.questionInstanceId, playerId: total.playerId, reason: 'SPEED', points: points - base });
+    const bonus = kahootStreakBonus(total.streak);
+    if (bonus > 0) {
+      total.score += bonus;
+      ledger.push({ questionInstanceId: question.questionInstanceId, playerId: total.playerId, reason: 'STREAK', points: bonus });
+    }
+    return;
+  }
+
+  total.score += SCORE_RULES.correct;
+  ledger.push({
+    questionInstanceId: question.questionInstanceId,
+    playerId: total.playerId,
+    reason: 'CORRECT',
+    points: SCORE_RULES.correct,
+  });
+  if ((opts.speedBonusMax ?? 0) > 0 && question.openedAtMs != null && question.windowMs && receivedAtMs !== undefined) {
+    const bonus = speedBonus(receivedAtMs - question.openedAtMs, question.windowMs, opts.speedBonusMax!);
+    if (bonus > 0) {
+      total.score += bonus;
+      ledger.push({ questionInstanceId: question.questionInstanceId, playerId: total.playerId, reason: 'SPEED', points: bonus });
+    }
+  }
+  const milestone = SCORE_RULES.streakMilestones.find((entry) => entry.streak === total.streak);
+  if (milestone) {
+    total.score += milestone.bonus;
+    ledger.push({
+      questionInstanceId: question.questionInstanceId,
+      playerId: total.playerId,
+      reason: `STREAK_${milestone.streak}` as ScoreReason,
+      points: milestone.bonus,
+    });
+  }
 }
 
 export type RankInput = { playerId: string; displayName: string; score: number; correctCount: number };
@@ -184,23 +250,27 @@ export function rankPlayers(players: RankInput[]): LeaderboardEntry[] {
       b.correctCount - a.correctCount ||
       (a.playerId < b.playerId ? -1 : a.playerId > b.playerId ? 1 : 0),
   );
+  return rankSortedPlayers(sorted);
+}
+
+/** Gán hạng cho danh sách đã sắp theo cùng thứ tự với `rankPlayers`. */
+export function rankSortedPlayers(sorted: readonly RankInput[]): LeaderboardEntry[] {
   const out: LeaderboardEntry[] = [];
   for (let i = 0; i < sorted.length; i++) {
     const p = sorted[i]!;
     const prev = out[i - 1];
     const same = prev !== undefined && prev.score === p.score && prev.correctCount === p.correctCount;
+    const next = sorted[i + 1];
+    const tied = same || (next !== undefined && next.score === p.score && next.correctCount === p.correctCount);
     out.push({
       rank: same ? prev.rank : i + 1,
-      tied: false,
+      tied,
       playerId: p.playerId,
       displayName: p.displayName,
       score: p.score,
       correctCount: p.correctCount,
     });
   }
-  const rankCounts = new Map<number, number>();
-  for (const e of out) rankCounts.set(e.rank, (rankCounts.get(e.rank) ?? 0) + 1);
-  for (const e of out) e.tied = (rankCounts.get(e.rank) ?? 0) > 1;
   return out;
 }
 

@@ -36,6 +36,7 @@ import {
 import {
   acceptWindow,
   buildPodium,
+  computeQuestionScoreDeltaFromCorrectRows,
   computeRoundScores,
   createInitialState,
   currentQuestionInstanceId,
@@ -46,6 +47,7 @@ import {
   isInterimLeaderboard,
   mcFor,
   rankPlayers,
+  rankSortedPlayers,
   remainingMs,
   sanitizeDisplayName,
   sceneFor,
@@ -56,7 +58,9 @@ import {
   type EngineEvent,
   type EngineInput,
   type EngineState,
+  type LedgerEntry,
   type PreparedRound,
+  type PlayerTotals,
 } from '@quiz/quiz-core';
 import { MockAdapter, MockSimulator, type LiveAdapter, type Scheduler, type SimPlayer } from '@quiz/live-adapters';
 import type { FilteredPlayerName } from '@quiz/name-filter';
@@ -314,7 +318,9 @@ export class SessionRuntime {
 
   private async attach() {
     this.store.pruneProcessedEvents(this.scheduler.now() - 7 * 24 * 3_600_000);
-    this.unsubs.push(this.adapter.onComment((c) => this.safe(() => this.ingest(c))));
+    if (this.adapter.onCommentBatch)
+      this.unsubs.push(this.adapter.onCommentBatch((comments) => this.safe(() => this.ingestBatch(comments))));
+    else this.unsubs.push(this.adapter.onComment((c) => this.safe(() => this.ingest(c))));
     this.unsubs.push(this.adapter.onStatus((s) => this.safe(() => this.onConnectionStatus(s))));
     this.beat();
     this.arm();
@@ -337,7 +343,7 @@ export class SessionRuntime {
     if (!r) return;
     this.loadRound(r.roundId);
     this.audience.load(r.roundId);
-    this.ranked = rankPlayers(this.store.standings(r.roundId));
+    this.rankRound(r.roundId);
     // Cơ sở dữ liệu chỉ giữ tên đã che khi tên bị gắn cờ. Khi phục hồi, tuyệt đối
     // không suy đoán lại tên gốc từ bất kỳ snapshot nào.
     this.refreshNameFilter(false);
@@ -535,15 +541,48 @@ export class SessionRuntime {
   private scoreRound(now: number, kind: 'AFTER_QUESTION' | 'AFTER_VOID', qid: string): string | null {
     const r = this.engine.round!;
     this.loadRound(r.roundId);
-    const { ledger, totals } = computeRoundScores(
-      this.scoringQuestions(r),
-      this.store.answersForRound(r.roundId),
-      { mode: this.config.scoringMode ?? 'CLASSIC', speedBonusMax: this.config.speedBonusMax ?? 0 },
-    );
-    this.store.insertLedger(r.roundId, ledger, now);
-    this.store.saveRoundPlayers(r.roundId, totals.values(), now);
-    const integrity = this.compareLedger(r.roundId, totals);
-    this.ranked = rankPlayers(this.store.standings(r.roundId));
+    const questions = this.scoringQuestions(r);
+    const scoringOptions = { mode: this.config.scoringMode ?? 'CLASSIC', speedBonusMax: this.config.speedBonusMax ?? 0 } as const;
+    let ledger: LedgerEntry[];
+    let totals: Iterable<PlayerTotals>;
+    let scoringQuestion: (typeof questions)[number] | null = null;
+    let expectedTotals: Map<string, PlayerTotals> | null = null;
+    if (kind === 'AFTER_VOID') {
+      const full = computeRoundScores(questions, this.store.answersForRound(r.roundId), scoringOptions);
+      ledger = full.ledger;
+      totals = full.totals.values();
+      expectedTotals = full.totals;
+    }
+    else {
+      scoringQuestion = questions.find((entry) => entry.questionInstanceId === qid) ?? null;
+      if (!scoringQuestion) throw new Error(`Thiếu câu hỏi ${qid} khi chấm điểm.`);
+      // Đáp án sai/bỏ lỡ chỉ cần reset chuỗi; chỉ đọc dữ liệu người trả lời đúng câu này.
+      // Điểm của nhóm không trả lời không đổi, còn xếp hạng vẫn dựng trên toàn bộ standings bên dưới.
+      const scoringRows = this.store.scoringRowsForQuestion(r.roundId, qid, scoringQuestion.correctOptionId);
+      const delta = computeQuestionScoreDeltaFromCorrectRows(
+        scoringQuestion,
+        scoringRows,
+        scoringOptions,
+      );
+      ledger = delta.ledger;
+      totals = delta.totals;
+    }
+    const insertedLedger = this.store.insertLedger(r.roundId, ledger, now);
+    let integrity: string | null = null;
+    if (kind === 'AFTER_VOID') {
+      this.store.saveRoundPlayers(r.roundId, totals, now);
+      integrity = this.compareLedger(r.roundId, expectedTotals!);
+    } else if (insertedLedger !== ledger.length) {
+      // Khởi động lại/ghi dở có thể để lại một phần sổ cái; dựng lại toàn vòng để
+      // không cộng lặp điểm khi sửa các dòng round_players.
+      const full = computeRoundScores(questions, this.store.answersForRound(r.roundId), scoringOptions);
+      this.store.saveRoundPlayers(r.roundId, full.totals.values(), now);
+      integrity = this.compareLedger(r.roundId, full.totals)
+        ?? `Không ghi đủ bút toán chấm điểm ở câu ${qid} (${insertedLedger}/${ledger.length}).`;
+    } else {
+      this.store.applyQuestionTotals(r.roundId, qid, scoringQuestion!.correctOptionId, totals);
+    }
+    this.rankRound(r.roundId);
     this.participants = this.store.participantCount(r.roundId);
     this.store.saveLeaderboardSnapshot({
       roundId: r.roundId,
@@ -581,6 +620,25 @@ export class SessionRuntime {
     return bad.length
       ? `Sổ cái lệch với điểm tính lại ở vòng ${roundId} (${bad.length} người chơi, ví dụ ${bad.slice(0, 3).join(', ')})`
       : null;
+  }
+
+  private rankRound(roundId: string) {
+    const standings = this.store.rankedStandings(roundId);
+    // SQLite's BINARY and JS's string comparison have identical order for ASCII
+    // provider IDs; retain the previous comparator for any unusual Unicode ID.
+    for (let i = 1; i < standings.length; i += 1) {
+      const previous = standings[i - 1]!;
+      const current = standings[i]!;
+      if (
+        previous.score < current.score ||
+        (previous.score === current.score && previous.correctCount < current.correctCount) ||
+        (previous.score === current.score && previous.correctCount === current.correctCount && previous.playerId > current.playerId)
+      ) {
+        this.ranked = rankPlayers(standings);
+        return;
+      }
+    }
+    this.ranked = rankSortedPlayers(standings);
   }
 
   /** Kiểm toàn vẹn khi khôi phục: tính lại vòng hiện tại và so với sổ cái đã lưu (không ghi gì). */
@@ -1361,6 +1419,22 @@ export class SessionRuntime {
     if (this.countsQid === qid) this.counts[decision.option] += 1;
     this.scheduleCounts();
     return { accepted: true };
+  }
+
+  private ingestBatch(comments: RawComment[]) {
+    const errors: unknown[] = [];
+    this.store.transaction(() => {
+      for (const comment of comments) {
+        try {
+          this.ingest(comment);
+        } catch (error) {
+          // ingest() uses a nested SQLite savepoint, so one invalid event cannot
+          // roll back other valid comments in this simulator tick.
+          errors.push(error);
+        }
+      }
+    });
+    for (const error of errors) this.safe(() => { throw error; });
   }
 
   private reject(reason: RejectReason, now: number) {

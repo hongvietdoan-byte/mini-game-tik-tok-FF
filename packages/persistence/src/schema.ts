@@ -255,7 +255,6 @@ export const scoreEvents = sqliteTable(
   (t) => [
     // Sổ cái chỉ-ghi-thêm; khoá duy nhất làm việc chấm lại trở nên idempotent.
     uniqueIndex('score_events_ledger_uq').on(t.roundId, t.questionInstanceId, t.playerId, t.scoreReason),
-    index('score_events_round_player_idx').on(t.roundId, t.playerId),
   ],
 );
 
