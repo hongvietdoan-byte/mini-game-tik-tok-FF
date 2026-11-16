@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:49:16+07:00",
+  "heartbeat": "2026-11-16T15:50:48+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Full E2E mặc định đã qua 78/93 test, chưa lỗi; hoàn tất trước khi chạy placeholder",
+  "note": "Full E2E mặc định 93/93 xanh; đang chạy E2E lần hai với QUIZ_ASSETS_DIR=fixtures/assets-placeholder",
   "done": []
 }
