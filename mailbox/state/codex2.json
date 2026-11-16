@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:43:30+07:00",
+  "heartbeat": "2026-11-16T15:44:42+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Typecheck và 12 unit audio xanh; pnpm test full đang chạy, sau đó tiếp tục e2e hai chế độ asset và privacy",
+  "note": "Bản cập nhật C-0231 đã qua typecheck và 446 unit/integration test; đang chạy lại full E2E mặc định, rồi sẽ chạy với placeholder",
   "done": []
 }
