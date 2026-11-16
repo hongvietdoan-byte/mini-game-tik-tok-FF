@@ -1,10 +1,14 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { getE2eAssetDirectory, usesE2ePlaceholderAssets } from './assets';
 
 const repositoryRoot = resolve(process.cwd(), '..', '..', '..');
 const reviewRoot = join(process.cwd(), '.claude', 'review', 'C0221');
-const samplePath = join(repositoryRoot, 'assets-local', 'review', 'mau-nguoi-dung', 'mau-1114.png');
+const placeholderAssets = usesE2ePlaceholderAssets();
+const samplePath = placeholderAssets
+  ? join(getE2eAssetDirectory(), 'mc', 'kelly.png')
+  : join(repositoryRoot, 'assets-local', 'review', 'mau-nguoi-dung', 'mau-1114.png');
 // Visual landmark on the approved 273×640 kelly.png: the bottom point of the chin.
 const chinSourceY = 280;
 
@@ -57,10 +61,12 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
       expect(geometry.guide.y - geometry.board.bottom).toBeLessThanOrEqual(20);
       expect(geometry.figure).toMatchObject({ x: 744, y: 1138, width: 224, height: 225 });
       expect(geometry.image.width).toBe(180);
+      expect(geometry.image.naturalWidth).toBeGreaterThan(0);
+      expect(geometry.image.naturalHeight).toBeGreaterThan(0);
       expect(geometry.image.height / geometry.image.width).toBeCloseTo(geometry.image.naturalHeight / geometry.image.naturalWidth, 2);
       const visibleSourceHeight = Math.round((geometry.figure.height / geometry.image.height) * geometry.image.naturalHeight);
-      expect(visibleSourceHeight).toBeGreaterThanOrEqual(330);
-      rows.push(`| Top 10 giữa vòng | x=${geometry.guide.x} y=${geometry.guide.y} w=${geometry.guide.width} h=${geometry.guide.height} | bảng đáy y=${geometry.board.bottom}; cách ${geometry.guide.y - geometry.board.bottom}px; mép phải ${geometry.guide.right} | Kelly frame ${geometry.figure.x}/${geometry.figure.y}/${geometry.figure.width}/${geometry.figure.height}; ảnh ${geometry.image.width}×${Math.round(geometry.image.height)} giữ tỉ lệ; thấy ${visibleSourceHeight}px nguồn |`);
+      if (!placeholderAssets) expect(visibleSourceHeight).toBeGreaterThanOrEqual(330);
+      rows.push(`| Top 10 giữa vòng | x=${geometry.guide.x} y=${geometry.guide.y} w=${geometry.guide.width} h=${geometry.guide.height} | bảng đáy y=${geometry.board.bottom}; cách ${geometry.guide.y - geometry.board.bottom}px; mép phải ${geometry.guide.right} | ${placeholderAssets ? 'placeholder' : 'Kelly'} frame ${geometry.figure.x}/${geometry.figure.y}/${geometry.figure.width}/${geometry.figure.height}; ảnh ${geometry.image.width}×${Math.round(geometry.image.height)} giữ tỉ lệ${placeholderAssets ? '' : `; thấy ${visibleSourceHeight}px nguồn`} |`);
     } else {
       const geometry = await stage.evaluate((root) => {
         const rect = (element: Element): Rect => {
@@ -83,14 +89,20 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
       expect(geometry.image.width).toBe(168);
       expect(geometry.image.x).toBeCloseTo(geometry.figure.x + (geometry.figure.width - geometry.image.width) / 2, 0);
       expect(geometry.image.y).toBe(geometry.figure.y);
+      expect(geometry.image.naturalWidth).toBeGreaterThan(0);
+      expect(geometry.image.naturalHeight).toBeGreaterThan(0);
       expect(geometry.image.height / geometry.image.width).toBeCloseTo(geometry.image.naturalHeight / geometry.image.naturalWidth, 2);
       const visibleSourceBottom = Math.round(((geometry.figure.bottom - geometry.image.y) / geometry.image.height) * geometry.image.naturalHeight);
-      expect(visibleSourceBottom).toBeGreaterThanOrEqual(325);
-      expect(visibleSourceBottom).toBeLessThanOrEqual(345);
-      const chinY = Math.round(geometry.image.y + (chinSourceY / geometry.image.naturalHeight) * geometry.image.height);
-      expect(chinY).toBeGreaterThan(geometry.figure.y + geometry.figure.height * 0.75);
-      expect(chinY).toBeLessThan(geometry.figure.bottom);
-      rows.push(`| Kelly ${capture.scene === 'QUESTION' ? 'QUESTION' : 'FASTEST'} | frame ${geometry.figure.x}/${geometry.figure.y}/${geometry.figure.width}/${geometry.figure.height}; nameplate ${geometry.plate.x}/${geometry.plate.y}/${geometry.plate.width}/${geometry.plate.height} | tóc trên y=${geometry.image.y}; cằm y≈${chinY}; mép dưới ô y=${geometry.figure.bottom} | ảnh ${geometry.image.width}×${Math.round(geometry.image.height)} giữ tỉ lệ; thấy đến y≈${visibleSourceBottom} ảnh nguồn, cắt ngang ngực |`);
+      let cropNote = `placeholder; thấy ${visibleSourceBottom}px nguồn`;
+      if (!placeholderAssets) {
+        expect(visibleSourceBottom).toBeGreaterThanOrEqual(325);
+        expect(visibleSourceBottom).toBeLessThanOrEqual(345);
+        const chinY = Math.round(geometry.image.y + (chinSourceY / geometry.image.naturalHeight) * geometry.image.height);
+        expect(chinY).toBeGreaterThan(geometry.figure.y + geometry.figure.height * 0.75);
+        expect(chinY).toBeLessThan(geometry.figure.bottom);
+        cropNote = `tóc trên y=${geometry.image.y}; cằm y≈${chinY}; mép dưới ô y=${geometry.figure.bottom}; thấy y≈${visibleSourceBottom} ảnh nguồn, cắt ngang ngực`;
+      }
+      rows.push(`| ${placeholderAssets ? 'Placeholder MC' : 'Kelly'} ${capture.scene === 'QUESTION' ? 'QUESTION' : 'FASTEST'} | frame ${geometry.figure.x}/${geometry.figure.y}/${geometry.figure.width}/${geometry.figure.height}; nameplate ${geometry.plate.x}/${geometry.plate.y}/${geometry.plate.width}/${geometry.plate.height} | ${cropNote} | ảnh ${geometry.image.width}×${Math.round(geometry.image.height)} giữ tỉ lệ |`);
     }
 
     const output = join(reviewRoot, capture.file);
@@ -109,8 +121,8 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
     h1{position:absolute;z-index:2;top:20px;left:24px;margin:0;padding:10px 18px;border-radius:12px;background:#17114cdd;font-size:30px}
     img{display:block;width:1080px;height:1920px;object-fit:contain}
   </style></head><body><main>
-    <section><h1>MẪU · ẢNH NGƯỜI DÙNG</h1><img src="data:image/png;base64,${sample.toString('base64')}"></section>
-    <section><h1>BẢN DỰNG · QUESTION</h1><img src="data:image/png;base64,${question.toString('base64')}"></section>
+    <section><h1>${placeholderAssets ? 'PLACEHOLDER DEMO · MC' : 'MẪU · ẢNH NGƯỜI DÙNG'}</h1><img src="data:image/png;base64,${sample.toString('base64')}"></section>
+    <section><h1>${placeholderAssets ? 'PLACEHOLDER DEMO · QUESTION' : 'BẢN DỰNG · QUESTION'}</h1><img src="data:image/png;base64,${question.toString('base64')}"></section>
   </main></body></html>`);
   await comparison.waitForFunction(() => Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0));
   await comparison.screenshot({ path: join(reviewRoot, 'question-side-by-side.png'), animations: 'disabled' });
@@ -119,13 +131,17 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
   const report = [
     '# C-0221 · Kelly bán thân và vị trí Top 10',
     '',
-    'Viewport kiểm tra: 1080×1920. Ảnh Kelly giữ tỉ lệ gốc, được phóng bên trong cửa sổ cắt cố định; mục Top 10 chỉ đổi vị trí cụm MC.',
+    placeholderAssets
+      ? 'Viewport kiểm tra: 1080×1920 với asset placeholder. E2E xác minh ảnh placeholder tải được, giữ tỉ lệ, và các khung MC/Top 10 đúng vị trí; số đo cằm/crop chỉ áp dụng khi có asset Kelly thật.'
+      : 'Viewport kiểm tra: 1080×1920. Ảnh Kelly giữ tỉ lệ gốc, được phóng bên trong cửa sổ cắt cố định; mục Top 10 chỉ đổi vị trí cụm MC.',
     '',
     '| Pha / phần | Hộp đo | Số đo / khoảng cách | Đo ảnh Kelly |',
     '|---|---|---|---|',
     ...rows,
     '',
-    'Màn QUESTION/FASTEST giữ nguyên hộp Kelly 130/815/205/205 và bảng tên 92/1018/250/49. Cụm Top 10 giữ nguyên kích thước, mép phải căn với bảng; khoảng cách dọc nằm trong 12–20px.',
+    placeholderAssets
+      ? 'Màn QUESTION/FASTEST giữ nguyên khung MC 130/815/205/205 và bảng tên 92/1018/250/49. Cụm Top 10 giữ nguyên kích thước, mép phải căn với bảng; khoảng cách dọc nằm trong 12–20px.'
+      : 'Màn QUESTION/FASTEST giữ nguyên hộp Kelly 130/815/205/205 và bảng tên 92/1018/250/49. Cụm Top 10 giữ nguyên kích thước, mép phải căn với bảng; khoảng cách dọc nằm trong 12–20px.',
   ].join('\n');
   await writeFile(join(reviewRoot, 'measurements.md'), report, 'utf8');
 });
