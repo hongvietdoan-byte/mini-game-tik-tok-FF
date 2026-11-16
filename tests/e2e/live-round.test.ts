@@ -285,6 +285,64 @@ test('C-0203: fastestCorrectAnswer từ server MOCK hiện trên overlay; mcVoic
   console.log(`C-0203 MOCK server round: mcVoiceEnabled=true; fastest shown for StormKing; MC Voice requests=0; audio elements=0; screenshot=${screenshotPath}`);
 });
 
+test('C-0233: simulator cập nhật ghế và tải chibi ngay trong ACCEPTING', async ({ page }) => {
+  test.setTimeout(90_000);
+  const running = await boot();
+  const created = await running.app.app.inject({
+    method: 'POST',
+    url: '/api/sessions',
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      name: 'C-0233 ghế khán giả trực tiếp',
+      config: {
+        mode: 'MOCK',
+        packId: 'demo',
+        questionsPerRound: 10,
+        allowDemoQuestions: true,
+        seed: 42,
+        timings: { lobbyMs: 0, prepareMs: 500, answerMs: 20_000, revealMs: 500 },
+      },
+    },
+  });
+  expect(created.statusCode).toBe(201);
+  const sessionId = (created.json() as { sessionId: string }).sessionId;
+  const runtime = currentRuntime(running.app);
+  runtime.simulatorControl({ action: 'START', players: 12, accuracy: 1, participation: 1, spamRate: 0, noiseRate: 0, seed: 23 });
+
+  const overlay = await page.context().newPage();
+  await overlay.setViewportSize({ width: 1080, height: 1920 });
+  await overlay.goto(running.overlayUrl);
+  const stage = overlay.getByTestId('stage');
+  await expect(stage).toBeVisible();
+  await commandMockRound(running, sessionId, { type: 'OPEN_LOBBY' });
+  await expect(stage).toHaveAttribute('data-scene', 'LOBBY');
+  await commandMockRound(running, sessionId, { type: 'START_ROUND', questionCount: 10 });
+  runUntil(running, () => runtime.engine.state === 'ACCEPTING' && runtime.engine.round?.questionIndex === 0);
+  await expect(stage).toHaveAttribute('data-state', 'ACCEPTING');
+  const acceptingStartedAt = running.scheduler.now();
+
+  for (let tick = 0; tick < 200 && await stage.locator('.v3-seat-name').count() === 0; tick += 1) {
+    running.scheduler.advance(100);
+    await overlay.waitForTimeout(10);
+  }
+
+  expect(runtime.engine.state).toBe('ACCEPTING');
+  expect(running.scheduler.now() - acceptingStartedAt).toBeLessThan(runtime.config.timings.answerMs);
+  const occupiedCount = await stage.locator('.v3-seat-name').count();
+  expect(occupiedCount).toBeGreaterThan(0);
+  const occupiedChibis = stage.locator('.v3-seat:not(.is-empty) .v3-chibi-img img');
+  await expect(occupiedChibis).toHaveCount(occupiedCount);
+  await expect.poll(() => occupiedChibis.evaluateAll((images) =>
+    images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0),
+  )).toBe(true);
+  const image = await occupiedChibis.first().evaluate((element) => ({
+    naturalWidth: (element as HTMLImageElement).naturalWidth,
+    source: (element as HTMLImageElement).currentSrc,
+  }));
+  expect(image.naturalWidth).toBeGreaterThan(0);
+  console.log(`C-0233 MOCK simulator: ghế đầu xuất hiện sau ${running.scheduler.now() - acceptingStartedAt} ms ACCEPTING; chibi naturalWidth=${image.naturalWidth}; src=${image.source}`);
+});
+
 function watchPage(
   page: Page,
   consoleErrors: string[],

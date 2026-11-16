@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { McState, PublicSnapshot, WsMessage } from '@quiz/contracts';
+import type { AudienceView, McState, PublicSnapshot, WsMessage } from '@quiz/contracts';
 import { selectNewestSnapshot, shouldAcceptSnapshotSeq } from '../overlayLogic';
 import { makeMockSnapshot } from '../mock/snapshots';
 import type { OverlayRole } from '../overlayRole';
@@ -52,6 +52,54 @@ export function applyAnswerCounts(
     },
     seq,
   };
+}
+
+export function applyAudienceUpdated(
+  current: PublicSnapshot | null,
+  currentSeq: number | null,
+  awaitingFreshSnapshot: boolean,
+  message: WsMessage<'AUDIENCE_UPDATED'>,
+): { snapshot: PublicSnapshot | null; seq: number | null } {
+  if (awaitingFreshSnapshot || !current || !shouldAcceptSnapshotSeq(currentSeq, message.seq))
+    return { snapshot: current, seq: currentSeq };
+
+  if (message.sessionId !== current.sessionId) return { snapshot: current, seq: currentSeq };
+
+  // Consume every newer same-session frame, even if its state is stale. This prevents a
+  // delayed snapshot from overwriting a later frame after the audience update was seen.
+  const seq = message.seq;
+  if (message.stateVersion !== current.stateVersion ||
+      (current.audience && message.payload.rotationId < current.audience.rotationId))
+    return { snapshot: current, seq };
+
+  return {
+    snapshot: { ...current, audience: message.payload },
+    seq,
+  };
+}
+
+function isAudienceView(value: unknown): value is AudienceView {
+  if (!value || typeof value !== 'object') return false;
+  const audience = value as Partial<AudienceView>;
+  const validOccupant = (occupant: unknown) => {
+    if (occupant === null) return true;
+    if (!occupant || typeof occupant !== 'object') return false;
+    const entry = occupant as NonNullable<AudienceView['seats'][number]['occupant']>;
+    return typeof entry.safeDisplayName === 'string' && typeof entry.characterId === 'string' &&
+      typeof entry.pinned === 'boolean' &&
+      (entry.result === null || entry.result === 'correct' || entry.result === 'wrong' || entry.result === 'none');
+  };
+  const validSeat = (seat: unknown) => {
+    if (!seat || typeof seat !== 'object') return false;
+    const entry = seat as AudienceView['seats'][number];
+    return typeof entry.slotId === 'string' && Number.isSafeInteger(entry.rowIndex) &&
+      Number.isSafeInteger(entry.seatIndex) && Number.isFinite(entry.x) && Number.isFinite(entry.y) &&
+      Number.isFinite(entry.scale) && Number.isFinite(entry.depth) && validOccupant(entry.occupant);
+  };
+  return Number.isSafeInteger(audience.rotationId) && (audience.rotationId ?? -1) >= 0 &&
+    Number.isSafeInteger(audience.queued) && (audience.queued ?? -1) >= 0 &&
+    Number.isSafeInteger(audience.total) && (audience.total ?? -1) >= 0 &&
+    Array.isArray(audience.seats) && audience.seats.every(validSeat);
 }
 
 export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, audioState: AudioEngineState, mockMcState?: McState) {
@@ -111,6 +159,21 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
               !Number.isSafeInteger(payload.participantCount) || payload.participantCount < 0
             ) return;
             const next = applyAnswerCounts(latest.current, latestSeq.current, awaitingFreshSnapshot, message);
+            if (next.seq !== latestSeq.current) latestSeq.current = next.seq;
+            if (next.snapshot !== latest.current && next.snapshot) {
+              latest.current = next.snapshot;
+              setSnapshot(next.snapshot);
+            }
+            return;
+          }
+
+          if (message.type === 'AUDIENCE_UPDATED') {
+            if (
+              typeof message.sessionId !== 'string' ||
+              !Number.isSafeInteger(message.stateVersion) ||
+              !isAudienceView(message.payload)
+            ) return;
+            const next = applyAudienceUpdated(latest.current, latestSeq.current, awaitingFreshSnapshot, message);
             if (next.seq !== latestSeq.current) latestSeq.current = next.seq;
             if (next.snapshot !== latest.current && next.snapshot) {
               latest.current = next.snapshot;
