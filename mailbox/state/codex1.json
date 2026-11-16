@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 237,
-  "heartbeat": "2026-11-17T03:16:41+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-17T03:17:04+07:00",
+  "state": "waiting",
   "task": "C-0237",
-  "note": "Đang tối ưu simulator theo lô thời gian và dựng benchmark 10k/20k trong worktree mới nhất",
+  "note": "C-0237 đã push nhánh codex1/c-load-20k (6dce81f), gửi report X-0401; không còn thư chưa xử lý",
   "done": []
 }
