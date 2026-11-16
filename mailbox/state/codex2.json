@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 238,
-  "heartbeat": "2026-11-17T01:53:26+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-17T01:54:08+07:00",
+  "state": "waiting",
   "task": "C-0238",
-  "note": "Đang triển khai voice countdown, nhắc luật 2/5/8 và từ điển phát âm trong worktree riêng",
+  "note": "C-0238 đã push nhánh codex2/c-mc-countdown-reminder; hộp thư đã xử lý hết, chờ task tiếp theo",
   "done": []
 }
