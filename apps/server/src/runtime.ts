@@ -86,6 +86,13 @@ type ApplyFail = { ok: false; code: CommandResult extends infer R ? (R extends {
 type ApplyResult = ApplyOk | ApplyFail;
 
 type PreparedSelection = { round: PreparedRound; seed: number; snapshots: QuestionSnapshot[] };
+type PreparedLobbyRound = {
+  selection: PreparedSelection;
+  questionCount: number;
+  allowReuse: boolean;
+  signature: string;
+};
+type RoundVoicePreparation = { signature: string; promise: Promise<void> };
 
 const ZERO_COUNTS = (): Record<OptionId, number> => ({ A: 0, B: 0, C: 0, D: 0 });
 const REJECT_REASONS: RejectReason[] = [
@@ -147,6 +154,8 @@ export class SessionRuntime {
   private readingStartedAtMs: number | null = null;
   private questionVoiceBundles = new Map<string, Promise<McVoiceReadingBundle | null>>();
   private voiceAssetPromises = new Map<string, Promise<{ assetId: string; durationMs: number } | null>>();
+  private preparedLobbyRound: PreparedLobbyRound | null = null;
+  private roundVoicePreparation: RoundVoicePreparation | null = null;
   private voiceHandles = new Set<unknown>();
   private countdownCues = new Set<string>();
   private voiceTailAtMs = 0;
@@ -546,12 +555,16 @@ export class SessionRuntime {
 
   private afterCommit(events: EngineEvent[], input: EngineInput) {
     for (const e of events) {
-      if (e.type === 'ROUND_STARTED') this.preGenerateRoundVoice();
+      if (e.type === 'ROUND_STARTED' && this.engine.round)
+        this.preGenerateRoundVoice(this.engine.round.roundId, [...this.snapshots.values()]);
       else if (e.type === 'QUESTION_CLOSED') this.speakAnswerReveal(e.questionInstanceId);
       else if (e.type === 'VICTORY_STARTED')
         void this.speakGeneric({ type: 'VICTORY_GENERIC', roundId: e.roundId }, 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.');
       else if (e.type === 'STATE_CHANGED' && e.to === 'READING') this.beginQuestionReading();
-      else if (e.type === 'STATE_CHANGED' && e.to === 'LOBBY') void this.announceWelcome();
+      else if (e.type === 'STATE_CHANGED' && e.to === 'LOBBY') {
+        void this.announceWelcome();
+        this.preselectLobbyRoundVoice();
+      }
       else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round)
         void this.speakGeneric({ type: 'LEADERBOARD_GENERIC', roundId: this.engine.round.roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!');
       if (e.type === 'QUESTION_OPENED') {
@@ -658,13 +671,16 @@ export class SessionRuntime {
   }
 
   private prepareQuestionVoice(snap: QuestionSnapshot) {
-    const existing = this.questionVoiceBundles.get(snap.questionInstanceId);
+    // Một lựa chọn LOBBY có thể bị thay bằng lựa chọn mới nhưng cùng round/qid. Đưa snapshot vào
+    // khóa RAM để audio cũ không bị dùng nhầm; khóa cache asset hiện có vẫn giữ nguyên.
+    const key = `${snap.questionInstanceId}\u0000${JSON.stringify(snap)}`;
+    const existing = this.questionVoiceBundles.get(key);
     if (existing) return existing;
     const lines = this.questionVoiceLines(snap);
     if (lines.some((line) => this.speechContainsPlayerIdentity(line.request.text))) {
       this.telemetry('UNSAFE_PLAYER_IDENTITY', 'QUESTION');
       const skipped = Promise.resolve(null);
-      this.questionVoiceBundles.set(snap.questionInstanceId, skipped);
+      this.questionVoiceBundles.set(key, skipped);
       return skipped;
     }
     const service = this.deps.mcVoice!.service;
@@ -675,7 +691,7 @@ export class SessionRuntime {
       this.telemetry(error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'FAILED', 'QUESTION');
       return null;
     });
-    this.questionVoiceBundles.set(snap.questionInstanceId, pending);
+    this.questionVoiceBundles.set(key, pending);
     return pending;
   }
 
@@ -686,24 +702,89 @@ export class SessionRuntime {
       void this.voiceAsset({ type: 'COUNTDOWN', secondsRemaining }, `Còn ${secondsRemaining} giây, hãy chốt đáp án!`);
   }
 
-  private preGenerateRoundVoice() {
-    if (!this.voiceEnabled() || !this.engine.round) return;
-    const selected = [...this.snapshots.values()];
+  private preselectLobbyRoundVoice() {
+    this.preparedLobbyRound = null;
+    if (!this.voiceEnabled()) return;
+    const questionCount = this.config.questionsPerRound;
+    const allowReuse = false;
+    const now = this.scheduler.now();
+    const result = this.prepareRound(questionCount, allowReuse, now);
+    if (!result.ok) return;
+    const selection = result.prepared;
+    this.preparedLobbyRound = {
+      selection,
+      questionCount,
+      allowReuse,
+      signature: this.lobbyRoundSignature(questionCount, allowReuse, now),
+    };
+    this.preGenerateRoundVoice(selection.round.roundId, selection.snapshots);
+  }
+
+  /** Chữ ký RAM để chỉ dùng lại lựa chọn nếu cả config, pool, câu đã dùng và count còn nguyên. */
+  private lobbyRoundSignature(questionCount: number, allowReuse: boolean, now: number) {
+    const config = this.config;
+    const pool = this.store.listQuestions(config.packId).sort((a, b) => a.id.localeCompare(b.id));
+    const allowDemo = config.mode === 'MOCK' && config.allowDemoQuestions;
+    const eligibleQuestionIds = pool
+      .filter((question) => isEligible(question, { allowDemo, nowMs: now }))
+      .map((question) => question.id);
+    const usedQuestionIds = [...this.store.usedQuestionIdsInSession(this.id)].sort();
+    return JSON.stringify({
+      questionCount,
+      allowReuse,
+      roundNumber: this.store.nextRoundNumber(this.id),
+      config,
+      pool,
+      eligibleQuestionIds,
+      usedQuestionIds,
+    });
+  }
+
+  private preGenerateRoundVoice(roundId: string, selected: readonly QuestionSnapshot[]) {
+    if (!this.voiceEnabled() || selected.length === 0) return;
+    const signature = JSON.stringify({ roundId, selected });
+    if (this.roundVoicePreparation?.signature === signature) return this.roundVoicePreparation.promise;
+
+    const run: RoundVoicePreparation = { signature, promise: Promise.resolve() };
+    this.roundVoicePreparation = run;
+    run.promise = this.generateRoundVoice(run, roundId, selected).catch(() => {
+      if (!this.disposed && this.roundVoicePreparation === run) this.telemetry('FAILED', 'QUESTION');
+    });
+    return run.promise;
+  }
+
+  private async generateRoundVoice(run: RoundVoicePreparation, roundId: string, selected: readonly QuestionSnapshot[]) {
+    const first = selected[0]!;
+    // Ưu tiên toàn bộ audio câu 1 (câu hỏi + đáp án) trước mọi câu hỏi/reveal khác.
+    await this.prepareQuestionVoice(first);
+    if (this.disposed || this.roundVoicePreparation !== run) return;
+
+    const jobs: Array<
+      | { kind: 'question' | 'reveal'; snapshot: QuestionSnapshot }
+      | { kind: 'generic'; type: 'LEADERBOARD_GENERIC' | 'VICTORY_GENERIC'; text: string }
+    > = [
+      ...selected.slice(1).map((snapshot) => ({ kind: 'question' as const, snapshot })),
+      ...selected.map((snapshot) => ({ kind: 'reveal' as const, snapshot })),
+      { kind: 'generic', type: 'LEADERBOARD_GENERIC', text: 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!' },
+      { kind: 'generic', type: 'VICTORY_GENERIC', text: 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.' },
+    ];
     let next = 0;
     const worker = async () => {
-      while (!this.disposed && next < selected.length) {
-        const index = next++;
-        const question = selected[index]!;
-        await this.prepareQuestionVoice(question);
-        await this.prepareAnswerRevealVoice(question);
+      while (!this.disposed && this.roundVoicePreparation === run && next < jobs.length) {
+        const job = jobs[next++]!;
+        if (job.kind === 'generic') {
+          await this.voiceAsset({ type: job.type, roundId }, job.text);
+          continue;
+        }
+        if (job.kind === 'reveal') {
+          await this.prepareAnswerRevealVoice(job.snapshot);
+          continue;
+        }
+        await this.prepareQuestionVoice(job.snapshot);
+        if (this.disposed || this.roundVoicePreparation !== run) return;
       }
     };
-    void Promise.all(Array.from({ length: Math.min(2, selected.length) }, () => worker())).catch(() => {
-      if (!this.disposed) this.telemetry('FAILED', 'QUESTION');
-    });
-    const roundId = this.engine.round.roundId;
-    void this.voiceAsset({ type: 'LEADERBOARD_GENERIC', roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!');
-    void this.voiceAsset({ type: 'VICTORY_GENERIC', roundId }, 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.');
+    await Promise.all([worker(), worker()]);
   }
 
   private voiceAsset(event: McVoiceEvent, text: string) {
@@ -955,20 +1036,30 @@ export class SessionRuntime {
     if (this.needsPreparedRound(env)) {
       const count = 'questionCount' in cmd && cmd.questionCount ? cmd.questionCount : this.config.questionsPerRound;
       const allowReuse = 'allowReuse' in cmd ? !!cmd.allowReuse : false;
-      const sel = this.prepareRound(count, allowReuse, now);
-      if (!sel.ok) {
-        const result: CommandResult = {
-          ok: false,
-          code: 'INSUFFICIENT_QUESTIONS',
-          message: `Không đủ câu hỏi chưa dùng: cần ${sel.required}, còn ${sel.unused} (đủ điều kiện ${sel.eligible}). Hãy giảm số câu, cho phép dùng lại hoặc đổi bộ câu hỏi.`,
-          stateVersion: this.engine.stateVersion,
-          duplicate: false,
-          details: sel,
-        };
-        this.store.transaction(() => this.recordAction(env, result, now));
-        return { status: 422, result };
+      if (cmd.type === 'START_ROUND') {
+        const candidate = this.preparedLobbyRound;
+        this.preparedLobbyRound = null;
+        if (this.voiceEnabled() && candidate && candidate.questionCount === count && candidate.allowReuse === allowReuse &&
+          candidate.signature === this.lobbyRoundSignature(count, allowReuse, now)) {
+          prepared = candidate.selection;
+        }
       }
-      prepared = sel.prepared;
+      if (!prepared) {
+        const sel = this.prepareRound(count, allowReuse, now);
+        if (!sel.ok) {
+          const result: CommandResult = {
+            ok: false,
+            code: 'INSUFFICIENT_QUESTIONS',
+            message: `Không đủ câu hỏi chưa dùng: cần ${sel.required}, còn ${sel.unused} (đủ điều kiện ${sel.eligible}). Hãy giảm số câu, cho phép dùng lại hoặc đổi bộ câu hỏi.`,
+            stateVersion: this.engine.stateVersion,
+            duplicate: false,
+            details: sel,
+          };
+          this.store.transaction(() => this.recordAction(env, result, now));
+          return { status: 422, result };
+        }
+        prepared = sel.prepared;
+      }
     }
 
     const res = this.apply(
