@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:17:48+07:00",
+  "heartbeat": "2026-11-16T15:24:14+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Đã ack Y-0387; tạo worktree codex2/c-bgm-lobby-game từ main. Đang khảo sát audio engine và test overlay",
+  "note": "Đã thêm chọn nhạc theo snapshot, fallback và crossfade; bắt đầu cài dependencies worktree để chạy kiểm tra",
   "done": []
 }
