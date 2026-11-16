@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 226,
-  "heartbeat": "2026-11-16T12:16:02+07:00",
-  "state": "blocked",
+  "heartbeat": "2026-11-16T12:21:43+07:00",
+  "state": "working",
   "task": "C-0227",
-  "note": "Đã ack; chờ coordinator xác nhận vì C-0227 yêu cầu sửa apps/server ngoài phạm vi codex1 và chưa có worktree task",
+  "note": "Đã xử lý xác nhận C-0228, tạo worktree codex1/c0227-voice-early; đang triển khai chọn trước ở LOBBY và test mock",
   "done": [
     228
   ]
