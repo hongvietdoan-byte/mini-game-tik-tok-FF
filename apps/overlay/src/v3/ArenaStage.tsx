@@ -356,12 +356,27 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
 
 export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNames = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; allowLegacyNames?: boolean }) {
   const config = useHudConfig();
+  const [voiceBubble, setVoiceBubble] = useState<{ cueId: string; text: string; durationMs: number } | null>(null);
+  useLayoutEffect(() => {
+    const cue = snapshot.mcVoiceCue;
+    if (!cue) return;
+    if (!cue.bubbleText) {
+      setVoiceBubble(null);
+      return;
+    }
+    setVoiceBubble({ cueId: cue.cueId, text: cue.bubbleText, durationMs: cue.durationMs });
+  }, [snapshot.mcVoiceCue?.cueId]);
+  useLayoutEffect(() => {
+    if (!voiceBubble) return;
+    const timeout = window.setTimeout(() => setVoiceBubble((current) => current?.cueId === voiceBubble.cueId ? null : current), voiceBubble.durationMs + 250);
+    return () => window.clearTimeout(timeout);
+  }, [voiceBubble?.cueId]);
   const fastest = fastestCorrectFor(snapshot);
   const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
     ? 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!'
-    : questionBackground ? snapshot.mc.bubble : undefined;
+    : questionBackground ? (voiceBubble?.text ?? snapshot.mc.bubble) : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
   const userQuestionLayout = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';

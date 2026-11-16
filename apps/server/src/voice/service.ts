@@ -2,6 +2,7 @@ import type { CachedMcVoiceAudio, McVoiceAudio, McVoiceCacheDescriptor, McVoiceP
 import { McVoiceProviderError } from './types';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
 import { MAX_MC_READING_MS, MC_VOICE_POLICY_VERSION, McVoiceEventSchema, type McVoiceEvent } from '@quiz/contracts';
+import { applyMcPronunciationDictionary, type McPronunciationRule } from './pronunciation';
 
 export interface McVoiceAudioNormalizer {
   normalize(audio: McVoiceAudio, signal?: AbortSignal): Promise<McVoiceAudio>;
@@ -29,7 +30,13 @@ export class McVoiceService {
     private readonly cache: McVoiceCache,
     private readonly credentials: McVoiceCredentialStore,
     private readonly normalizer: McVoiceAudioNormalizer,
+    private readonly pronunciationRules: readonly McPronunciationRule[] = [],
   ) {}
+
+  /** Text chỉ dành cho provider/cache; nội dung hiển thị không đi qua hàm này. */
+  prepareSynthesisText(text: string) {
+    return applyMcPronunciationDictionary(text, this.pronunciationRules);
+  }
 
   async getOrCreate(
     descriptor: McVoiceCacheDescriptor,
@@ -41,6 +48,9 @@ export class McVoiceService {
     if (descriptor.text !== request.text || descriptor.voiceKey !== request.voiceKey ||
       canonicalVoiceSettings(descriptor.voiceSettings) !== canonicalVoiceSettings(request.voiceSettings))
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Nội dung MC Voice không khớp cache key.');
+    const speechText = this.prepareSynthesisText(descriptor.text);
+    descriptor = { ...descriptor, text: speechText };
+    request = { ...request, text: speechText };
     const assetId = mcVoiceCacheKey(descriptor);
     const cached = await this.cache.get(assetId);
     if (cached) return { asset: cached, cacheHit: true };
@@ -72,7 +82,10 @@ export class McVoiceService {
       if (line.descriptor.text !== line.request.text || line.descriptor.voiceKey !== line.request.voiceKey ||
         canonicalVoiceSettings(line.descriptor.voiceSettings) !== canonicalVoiceSettings(line.request.voiceSettings))
         throw new McVoiceProviderError('INVALID_RESPONSE', 'Nội dung MC Voice không khớp cache key.');
-      const assetId = mcVoiceCacheKey(line.descriptor);
+      const speechText = this.prepareSynthesisText(line.descriptor.text);
+      const descriptor = { ...line.descriptor, text: speechText };
+      const request = { ...line.request, text: speechText };
+      const assetId = mcVoiceCacheKey(descriptor);
       const cached = await this.cache.get(assetId);
       if (cached) {
         totalDurationMs += cached.durationMs;
@@ -84,7 +97,7 @@ export class McVoiceService {
         credentialsLoaded = true;
       }
       if (!token) throw new McVoiceProviderError('AUTH', 'Chưa cấu hình thông tin xác thực MC Voice.');
-      const audio = await this.generate(line.request, signal, token);
+      const audio = await this.generate(request, signal, token);
       totalDurationMs += audio.durationMs;
       prepared.push({ lineId: line.lineId, assetId, cached: null, audio });
     }

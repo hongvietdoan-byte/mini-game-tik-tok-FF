@@ -126,6 +126,12 @@ export const McVoiceEventSchema = z.discriminatedUnion('type', [
     approvedQuestionVersion: z.string().trim().min(1).max(128),
   }).strict(),
   z.object({ type: z.literal('COUNTDOWN'), secondsRemaining: z.number().int().min(0).max(60) }).strict(),
+  z.object({ type: z.literal('TIMEOUT') }).strict(),
+  z.object({
+    type: z.literal('SPAM_REMINDER'),
+    roundId: z.string().trim().min(1).max(128),
+    questionNumber: z.number().int().min(1).max(200),
+  }).strict(),
   z.object({
     type: z.literal('ANSWER_REVEAL'),
     questionInstanceId: z.string().trim().min(1).max(128),
@@ -178,7 +184,7 @@ export const MAX_MC_READING_MS = 20_000;
 export const DEFAULT_MC_READING_MS = 5_000;
 
 export const McVoiceCueEventTypeSchema = z.enum([
-  'WELCOME', 'QUESTION', 'COUNTDOWN', 'ANSWER_REVEAL', 'LEADERBOARD_GENERIC', 'VICTORY_GENERIC',
+  'WELCOME', 'QUESTION', 'COUNTDOWN', 'TIMEOUT', 'SPAM_REMINDER', 'ANSWER_REVEAL', 'LEADERBOARD_GENERIC', 'VICTORY_GENERIC',
 ]);
 export type McVoiceCueEventType = z.infer<typeof McVoiceCueEventTypeSchema>;
 
@@ -189,6 +195,7 @@ export const McVoiceCueSchema = z.object({
   assetUrl: z.string().regex(/^\/api\/mc-voice\/assets\/[a-f0-9]{64}$/),
   durationMs: z.number().int().min(1).max(MAX_MC_READING_MS),
   startsAtServerMs: z.number().finite().nonnegative(),
+  bubbleText: z.string().trim().min(1).max(300).optional(),
 }).strict();
 export type McVoiceCue = z.infer<typeof McVoiceCueSchema>;
 

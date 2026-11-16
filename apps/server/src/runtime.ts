@@ -68,6 +68,17 @@ import { mcVoiceSettingsForEvent, type McVoiceProfile } from './voice/types';
 import { planQuestionCueSchedule, questionVoiceScripts } from './voice/question-script';
 import { containsPlayerIdentity } from './voice/safety';
 
+const COUNTDOWN_SCRIPT: Readonly<Record<number, string>> = {
+  10: 'Còn 10 giây!',
+  5: 'Năm',
+  4: 'Bốn',
+  3: 'Ba',
+  2: 'Hai',
+  1: 'Một',
+};
+const SPAM_REMINDER_TEXT = 'Nhắc nhẹ nè: mỗi người chỉ một đáp án, bình luận đầu tiên mới được tính nhé!';
+const COUNTDOWN_SECONDS = [10, 5, 4, 3, 2, 1] as const;
+
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
  *
@@ -179,6 +190,7 @@ export class SessionRuntime {
   private roundVoicePreparation: RoundVoicePreparation | null = null;
   private voiceHandles = new Set<unknown>();
   private countdownCues = new Set<string>();
+  private reminderCues = new Set<string>();
   private voiceTailAtMs = 0;
   private welcomeCueRequested = false;
   private snapshots = new Map<string, QuestionSnapshot>();
@@ -588,7 +600,10 @@ export class SessionRuntime {
     for (const e of events) {
       if (e.type === 'ROUND_STARTED' && this.engine.round)
         this.preGenerateRoundVoice(this.engine.round.roundId, [...this.snapshots.values()]);
-      else if (e.type === 'QUESTION_CLOSED') this.speakAnswerReveal(e.questionInstanceId);
+      else if (e.type === 'QUESTION_CLOSED') {
+        this.speakGeneric({ type: 'TIMEOUT' }, 'Hết giờ!');
+        this.speakAnswerReveal(e.questionInstanceId);
+      }
       else if (e.type === 'VICTORY_STARTED')
         void this.speakGeneric({ type: 'VICTORY_GENERIC', roundId: e.roundId }, 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.');
       else if (e.type === 'STATE_CHANGED' && e.to === 'READING') this.beginQuestionReading();
@@ -599,6 +614,8 @@ export class SessionRuntime {
       else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round)
         void this.speakGeneric({ type: 'LEADERBOARD_GENERIC', roundId: this.engine.round.roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!');
       if (e.type === 'QUESTION_OPENED') {
+        this.scheduleQuestionCountdown(e.questionInstanceId);
+        if ([1, 4, 7].includes(e.index)) this.speakSpamReminder(e.questionInstanceId, e.index + 1);
         const snap = this.snapshots.get(e.questionInstanceId);
         if (snap && this.simulator)
           this.simulator.onQuestionOpened({
@@ -689,16 +706,18 @@ export class SessionRuntime {
     });
     const values = questionVoiceScripts(snap.prompt, snap.options);
     const voiceSettings = mcVoiceSettingsForEvent(this.deps.mcVoice!.profile, 'QUESTION');
-    return values.map(({ lineId, text }) => ({
-      gameEvent: event,
-      lineId,
-      descriptor: {
-        text, voicePolicyVersion: MC_VOICE_POLICY_VERSION, voiceKey: this.deps.mcVoice!.profile.voiceKey, provider: 'clipai',
-        model: this.deps.mcVoice!.profile.model, voiceSettings,
-        rate: this.deps.mcVoice!.profile.rate, format: 'mp3',
-      },
-      request: { text, voiceKey: this.deps.mcVoice!.profile.voiceKey, voiceSettings, rate: this.deps.mcVoice!.profile.rate, format: 'mp3' },
-    }));
+    return values.map(({ lineId, text }) => {
+      return {
+        gameEvent: event,
+        lineId,
+        descriptor: {
+          text, voicePolicyVersion: MC_VOICE_POLICY_VERSION, voiceKey: this.deps.mcVoice!.profile.voiceKey, provider: 'clipai',
+          model: this.deps.mcVoice!.profile.model, voiceSettings,
+          rate: this.deps.mcVoice!.profile.rate, format: 'mp3',
+        },
+        request: { text, voiceKey: this.deps.mcVoice!.profile.voiceKey, voiceSettings, rate: this.deps.mcVoice!.profile.rate, format: 'mp3' },
+      };
+    });
   }
 
   private prepareQuestionVoice(snap: QuestionSnapshot) {
@@ -708,7 +727,8 @@ export class SessionRuntime {
     const existing = this.questionVoiceBundles.get(key);
     if (existing) return existing;
     const lines = this.questionVoiceLines(snap);
-    if (lines.some((line) => this.speechContainsPlayerIdentity(line.request.text))) {
+    if (lines.some((line) => this.speechContainsPlayerIdentity(line.request.text) ||
+      this.speechContainsPlayerIdentity(this.deps.mcVoice!.service.prepareSynthesisText(line.request.text)))) {
       this.telemetry('UNSAFE_PLAYER_IDENTITY', 'QUESTION');
       const skipped = Promise.resolve(null);
       this.questionVoiceBundles.set(key, skipped);
@@ -729,8 +749,10 @@ export class SessionRuntime {
   private preGenerateGenericVoice() {
     if (!this.voiceEnabled()) return;
     void this.voiceAsset({ type: 'WELCOME', scriptId: 'lobby-v1' }, 'Chào mừng cả nhà đến với phiên đố vui! Hãy cùng sẵn sàng nhé.');
-    for (const secondsRemaining of [10, 5, 3, 2, 1])
-      void this.voiceAsset({ type: 'COUNTDOWN', secondsRemaining }, `Còn ${secondsRemaining} giây, hãy chốt đáp án!`);
+    for (const secondsRemaining of COUNTDOWN_SECONDS)
+      void this.voiceAsset({ type: 'COUNTDOWN', secondsRemaining }, COUNTDOWN_SCRIPT[secondsRemaining]!);
+    void this.voiceAsset({ type: 'TIMEOUT' }, 'Hết giờ!');
+    void this.voiceAsset({ type: 'SPAM_REMINDER', roundId: 'preload', questionNumber: 2 }, SPAM_REMINDER_TEXT);
   }
 
   private preselectLobbyRoundVoice() {
@@ -821,13 +843,14 @@ export class SessionRuntime {
   private voiceAsset(event: McVoiceEvent, text: string) {
     const parsed = McVoiceEventSchema.safeParse(event);
     if (!this.voiceEnabled() || !parsed.success) return Promise.resolve(null);
-    if (this.speechContainsPlayerIdentity(text)) {
+    const speechText = this.deps.mcVoice!.service.prepareSynthesisText(text);
+    if (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(speechText)) {
       this.telemetry('UNSAFE_PLAYER_IDENTITY', event.type);
       return Promise.resolve(null);
     }
     const { service, profile } = this.deps.mcVoice!;
     const voiceSettings = mcVoiceSettingsForEvent(profile, event.type);
-    const key = `${event.type}\u0000${text.normalize('NFC').trim().replace(/\s+/gu, ' ')}\u0000${JSON.stringify(Object.fromEntries(Object.entries(voiceSettings).sort(([a], [b]) => a.localeCompare(b))))}`;
+    const key = `${event.type}\u0000${speechText.normalize('NFC').trim().replace(/\s+/gu, ' ')}\u0000${JSON.stringify(Object.fromEntries(Object.entries(voiceSettings).sort(([a], [b]) => a.localeCompare(b))))}`;
     const cached = this.voiceAssetPromises.get(key);
     if (cached) return cached;
     const descriptor = {
@@ -843,11 +866,11 @@ export class SessionRuntime {
     return pending;
   }
 
-  private emitVoiceCue(eventType: McVoiceEvent['type'], assetId: string, durationMs: number, startsAtServerMs: number) {
+  private emitVoiceCue(eventType: McVoiceEvent['type'], assetId: string, durationMs: number, startsAtServerMs: number, bubbleText?: string) {
     if (this.disposed) return;
     const cue = McVoiceCueSchema.parse({
       cueId: randomUUID(), eventType, assetUrl: `/api/mc-voice/assets/${assetId}`,
-      durationMs, startsAtServerMs,
+      durationMs, startsAtServerMs, ...(bubbleText ? { bubbleText } : {}),
     });
     // Direct one-shot snapshot: publicSnapshot() and reconnects always contain null, so a cue is never replayed.
     this.emit([{ audience: 'public', message: this.wrap('STATE_SNAPSHOT', this.publicSnapshot(this.scheduler.now(), cue)) }]);
@@ -855,16 +878,40 @@ export class SessionRuntime {
 
   private scheduleVoiceCue(
     eventType: McVoiceEvent['type'], assetId: string, durationMs: number,
-    isCurrent: () => boolean, delayMs = 0,
+    isCurrent: () => boolean, delayMs = 0, bubbleText?: string,
   ) {
     const now = this.scheduler.now();
     const startsAtServerMs = Math.max(now + 80 + Math.max(0, delayMs), this.voiceTailAtMs);
+    const previousVoiceTailAtMs = this.voiceTailAtMs;
     this.voiceTailAtMs = startsAtServerMs + durationMs;
     const handle = this.scheduler.setTimeout(() => {
       this.voiceHandles.delete(handle);
-      if (!this.disposed && isCurrent()) this.emitVoiceCue(eventType, assetId, durationMs, startsAtServerMs);
+      if (!this.disposed && isCurrent()) {
+        this.emitVoiceCue(eventType, assetId, durationMs, startsAtServerMs, bubbleText);
+      } else if (this.voiceTailAtMs === startsAtServerMs + durationMs) {
+        this.voiceTailAtMs = previousVoiceTailAtMs;
+      }
     }, startsAtServerMs - now);
     this.voiceHandles.add(handle);
+  }
+
+  /** Gửi cue sớm 80 ms cho overlay nhưng giữ thời điểm phát đúng giây; không bao giờ xếp hàng. */
+  private schedulePreciseVoiceCue(
+    eventType: McVoiceEvent['type'], assetId: string, durationMs: number,
+    startsAtServerMs: number, isCurrent: () => boolean,
+  ) {
+    const now = this.scheduler.now();
+    const sendAtServerMs = startsAtServerMs - 80;
+    if (sendAtServerMs <= now) return false;
+    const handle = this.scheduler.setTimeout(() => {
+      this.voiceHandles.delete(handle);
+      const firedAt = this.scheduler.now();
+      if (this.disposed || !isCurrent() || firedAt > startsAtServerMs - 20 || this.voiceTailAtMs > startsAtServerMs) return;
+      this.voiceTailAtMs = startsAtServerMs + durationMs;
+      this.emitVoiceCue(eventType, assetId, durationMs, startsAtServerMs);
+    }, sendAtServerMs - now);
+    this.voiceHandles.add(handle);
+    return true;
   }
 
   private beginQuestionReading() {
@@ -874,7 +921,7 @@ export class SessionRuntime {
     if (!qid || !snap) return;
     const startedAt = this.scheduler.now();
     this.readingStartedAtMs = startedAt;
-    this.countdownCues = new Set([...this.countdownCues].filter((key) => !key.startsWith(`${qid}:`)));
+    this.countdownCues.clear();
     this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
       questionInstanceId: qid, durationMs: DEFAULT_MC_READING_MS, elapsedMs: 0 });
     if (!this.voiceEnabled()) {
@@ -888,7 +935,8 @@ export class SessionRuntime {
         this.telemetry('LATE_AUDIO', 'QUESTION');
         return;
       }
-      if (this.questionVoiceLines(snap).some((line) => this.speechContainsPlayerIdentity(line.request.text))) {
+      if (this.questionVoiceLines(snap).some((line) => this.speechContainsPlayerIdentity(line.request.text) ||
+        this.speechContainsPlayerIdentity(this.deps.mcVoice!.service.prepareSynthesisText(line.request.text)))) {
         this.telemetry('UNSAFE_PLAYER_IDENTITY', 'QUESTION');
         return;
       }
@@ -954,6 +1002,58 @@ export class SessionRuntime {
     });
   }
 
+  private scheduleQuestionCountdown(questionInstanceId: string) {
+    const timer = this.engine.timer;
+    if (!this.voiceEnabled() || this.engine.state !== 'ACCEPTING' || !timer?.deadlineMs) return;
+    const now = this.scheduler.now();
+    const cues = COUNTDOWN_SECONDS.flatMap((secondsRemaining) => {
+      const key = `${questionInstanceId}:${secondsRemaining}`;
+      const startsAtServerMs = timer.deadlineMs! - secondsRemaining * 1_000;
+      if (this.countdownCues.has(key) || startsAtServerMs - 80 <= now) return [];
+      this.countdownCues.add(key);
+      return [{
+        key,
+        startsAtServerMs,
+        event: { type: 'COUNTDOWN' as const, secondsRemaining },
+        text: COUNTDOWN_SCRIPT[secondsRemaining]!,
+      }];
+    });
+    void Promise.all(cues.map(async (cue) => ({ ...cue, asset: await this.voiceAsset(cue.event, cue.text) })))
+      .then((prepared) => {
+        // Cues đã được sắp theo thời điểm phát. Nếu asset chưa sẵn trước mốc gửi 80 ms, bỏ cue đó.
+        for (const cue of prepared) {
+          if (!cue.asset) continue;
+          this.schedulePreciseVoiceCue(cue.event.type, cue.asset.assetId, cue.asset.durationMs,
+            cue.startsAtServerMs, () => this.engine.state === 'ACCEPTING' &&
+              currentQuestionInstanceId(this.engine) === questionInstanceId &&
+              !!this.engine.timer && remainingMs(this.engine, this.scheduler.now()) > 0);
+        }
+      });
+  }
+
+  private speakSpamReminder(questionInstanceId: string, questionNumber: number) {
+    const roundId = this.engine.round?.roundId;
+    if (!this.voiceEnabled() || !roundId) return;
+    const key = `${roundId}:${questionNumber}`;
+    if (this.reminderCues.has(key)) return;
+    this.reminderCues.add(key);
+    const openedAtMs = this.scheduler.now();
+    const event = { type: 'SPAM_REMINDER' as const, roundId, questionNumber };
+    void this.voiceAsset(event, SPAM_REMINDER_TEXT).then((asset) => {
+      if (!asset || this.engine.state !== 'ACCEPTING' || currentQuestionInstanceId(this.engine) !== questionInstanceId) return;
+      const now = this.scheduler.now();
+      const startsAt = Math.max(now + 80, this.voiceTailAtMs);
+      if (startsAt - openedAtMs > 4_000) {
+        this.telemetry('LATE_AUDIO', event.type);
+        return;
+      }
+      this.scheduleVoiceCue(event.type, asset.assetId, asset.durationMs,
+        () => this.engine.state === 'ACCEPTING' && currentQuestionInstanceId(this.engine) === questionInstanceId &&
+          this.scheduler.now() <= openedAtMs + 4_000,
+        Math.max(0, startsAt - now - 80), SPAM_REMINDER_TEXT);
+    });
+  }
+
   /** Phát lời chào khi phiên thực sự vào sảnh; audio đã được pre-generate từ lúc tạo phiên. */
   private async announceWelcome() {
     if (this.welcomeCueRequested || this.disposed || this.engine.sessionStatus !== 'OPEN' || effectiveState(this.engine) !== 'LOBBY') return false;
@@ -968,27 +1068,8 @@ export class SessionRuntime {
     return true;
   }
 
-  private maybeSpeakCountdown() {
-    if (!this.voiceEnabled() || this.engine.state !== 'ACCEPTING' || !this.engine.timer) return;
-    const qid = currentQuestionInstanceId(this.engine);
-    if (!qid) return;
-    const secondsRemaining = Math.ceil(remainingMs(this.engine, this.scheduler.now()) / 1_000);
-    if (![10, 5, 3, 2, 1].includes(secondsRemaining)) return;
-    const key = `${qid}:${secondsRemaining}`;
-    if (this.countdownCues.has(key)) return;
-    this.countdownCues.add(key);
-    const event = { type: 'COUNTDOWN' as const, secondsRemaining };
-    const text = `Còn ${secondsRemaining} giây, hãy chốt đáp án!`;
-    void this.voiceAsset(event, text).then((asset) => {
-      if (asset) this.scheduleVoiceCue(event.type, asset.assetId, asset.durationMs,
-        () => this.engine.state === 'ACCEPTING' && currentQuestionInstanceId(this.engine) === qid &&
-          remainingMs(this.engine, this.scheduler.now()) > 0 && !this.speechContainsPlayerIdentity(text));
-    });
-  }
-
   private beat() {
     if (this.disposed || this.engine.sessionStatus === 'CLOSED') return;
-    this.maybeSpeakCountdown();
     this.store.heartbeat(this.id, this.scheduler.now());
     this.audience.flush(this.scheduler.now());
     this.heartbeatHandle = this.scheduler.setTimeout(() => this.beat(), HEARTBEAT_MS);

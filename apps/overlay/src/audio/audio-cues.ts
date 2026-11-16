@@ -19,7 +19,8 @@ export type AudioSlot = AudioCue | BgmFileSlot;
 export type VisualCue = 'question' | 'reveal' | 'top10' | 'victory' | 'transition';
 export type AudioMix = { volume: number; sfx: number; bgm: number };
 export type CountdownPulse = { offsetMs: number; frequency: number; duration: number };
-export const MC_VOICE_DUCKING_GAIN = 0.22;
+// Hạ SFX/BGM xuống 18% khi MC nói để câu đếm ngắn vẫn nổi rõ, nhưng tick vẫn tiếp tục phát.
+export const MC_VOICE_DUCKING_GAIN = 0.18;
 
 /** The legacy loop remains the fallback for either phase-specific music file. */
 export function bgmFallbackCandidates(track: BgmTrack): readonly BgmFileCandidate[] {

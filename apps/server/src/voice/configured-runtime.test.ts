@@ -1,6 +1,6 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configuredMcVoiceRuntime } from './configured-runtime';
 import { mcVoiceSettingsForEvent } from './types';
@@ -49,6 +49,20 @@ describe('configuredMcVoiceRuntime với profile tạm', () => {
 
     vi.stubEnv('CLIPAI_TOKEN', '');
     await expect(configuredMcVoiceRuntime({ cacheDirectory: join(tmpdir(), 'unused-cache'), profileFile: path })).resolves.toBeNull();
+  });
+
+  it('nạp riêng từ điển cục bộ và chỉ áp dụng cho text sinh giọng', async () => {
+    vi.stubEnv('CLIPAI_TOKEN', 'fake-token');
+    const path = await profileFile({
+      baseUrl: 'https://api.example.test/', provider: 'fake-provider', model: 'fake-model', voiceId: 'fake-voice',
+      voiceSettings: { volume: 1 }, allowedCdnHosts: ['cdn.example.test'],
+    });
+    const dictionary = join(dirname(path), 'mc-pronunciation.json');
+    await writeFile(dictionary, JSON.stringify({ version: 1, entries: [{ from: 'MVP', to: 'em vi pi', caseInsensitive: true }] }));
+    const runtime = await configuredMcVoiceRuntime({
+      cacheDirectory: join(tmpdir(), 'unused-cache'), profileFile: path, pronunciationFile: dictionary,
+    });
+    expect(runtime?.service.prepareSynthesisText('MVP và MVPs')).toBe('em vi pi và MVPs');
   });
 
   it('chấp nhận ghi đè voiceSettings theo sự kiện, nhưng kiểm tra tên sự kiện và kiểu setting', async () => {

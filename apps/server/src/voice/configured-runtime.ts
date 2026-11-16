@@ -9,6 +9,7 @@ import { ClipAiHttpTransport } from './clipai-http-transport';
 import { FfmpegMcVoiceAudioNormalizer } from './ffmpeg-normalizer';
 import { McVoiceService } from './service';
 import { EnvironmentMcVoiceCredentialStore, type McVoiceProfile } from './types';
+import { loadMcPronunciationDictionary } from './pronunciation';
 
 export type ConfiguredMcVoiceRuntime = {
   credentials: EnvironmentMcVoiceCredentialStore;
@@ -94,12 +95,14 @@ function localProfile(value: unknown): LocalProfile | null {
 }
 
 /** Loads only the operator's machine-local profile; no profile values are logged or serialized. */
-export async function configuredMcVoiceRuntime(options: { cacheDirectory: string; profileFile?: string }): Promise<ConfiguredMcVoiceRuntime | null> {
+export async function configuredMcVoiceRuntime(options: { cacheDirectory: string; profileFile?: string; pronunciationFile?: string }): Promise<ConfiguredMcVoiceRuntime | null> {
   const credentials = new EnvironmentMcVoiceCredentialStore();
   const token = await credentials.get();
   if (!token) return null;
 
   const profilePath = resolve(options.profileFile ?? process.env.QUIZ_MC_VOICE_PROFILE_FILE ?? join('data', 'mc-voice-profile.json'));
+  const pronunciationRules = await loadMcPronunciationDictionary(options.pronunciationFile ??
+    process.env.QUIZ_MC_PRONUNCIATION_FILE ?? join(process.env.QUIZ_DATA_DIR ?? 'data', 'mc-pronunciation.json'));
   try {
     const raw = await readFile(profilePath);
     if (raw.byteLength > MAX_PROFILE_BYTES) return null;
@@ -129,7 +132,7 @@ export async function configuredMcVoiceRuntime(options: { cacheDirectory: string
       cache,
       profile: runtimeProfile,
       service: new McVoiceService(
-        new ClipAiMcVoiceProvider(transport), cache, credentials, new FfmpegMcVoiceAudioNormalizer(),
+        new ClipAiMcVoiceProvider(transport), cache, credentials, new FfmpegMcVoiceAudioNormalizer(), pronunciationRules,
       ),
     };
   } catch {
