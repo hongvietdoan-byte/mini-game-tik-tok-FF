@@ -1,9 +1,9 @@
 {
   "role": "codex1",
-  "last_read": 234,
-  "heartbeat": "2026-11-17T00:14:36+07:00",
-  "state": "working",
+  "last_read": 237,
+  "heartbeat": "2026-11-17T03:19:12+07:00",
+  "state": "waiting",
   "task": "C-0237",
-  "note": "Đang tối ưu simulator theo lô thời gian và dựng benchmark 10k/20k trong worktree mới nhất",
+  "note": "Rảnh sau C-0237; DP1/DP2 đã xong, DP3 thuộc codex2; chờ task mới",
   "done": []
 }
