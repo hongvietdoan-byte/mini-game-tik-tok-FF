@@ -38,7 +38,7 @@ export class FfmpegMcVoiceAudioNormalizer implements McVoiceAudioNormalizer {
       await (this.options.run ?? runCommand)(this.options.ffmpegPath ?? process.env.FFMPEG_PATH ?? 'ffmpeg', [
         '-hide_banner', '-loglevel', 'error', '-y', '-i', inputPath,
         '-ac', '1', '-ar', '44100',
-        '-af', 'silenceremove=start_periods=1:start_duration=0.3:start_threshold=-50dB:stop_periods=-1:stop_duration=0.3:stop_threshold=-50dB,loudnorm=I=-16:TP=-1.5:LRA=11',
+        '-af', 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse,loudnorm=I=-16:TP=-1.5:LRA=11',
         '-codec:a', 'libmp3lame', '-b:a', '128k', outputPath,
       ], signal);
       const outputInfo = await stat(outputPath);

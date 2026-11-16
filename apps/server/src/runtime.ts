@@ -63,7 +63,8 @@ import type { SessionRow, Store } from '@quiz/persistence';
 import { AudienceManager, DEFAULT_CHARACTER_POOL } from './audience';
 import type { NameFilterStore } from './name-filter-store';
 import { McVoiceService, type McVoiceReadingBundle, type McVoiceReadingLine } from './voice/service';
-import type { McVoiceProfile } from './voice/types';
+import { mcVoiceSettingsForEvent, type McVoiceProfile } from './voice/types';
+import { planQuestionCueSchedule, questionVoiceScripts } from './voice/question-script';
 import { containsPlayerIdentity } from './voice/safety';
 
 /**
@@ -149,6 +150,7 @@ export class SessionRuntime {
   private voiceHandles = new Set<unknown>();
   private countdownCues = new Set<string>();
   private voiceTailAtMs = 0;
+  private welcomeCueRequested = false;
   private snapshots = new Map<string, QuestionSnapshot>();
   private snapshotsRoundId: string | null = null;
   private counts = ZERO_COUNTS();
@@ -273,7 +275,6 @@ export class SessionRuntime {
     this.arm();
     if (this.config.mcVoiceEnabled) {
       this.preGenerateGenericVoice();
-      void this.speakGeneric({ type: 'WELCOME', scriptId: 'lobby-v1' }, 'Chào mừng cả nhà đến với phiên đố vui! Hãy cùng sẵn sàng nhé.');
     }
     if (this.engine.sessionStatus === 'OPEN') {
       try {
@@ -550,6 +551,7 @@ export class SessionRuntime {
       else if (e.type === 'VICTORY_STARTED')
         void this.speakGeneric({ type: 'VICTORY_GENERIC', roundId: e.roundId }, 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.');
       else if (e.type === 'STATE_CHANGED' && e.to === 'READING') this.beginQuestionReading();
+      else if (e.type === 'STATE_CHANGED' && e.to === 'LOBBY') void this.announceWelcome();
       else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round)
         void this.speakGeneric({ type: 'LEADERBOARD_GENERIC', roundId: this.engine.round.roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!');
       if (e.type === 'QUESTION_OPENED') {
@@ -641,16 +643,17 @@ export class SessionRuntime {
     const event = McVoiceEventSchema.parse({
       type: 'QUESTION', questionInstanceId: snap.questionInstanceId, approvedQuestionVersion: String(snap.questionVersion),
     });
-    const values = [{ lineId: 'prompt', text: snap.prompt }, ...snap.options.map((option, index) => ({ lineId: `option-${index + 1}`, text: option.text }))];
+    const values = questionVoiceScripts(snap.prompt, snap.options);
+    const voiceSettings = mcVoiceSettingsForEvent(this.deps.mcVoice!.profile, 'QUESTION');
     return values.map(({ lineId, text }) => ({
       gameEvent: event,
       lineId,
       descriptor: {
         text, voicePolicyVersion: MC_VOICE_POLICY_VERSION, voiceKey: this.deps.mcVoice!.profile.voiceKey, provider: 'clipai',
-        model: this.deps.mcVoice!.profile.model, voiceSettings: this.deps.mcVoice!.profile.voiceSettings,
+        model: this.deps.mcVoice!.profile.model, voiceSettings,
         rate: this.deps.mcVoice!.profile.rate, format: 'mp3',
       },
-      request: { text, voiceKey: this.deps.mcVoice!.profile.voiceKey, rate: this.deps.mcVoice!.profile.rate, format: 'mp3' },
+      request: { text, voiceKey: this.deps.mcVoice!.profile.voiceKey, voiceSettings, rate: this.deps.mcVoice!.profile.rate, format: 'mp3' },
     }));
   }
 
@@ -710,15 +713,16 @@ export class SessionRuntime {
       this.telemetry('UNSAFE_PLAYER_IDENTITY', event.type);
       return Promise.resolve(null);
     }
-    const key = `${event.type}\u0000${text.normalize('NFC').trim().replace(/\s+/gu, ' ')}`;
+    const { service, profile } = this.deps.mcVoice!;
+    const voiceSettings = mcVoiceSettingsForEvent(profile, event.type);
+    const key = `${event.type}\u0000${text.normalize('NFC').trim().replace(/\s+/gu, ' ')}\u0000${JSON.stringify(Object.fromEntries(Object.entries(voiceSettings).sort(([a], [b]) => a.localeCompare(b))))}`;
     const cached = this.voiceAssetPromises.get(key);
     if (cached) return cached;
-    const { service, profile } = this.deps.mcVoice!;
     const descriptor = {
       text, voicePolicyVersion: MC_VOICE_POLICY_VERSION, voiceKey: profile.voiceKey, provider: 'clipai' as const,
-      model: profile.model, voiceSettings: profile.voiceSettings, rate: profile.rate, format: 'mp3' as const,
+      model: profile.model, voiceSettings, rate: profile.rate, format: 'mp3' as const,
     };
-    const request = { text, voiceKey: profile.voiceKey, rate: profile.rate, format: 'mp3' as const };
+    const request = { text, voiceKey: profile.voiceKey, voiceSettings, rate: profile.rate, format: 'mp3' as const };
     const pending = service.getOrCreate(descriptor, request).then(({ asset }) => ({ assetId: asset.assetId, durationMs: asset.durationMs })).catch((error: unknown) => {
       this.telemetry(error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'FAILED', event.type);
       return null;
@@ -778,23 +782,25 @@ export class SessionRuntime {
       }
       const elapsedMs = Math.max(0, Math.floor(this.scheduler.now() - startedAt));
       const queueDelayMs = Math.max(0, this.voiceTailAtMs - this.scheduler.now());
-      const durationMs = Math.min(MAX_MC_READING_MS, elapsedMs + queueDelayMs + prepared.totalDurationMs + 80);
+      const schedule = planQuestionCueSchedule(
+        prepared.lines.map((line) => line.asset.durationMs),
+        MAX_MC_READING_MS - elapsedMs - queueDelayMs - 80,
+      );
       if (elapsedMs >= DEFAULT_MC_READING_MS) {
         this.telemetry('LATE_AUDIO', 'QUESTION');
         return;
       }
-      if (queueDelayMs + prepared.totalDurationMs + 80 > MAX_MC_READING_MS) {
+      if (!schedule) {
         this.telemetry('TOO_LONG', 'QUESTION');
         return;
       }
+      const durationMs = elapsedMs + queueDelayMs + schedule.totalDurationMs + 80;
       const setDuration = this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
         questionInstanceId: qid, durationMs, elapsedMs });
       if (!setDuration.ok) return;
-      let offset = 0;
-      for (const line of prepared.lines) {
+      for (const [index, line] of prepared.lines.entries()) {
         this.scheduleVoiceCue('QUESTION', line.asset.assetId, line.asset.durationMs,
-          () => this.engine.state === 'READING' && currentQuestionInstanceId(this.engine) === qid, offset);
-        offset += line.asset.durationMs;
+          () => this.engine.state === 'READING' && currentQuestionInstanceId(this.engine) === qid, schedule.offsetsMs[index]!);
       }
     });
   }
@@ -834,6 +840,20 @@ export class SessionRuntime {
         return this.engine.sessionStatus === 'OPEN';
       });
     });
+  }
+
+  /** Phát lời chào khi phiên thực sự vào sảnh; audio đã được pre-generate từ lúc tạo phiên. */
+  private async announceWelcome() {
+    if (this.welcomeCueRequested || this.disposed || this.engine.sessionStatus !== 'OPEN' || effectiveState(this.engine) !== 'LOBBY') return false;
+    this.welcomeCueRequested = true;
+    const event = { type: 'WELCOME' as const, scriptId: 'lobby-v1' };
+    const text = 'Chào mừng cả nhà đến với phiên đố vui! Hãy cùng sẵn sàng nhé.';
+    const asset = await this.voiceAsset(event, text);
+    if (!asset || this.disposed || this.engine.sessionStatus !== 'OPEN' || effectiveState(this.engine) !== 'LOBBY') return false;
+    const startsAtServerMs = this.scheduler.now() + 80;
+    this.voiceTailAtMs = Math.max(this.voiceTailAtMs, startsAtServerMs + asset.durationMs);
+    this.emitVoiceCue(event.type, asset.assetId, asset.durationMs, startsAtServerMs);
+    return true;
   }
 
   private maybeSpeakCountdown() {

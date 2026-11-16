@@ -1,9 +1,16 @@
+import type { McVoiceCueEventType } from '@quiz/contracts';
+
 export type McVoiceAudioFormat = 'mp3';
+
+export type McVoiceSettingsValue = string | number | boolean;
+export type McVoiceSettings = Readonly<Record<string, McVoiceSettingsValue>>;
 
 export type McVoiceSynthesisRequest = {
   text: string;
   /** Giá trị runtime; chỉ dùng nội bộ để định tuyến/cache, không đưa vào snapshot hoặc log. */
   voiceKey: string;
+  /** Settings hiệu lực đã chọn theo loại sự kiện; luôn là đúng bộ settings dùng cho cache. */
+  voiceSettings: McVoiceSettings;
   rate: number;
   format: McVoiceAudioFormat;
 };
@@ -46,7 +53,7 @@ export type McVoiceCacheDescriptor = {
   voiceKey: string;
   provider: 'clipai';
   model: string;
-  voiceSettings: Readonly<Record<string, string | number | boolean>>;
+  voiceSettings: McVoiceSettings;
   rate: number;
   format: McVoiceAudioFormat;
 };
@@ -56,8 +63,15 @@ export type McVoiceProfile = {
   model: string;
   voiceKey: string;
   rate: number;
-  voiceSettings: Readonly<Record<string, string | number | boolean>>;
+  /** Bộ mặc định; profile cũ chỉ khai báo trường này vẫn tương thích. */
+  voiceSettings: McVoiceSettings;
+  /** Chỉ override các key được nêu; các key khác kế thừa từ voiceSettings. */
+  voiceSettingsByEvent?: Partial<Record<McVoiceCueEventType, McVoiceSettings>>;
 };
+
+export function mcVoiceSettingsForEvent(profile: McVoiceProfile, eventType: McVoiceCueEventType): McVoiceSettings {
+  return { ...profile.voiceSettings, ...profile.voiceSettingsByEvent?.[eventType] };
+}
 
 export type CachedMcVoiceAudio = {
   assetId: string;

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
 import type { McVoiceAudio, McVoiceCacheDescriptor } from './types';
+import { MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
 import { testTempRootAsync } from '../../../../tests/support/tempRoot';
 
 const directories: string[] = [];
@@ -19,7 +20,7 @@ async function cache() {
 function descriptor(overrides: Partial<McVoiceCacheDescriptor> = {}): McVoiceCacheDescriptor {
   return {
     text: 'Câu hỏi thử nghiệm?',
-    voicePolicyVersion: 1,
+    voicePolicyVersion: MC_VOICE_POLICY_VERSION,
     voiceKey: 'hashed-runtime-profile',
     provider: 'clipai',
     model: 'runtime-model',

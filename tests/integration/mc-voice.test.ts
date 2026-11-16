@@ -153,6 +153,8 @@ describe('MC Voice server API', () => {
         operatorId: 'test', requestedAtMs: h.scheduler.now(), command },
     });
     expect((await send({ type: 'OPEN_LOBBY' })).statusCode).toBe(200);
+    await vi.waitFor(() => expect(publicMessages.some((message) => message.payload.mcVoiceCue &&
+      (message.payload.mcVoiceCue as { eventType?: string }).eventType === 'WELCOME')).toBe(true));
     expect((await send({ type: 'START_ROUND' })).statusCode).toBe(200);
     for (let spent = 0; runtime.engine.state !== 'READING' && spent < 5_000; spent += 50) h.scheduler.advance(50);
     expect(runtime.engine.state).toBe('READING');
@@ -180,7 +182,8 @@ describe('MC Voice server API', () => {
     expect(h.provider.synthesize).toHaveBeenCalledTimes(expectedSyntheses); // 8 câu chung/đếm ngược + 5 dòng READING + 1 lời công bố mỗi câu.
 
     h.scheduler.advance(1_500);
-    const cueMessage = publicMessages.find((message) => message.type === 'STATE_SNAPSHOT' && message.payload.mcVoiceCue)!
+    const cueMessage = publicMessages.find((message) => message.type === 'STATE_SNAPSHOT' && message.payload.mcVoiceCue &&
+      (message.payload.mcVoiceCue as { eventType?: string }).eventType === 'QUESTION')!
       .payload.mcVoiceCue as { cueId: string; eventType: string; assetUrl: string; durationMs: number; startsAtServerMs: number };
     expect(cueMessage).toMatchObject({ eventType: 'QUESTION', durationMs: 1_200 });
     expect(cueMessage.assetUrl).toMatch(/^\/api\/mc-voice\/assets\/[a-f0-9]{64}$/);

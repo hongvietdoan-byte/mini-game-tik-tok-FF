@@ -115,7 +115,7 @@ export const McVoiceSettingsSchema = z.object({
 export type McVoiceSettings = z.infer<typeof McVoiceSettingsSchema>;
 
 /** Tăng số này khi thay đổi luật phát voice game; cache thiếu/khác version bị bỏ qua. */
-export const MC_VOICE_POLICY_VERSION = 1;
+export const MC_VOICE_POLICY_VERSION = 3;
 
 /** Voice payload game-side có allowlist hẹp; strict schema loại mọi trường danh tính người chơi. */
 export const McVoiceEventSchema = z.discriminatedUnion('type', [

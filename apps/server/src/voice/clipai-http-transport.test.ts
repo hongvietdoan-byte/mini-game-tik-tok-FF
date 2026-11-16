@@ -22,13 +22,13 @@ describe('ClipAiHttpTransport với fetch giả', () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => json({ code: 0, status: 'success', data: { asset_id: 'job-local' } }));
     vi.stubGlobal('fetch', fetchMock);
     const transport = new ClipAiHttpTransport(profile);
-    const result = await transport.submit({ text: 'Câu kiểm tra.', voiceKey: 'internal', rate: 1, format: 'mp3' }, 'fake-token');
+    const result = await transport.submit({ text: 'Câu kiểm tra.', voiceKey: 'internal', voiceSettings: { style: 'excited' }, rate: 1, format: 'mp3' }, 'fake-token');
     const [url, init] = fetchMock.mock.calls[0]!;
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(result).toEqual({ jobId: 'job-local' });
     expect(String(url)).toBe('https://api.example.test/api/sound/generate');
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fake-token');
-    expect(body).toMatchObject({ text: 'Câu kiểm tra.', model: 'fake-model', voice_actor_id: 'fake-voice' });
+    expect(body).toMatchObject({ text: 'Câu kiểm tra.', model: 'fake-model', voice_actor_id: 'fake-voice', input_params: { volume: 1, style: 'excited' } });
     expect(body).not.toHaveProperty('rate');
   });
 
@@ -50,13 +50,13 @@ describe('ClipAiHttpTransport với fetch giả', () => {
     const rateLimited = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => json({ code: 1130, msg: 'Please retry after 2 seconds', data: {} }));
     vi.stubGlobal('fetch', rateLimited);
     const transport = new ClipAiHttpTransport(profile);
-    await expect(transport.submit({ text: 'Câu kiểm tra.', voiceKey: 'internal', rate: 1, format: 'mp3' }, 'fake-token'))
+    await expect(transport.submit({ text: 'Câu kiểm tra.', voiceKey: 'internal', voiceSettings: { volume: 1 }, rate: 1, format: 'mp3' }, 'fake-token'))
       .rejects.toMatchObject({ code: 'RATE_LIMITED', retryAfterMs: 3_000 });
     expect(rateLimited).toHaveBeenCalledTimes(1);
 
     vi.stubGlobal('fetch', vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
       new Response('limited', { status: 429, headers: { 'retry-after': '4' } })));
-    await expect(transport.submit({ text: 'Câu kiểm tra.', voiceKey: 'internal', rate: 1, format: 'mp3' }, 'fake-token'))
+    await expect(transport.submit({ text: 'Câu kiểm tra.', voiceKey: 'internal', voiceSettings: { volume: 1 }, rate: 1, format: 'mp3' }, 'fake-token'))
       .rejects.toMatchObject({ code: 'RATE_LIMITED', retryAfterMs: 4_000 });
 
     const noCredit = new ClipAiHttpTransport(profile);

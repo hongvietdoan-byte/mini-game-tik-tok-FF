@@ -7,7 +7,7 @@ import {
 } from './clipai-provider';
 import { McVoiceProviderError, type McVoiceSynthesisRequest } from './types';
 
-const request: McVoiceSynthesisRequest = { text: 'Đọc câu hỏi và bốn đáp án.', voiceKey: 'runtime-only', rate: 1, format: 'mp3' };
+const request: McVoiceSynthesisRequest = { text: 'Đọc câu hỏi và bốn đáp án.', voiceKey: 'runtime-only', voiceSettings: { volume: 1 }, rate: 1, format: 'mp3' };
 
 function fakeClock(): McVoiceClock & { sleeps: number[] } {
   let now = 0;

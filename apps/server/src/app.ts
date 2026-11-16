@@ -45,8 +45,9 @@ import { runPipelineSelfTest, type SelfTestResult } from './selftest';
 import { serveAssets, serveSpa } from './static';
 import { McVoiceCache } from './voice/cache';
 import { McVoicePreGenerateManager } from './voice/pre-generate';
-import { McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile, EnvironmentMcVoiceCredentialStore } from './voice/types';
+import { EnvironmentMcVoiceCredentialStore, mcVoiceSettingsForEvent, McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile } from './voice/types';
 import { McVoiceService } from './voice/service';
+import { questionVoiceScripts } from './voice/question-script';
 import { containsPlayerIdentity } from './voice/safety';
 import { preflightAssets } from './preflight-assets';
 import { commentSourcePreflight, overlayAckPreflight, overlayAudioPreflight } from './preflight-health';
@@ -752,7 +753,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
           rate: voiceProfile.rate,
           format: 'mp3',
         },
-        { text, voiceKey: voiceProfile.voiceKey, rate: voiceProfile.rate, format: 'mp3' },
+        { text, voiceKey: voiceProfile.voiceKey, voiceSettings: voiceProfile.voiceSettings, rate: voiceProfile.rate, format: 'mp3' },
       );
       return {
         ok: true,
@@ -786,29 +787,31 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       .some((text) => containsPlayerIdentity(text, identities))))
       return reply.code(422).send({ ok: false, code: 'MC_VOICE_UNSAFE_CONTENT', message: 'Câu hỏi có thể chứa tên hoặc ID người chơi.' });
 
-    const makeLine = (gameEvent: z.infer<typeof McVoiceEventSchema>, lineId: string, text: string) => ({
-      gameEvent,
-      lineId,
-      descriptor: {
-        text,
-        voicePolicyVersion: MC_VOICE_POLICY_VERSION,
-        voiceKey: voiceProfile.voiceKey,
-        provider: 'clipai' as const,
-        model: voiceProfile.model,
-        voiceSettings: voiceProfile.voiceSettings,
-        rate: voiceProfile.rate,
-        format: 'mp3' as const,
-      },
-      request: { text, voiceKey: voiceProfile.voiceKey, rate: voiceProfile.rate, format: 'mp3' as const },
-    });
+    const makeLine = (gameEvent: z.infer<typeof McVoiceEventSchema>, lineId: string, text: string) => {
+      const voiceSettings = mcVoiceSettingsForEvent(voiceProfile, gameEvent.type);
+      return {
+        gameEvent,
+        lineId,
+        descriptor: {
+          text,
+          voicePolicyVersion: MC_VOICE_POLICY_VERSION,
+          voiceKey: voiceProfile.voiceKey,
+          provider: 'clipai' as const,
+          model: voiceProfile.model,
+          voiceSettings,
+          rate: voiceProfile.rate,
+          format: 'mp3' as const,
+        },
+        request: { text, voiceKey: voiceProfile.voiceKey, voiceSettings, rate: voiceProfile.rate, format: 'mp3' as const },
+      };
+    };
     const items = questions.map((question) => {
       const gameEvent = McVoiceEventSchema.parse({
         type: 'QUESTION', questionInstanceId: question.id, approvedQuestionVersion: String(question.version),
       });
       return {
         lines: [
-          makeLine(gameEvent, 'prompt', question.prompt),
-          ...question.options.map((option, index) => makeLine(gameEvent, `option-${index + 1}`, option.text)),
+          ...questionVoiceScripts(question.prompt, question.options).map((line) => makeLine(gameEvent, line.lineId, line.text)),
         ],
       };
     });
