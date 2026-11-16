@@ -1,18 +1,8 @@
 name: CI
 
 on:
-  # Người dùng không muốn mail báo lỗi (12/11): chỉ chạy CI khi push main hoặc bấm tay.
-  # Nhánh codex1/codex2 do coordinator chạy test cục bộ trước khi gộp.
-  push:
-    branches: [main]
-    paths:
-      - "apps/**"
-      - "packages/**"
-      - "tests/**"
-      - "fixtures/assets-placeholder/**"
-      - "scripts/privacy-check.*"
-      - "playwright.config.ts"
-      - ".github/workflows/ci.yml"
+  # Người dùng không muốn mail báo lỗi (12/11, nhắc lại 16/11): CI chỉ chạy khi bấm tay.
+  # Coordinator chạy typecheck/test/e2e/privacy cục bộ trước khi gộp main.
   workflow_dispatch:
 
 jobs:
