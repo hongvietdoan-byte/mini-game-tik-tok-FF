@@ -14,6 +14,7 @@ import { ApiError, apiClient, type DashboardClient, type SelfTestResponse, type 
 import { mockClient } from './api/mockClient';
 import { adminTokenForRuntime, overlayUrlForRuntime, shouldPersistAdminToken, type StormArenaInfo } from './desktopBridge';
 import { SetupWizard } from './SetupWizard';
+import { SpamWarningsPanel } from './SpamWarningsPanel';
 import { QuestionReviewPage } from './QuestionReviewPage';
 import { NameModerationPage } from './NameModerationPage';
 import { createApiNameModerationDataSource, createApiNameModerationPolicyDataSource } from './nameModerationData';
@@ -494,6 +495,8 @@ function App() {
             </div>
             {snapshot.config.mode === 'TIKTOK' && <p className="connector-note">Kết nối bằng connector cộng đồng; trạng thái nguồn và chi tiết kết nối do server cung cấp.</p>}
           </section>
+
+          <SpamWarningsPanel warnings={snapshot.spamWarnings} />
 
           <section className="panel actions-panel">
             <div className="panel-title"><div><span className="eyebrow">ĐIỀU HÀNH</span><h2>Lệnh an toàn</h2></div><label className="operator-input">Operator ID<input value={operatorId} onChange={(event) => setOperatorId(event.target.value)} maxLength={100} /></label></div>

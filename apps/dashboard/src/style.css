@@ -76,6 +76,17 @@ h1, h2, p { margin: 0; }
 .connection-facts > div { min-width: 0; padding: 10px; display: grid; align-content: start; gap: 5px; border: 1px solid rgba(176,188,230,.1); border-radius: 8px; background: rgba(11,13,26,.26); }
 .connection-facts small { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .7px; }
 .connection-facts b { overflow-wrap: anywhere; color: #edf0fb; font-size: 11px; }
+.spam-warnings-panel .panel-title { margin-bottom: 12px; }
+.spam-warning-badge { min-width: 27px; padding: 5px 8px; border: 1px solid rgba(255,204,88,.24); border-radius: 999px; color: #f2d68c; background: rgba(255,204,88,.08); font-size: 11px; font-weight: 850; text-align: center; font-variant-numeric: tabular-nums; }
+.spam-warnings-empty { color: var(--muted); font-size: 11px; }
+.spam-warnings-list { margin: 0; padding: 0; display: grid; gap: 7px; list-style: none; }
+.spam-warning-row { min-width: 0; padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid rgba(255,204,88,.12); border-radius: 8px; background: rgba(11,13,26,.22); }
+.spam-warning-person, .spam-warning-details { min-width: 0; display: grid; gap: 4px; }
+.spam-warning-person strong { overflow-wrap: anywhere; color: #edf0fb; font-size: 11px; }
+.spam-warning-person span, .spam-warning-details span, .spam-warning-details time { color: var(--muted); font-size: 10px; }
+.spam-warning-details { flex: 0 0 auto; justify-items: end; text-align: right; }
+.spam-warning-details span { color: #d8c89b; }
+.spam-warning-details time { font-variant-numeric: tabular-nums; }
 .source-detail { margin-top: 10px; color: #ffae9c; font-size: 11px; }
 .quiet-warning { margin-top: 11px; padding: 10px 12px; display: grid; gap: 3px; border: 1px solid rgba(255,204,88,.3); border-radius: 8px; color: var(--gold); background: rgba(255,204,88,.07); }
 .quiet-warning b { font-size: 11px; }

@@ -717,3 +717,59 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   expect(uniqueAsset404s).toEqual(expected404Assets);
   console.log(`C-0062 hoàn tất vòng 10 câu; FPS trung bình=${fps.averageFps.toFixed(1)}; manifestRequests=${assetManifestRequests.length}; asset404=${JSON.stringify(uniqueAsset404s)}; DB scratch=${running.dbPath}.`);
 });
+
+test('C-0235: cảnh báo spam hiện trên dashboard sau 5 bình luận lặp, không lộ ID', async ({ page }) => {
+  test.setTimeout(60_000);
+  const running = await boot();
+  const created = await running.app.app.inject({
+    method: 'POST',
+    url: '/api/sessions',
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      name: 'C-0235 cảnh báo spam MOCK',
+      config: {
+        mode: 'MOCK',
+        packId: 'demo',
+        questionsPerRound: 10,
+        allowDemoQuestions: true,
+        seed: 42,
+        timings: { lobbyMs: 0, prepareMs: 500, answerMs: 30_000, revealMs: 500 },
+      },
+    },
+  });
+  expect(created.statusCode).toBe(201);
+  const sessionId = (created.json() as { sessionId: string }).sessionId;
+  const runtime = currentRuntime(running.app);
+  await commandMockRound(running, sessionId, { type: 'OPEN_LOBBY' });
+  await commandMockRound(running, sessionId, { type: 'START_ROUND', questionCount: 10 });
+  runUntil(running, () => runtime.engine.state === 'ACCEPTING');
+
+  await page.addInitScript(() => localStorage.setItem('quiz.setupDone', '1'));
+  await page.goto(`${running.dashboardUrl}/dashboard/`);
+  await page.getByLabel('Mã quản trị').fill(adminToken);
+  await page.getByRole('button', { name: 'Kết nối', exact: true }).click();
+  const warnings = page.getByTestId('spam-warnings');
+  await expect(warnings).toContainText('Chưa có ai spam');
+
+  const userId = 'c0235-private-synthetic-user';
+  const answer = runtime.adminSnapshot().current!.correctOptionId;
+  const spamStartedAt = Date.now();
+  for (let index = 0; index < 6; index += 1) {
+    await page.getByLabel('User ID').fill(userId);
+    await page.getByLabel('Tên hiển thị').fill('Linh E2E');
+    await page.getByLabel('Nội dung').fill(answer);
+    await page.getByRole('button', { name: 'Gửi bình luận', exact: true }).click();
+    await expect(page.getByText('Đã gửi bình luận mô phỏng.')).toBeVisible();
+  }
+  expect(Date.now() - spamStartedAt).toBeLessThan(30_000);
+  await expect(warnings).toContainText('Linh E2E');
+  await expect(warnings).toContainText('5 lần');
+  await expect(warnings).toContainText('Trả lời lặp');
+  await expect(warnings.locator('time')).toHaveText(/\d{2}:\d{2}:\d{2}/);
+  await expect(warnings).not.toContainText(userId);
+
+  const overlay = await page.context().newPage();
+  await overlay.goto(running.overlayUrl);
+  await expect(overlay.getByTestId('stage')).toBeVisible();
+  await expect(overlay.getByTestId('spam-warnings')).toHaveCount(0);
+});
