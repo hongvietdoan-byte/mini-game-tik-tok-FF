@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:46:12+07:00",
+  "heartbeat": "2026-11-16T15:47:41+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Full E2E mặc định đang chạy, 25/93 test qua; chưa có lỗi. Sau đó chạy lại với fixtures/assets-placeholder",
+  "note": "E2E mặc định đã qua 48/93 test, chưa lỗi; đang chạy các cảnh overlay còn lại",
   "done": []
 }
