@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 224,
-  "heartbeat": "2026-11-16T15:44:42+07:00",
+  "heartbeat": "2026-11-16T15:46:12+07:00",
   "state": "working",
   "task": "C-0230",
-  "note": "Bản cập nhật C-0231 đã qua typecheck và 446 unit/integration test; đang chạy lại full E2E mặc định, rồi sẽ chạy với placeholder",
+  "note": "Full E2E mặc định đang chạy, 25/93 test qua; chưa có lỗi. Sau đó chạy lại với fixtures/assets-placeholder",
   "done": []
 }
