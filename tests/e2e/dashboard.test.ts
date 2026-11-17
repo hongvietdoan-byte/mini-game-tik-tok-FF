@@ -657,3 +657,16 @@ test('Giao diện HUD đếm grapheme, lưu chữ, tải/reset ảnh và đổi 
   await waitForPreview();
   await page.screenshot({ path: join(reviewDirectory, 'dashboard-reset.png'), fullPage: true, animations: 'disabled' });
 });
+
+test('Theme mock có theme demo, preview token/ảnh và vô hiệu hóa theme lỗi', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Giao diện / Theme', exact: true }).click();
+  const themePage = page.getByTestId('theme-page');
+  await expect(themePage).toBeVisible();
+  await expect(themePage.getByRole('radio', { name: /Đấu trường Neon/ })).toContainText('Đang dùng');
+  await expect(themePage.getByText('--theme-gold')).toBeVisible();
+  await expect(themePage.locator('.theme-image-card img').first()).toBeVisible();
+  await themePage.getByRole('radio', { name: /Gói theme lỗi/ }).click();
+  await expect(themePage.getByRole('button', { name: 'Áp dụng', exact: true })).toBeDisabled();
+  await expect(themePage).toContainText('tokens.width');
+});

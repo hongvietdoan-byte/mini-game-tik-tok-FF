@@ -191,6 +191,16 @@ export class ThemeStore {
     this.scan();
     const theme = this.state.activeThemeId ? this.valid.get(this.state.activeThemeId) : undefined;
     if (!theme) return { id: 'default', name: 'Giao diện mặc định', version: this.state.version, tokens: {}, fonts: [], assets: {} };
+    return this.resolveTheme(theme);
+  }
+
+  resolve(themeId: string): ResolvedTheme | null {
+    this.scan();
+    const theme = this.valid.get(themeId);
+    return theme ? this.resolveTheme(theme) : null;
+  }
+
+  private resolveTheme(theme: LoadedTheme): ResolvedTheme {
     const url = (path: string) => `/themes/${encodeURIComponent(theme.id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${this.state.version}`;
     const assets: Partial<Record<ThemeAssetSlot, string>> = {};
     for (const [slot, path] of Object.entries(theme.manifest.assets)) if (path) assets[slot as ThemeAssetSlot] = url(path);

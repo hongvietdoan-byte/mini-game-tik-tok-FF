@@ -671,6 +671,15 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     return { themes: themeStore.list(), activeThemeId: themeStore.activeThemeId, themeVersion: themeStore.version };
   });
 
+  app.get<{ Params: { themeId: string } }>('/api/admin/themes/:themeId/resolved', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const theme = themeStore.resolve(req.params.themeId);
+    if (theme) return theme;
+    const listItem = themeStore.list().find((item) => item.id === req.params.themeId);
+    if (!listItem) return reply.code(404).send({ ok: false, code: 'THEME_NOT_FOUND', message: 'Không tìm thấy theme này.' });
+    return reply.code(422).send({ ok: false, code: 'THEME_INVALID', message: listItem.error || 'Gói theme không hợp lệ.' });
+  });
+
   app.put('/api/admin/themes/active', async (req, reply) => {
     if (!guard(req, reply, true)) return reply;
     const parsed = z.object({ themeId: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u) }).strict().safeParse(req.body ?? {});
