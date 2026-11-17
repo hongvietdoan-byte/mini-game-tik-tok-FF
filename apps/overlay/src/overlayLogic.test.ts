@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
-import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight, selectNewestSnapshot, shouldAcceptSnapshotSeq } from './overlayLogic';
+import type { PublicLeaderboardEntry, PublicPodium, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight, positiveScoreEntries, positiveScorePodium, selectNewestSnapshot, shouldAcceptSnapshotSeq } from './overlayLogic';
 
 const base = { stateVersion: 4 } as PublicSnapshot;
 
@@ -38,5 +38,33 @@ describe('overlay logic', () => {
   it('puts the podium in 2-1-3 order', () => {
     const slots = ([{ place: 1 }, { place: 3 }, { place: 2 }] as PublicPodiumSlot[]);
     expect(podiumLeftToRight(slots).map((slot) => slot.place)).toEqual([2, 1, 3]);
+  });
+
+  it('filters zero-score rank entries without changing the order of scored players', () => {
+    const entries = [
+      { playerId: 'first', score: 250 },
+      { playerId: 'zero', score: 0 },
+      { playerId: 'second', score: 150 },
+      { playerId: 'negative', score: -1 },
+    ] as PublicLeaderboardEntry[];
+    expect(positiveScoreEntries(entries).map((entry) => entry.playerId)).toEqual(['first', 'second']);
+    expect(positiveScoreEntries([])).toEqual([]);
+  });
+
+  it('removes zero-score podium entries and empty places, while preserving scored places', () => {
+    const podium = {
+      tieAcrossCutoff: true,
+      slots: [
+        { place: 1, rank: 1, tied: false, entries: [{ playerId: 'winner', score: 10 }] },
+        { place: 2, rank: 2, tied: false, entries: [{ playerId: 'zero', score: 0 }] },
+        { place: 3, rank: 3, tied: false, entries: [{ playerId: 'third', score: 2 }] },
+      ],
+    } as PublicPodium;
+    const visible = positiveScorePodium(podium);
+    expect(visible?.tieAcrossCutoff).toBe(true);
+    expect(visible?.slots.map((slot) => [slot.place, slot.entries.map((entry) => entry.playerId)])).toEqual([
+      [1, ['winner']], [3, ['third']],
+    ]);
+    expect(positiveScorePodium(null)).toBeNull();
   });
 });

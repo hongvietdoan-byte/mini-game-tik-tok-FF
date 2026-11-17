@@ -1,5 +1,6 @@
 import React from 'react';
 import type { PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
+import { positiveScoreEntries } from '../overlayLogic';
 import { BrandHeader, McKelly } from './ArenaStage';
 import { ArenaBackdrop } from './ArenaBackdrop';
 import { publicPlayerName } from '../publicPlayerName';
@@ -23,7 +24,7 @@ function FullLeaderboardRow({ entry, index, allowLegacyNames }: { entry: PublicL
 
 export function LeaderboardStage({ snapshot, allowLegacyNames = false }: { snapshot: PublicSnapshot; allowLegacyNames?: boolean }) {
   const config = useHudConfig();
-  const entries = snapshot.leaderboard?.entries ?? [];
+  const entries = positiveScoreEntries(snapshot.leaderboard?.entries ?? []);
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
     <ArenaBackdrop arena questionBackground showFlags={false} backgroundId={config.images.bgLobby} />
     <BrandHeader snapshot={snapshot} />

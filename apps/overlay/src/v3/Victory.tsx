@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
-import { podiumLeftToRight } from '../overlayLogic';
+import { podiumLeftToRight, positiveScorePodium } from '../overlayLogic';
 import { shortName } from './arenaLogic';
 import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
@@ -184,7 +184,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
     || themeAssetUrl(theme, 'victory.trophyStage', '');
   const [failedSources, setFailedSources] = useState<string[]>([]);
   const backgroundSource = [customBackground, themeBackground, VICTORY_BACKGROUND].find((source) => source && !failedSources.includes(source)) ?? VICTORY_BACKGROUND;
-  const podium = snapshot.podium;
+  const podium = positiveScorePodium(snapshot.podium);
   useEffect(() => setFailedSources([]), [customBackground, theme.version, themeBackground]);
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene}>
