@@ -215,6 +215,23 @@ export const McVoiceCueSchema = z.object({
 }).strict();
 export type McVoiceCue = z.infer<typeof McVoiceCueSchema>;
 
+/** Lịch countdown gửi một lần khi câu vào ACCEPTING; overlay tự xếp lịch theo giờ server. */
+export const McVoiceCountdownCueSchema = z.object({
+  cueId: z.string().uuid(),
+  secondsRemaining: z.union([z.literal(10), z.literal(5), z.literal(4), z.literal(3), z.literal(2), z.literal(1)]),
+  assetId: z.string().regex(/^[a-f0-9]{64}$/),
+  durationMs: z.number().int().min(1).max(MAX_MC_READING_MS),
+  startsAtServerMs: z.number().finite().nonnegative(),
+}).strict();
+export type McVoiceCountdownCue = z.infer<typeof McVoiceCountdownCueSchema>;
+
+export const McVoiceCountdownScheduleSchema = z.object({
+  scheduleId: z.string().uuid(),
+  questionInstanceId: z.string().min(1).max(200),
+  cues: z.array(McVoiceCountdownCueSchema).min(1).max(6),
+}).strict();
+export type McVoiceCountdownSchedule = z.infer<typeof McVoiceCountdownScheduleSchema>;
+
 export const SceneSchema = z.enum([
   'LOBBY',
   'QUESTION',
@@ -943,6 +960,8 @@ export type PublicSnapshot = {
   fastestCorrectAnswer: FastestCorrectAnswer | null;
   /** Cue chỉ được gắn vào snapshot WS phát một lần; snapshot phục hồi luôn trả null. */
   mcVoiceCue?: McVoiceCue | null;
+  /** Lịch countdown bền theo câu; snapshot reconnect chỉ tự phát các mốc còn ở tương lai. */
+  mcVoiceCountdownSchedule?: McVoiceCountdownSchedule | null;
   reveal: RevealView | null;
   leaderboard: { kind: 'COMPACT' | 'FULL'; entries: PublicLeaderboardEntry[] } | null;
   podium: PublicPodium | null;

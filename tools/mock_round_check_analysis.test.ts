@@ -54,10 +54,14 @@ test('analyzeMockRound reports missing phases and a round with the wrong questio
   assert.equal(analysis.questionCount, 3);
 });
 
-test('script mặc định 10 câu và không nhận số lượng ngoài contract', () => {
+test('script mặc định 10 câu, nhận simulator 5.000 người và chặn số ngoài contract', () => {
   const defaults = parseMockRoundArgs([], 'C:/quiz');
   assert.equal('help' in defaults ? null : defaults.questions, 10);
+  assert.equal('help' in defaults ? null : defaults.players, 30);
   const selected = parseMockRoundArgs(['--questions', '15'], 'C:/quiz');
   assert.equal('help' in selected ? null : selected.questions, 15);
+  const load = parseMockRoundArgs(['--players', '5000'], 'C:/quiz');
+  assert.equal('help' in load ? null : load.players, 5000);
   assert.throws(() => parseMockRoundArgs(['--questions', '3'], 'C:/quiz'), /10, 15 hoặc 20/);
+  assert.throws(() => parseMockRoundArgs(['--players', '20001'], 'C:/quiz'), /1–20000/);
 });

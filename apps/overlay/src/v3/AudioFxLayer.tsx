@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import type { PublicSnapshot } from '@quiz/contracts';
 import { AudioCueTracker, parseAudioMix, type AudioCue, type VisualCue } from '../audio/audio-cues';
 import { OverlayAudioEngine, type AudioEngineState } from '../audio/audio-engine';
-import { McVoiceCueScheduler } from '../audio/mc-voice';
+import { McVoiceCountdownScheduler, McVoiceCueScheduler } from '../audio/mc-voice';
 import type { OverlayRole } from '../overlayRole';
 import { useTheme } from '../theme';
 
@@ -25,6 +25,7 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
   const theme = useTheme();
   const tracker = useRef(new AudioCueTracker());
   const voiceScheduler = useRef(new McVoiceCueScheduler());
+  const countdownScheduler = useRef(new McVoiceCountdownScheduler());
   const engine = useRef<OverlayAudioEngine | null>(null);
   const cleanupTimer = useRef<number | null>(null);
   const lastResumePhase = useRef<string | null>(null);
@@ -61,6 +62,23 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
   }, [theme]);
 
   useEffect(() => {
+    const audio = engine.current;
+    const schedule = role === 'program' ? snapshot.mcVoiceCountdownSchedule : null;
+    const plan = countdownScheduler.current.consume(schedule, role === 'program' ? snapshot.state : 'PREVIEW', Date.now() + clockOffsetMs);
+    if (!plan) return;
+    for (const dropped of plan.dropped) {
+      const lateness = dropped.timerLatenessMs === undefined ? '' : ` timer_lateness_ms=${dropped.timerLatenessMs}`;
+      console.info(`[mc-voice] countdown skipped reason=${dropped.reason}${lateness}`);
+    }
+    if (plan.cancelCurrent) audio?.stopMcVoice();
+    if (plan.cues.length)
+      void audio?.playMcVoiceSchedule(plan.cues, clockOffsetMs, (dropped) => {
+        const lateness = dropped.timerLatenessMs === undefined ? '' : ` timer_lateness_ms=${dropped.timerLatenessMs}`;
+        console.info(`[mc-voice] countdown skipped reason=${dropped.reason}${lateness}`);
+      });
+  }, [clockOffsetMs, role, snapshot.mcVoiceCountdownSchedule, snapshot.state]);
+
+  useEffect(() => {
     if (role !== 'program') return;
     const plan = voiceScheduler.current.consume(snapshot.mcVoiceCue, Date.now() + clockOffsetMs);
     if (!plan) return;
@@ -69,9 +87,9 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       plan.cue.startsAtServerMs > Date.now() + clockOffsetMs;
     // A countdown snapshot arrives early so WebAudio can queue its exact start. Let the current
     // word run until that time; the audio engine schedules its stop at the same playback boundary.
-    if (!countdownHasNotReachedItsPlaybackTime) audio?.stopMcVoice();
+    if (!countdownHasNotReachedItsPlaybackTime && plan.cue.eventType !== 'SPAM_REMINDER') audio?.stopMcVoice();
     if (plan.remainingMs <= 0) return;
-    void audio?.playMcVoice(plan.cue, clockOffsetMs);
+    void audio?.playMcVoice(plan.cue, clockOffsetMs, { preserveScheduledCountdown: plan.cue.eventType === 'SPAM_REMINDER' });
   }, [clockOffsetMs, role, snapshot.mcVoiceCue]);
 
   useEffect(() => {
