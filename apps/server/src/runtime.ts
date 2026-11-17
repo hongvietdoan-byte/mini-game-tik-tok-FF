@@ -140,12 +140,16 @@ const REJECT_REASONS: RejectReason[] = [
 ];
 const MAX_REJECTIONS = 50;
 const MAX_SEEN_EVENTS = 100_000;
+const COMMENT_RATE_WINDOW_SECONDS = 5;
+const SOURCE_LATENCY_SAMPLE_LIMIT = 512;
 const HEARTBEAT_MS = 1_000;
 const COUNTS_THROTTLE_MS = 250;
 const SPAM_CLEANUP_MS = 1_000;
 const MC_VOICE_TELEMETRY_REASONS = new Set([
   'UNSAFE_PLAYER_IDENTITY', 'TOO_LONG', 'NOT_CONFIGURED', 'LATE_AUDIO', 'AUTH', 'NO_CREDIT', 'RATE_LIMITED', 'FAILED', 'TIMEOUT', 'DOWNLOAD_FAILED', 'INVALID_RESPONSE',
 ]);
+
+type CommentRateBucket = { second: number; total: number; byQuestion: Map<string, number> };
 
 export function statusForResult(r: CommandResult): number {
   if (r.ok) return 200;
@@ -218,6 +222,17 @@ export class SessionRuntime {
   private disposed = false;
   private seq = 0;
   private health: LiveSourceHealth;
+  private readonly commentRateBuckets: CommentRateBucket[] = Array.from({ length: COMMENT_RATE_WINDOW_SECONDS }, () => ({
+    second: Number.NaN,
+    total: 0,
+    byQuestion: new Map<string, number>(),
+  }));
+  private readonly sourceLatencySamples: number[] = Array.from({ length: SOURCE_LATENCY_SAMPLE_LIMIT }, () => 0);
+  private sourceLatencySampleCount = 0;
+  private sourceLatencySampleNext = 0;
+  private telemetryRoundId: string | null = null;
+  private roundStartedAtMs: number | null = null;
+  private outageStartedAtMs: number | null = null;
   private overlayInfo: AdminSnapshot['overlay'] = { clients: 0, lastAckStateVersion: null, lastAckAtMs: null };
   /** 35 ghế khán giả (V3 §6). */
   private readonly audience: AudienceManager;
@@ -239,10 +254,19 @@ export class SessionRuntime {
     this.health = {
       source: deps.adapter.source,
       status: deps.adapter.status(),
+      transport: 'UNKNOWN',
       connectedSinceMs: null,
       lastCommentAtMs: null,
       commentsReceived: 0,
       reconnects: 0,
+      reconnectsThisRound: 0,
+      downtimeMsThisRound: 0,
+      commentsPerSecondTotal: 0,
+      commentsPerSecondQuestion: 0,
+      sourceLatencyP50Ms: null,
+      sourceLatencyP95Ms: null,
+      rejectedThisRound: Object.fromEntries(REJECT_REASONS.map((reason) => [reason, 0])) as Record<RejectReason, number>,
+      rawRecordingEnabled: deps.adapter.source === 'TIKTOK' && (deps.adapter.rawRecordingEnabled?.() ?? false),
       detail: null,
     };
     const cfg = session.config;
@@ -387,7 +411,7 @@ export class SessionRuntime {
   }
 
   liveHealth(): LiveSourceHealth {
-    return { ...this.health, status: this.adapter.status() };
+    return this.liveHealthSnapshot(this.scheduler.now());
   }
 
   subscribe(fn: RuntimeListener): () => void {
@@ -475,6 +499,11 @@ export class SessionRuntime {
           this.participants = 0;
           this.top1 = new Map();
           this.audience.startRound(e.roundId, now);
+          this.telemetryRoundId = e.roundId;
+          this.roundStartedAtMs = now;
+          this.health.reconnectsThisRound = 0;
+          this.health.downtimeMsThisRound = 0;
+          this.health.rejectedThisRound = Object.fromEntries(REJECT_REASONS.map((reason) => [reason, 0])) as Record<RejectReason, number>;
           break;
         case 'QUESTION_OPENED':
           this.store.markQuestion(e.questionInstanceId, 'OPEN', now);
@@ -495,9 +524,11 @@ export class SessionRuntime {
           break;
         case 'ROUND_ABORTED':
           this.store.setRoundStatus(e.roundId, 'ABORTED', now);
+          this.finalizeRoundTelemetry(now, e.roundId);
           break;
         case 'ROUND_ENDED':
           this.store.setRoundStatus(e.roundId, 'COMPLETED', now);
+          this.finalizeRoundTelemetry(now, e.roundId);
           this.store.saveLeaderboardSnapshot({
             roundId: e.roundId,
             questionInstanceId: null,
@@ -1128,8 +1159,11 @@ export class SessionRuntime {
 
   private beat() {
     if (this.disposed || this.engine.sessionStatus === 'CLOSED') return;
-    this.store.heartbeat(this.id, this.scheduler.now());
-    this.audience.flush(this.scheduler.now());
+    const now = this.scheduler.now();
+    this.store.heartbeat(this.id, now);
+    this.audience.flush(now);
+    // Admin-only telemetry must advance even when no comments or game commands arrive.
+    this.emitAdmin();
     this.heartbeatHandle = this.scheduler.setTimeout(() => this.beat(), HEARTBEAT_MS);
   }
 
@@ -1341,9 +1375,11 @@ export class SessionRuntime {
     this.metrics.received += 1;
     this.health.commentsReceived += 1;
     this.health.lastCommentAtMs = now;
+    this.recordCommentRate(now);
     const parsed = CommentEventSchema.safeParse({ ...raw, receivedAtMs: now });
     if (!parsed.success || !parsed.data.userId.trim()) return this.reject('INVALID_EVENT', now);
     const ev = parsed.data;
+    if (ev.sourceTimestampMs !== undefined) this.recordSourceLatency(now - ev.sourceTimestampMs);
 
     const win = acceptWindow(this.engine);
     const decision = decideComment(ev, win ? { accepting: true, ...win } : null, {
@@ -1439,9 +1475,73 @@ export class SessionRuntime {
 
   private reject(reason: RejectReason, now: number) {
     this.metrics.rejected[reason] += 1;
+    if (this.engine.round && this.engine.round.roundId === this.telemetryRoundId)
+      this.health.rejectedThisRound[reason] += 1;
     this.rejections.push({ atMs: now, reason });
     if (this.rejections.length > MAX_REJECTIONS) this.rejections.shift();
     return { accepted: false as const, reason };
+  }
+
+  private recordCommentRate(now: number) {
+    const second = Math.floor(now / 1_000);
+    const bucket = this.commentRateBuckets[((second % COMMENT_RATE_WINDOW_SECONDS) + COMMENT_RATE_WINDOW_SECONDS) % COMMENT_RATE_WINDOW_SECONDS]!;
+    if (bucket.second !== second) {
+      bucket.second = second;
+      bucket.total = 0;
+      bucket.byQuestion.clear();
+    }
+    bucket.total += 1;
+    const qid = this.engine.state === 'ACCEPTING' ? currentQuestionInstanceId(this.engine) : null;
+    if (qid) bucket.byQuestion.set(qid, (bucket.byQuestion.get(qid) ?? 0) + 1);
+  }
+
+  private recordSourceLatency(latencyMs: number) {
+    if (!Number.isFinite(latencyMs)) return;
+    this.sourceLatencySamples[this.sourceLatencySampleNext] = latencyMs;
+    this.sourceLatencySampleNext = (this.sourceLatencySampleNext + 1) % SOURCE_LATENCY_SAMPLE_LIMIT;
+    this.sourceLatencySampleCount = Math.min(SOURCE_LATENCY_SAMPLE_LIMIT, this.sourceLatencySampleCount + 1);
+  }
+
+  private finalizeRoundTelemetry(now: number, roundId: string) {
+    if (this.telemetryRoundId !== roundId) return;
+    if (this.outageStartedAtMs !== null && this.roundStartedAtMs !== null)
+      this.health.downtimeMsThisRound += Math.max(0, now - Math.max(this.outageStartedAtMs, this.roundStartedAtMs));
+    this.roundStartedAtMs = null;
+    this.telemetryRoundId = null;
+  }
+
+  private liveHealthSnapshot(now: number): LiveSourceHealth {
+    const second = Math.floor(now / 1_000);
+    const firstSecond = second - COMMENT_RATE_WINDOW_SECONDS + 1;
+    let total = 0;
+    let question = 0;
+    const qid = this.engine.state === 'ACCEPTING' ? currentQuestionInstanceId(this.engine) : null;
+    for (const bucket of this.commentRateBuckets) {
+      if (bucket.second < firstSecond || bucket.second > second) continue;
+      total += bucket.total;
+      if (qid) question += bucket.byQuestion.get(qid) ?? 0;
+    }
+    const latencies = this.sourceLatencySamples.slice(0, this.sourceLatencySampleCount).sort((a, b) => a - b);
+    const percentile = (p: number) => {
+      if (!latencies.length) return null;
+      const position = (latencies.length - 1) * p;
+      const lower = Math.floor(position);
+      const upper = Math.ceil(position);
+      return Math.round(latencies[lower]! + (latencies[upper]! - latencies[lower]!) * (position - lower));
+    };
+    const currentOutageMs = this.outageStartedAtMs !== null && this.roundStartedAtMs !== null
+      ? Math.max(0, now - Math.max(this.outageStartedAtMs, this.roundStartedAtMs))
+      : 0;
+    return {
+      ...this.health,
+      status: this.adapter.status(),
+      transport: this.adapter.transport?.() ?? 'UNKNOWN',
+      commentsPerSecondTotal: total / COMMENT_RATE_WINDOW_SECONDS,
+      commentsPerSecondQuestion: question / COMMENT_RATE_WINDOW_SECONDS,
+      sourceLatencyP50Ms: percentile(0.5),
+      sourceLatencyP95Ms: percentile(0.95),
+      downtimeMsThisRound: this.health.downtimeMsThisRound + currentOutageMs,
+    };
   }
 
   private rejectAnswer(
@@ -1624,9 +1724,19 @@ export class SessionRuntime {
     const now = this.scheduler.now();
     this.store.recordConnectionEvent(this.id, this.adapter.source, status, null, now);
     const prev = this.health.status;
+    if ((status === 'RECONNECTING' || status === 'DISCONNECTED' || status === 'BLOCKED') &&
+      prev === 'CONNECTED' && this.outageStartedAtMs === null) {
+      this.outageStartedAtMs = now;
+      if (this.roundStartedAtMs !== null) this.health.reconnectsThisRound += 1;
+    }
     this.health.status = status;
     if (status === 'CONNECTED') {
-      if (prev === 'RECONNECTING') this.health.reconnects += 1;
+      if (this.outageStartedAtMs !== null) {
+        this.health.reconnects += 1;
+        if (this.roundStartedAtMs !== null)
+          this.health.downtimeMsThisRound += Math.max(0, now - Math.max(this.outageStartedAtMs, this.roundStartedAtMs));
+        this.outageStartedAtMs = null;
+      }
       this.health.connectedSinceMs = now;
       this.health.detail = null;
     } else {
@@ -1679,7 +1789,6 @@ export class SessionRuntime {
       if (action !== 'CONNECT') await this.adapter.disconnect();
       if (action !== 'DISCONNECT') {
         await this.adapter.connect();
-        if (action === 'RECONNECT') this.health.reconnects += 1;
       }
       this.health.detail = null;
     } catch (err) {
@@ -1691,7 +1800,7 @@ export class SessionRuntime {
     return { ok: this.health.detail === null, health: this.liveHealth() };
   }
 
-  mockComment(c: { userId: string; displayName: string; text: string; eventId?: string }) {
+  mockComment(c: { userId: string; displayName: string; text: string; eventId?: string; sourceTimestampMs?: number }) {
     const adapter = this.mockAdapter();
     return { ok: adapter.emit(c) };
   }
@@ -1972,7 +2081,7 @@ export class SessionRuntime {
       pool: this.pool(now),
       simulator: this.simulator ? { running: this.simulator.running, players: this.simulator.opts.players.length } : null,
       error: e.error ?? this.notice,
-      live: { ...this.health, status: this.adapter.status() },
+      live: this.liveHealthSnapshot(now),
       overlay: { ...this.overlayInfo },
     };
   }

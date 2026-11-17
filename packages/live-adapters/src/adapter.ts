@@ -6,6 +6,8 @@ export interface LiveAdapter {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   status(): ConnectionStatus;
+  transport?(): 'WEBSOCKET' | 'POLLING' | 'UNKNOWN';
+  rawRecordingEnabled?(): boolean;
   onComment(cb: (comment: RawComment) => void): () => void;
   /** Optional simulator fast path; real connectors may keep delivering one event at a time. */
   onCommentBatch?(cb: (comments: RawComment[]) => void): () => void;

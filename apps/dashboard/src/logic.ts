@@ -87,8 +87,13 @@ export function hasSilentAcceptingWarning(
   nowMs: number,
 ): boolean {
   if (state !== 'ACCEPTING') return false;
-  const lastActivity = lastCommentAtMs ?? acceptingSinceMs;
-  return lastActivity !== null && nowMs - lastActivity > 10_000;
+  const lastActivity = lastCommentAtMs === null ? acceptingSinceMs
+    : acceptingSinceMs === null ? lastCommentAtMs : Math.max(lastCommentAtMs, acceptingSinceMs);
+  return lastActivity !== null && nowMs - lastActivity > 5_000;
+}
+
+export function hasHighSourceLatencyWarning(state: GameState, sourceLatencyP95Ms: number | null): boolean {
+  return state === 'ACCEPTING' && sourceLatencyP95Ms !== null && sourceLatencyP95Ms > 3_000;
 }
 
 export function overlayUrlFromLocation(href: string): string {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ConnectionStatus, RawComment } from '@quiz/contracts';
 import { ManualScheduler } from './scheduler';
-import { TikTokLiveAdapter, mapTikTokChat, normalizeTikTokUsername, type TikTokConnectionLike } from './tiktok';
+import { hashTikTokUserId, TikTokLiveAdapter, mapTikTokChat, normalizeTikTokUsername, type TikTokConnectionLike } from './tiktok';
 
 class FakeConn implements TikTokConnectionLike {
   handlers = new Map<string, ((d: any) => void)[]>();
@@ -29,14 +29,14 @@ class FakeConn implements TikTokConnectionLike {
 class UserOfflineError extends Error {}
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function setup(conns: FakeConn[]) {
+function setup(conns: FakeConn[], reconnect = { baseMs: 1_000, maxMs: 8_000, maxAttempts: 4 }) {
   const scheduler = new ManualScheduler(1_800_000_000_000);
   let i = 0;
   const adapter = new TikTokLiveAdapter({
     username: '@shop_ff',
     scheduler,
     createConnection: () => conns[Math.min(i++, conns.length - 1)]!,
-    reconnect: { baseMs: 1_000, maxMs: 8_000, maxAttempts: 4 },
+    reconnect,
   });
   const comments: RawComment[] = [];
   const statuses: ConnectionStatus[] = [];
@@ -84,6 +84,36 @@ describe('TikTokLiveAdapter (không chính thức, chỉ đọc)', () => {
     // một comment bị đệm 8 s → sourceTimestamp lùi 8 s so với giờ nhận (server sẽ cách ly)
     c.emit('chat', chat({ common: { msgId: 'm2', createTime: String(scheduler.now() - 11_000) } }));
     expect(scheduler.now() - comments[1]!.sourceTimestampMs!).toBe(8_000);
+    expect(adapter.transport()).toBe('WEBSOCKET');
+  });
+
+  it('cửa sổ offset hết hạn min cũ mà không quét toàn bộ mảng mỗi comment', async () => {
+    const c = new FakeConn();
+    const { adapter, scheduler, comments } = setup([c]);
+    await adapter.connect();
+    c.emit('chat', chat({ common: { msgId: 'old-min', createTime: String(scheduler.now() - 100) } }));
+    c.emit('chat', chat({ common: { msgId: 'later-0', createTime: String(scheduler.now() - 500) } }));
+    expect(scheduler.now() - comments.at(-1)!.sourceTimestampMs!).toBe(400);
+    for (let i = 1; i < 200; i++)
+      c.emit('chat', chat({ common: { msgId: `later-${i}`, createTime: String(scheduler.now() - 500) } }));
+    expect(scheduler.now() - comments.at(-1)!.sourceTimestampMs!).toBe(0);
+  });
+
+  it('ghi raw comment chỉ với userId đã băm và không mang displayName', async () => {
+    const c = new FakeConn();
+    const records: unknown[] = [];
+    const scheduler = new ManualScheduler(1_800_000_000_000);
+    const adapter = new TikTokLiveAdapter({
+      username: 'synthetic', scheduler, createConnection: () => c,
+      recordRawComment: (record) => records.push(record),
+    });
+    await adapter.connect();
+    c.emit('chat', chat());
+    expect(records).toEqual([{
+      userIdHash: hashTikTokUserId('7123'), text: 'A', createTime: scheduler.now(), msgId: 'm1', receivedAtMs: scheduler.now(),
+    }]);
+    expect(JSON.stringify(records)).not.toContain('Rồng Lửa');
+    expect(JSON.stringify(records)).not.toContain('7123');
   });
 
   it('mất kết nối → RECONNECTING, thử lại có backoff, thành công thì CONNECTED', async () => {
@@ -93,7 +123,8 @@ describe('TikTokLiveAdapter (không chính thức, chỉ đọc)', () => {
     await adapter.connect();
     c1.emit('disconnected', { code: 1006, reason: 'mạng' });
     expect(adapter.status()).toBe('RECONNECTING');
-    expect(adapter.describe()).toContain('mạng');
+    expect(adapter.describe()).toContain('WebSocket bị ngắt');
+    expect(adapter.describe()).not.toContain('mạng');
     scheduler.advance(999);
     expect(c2.connects).toBe(0);
     scheduler.advance(1);
@@ -121,6 +152,28 @@ describe('TikTokLiveAdapter (không chính thức, chỉ đọc)', () => {
     expect(adapter.status()).toBe('DISCONNECTED');
     scheduler.advance(120_000);
     expect(c.connects).toBe(1);
+  });
+
+  it('giới hạn retry lần đầu ở 1 giây và chỉ báo phân loại lỗi ký, không lộ thông báo thô', async () => {
+    const first = new FakeConn();
+    const retry = new FakeConn();
+    const { adapter, scheduler } = setup([first, retry], { baseMs: 5_000, maxMs: 10_000, maxAttempts: 2 });
+    await adapter.connect();
+    first.emit('disconnected', {});
+    scheduler.advance(999);
+    expect(retry.connects).toBe(0);
+    scheduler.advance(1);
+    await flush();
+    expect(retry.connects).toBe(1);
+
+    const limited = new FakeConn();
+    const err = Object.assign(new Error('secret response with internal URL and token'), { name: 'SignatureRateLimitError' });
+    limited.failWith = err;
+    const limitedSetup = setup([limited]);
+    await expect(limitedSetup.adapter.connect()).rejects.toThrow(/giới hạn lượt/);
+    expect(limitedSetup.adapter.describe()).toContain('Chờ theo thời gian retry');
+    expect(limitedSetup.adapter.describe()).not.toContain('secret');
+    expect(limitedSetup.adapter.describe()).not.toContain('URL');
   });
 
   it('hết lượt thử lại → DISCONNECTED; ngắt tay hoặc LIVE kết thúc thì không tự nối lại', async () => {

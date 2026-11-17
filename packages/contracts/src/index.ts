@@ -984,11 +984,20 @@ export type AdminSnapshot = {
 export type LiveSourceHealth = {
   source: LiveSource;
   status: ConnectionStatus;
+  transport: 'WEBSOCKET' | 'POLLING' | 'UNKNOWN';
   connectedSinceMs: number | null;
   /** Comment gần nhất nhận được từ nguồn (mọi nội dung, không chỉ đáp án). */
   lastCommentAtMs: number | null;
   commentsReceived: number;
   reconnects: number;
+  reconnectsThisRound: number;
+  downtimeMsThisRound: number;
+  commentsPerSecondTotal: number;
+  commentsPerSecondQuestion: number;
+  sourceLatencyP50Ms: number | null;
+  sourceLatencyP95Ms: number | null;
+  rejectedThisRound: Record<RejectReason, number>;
+  rawRecordingEnabled: boolean;
   detail: string | null;
 };
 

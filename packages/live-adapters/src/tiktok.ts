@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ConnectionStatus, RawComment } from '@quiz/contracts';
 import type { LiveAdapter } from './adapter';
 import type { Scheduler } from './scheduler';
@@ -20,6 +21,16 @@ export interface TikTokConnectionLike {
   removeAllListeners?(event?: string): unknown;
 }
 
+export type TikTokTransport = 'WEBSOCKET' | 'POLLING' | 'UNKNOWN';
+export type TikTokRawCommentRecord = {
+  userIdHash: string;
+  text: string;
+  /** Thời điểm nguồn đã quy chuẩn sang mili-giây, giữ độ trễ khi replay. */
+  createTime: number | null;
+  msgId: string | null;
+  receivedAtMs: number;
+};
+
 export type TikTokAdapterOptions = {
   /** @username của tài khoản đang phát LIVE (chấp nhận có/không có @ hoặc URL). */
   username: string;
@@ -29,6 +40,8 @@ export type TikTokAdapterOptions = {
   /** Tiêm kết nối (test). Mặc định nạp `tiktok-live-connector`. */
   createConnection?: (username: string) => Promise<TikTokConnectionLike> | TikTokConnectionLike;
   reconnect?: { baseMs?: number; maxMs?: number; maxAttempts?: number };
+  /** Gọi chỉ khi bật ghi log; payload đã bỏ nickname/ảnh và băm userId. */
+  recordRawComment?: (record: TikTokRawCommentRecord) => void;
 };
 
 export const TIKTOK_UNOFFICIAL_NOTICE =
@@ -75,8 +88,11 @@ export class TikTokLiveAdapter implements LiveAdapter {
   private attempts = 0;
   private retryHandle: unknown = null;
   private lastError: string | null = null;
-  /** Ước lượng độ lệch đồng hồ + độ trễ tối thiểu (min của now − createTime) để sourceTimestamp so sánh được với giờ máy. */
-  private offsets: number[] = [];
+  private transportState: TikTokTransport = 'UNKNOWN';
+  /** Monotonic deque giữ min(now - createTime) trên 200 comment gần nhất. */
+  private offsetSequence = 0;
+  private minimumOffsets: { sequence: number; value: number }[] = [];
+  private minimumOffsetHead = 0;
 
   constructor(private readonly opts: TikTokAdapterOptions) {
     this.username = normalizeTikTokUsername(opts.username);
@@ -88,6 +104,12 @@ export class TikTokLiveAdapter implements LiveAdapter {
   }
   describe() {
     return this.lastError;
+  }
+  transport(): TikTokTransport {
+    return this.transportState;
+  }
+  rawRecordingEnabled() {
+    return this.opts.recordRawComment !== undefined;
   }
   onComment(cb: (c: RawComment) => void) {
     this.commentSubs.add(cb);
@@ -105,6 +127,7 @@ export class TikTokLiveAdapter implements LiveAdapter {
     this.manualStop = false;
     this.clearRetry();
     if (this.st === 'CONNECTED') return;
+    this.transportState = 'UNKNOWN';
     this.setStatus(this.attempts > 0 ? 'RECONNECTING' : 'CONNECTING');
     try {
       const conn = await this.openConnection();
@@ -112,6 +135,8 @@ export class TikTokLiveAdapter implements LiveAdapter {
       this.conn = conn;
       this.attempts = 0;
       this.lastError = null;
+      // v2.5.0 chỉ resolve connect sau khi setupWebsocket mở socket.
+      if (this.transportState === 'UNKNOWN') this.transportState = 'WEBSOCKET';
       this.setStatus('CONNECTED');
     } catch (err) {
       this.lastError = describeError(err, this.username);
@@ -139,8 +164,12 @@ export class TikTokLiveAdapter implements LiveAdapter {
     conn.on('disconnected', (info: any) => this.handleDisconnected(info));
     conn.on('streamEnd', () => {
       this.lastError = 'Buổi LIVE đã kết thúc';
+      this.transportState = 'UNKNOWN';
       this.manualStop = true; // không tự kết nối lại khi chủ phòng tắt LIVE
     });
+    conn.on('websocketConnected', () => { this.transportState = 'WEBSOCKET'; });
+    // Hook tương lai: bản ghim 2.5.0 không có polling fallback.
+    conn.on('polling', () => { this.transportState = 'POLLING'; });
     conn.on('error', (e: any) => {
       this.lastError = describeError(e?.exception ?? e?.info ?? e, this.username);
     });
@@ -153,13 +182,34 @@ export class TikTokLiveAdapter implements LiveAdapter {
     if (!c) return;
     let sourceTimestampMs: number | undefined;
     if (c.createTimeMs !== undefined) {
-      this.offsets.push(now - c.createTimeMs);
-      if (this.offsets.length > 200) this.offsets.shift();
-      const base = Math.min(...this.offsets);
+      const sequence = this.offsetSequence++;
+      const offset = now - c.createTimeMs;
+      while (this.minimumOffsets.length > this.minimumOffsetHead &&
+        this.minimumOffsets.at(-1)!.value >= offset) this.minimumOffsets.pop();
+      this.minimumOffsets.push({ sequence, value: offset });
+      const firstValidSequence = sequence - 199;
+      while (this.minimumOffsetHead < this.minimumOffsets.length &&
+        this.minimumOffsets[this.minimumOffsetHead]!.sequence < firstValidSequence) this.minimumOffsetHead += 1;
+      if (this.minimumOffsetHead > 256) {
+        this.minimumOffsets = this.minimumOffsets.slice(this.minimumOffsetHead);
+        this.minimumOffsetHead = 0;
+      }
+      const base = this.minimumOffsets[this.minimumOffsetHead]!.value;
       sourceTimestampMs = c.createTimeMs + base; // quy về giờ máy, bỏ phần lệch đồng hồ cố định
     }
     const { createTimeMs: _drop, ...rest } = c;
     void _drop;
+    try {
+      this.opts.recordRawComment?.({
+        userIdHash: hashTikTokUserId(c.userId),
+        text: c.text,
+        createTime: sourceTimestampMs ?? null,
+        msgId: c.eventId ?? null,
+        receivedAtMs: now,
+      });
+    } catch {
+      // Ghi log tùy chọn không được làm gián đoạn luồng nhận/chấm comment.
+    }
     const comment: RawComment = { source: 'TIKTOK', ...rest, ...(sourceTimestampMs !== undefined ? { sourceTimestampMs } : {}) };
     for (const cb of [...this.commentSubs]) cb(comment);
   }
@@ -167,10 +217,13 @@ export class TikTokLiveAdapter implements LiveAdapter {
   private handleDisconnected(info: any) {
     this.conn = null;
     if (this.manualStop) {
+      this.transportState = 'UNKNOWN';
       this.setStatus('DISCONNECTED');
       return;
     }
-    this.lastError = `Mất kết nối${info?.reason ? `: ${info.reason}` : ''}`;
+    void info;
+    this.transportState = 'UNKNOWN';
+    this.lastError = 'WebSocket bị ngắt. Đang thử kết nối lại.';
     this.scheduleRetry();
   }
 
@@ -183,7 +236,8 @@ export class TikTokLiveAdapter implements LiveAdapter {
       return;
     }
     this.setStatus('RECONNECTING');
-    const delay = Math.min(maxMs, baseMs * 2 ** this.attempts);
+    const backoff = Math.max(0, baseMs) * 2 ** this.attempts;
+    const delay = Math.min(maxMs, this.attempts === 0 ? 1_000 : backoff);
     this.attempts += 1;
     this.retryHandle = this.opts.scheduler.setTimeout(() => {
       this.retryHandle = null;
@@ -228,9 +282,38 @@ function isRoomIdFailure(err: unknown) {
 function describeError(err: unknown, username: string) {
   if (isRoomIdFailure(err)) return `Không lấy được phòng LIVE của @${username} — thường do chưa phát LIVE (hoặc TikTok tạm chặn). Bắt đầu LIVE rồi bấm Kết nối lại`;
   if (isOffline(err)) return `@${username} hiện chưa phát LIVE — bắt đầu LIVE rồi bấm Kết nối lại`;
-  const msg = err instanceof Error ? err.message : String(err ?? 'lỗi không rõ');
-  if (/rate.?limit|429/i.test(msg)) return `Bị giới hạn tần suất (sign server/TikTok) — chờ vài phút rồi thử lại. ${msg}`;
-  return msg;
+  const name = errorName(err);
+  const msg = errorMessage(err);
+  if (name === 'SignatureRateLimitError' || /rate.?limit|\b429\b/i.test(`${name} ${msg}`))
+    return 'Dịch vụ ký kết nối đang giới hạn lượt. Chờ theo thời gian retry rồi bấm Kết nối lại; kiểm tra gói/khoá ký nếu lỗi tiếp diễn.';
+  if (/signapierror|signature|signing|euler/i.test(`${name} ${msg}`))
+    return `Lỗi ký kết nối${name ? ` (${name})` : ''}. Kiểm tra cấu hình khoá ký; không cần cookie TikTok. Xem lại dịch vụ ký rồi thử kết nối lại.`;
+  if (/websocket|socket/i.test(`${name} ${msg}`))
+    return `Kết nối WebSocket thất bại${name ? ` (${name})` : ''}. Kiểm tra mạng và trạng thái LIVE rồi thử kết nối lại.`;
+  return `Kết nối TikTok thất bại${name ? ` (${name})` : ''}. Kiểm tra mạng và trạng thái LIVE rồi thử kết nối lại.`;
+}
+
+function errorName(err: unknown): string {
+  const value = err as { name?: unknown; constructor?: { name?: unknown } } | null;
+  const name = typeof value?.name === 'string' && value.name !== 'Error' ? value.name : value?.constructor?.name ?? value?.name;
+  return typeof name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,79}$/.test(name) ? name : '';
+}
+
+function errorMessage(err: unknown): string {
+  const value = err as { message?: unknown; cause?: unknown } | null;
+  const direct = typeof value?.message === 'string' ? value.message : '';
+  const cause = value?.cause as { message?: unknown } | undefined;
+  return `${direct} ${typeof cause?.message === 'string' ? cause.message : ''}`;
+}
+
+export function hashTikTokUserId(userId: string): string {
+  // Node server only; no raw identifier leaves this adapter through recording.
+  return createSha256(userId);
+}
+
+function createSha256(value: string): string {
+  // Node server only; no raw identifier leaves this adapter through recording.
+  return createHash('sha256').update(value).digest('hex');
 }
 
 async function defaultConnection(username: string, signApiKey?: string): Promise<TikTokConnectionLike> {

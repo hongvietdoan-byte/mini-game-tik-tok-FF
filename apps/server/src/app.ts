@@ -28,7 +28,7 @@ import {
   type WsMessage,
 } from '@quiz/contracts';
 import { formatDifficultyCounts, isEligible, planPreferredDifficultyCounts } from '@quiz/quiz-core';
-import { MockAdapter, TikTokLiveAdapter, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
+import { MockAdapter, TikTokLiveAdapter, TikTokRawCommentRecorder, type LiveAdapter, type Scheduler } from '@quiz/live-adapters';
 import type { Store } from '@quiz/persistence';
 import {
   NameFilterStore,
@@ -126,12 +126,16 @@ const MockCommentSchema = z.object({
   displayName: z.string().max(400),
   text: z.string().max(2000),
   eventId: z.string().min(1).max(200).optional(),
+  sourceTimestampMs: z.number().finite().optional(),
 });
 
 export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const { store, scheduler } = opts;
   const hudStore = new HudConfigStore(opts.hudDataDir ?? dirname(store.path));
   const allowed = new Set(opts.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
+  const rawCommentRecorder = process.env.TIKTOK_RECORD_RAW_COMMENTS === '1'
+    ? new TikTokRawCommentRecorder(join(process.cwd(), 'data'), () => scheduler.now())
+    : null;
   // TIKTOK: thư viện cộng đồng tiktok-live-connector — KHÔNG CHÍNH THỨC, người dùng chốt dùng tạm (BOARD #17).
   const adapterFactory =
     opts.adapterFactory ??
@@ -142,6 +146,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
             username: config.tiktokUsername ?? '',
             scheduler,
             ...(process.env.EULER_API_KEY ? { signApiKey: process.env.EULER_API_KEY } : {}),
+            ...(rawCommentRecorder ? { recordRawComment: (record) => rawCommentRecorder.record(record) } : {}),
           }));
   const startedAtMs = opts.startedAtMs ?? scheduler.now();
   const repositoryRoot = opts.repositoryRoot ?? process.cwd();
@@ -1145,6 +1150,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       unsub?.();
       rt?.dispose();
       rt = null;
+      await rawCommentRecorder?.close();
       for (const ws of [...overlayClients, ...adminClients]) ws.terminate();
       await app.close();
     },
