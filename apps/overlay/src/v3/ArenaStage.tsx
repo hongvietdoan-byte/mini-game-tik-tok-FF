@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { positiveScoreEntries } from '../overlayLogic';
-import { shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
+import { answerPercentages, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
 import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
@@ -142,7 +142,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const optionsVisible = !!q?.optionsVisible && !isPrepare;
   const hasLongOption = !!q?.options.some((option) => option.text.length > 45);
   const hasLongLabel = !!q?.options.some((option) => option.text.length > 30);
-  const totalAnswers = reveal ? Object.values(reveal.optionCounts).reduce((a, b) => a + b, 0) : 0;
+  const percentages = reveal ? answerPercentages(reveal.optionCounts) : null;
   return (
     <section className="v3-board" data-layer="quiz-hud">
       <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'CHÀO MỪNG' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
@@ -160,19 +160,18 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
           {(['A', 'B', 'C', 'D'] as const).map((id) => {
             const opt = optionsVisible ? q?.options.find((o) => o.id === id) : undefined;
             const correct = !!reveal && reveal.correctOptionId === id;
-            const count = reveal?.optionCounts[id] ?? 0;
-            const share = totalAnswers ? count / totalAnswers : 0;
+            const percentage = percentages?.[id] ?? 0;
             return (
               <div
                 key={id}
                 className={`v3-option ${opt ? '' : 'is-hidden'} ${correct ? 'is-correct' : ''} ${reveal && !correct ? 'is-dim' : ''}`}
                 data-testid={`option-${id}`}
-                style={{ '--answer-share': `${share * 100}%` } as React.CSSProperties}
+                style={{ '--answer-share': `${percentage}%` } as React.CSSProperties}
               >
                 <span className="v3-letter">{id}</span>
                 <span className={`v3-option-text ${optionSize(opt?.text)}`}>{opt ? truncateGraphemeText(opt.text, 45, true) : ''}</span>
                 {reveal && (
-                  <span className="v3-option-count">{totalAnswers ? Math.round((count / totalAnswers) * 100) : 0}%</span>
+                  <span className="v3-option-count">{percentage}%</span>
                 )}
                 {reveal && <span className="v3-option-meter" aria-hidden="true"><i /></span>}
               </div>

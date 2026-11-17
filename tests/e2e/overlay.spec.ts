@@ -745,6 +745,15 @@ test('reveal marks exactly one correct option', async ({ page }) => {
   const correctOptions = page.locator('[data-testid^="option-"].is-correct');
   await expect(correctOptions).toHaveCount(1);
   await expect(correctOptions).toHaveAttribute('data-testid', 'option-B');
+  const percentages = await Promise.all(['A', 'B', 'C', 'D'].map(async (id) => {
+    const option = page.getByTestId(`option-${id}`);
+    return {
+      label: await option.locator('.v3-option-count').innerText(),
+      share: await option.evaluate((element) => getComputedStyle(element).getPropertyValue('--answer-share').trim()),
+    };
+  }));
+  expect(percentages.map(({ label }) => label)).toEqual(['12%', '45%', '29%', '14%']);
+  expect(percentages.map(({ share }) => share)).toEqual(['12%', '45%', '29%', '14%']);
   expect(errors).toEqual([]);
 });
 
