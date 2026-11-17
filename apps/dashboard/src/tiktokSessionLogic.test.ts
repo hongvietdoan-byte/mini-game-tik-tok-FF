@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Question } from '@quiz/contracts';
-import { approvedQuestionCount, canCreateTikTokSession, filterQuestions, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
+import { approvedQuestionCount, buildSessionConfig, canCreateTikTokSession, filterQuestions, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
 
 function question(id: string, approvalStatus: Question['approvalStatus'], verificationStatus: Question['verificationStatus'] = 'UNVERIFIED'): Question {
   return {
@@ -30,6 +30,16 @@ function question(id: string, approvalStatus: Question['approvalStatus'], verifi
 }
 
 describe('TikTok session helpers', () => {
+  it('bật giọng MC mặc định cho MOCK và TikTok, nhưng giữ lựa chọn tắt', () => {
+    const mockConfig = buildSessionConfig({ mode: 'MOCK', questionsPerRound: 15, speedBonusMax: 50, speedMultiplier: 1 });
+    const tiktokConfig = buildSessionConfig({ mode: 'TIKTOK', questionsPerRound: 10, speedBonusMax: 50, speedMultiplier: 1, tiktokUsername: '@quiz_codex' });
+    const mutedConfig = buildSessionConfig({ mode: 'TIKTOK', questionsPerRound: 10, speedBonusMax: 50, speedMultiplier: 1, tiktokUsername: '@quiz_codex', mcVoiceEnabled: false });
+
+    expect(mockConfig).toMatchObject({ mode: 'MOCK', allowDemoQuestions: true, mcVoiceEnabled: true });
+    expect(tiktokConfig).toMatchObject({ mode: 'TIKTOK', tiktokUsername: '@quiz_codex', mcVoiceEnabled: true });
+    expect(mutedConfig.mcVoiceEnabled).toBe(false);
+  });
+
   it('accepts the same username and URL shapes as SessionConfigSchema', () => {
     expect(isValidTikTokUsername('@player.name')).toBe(true);
     expect(isValidTikTokUsername('https://www.tiktok.com/@player/live')).toBe(true);

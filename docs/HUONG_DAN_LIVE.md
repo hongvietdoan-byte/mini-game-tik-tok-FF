@@ -45,7 +45,7 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
    Remove-Variable adminToken
    ```
 4. MOCK có thể chạy để diễn tập khi preflight còn FAIL; hãy nói rõ với người xem đây là mô phỏng.
-5. Trong các buổi 12–14/11, không bật hoặc dựa vào giọng MC; dùng nội dung hiển thị trên overlay.
+5. Giọng MC được bật mặc định khi tạo phiên (có thể tắt trong form nếu cần). Sau khi mở sảnh, chờ 30–60 giây để câu 1 có giọng MC.
 
 ## 4. Khi TikTok connector lỗi giữa buổi
 

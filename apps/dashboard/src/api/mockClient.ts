@@ -303,7 +303,10 @@ class MockDashboardClient implements DashboardClient {
   }
 
   async getPreflight() {
-    return { checks: [{ id: 'overlayAck', label: 'Overlay đã ACK', status: 'WARN' as const, reason: 'MOCK không xác nhận nguồn overlay program.' }] };
+    return { checks: [
+      { id: 'overlayAck', label: 'Overlay đã ACK', status: 'WARN' as const, reason: 'MOCK không xác nhận nguồn overlay program.' },
+      { id: 'mcVoice', label: 'Giọng MC', status: 'WARN' as const, reason: this.config.mcVoiceEnabled === true ? 'MOCK không kiểm tra khả năng phát giọng MC thật.' : 'Giọng MC đang tắt trong cấu hình phiên.' },
+    ] };
   }
 
   async runSystemSelfTest(_token: string): Promise<SelfTestResponse> {
