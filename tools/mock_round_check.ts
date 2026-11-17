@@ -8,8 +8,9 @@ import { analyzeMockRound, type MockRoundSample } from './mock_round_check_analy
 
 type CheckRow = { id: string; status: string; reason: string };
 type SessionCreated = { sessionId: string; snapshot: AdminSnapshot };
-type Options = { base: string; dataDir: string; questions: number; timeoutMs: number };
+type Options = { base: string; dataDir: string; questions: number; players: number; timeoutMs: number };
 type SnapshotEnvelope = { type?: string; payload?: unknown; serverTimeMs?: number };
+type EventLoopDelayStats = { resolutionMs: number; samples: number; p50Ms: number; p95Ms: number; p99Ms: number; maxMs: number; meanMs: number };
 
 const DEFAULT_BASE = 'http://127.0.0.1:8787';
 const DEFAULT_QUESTIONS = 10;
@@ -19,7 +20,7 @@ const ADMIN_SNAPSHOT_TIMEOUT_MS = 10_000;
 function usage() {
   return [
     'Chạy một vòng MOCK trên server đang chạy:',
-    '  corepack pnpm exec tsx tools/mock_round_check.ts [--base http://127.0.0.1:8787] [--data-dir data] [--questions 10]',
+    '  corepack pnpm exec tsx tools/mock_round_check.ts [--base http://127.0.0.1:8787] [--data-dir data] [--questions 10] [--players 5000]',
     'Server phải dùng cùng QUIZ_DATA_DIR với --data-dir; token chỉ được gửi trong header Authorization.',
   ].join('\n');
 }
@@ -29,6 +30,7 @@ export function parseMockRoundArgs(args: readonly string[], cwd = process.cwd())
     base: DEFAULT_BASE,
     dataDir: resolve(cwd, 'data'),
     questions: DEFAULT_QUESTIONS,
+    players: 30,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
   for (let index = 0; index < args.length; index += 1) {
@@ -39,6 +41,7 @@ export function parseMockRoundArgs(args: readonly string[], cwd = process.cwd())
     if (arg === '--base') options.base = value;
     else if (arg === '--data-dir') options.dataDir = resolve(cwd, value);
     else if (arg === '--questions') options.questions = Number(value);
+    else if (arg === '--players') options.players = Number(value);
     else if (arg === '--timeout-ms') options.timeoutMs = Number(value);
     else throw new Error(`Tham số không được hỗ trợ: ${arg}.`);
     index += 1;
@@ -49,6 +52,8 @@ export function parseMockRoundArgs(args: readonly string[], cwd = process.cwd())
     throw new Error('--base chỉ được trỏ tới server HTTP trên localhost để không gửi token ra mạng.');
   }
   if (![10, 15, 20].includes(options.questions)) throw new Error('--questions chỉ nhận 10, 15 hoặc 20 theo contract hiện tại.');
+  if (!Number.isInteger(options.players) || options.players < 1 || options.players > 20_000)
+    throw new Error('--players phải là số nguyên trong khoảng 1–20000.');
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 30_000 || options.timeoutMs > 1_200_000) {
     throw new Error('--timeout-ms phải nằm trong khoảng 30000–1200000.');
   }
@@ -313,7 +318,7 @@ export async function runMockRoundCheck(args: readonly string[] = process.argv.s
         method: 'POST',
         body: JSON.stringify({
           action: 'START',
-          players: 30,
+          players: options.players,
           accuracy: 0.72,
           participation: 0.9,
           spamRate: 0,
@@ -351,10 +356,15 @@ export async function runMockRoundCheck(args: readonly string[] = process.argv.s
     if (sessionId) {
       if (simulatorStarted) {
         try {
-          const stopped = await request<{ ok: boolean; running: boolean }>(`/api/sessions/${encodeURIComponent(sessionId)}/simulator`, {
+          const stopped = await request<{ ok: boolean; running: boolean; eventLoopDelay?: EventLoopDelayStats }>(`/api/sessions/${encodeURIComponent(sessionId)}/simulator`, {
             method: 'POST',
             body: JSON.stringify({ action: 'STOP' }),
           });
+          if (stopped.eventLoopDelay) {
+            const stats = stopped.eventLoopDelay;
+            console.log(`Event-loop delay (resolution ${stats.resolutionMs} ms, ${stats.samples} samples): ` +
+              `p50=${stats.p50Ms} ms · p95=${stats.p95Ms} ms · p99=${stats.p99Ms} ms · max=${stats.maxMs} ms · mean=${stats.meanMs} ms`);
+          }
           if (!stopped.ok || stopped.running) cleanupError = 'Simulator MOCK chưa dừng sạch.';
         } catch (error) {
           cleanupError = error instanceof Error ? error.message : 'Không dừng được simulator MOCK.';

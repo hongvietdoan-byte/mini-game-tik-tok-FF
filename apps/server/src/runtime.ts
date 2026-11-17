@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import {
   CONTRACT_VERSION,
   CommandEnvelopeSchema,
@@ -10,6 +11,7 @@ import {
   McVoiceCueSchema,
   McVoiceEventSchema,
   type McVoiceCue,
+  type McVoiceCountdownSchedule,
   type McVoiceEvent,
   type AdminSnapshot,
   type CommandBody,
@@ -82,8 +84,6 @@ const COUNTDOWN_SCRIPT: Readonly<Record<number, string>> = {
 };
 const SPAM_REMINDER_TEXT = 'Nhắc nhẹ nè: mỗi người chỉ một đáp án, bình luận đầu tiên mới được tính nhé!';
 const COUNTDOWN_SECONDS = [10, 5, 4, 3, 2, 1] as const;
-const COUNTDOWN_CUE_LEAD_MS = 300;
-const COUNTDOWN_CUE_LATE_TOLERANCE_MS = 400;
 
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
@@ -113,6 +113,7 @@ type PreparedLobbyRound = {
 type RoundVoicePreparation = { signature: string; promise: Promise<void> };
 type SpamAttempt = { atMs: number; reason: SpamWarningReason };
 type SpamWarning = NonNullable<AdminSnapshot['spamWarnings']>[number];
+type EventLoopDelayStats = { resolutionMs: number; samples: number; p50Ms: number; p95Ms: number; p99Ms: number; maxMs: number; meanMs: number };
 type SpamAttemptState = {
   source: string;
   userId: string;
@@ -148,7 +149,8 @@ const HEARTBEAT_MS = 1_000;
 const COUNTS_THROTTLE_MS = 250;
 const SPAM_CLEANUP_MS = 1_000;
 const MC_VOICE_TELEMETRY_REASONS = new Set([
-  'UNSAFE_PLAYER_IDENTITY', 'TOO_LONG', 'NOT_CONFIGURED', 'LATE_AUDIO', 'AUTH', 'NO_CREDIT', 'RATE_LIMITED', 'FAILED', 'TIMEOUT', 'DOWNLOAD_FAILED', 'INVALID_RESPONSE',
+  'UNSAFE_PLAYER_IDENTITY', 'TOO_LONG', 'NOT_CONFIGURED', 'LATE_AUDIO', 'TIMER_LATE', 'CANCELLED', 'ASSET_UNAVAILABLE',
+  'AUTH', 'NO_CREDIT', 'RATE_LIMITED', 'FAILED', 'TIMEOUT', 'DOWNLOAD_FAILED', 'INVALID_RESPONSE',
 ]);
 
 type CommentRateBucket = { second: number; total: number; byQuestion: Map<string, number> };
@@ -199,7 +201,8 @@ export class SessionRuntime {
   private preparedLobbyRound: PreparedLobbyRound | null = null;
   private roundVoicePreparation: RoundVoicePreparation | null = null;
   private voiceHandles = new Set<unknown>();
-  private countdownCues = new Set<string>();
+  private countdownSchedule: McVoiceCountdownSchedule | null = null;
+  private countdownScheduleGeneration = 0;
   private reminderCues = new Set<string>();
   private voiceTailAtMs = 0;
   private welcomeCueRequested = false;
@@ -218,6 +221,7 @@ export class SessionRuntime {
   private spamAttempts = new Map<string, SpamAttemptState>();
   private spamSequence = 0;
   private simulator: MockSimulator | null = null;
+  private simulatorEventLoopDelay: ReturnType<typeof monitorEventLoopDelay> | null = null;
   private notice: { code: string; message: string } | null = null;
   private poolCache: AdminSnapshot['pool'] | null = null;
   private unsubs: (() => void)[] = [];
@@ -401,8 +405,10 @@ export class SessionRuntime {
       if (h !== null) this.scheduler.clearTimeout(h);
     this.timerHandle = this.heartbeatHandle = this.countsHandle = this.spamCleanupHandle = this.spamSnapshotHandle = null;
     this.voiceHandles.clear();
+    this.cancelCountdownSchedule();
     this.simulator?.stop();
     this.simulator = null;
+    this.finishSimulatorEventLoopDelay();
     for (const u of this.unsubs.splice(0)) u();
     void this.adapter.disconnect().catch(() => {});
   }
@@ -689,6 +695,14 @@ export class SessionRuntime {
 
   private afterCommit(events: EngineEvent[], input: EngineInput) {
     for (const e of events) {
+      if ((e.type === 'STATE_CHANGED' && e.from === 'ACCEPTING' && e.to !== 'ACCEPTING') ||
+        e.type === 'QUESTION_CLOSED' || e.type === 'QUESTION_VOIDED' || e.type === 'SESSION_STOPPED')
+        this.cancelCountdownSchedule();
+      if (e.type === 'STATE_CHANGED' && e.from === 'PAUSED' && e.to === 'ACCEPTING') {
+        this.cancelCountdownSchedule();
+        const resumedQuestionId = currentQuestionInstanceId(this.engine);
+        if (resumedQuestionId) this.scheduleQuestionCountdown(resumedQuestionId);
+      }
       if (e.type === 'ROUND_STARTED' && this.engine.round)
         this.preGenerateRoundVoice(this.engine.round.roundId, [...this.snapshots.values()]);
       else if (e.type === 'QUESTION_CLOSED') {
@@ -764,10 +778,14 @@ export class SessionRuntime {
     return this.config.mcVoiceEnabled === true && !!this.deps.mcVoice;
   }
 
-  private telemetry(reason: string, eventType: McVoiceEvent['type']) {
+  private telemetry(reason: string, eventType: McVoiceEvent['type'], detail?: { timerLatenessMs?: number }) {
     // Chỉ ghi loại sự kiện và mã lý do; tuyệt đối không ghi text, tên, token hay chi tiết provider.
     const safeReason = MC_VOICE_TELEMETRY_REASONS.has(reason) ? reason : 'FAILED';
-    this.deps.warn?.(`[mc-voice] cue skipped event=${eventType} reason=${safeReason}`);
+    const timerLateness = detail?.timerLatenessMs;
+    const lateness = Number.isFinite(timerLateness)
+      ? ` timer_lateness_ms=${Math.max(0, Math.round(timerLateness!))}`
+      : '';
+    this.deps.warn?.(`[mc-voice] cue skipped event=${eventType} reason=${safeReason}${lateness}`);
   }
 
   voiceIdentityValues() {
@@ -992,27 +1010,6 @@ export class SessionRuntime {
     this.voiceHandles.add(handle);
   }
 
-  /** Gửi cue sớm để overlay chuẩn bị; countdown được phép trễ tối đa 400 ms và ngắt tail cũ. */
-  private schedulePreciseVoiceCue(
-    eventType: McVoiceEvent['type'], assetId: string, durationMs: number,
-    startsAtServerMs: number, isCurrent: () => boolean,
-  ) {
-    const now = this.scheduler.now();
-    const sendAtServerMs = startsAtServerMs - COUNTDOWN_CUE_LEAD_MS;
-    if (now > startsAtServerMs + COUNTDOWN_CUE_LATE_TOLERANCE_MS) return false;
-    const handle = this.scheduler.setTimeout(() => {
-      this.voiceHandles.delete(handle);
-      const firedAt = this.scheduler.now();
-      if (this.disposed || !isCurrent() || firedAt > startsAtServerMs + COUNTDOWN_CUE_LATE_TOLERANCE_MS) return;
-      const actualStartAtMs = Math.max(startsAtServerMs, firedAt);
-      // Countdown có quyền ngắt tail đang phát; lần sau ghi đè tail này nếu asset dài hơn khoảng cách mốc.
-      this.voiceTailAtMs = actualStartAtMs + durationMs;
-      this.emitVoiceCue(eventType, assetId, durationMs, actualStartAtMs);
-    }, Math.max(0, sendAtServerMs - now));
-    this.voiceHandles.add(handle);
-    return true;
-  }
-
   private beginQuestionReading() {
     if (this.config.mcVoiceEnabled !== true) return;
     const qid = currentQuestionInstanceId(this.engine);
@@ -1020,7 +1017,6 @@ export class SessionRuntime {
     if (!qid || !snap) return;
     const startedAt = this.scheduler.now();
     this.readingStartedAtMs = startedAt;
-    this.countdownCues.clear();
     this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
       questionInstanceId: qid, durationMs: DEFAULT_MC_READING_MS, elapsedMs: 0 });
     if (!this.voiceEnabled()) {
@@ -1104,30 +1100,48 @@ export class SessionRuntime {
   private scheduleQuestionCountdown(questionInstanceId: string) {
     const timer = this.engine.timer;
     if (!this.voiceEnabled() || this.engine.state !== 'ACCEPTING' || !timer?.deadlineMs) return;
-    const now = this.scheduler.now();
-    const cues = COUNTDOWN_SECONDS.flatMap((secondsRemaining) => {
-      const key = `${questionInstanceId}:${secondsRemaining}`;
-      const startsAtServerMs = timer.deadlineMs! - secondsRemaining * 1_000;
-      if (this.countdownCues.has(key) || startsAtServerMs + COUNTDOWN_CUE_LATE_TOLERANCE_MS < now) return [];
-      this.countdownCues.add(key);
-      return [{
-        key,
-        startsAtServerMs,
-        event: { type: 'COUNTDOWN' as const, secondsRemaining },
-        text: COUNTDOWN_SCRIPT[secondsRemaining]!,
-      }];
-    });
+    const generation = ++this.countdownScheduleGeneration;
+    const deadlineMs = timer.deadlineMs;
+    const cues = COUNTDOWN_SECONDS.map((secondsRemaining) => ({
+      secondsRemaining,
+      startsAtServerMs: deadlineMs - secondsRemaining * 1_000,
+      event: { type: 'COUNTDOWN' as const, secondsRemaining },
+      text: COUNTDOWN_SCRIPT[secondsRemaining]!,
+    }));
     void Promise.all(cues.map(async (cue) => ({ ...cue, asset: await this.voiceAsset(cue.event, cue.text) })))
       .then((prepared) => {
-        // Cues đã được sắp theo thời điểm phát. Asset sẵn trước mốc gửi 300 ms sẽ được xếp đúng giây.
-        for (const cue of prepared) {
-          if (!cue.asset) continue;
-          this.schedulePreciseVoiceCue(cue.event.type, cue.asset.assetId, cue.asset.durationMs,
-            cue.startsAtServerMs, () => this.engine.state === 'ACCEPTING' &&
-              currentQuestionInstanceId(this.engine) === questionInstanceId &&
-              !!this.engine.timer && remainingMs(this.engine, this.scheduler.now()) > 0);
+        const now = this.scheduler.now();
+        const stillCurrent = !this.disposed && generation === this.countdownScheduleGeneration &&
+          this.engine.state === 'ACCEPTING' && currentQuestionInstanceId(this.engine) === questionInstanceId &&
+          this.engine.timer?.deadlineMs === deadlineMs;
+        if (!stillCurrent) {
+          for (const cue of prepared)
+            this.telemetry('CANCELLED', 'COUNTDOWN', { timerLatenessMs: now - cue.startsAtServerMs });
+          return;
         }
+        const scheduled = prepared.flatMap((cue) => {
+          if (!cue.asset) {
+            this.telemetry('ASSET_UNAVAILABLE', 'COUNTDOWN', { timerLatenessMs: now - cue.startsAtServerMs });
+            return [];
+          }
+          return [{
+            cueId: randomUUID(),
+            secondsRemaining: cue.secondsRemaining,
+            assetId: cue.asset.assetId,
+            durationMs: cue.asset.durationMs,
+            startsAtServerMs: cue.startsAtServerMs,
+          }];
+        });
+        if (scheduled.length === 0) return;
+        this.countdownSchedule = { scheduleId: randomUUID(), questionInstanceId, cues: scheduled };
+        // Một snapshot chứa nguyên lịch; các snapshot phục hồi sau đó giữ cùng scheduleId để overlay dedupe.
+        this.emit([{ audience: 'public', message: this.wrap('STATE_SNAPSHOT', this.publicSnapshot(now)) }]);
       });
+  }
+
+  private cancelCountdownSchedule() {
+    this.countdownScheduleGeneration += 1;
+    this.countdownSchedule = null;
   }
 
   private speakSpamReminder(questionInstanceId: string, questionNumber: number) {
@@ -1149,9 +1163,8 @@ export class SessionRuntime {
       const timerDeadlineMs = this.engine.timer?.deadlineMs;
       const countdownAtMs = timerDeadlineMs === undefined || timerDeadlineMs === null
         ? Number.POSITIVE_INFINITY : timerDeadlineMs - 10_000;
-      // Snapshot countdown được gửi sớm 300 ms và ngắt voice ngay khi tới overlay.
-      // Chừa phần đệm đó để lời nhắc không bị cắt; nếu không đủ thời gian thì bỏ lời nhắc.
-      const reminderMustFinishByMs = countdownAtMs - COUNTDOWN_CUE_LEAD_MS;
+      // Lịch countdown đã tới overlay trước mốc phát, nên lời nhắc phải kết thúc trước mốc 10 giây.
+      const reminderMustFinishByMs = countdownAtMs;
       if (startsAt + asset.durationMs > reminderMustFinishByMs) {
         this.telemetry('LATE_AUDIO', event.type);
         return;
@@ -1782,6 +1795,14 @@ export class SessionRuntime {
     const adapter = this.mockAdapter();
     this.simulator?.stop();
     this.simulator = null;
+    let eventLoopDelay: EventLoopDelayStats | null = null;
+    if (req.action === 'START') {
+      this.finishSimulatorEventLoopDelay();
+      this.simulatorEventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+      this.simulatorEventLoopDelay.enable();
+    } else {
+      eventLoopDelay = this.finishSimulatorEventLoopDelay();
+    }
     if (req.action === 'START') {
       this.simulator = new MockSimulator(adapter, this.scheduler, {
         players: simPlayers(req.players),
@@ -1793,7 +1814,31 @@ export class SessionRuntime {
       });
     }
     this.emitAdmin();
-    return { ok: true, running: !!this.simulator, players: this.simulator?.opts.players.length ?? 0 };
+    return {
+      ok: true,
+      running: !!this.simulator,
+      players: this.simulator?.opts.players.length ?? 0,
+      ...(eventLoopDelay ? { eventLoopDelay } : {}),
+    };
+  }
+
+  private finishSimulatorEventLoopDelay(): EventLoopDelayStats | null {
+    const histogram = this.simulatorEventLoopDelay;
+    if (!histogram) return null;
+    histogram.disable();
+    this.simulatorEventLoopDelay = null;
+    const toMs = (nanoseconds: number) => Number.isFinite(nanoseconds) ? Number((nanoseconds / 1_000_000).toFixed(2)) : 0;
+    const stats = {
+      resolutionMs: 20,
+      samples: Math.round(histogram.count),
+      p50Ms: toMs(histogram.percentile(50)),
+      p95Ms: toMs(histogram.percentile(95)),
+      p99Ms: toMs(histogram.percentile(99)),
+      maxMs: toMs(histogram.max),
+      meanMs: toMs(histogram.mean),
+    };
+    this.deps.warn?.(`[simulator] event_loop_delay_ms resolution=${stats.resolutionMs} samples=${stats.samples} p50=${stats.p50Ms} p95=${stats.p95Ms} p99=${stats.p99Ms} max=${stats.maxMs} mean=${stats.meanMs}`);
+    return stats;
   }
 
   mockConnection(action: 'LOSE' | 'RESTORE') {
@@ -2040,6 +2085,8 @@ export class SessionRuntime {
       participantCount: e.round ? this.participants : 0,
       fastestCorrectAnswer,
       mcVoiceCue,
+      mcVoiceCountdownSchedule: e.state === 'ACCEPTING' && qid &&
+        this.countdownSchedule?.questionInstanceId === qid ? this.countdownSchedule : null,
       reveal: revealView,
       leaderboard,
       podium:

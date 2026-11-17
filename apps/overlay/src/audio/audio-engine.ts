@@ -1,5 +1,6 @@
 import { countdownTickPattern, loadBgmWithFallback, selectBgmTrack, type AudioCue, type AudioMix, type AudioSlot, type BgmFileExtension, type BgmTrack } from './audio-cues';
 import { MC_VOICE_DUCKING_GAIN } from './audio-cues';
+import { MC_COUNTDOWN_LATE_GRACE_MS } from './mc-voice';
 import type { McVoiceCue, ThemeAssetSlot } from '@quiz/contracts';
 import type { PublicSnapshot } from '@quiz/contracts';
 
@@ -35,6 +36,7 @@ export class OverlayAudioEngine {
   private bgmGeneration = 0;
   private voiceSource: AudioBufferSourceNode | null = null;
   private voiceGeneration = 0;
+  private countdownVoiceGeneration = 0;
   private destroyed = false;
   private ducking = 1;
   private assetUrls: Partial<Record<ThemeAssetSlot, string>>;
@@ -255,7 +257,7 @@ export class OverlayAudioEngine {
     this.synthesize(cue, remainingSecond);
   }
 
-  async playMcVoice(cue: McVoiceCue, clockOffsetMs: number) {
+  async playMcVoice(cue: McVoiceCue, clockOffsetMs: number, options: { preserveScheduledCountdown?: boolean } = {}) {
     const generation = ++this.voiceGeneration;
     const context = this.context;
     const voice = this.voice;
@@ -289,13 +291,13 @@ export class OverlayAudioEngine {
       this.activeVoiceSources.delete(source);
       if (this.voiceSource === source) {
         this.voiceSource = null;
-        this.setDucking(this.ducking);
+        if (this.activeVoiceSources.size === 0) this.setDucking(this.ducking);
       }
     };
     this.voiceSource = source;
     this.activeSources.add(source);
     this.activeVoiceSources.add(source);
-    this.scheduleVoiceDucking(startAt, startAt + playbackSeconds);
+    this.scheduleVoiceDucking(startAt, startAt + playbackSeconds, options.preserveScheduledCountdown === true);
     try {
       source.start(startAt, offsetSeconds, playbackSeconds);
     } catch {
@@ -305,7 +307,7 @@ export class OverlayAudioEngine {
       this.setDucking(this.ducking);
       return;
     }
-    if (previousSource) {
+    if (previousSource && !options.preserveScheduledCountdown) {
       const previousStopAt = this.voiceStopAt.get(previousSource);
       if (previousStopAt === undefined || startAt < previousStopAt) {
         try {
@@ -316,10 +318,104 @@ export class OverlayAudioEngine {
         }
       }
     }
+    this.voiceStopAt.set(source, startAt + playbackSeconds);
+  }
+
+  /** Decode the full future schedule together, then queue every source against the synchronized server clock. */
+  async playMcVoiceSchedule(
+    cues: readonly McVoiceCue[],
+    clockOffsetMs: number,
+    onSkipped?: (drop: { reason: 'TIMER_LATE' | 'ASSET_UNAVAILABLE'; timerLatenessMs?: number }) => void,
+  ) {
+    const generation = ++this.countdownVoiceGeneration;
+    const context = this.context;
+    const voice = this.voice;
+    if (!context || !voice || this.destroyed || this.mix.volume <= 0 || cues.length === 0) return;
+
+    if (context.state !== 'running') await this.unlock();
+    if (generation !== this.countdownVoiceGeneration || this.destroyed || context.state !== 'running') return;
+
+    const decoded = await Promise.all(cues.map(async (cue) => ({ cue, buffer: await this.loadMcVoice(cue.assetUrl) })));
+    if (generation !== this.countdownVoiceGeneration || this.destroyed || context.state !== 'running') return;
+
+    const serverNowMs = Date.now() + clockOffsetMs;
+    const ready: { cue: McVoiceCue; buffer: AudioBuffer; startServerMs: number; latenessMs: number }[] = [];
+    for (const item of decoded) {
+      if (!item.buffer) {
+        onSkipped?.({ reason: 'ASSET_UNAVAILABLE' });
+        continue;
+      }
+      const latenessMs = serverNowMs - item.cue.startsAtServerMs;
+      if (latenessMs > MC_COUNTDOWN_LATE_GRACE_MS) {
+        onSkipped?.({ reason: 'TIMER_LATE', timerLatenessMs: Math.round(latenessMs) });
+        continue;
+      }
+      ready.push({
+        cue: item.cue,
+        buffer: item.buffer,
+        startServerMs: latenessMs > 0 ? serverNowMs : item.cue.startsAtServerMs,
+        latenessMs: Math.max(0, latenessMs),
+      });
+    }
+
+    let previousSource = this.voiceSource;
+    for (let index = 0; index < ready.length; index += 1) {
+      const item = ready[index]!;
+      const startAt = context.currentTime + Math.max(0, item.startServerMs - serverNowMs) / 1_000;
+      const nextItem = ready[index + 1];
+      const nextStartAt = nextItem
+        ? context.currentTime + Math.max(0, nextItem.startServerMs - serverNowMs) / 1_000
+        : Number.POSITIVE_INFINITY;
+      const offsetSeconds = item.latenessMs / 1_000;
+      const cueDurationSeconds = Math.min(item.cue.durationMs, item.buffer.duration * 1_000 - item.latenessMs) / 1_000;
+      const playbackSeconds = Math.min(cueDurationSeconds, nextStartAt - startAt);
+      if (playbackSeconds <= 0 || offsetSeconds >= item.buffer.duration) {
+        onSkipped?.({ reason: 'TIMER_LATE', timerLatenessMs: Math.round(item.latenessMs) });
+        continue;
+      }
+
+      const source = context.createBufferSource();
+      source.buffer = item.buffer;
+      source.connect(voice);
+      source.onended = () => {
+        this.activeSources.delete(source);
+        this.activeVoiceSources.delete(source);
+        if (this.voiceSource === source) {
+          this.voiceSource = null;
+          if (this.activeVoiceSources.size === 0) this.setDucking(this.ducking);
+        }
+      };
+      this.activeSources.add(source);
+      this.activeVoiceSources.add(source);
+      this.scheduleVoiceDucking(startAt, startAt + playbackSeconds, true);
+      try {
+        source.start(startAt, offsetSeconds, playbackSeconds);
+      } catch {
+        this.activeSources.delete(source);
+        this.activeVoiceSources.delete(source);
+        continue;
+      }
+
+      if (previousSource) {
+        const previousStopAt = this.voiceStopAt.get(previousSource);
+        if (previousStopAt === undefined || startAt < previousStopAt) {
+          try {
+            previousSource.stop(startAt);
+            this.voiceStopAt.set(previousSource, startAt);
+          } catch {
+            // The previous clip may already have ended before this marker.
+          }
+        }
+      }
+      this.voiceSource = source;
+      this.voiceStopAt.set(source, startAt + playbackSeconds);
+      previousSource = source;
+    }
   }
 
   stopMcVoice() {
     this.voiceGeneration += 1;
+    this.countdownVoiceGeneration += 1;
     const sources = [...this.activeVoiceSources];
     this.activeVoiceSources.clear();
     this.voiceSource = null;
@@ -351,15 +447,17 @@ export class OverlayAudioEngine {
     return request;
   }
 
-  private scheduleVoiceDucking(startAt: number, endAt: number) {
+  private scheduleVoiceDucking(startAt: number, endAt: number, preserveScheduledValues = false) {
     const context = this.context;
     const sfx = this.sfx;
     if (!context) return;
     const now = context.currentTime;
     for (const [bus, volume] of [[sfx, this.mix.sfx], [this.bgm, this.mix.bgm]] as const) {
       if (!bus || volume <= 0) continue;
-      bus.gain.cancelScheduledValues(now);
-      bus.gain.setValueAtTime(bus.gain.value, now);
+      if (!preserveScheduledValues) {
+        bus.gain.cancelScheduledValues(now);
+        bus.gain.setValueAtTime(bus.gain.value, now);
+      }
       bus.gain.setTargetAtTime(volume * MC_VOICE_DUCKING_GAIN, startAt, 0.035);
       bus.gain.setTargetAtTime(volume * this.ducking, endAt, 0.035);
     }
