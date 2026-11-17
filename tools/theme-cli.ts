@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { basename, extname, join, resolve, sep } from 'node:path';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, join, resolve, sep } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { THEME_DEFAULT_TOKENS, type ThemeAssetSlot } from '@quiz/contracts';
 import { ThemeStore } from '../apps/server/src/theme-store';
@@ -36,7 +37,11 @@ function safeSource(root: string, relative: string) {
   return current;
 }
 
-function copyTree(source: string, destination: string, root: string, copied: string[]) {
+const EXPORTABLE_ASSET_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.webm', '.mp4', '.mp3', '.ogg', '.wav', '.woff2', '.json',
+]);
+
+function copyTree(source: string, destination: string, root: string, copied: string[], warnings: string[]) {
   const stat = lstatSync(source);
   if (stat.isSymbolicLink()) throw new Error('Không sao chép symlink trong thư mục asset.');
   if (stat.isDirectory()) {
@@ -44,16 +49,19 @@ function copyTree(source: string, destination: string, root: string, copied: str
     for (const entry of readdirSync(source, { withFileTypes: true })) {
       const from = join(source, entry.name);
       if (entry.isSymbolicLink()) throw new Error(`Không sao chép symlink: ${from.slice(root.length + 1)}`);
-      copyTree(from, join(destination, entry.name), root, copied);
+      copyTree(from, join(destination, entry.name), root, copied, warnings);
     }
   } else if (stat.isFile()) {
-    if (stat.size > 50 * 1024 * 1024) throw new Error(`Asset ${source.slice(root.length + 1)} lớn hơn 50 MB.`);
+    const relative = source.slice(root.length + 1);
+    if (stat.size > 50 * 1024 * 1024) throw new Error(`Asset ${relative} lớn hơn 50 MB.`);
     const extension = extname(source).toLowerCase();
-    const allowed = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.webm', '.mp4', '.mp3', '.ogg', '.wav', '.woff2', '.json'];
-    if (!allowed.includes(extension)) throw new Error(`Không hỗ trợ asset ${source.slice(root.length + 1)}.`);
+    if (!EXPORTABLE_ASSET_EXTENSIONS.has(extension)) {
+      warnings.push(`Bỏ qua tệp không hỗ trợ ${relative} (đuôi ${extension || 'không có'}).`);
+      return;
+    }
     mkdirSync(join(destination, '..'), { recursive: true });
     copyFileSync(source, destination);
-    copied.push(source.slice(root.length + 1));
+    copied.push(relative);
   } else throw new Error(`Asset không phải file/thư mục: ${source.slice(root.length + 1)}`);
 }
 
@@ -75,55 +83,93 @@ export function exportDefaultTheme(options: { out: string; assets: string; force
   if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(basename(out)))
     throw new Error('Tên thư mục đầu ra phải là id theme gồm chữ thường, số và dấu gạch ngang.');
   if (existsSync(out) && !options.force) throw new Error(`Thư mục đích đã tồn tại: ${out}. Dùng --force để cập nhật.`);
-  mkdirSync(out, { recursive: true });
+  mkdirSync(dirname(out), { recursive: true });
+  const staging = mkdtempSync(join(dirname(out), `.${basename(out)}.tmp-`));
   const manifestAssets: Partial<Record<ThemeAssetSlot, string>> = {};
   const warnings: string[] = [];
   const copied: string[] = [];
 
-  for (const item of DEFAULT_SLOT_SOURCES) {
-    const isAudio = item.slot.startsWith('audio.');
-    let source: string | null = null;
-    try {
-      source = isAudio ? pickAudioSource(assetsRoot, item.source) : safeSource(assetsRoot, item.source);
-    } catch (error) {
-      if (!existsSync(join(assetsRoot, item.source))) source = null;
-      else throw error;
+  let backup: string | null = null;
+  try {
+    for (const item of DEFAULT_SLOT_SOURCES) {
+      const isAudio = item.slot.startsWith('audio.');
+      let source: string | null = null;
+      try {
+        source = isAudio ? pickAudioSource(assetsRoot, item.source) : safeSource(assetsRoot, item.source);
+      } catch (error) {
+        if (!existsSync(join(assetsRoot, item.source))) source = null;
+        else throw error;
+      }
+      if (!source) {
+        warnings.push(`Thiếu ${item.slot}: không có ${item.source}${isAudio ? '.mp3/.ogg/.wav' : ''}.`);
+        continue;
+      }
+      const destination = join(staging, ...item.destination.split('/'));
+      if (item.directory) {
+        const copiedBefore = copied.length;
+        copyTree(source, destination, assetsRoot, copied, warnings);
+        if (copied.length === copiedBefore) {
+          // A directory containing only ignored documents must not become an empty manifest slot.
+          rmSync(destination, { recursive: true, force: true });
+          warnings.push(`${item.slot}: thư mục hiện chưa có asset được hỗ trợ.`);
+        } else manifestAssets[item.slot] = item.destination;
+        continue;
+      }
+      const destinationExtension = extname(item.destination);
+      const sourceExtension = extname(source);
+      const relativeDestination = destinationExtension
+        ? item.destination.slice(0, -destinationExtension.length) + sourceExtension
+        : `${item.destination}${sourceExtension}`;
+      const finalDestination = join(staging, ...relativeDestination.split('/'));
+      mkdirSync(join(finalDestination, '..'), { recursive: true });
+      const stat = lstatSync(source);
+      if (!stat.isFile()) throw new Error(`${item.source}: cần là tệp.`);
+      if (stat.size > 50 * 1024 * 1024) throw new Error(`${item.source}: vượt quá 50 MB.`);
+      copyFileSync(source, finalDestination);
+      copied.push(source.slice(assetsRoot.length + 1));
+      manifestAssets[item.slot] = relativeDestination;
     }
-    if (!source) {
-      warnings.push(`Thiếu ${item.slot}: không có ${item.source}${isAudio ? '.mp3/.ogg/.wav' : ''}.`);
-      continue;
-    }
-    const destination = join(out, ...item.destination.split('/'));
-    if (item.directory) {
-      const sourceRoot = source;
-      copyTree(source, destination, assetsRoot, copied);
-      manifestAssets[item.slot] = item.destination;
-      // Prevent an accidentally empty directory from being represented as an asset.
-      if (copied.length === 0 && existsSync(sourceRoot)) warnings.push(`${item.slot}: thư mục hiện chưa có tệp.`);
-      continue;
-    }
-    const relativeDestination = item.destination.replace(/\.[^.]+$/u, extname(source));
-    const finalDestination = join(out, ...relativeDestination.split('/'));
-    mkdirSync(join(finalDestination, '..'), { recursive: true });
-    const stat = lstatSync(source);
-    if (!stat.isFile()) throw new Error(`${item.source}: cần là tệp.`);
-    if (stat.size > 50 * 1024 * 1024) throw new Error(`${item.source}: vượt quá 50 MB.`);
-    copyFileSync(source, finalDestination);
-    copied.push(source.slice(assetsRoot.length + 1));
-    manifestAssets[item.slot] = relativeDestination;
-  }
 
-  const manifest = {
-    schemaVersion: 1,
-    id: basename(out),
-    name: basename(out) === 'default' ? 'Bá Vương Đại Chiến' : basename(out),
-    description: 'Theme mặc định được xuất từ asset cục bộ hiện có.',
-    tokens: THEME_DEFAULT_TOKENS,
-    fonts: [],
-    assets: manifestAssets,
-  };
-  writeFileSync(join(out, 'theme.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8' });
-  return { directory: out, manifest, warnings, copied };
+    const manifest = {
+      schemaVersion: 1,
+      id: basename(out),
+      name: basename(out) === 'default' ? 'Bá Vương Đại Chiến' : basename(out),
+      description: 'Theme mặc định được xuất từ asset cục bộ hiện có.',
+      tokens: THEME_DEFAULT_TOKENS,
+      fonts: [],
+      assets: manifestAssets,
+    };
+    writeFileSync(join(staging, 'theme.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8' });
+
+    if (existsSync(out)) {
+      if (!options.force) throw new Error(`Thư mục đích đã tồn tại: ${out}. Dùng --force để cập nhật.`);
+      backup = join(dirname(out), `.${basename(out)}.backup-${randomUUID()}`);
+      renameSync(out, backup);
+    }
+    try {
+      renameSync(staging, out);
+    } catch (error) {
+      if (backup) {
+        renameSync(backup, out);
+        backup = null;
+      }
+      throw error;
+    }
+    if (backup) {
+      try { rmSync(backup, { recursive: true }); }
+      catch { warnings.push(`Không dọn được bản theme cũ: ${backup}`); }
+      backup = null;
+    }
+    return { directory: out, manifest, warnings, copied };
+  } catch (error) {
+    if (backup && !existsSync(out)) {
+      try { renameSync(backup, out); backup = null; }
+      catch { /* giữ nguyên lỗi gốc; bản dự phòng vẫn còn để khôi phục thủ công */ }
+    }
+    try { rmSync(staging, { recursive: true, force: true }); }
+    catch { /* không che lỗi export ban đầu */ }
+    throw error;
+  }
 }
 
 type ParsedCliArgs =
