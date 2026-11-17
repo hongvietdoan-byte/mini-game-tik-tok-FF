@@ -1,11 +1,9 @@
 {
   "role": "codex2",
-  "last_read": 248,
-  "heartbeat": "2026-11-17T17:43:32+07:00",
+  "last_read": 251,
+  "heartbeat": "2026-11-17T18:09:55+07:00",
   "state": "waiting",
   "task": "C-0246",
   "note": "Inbox trống; DP3 đang được codex2 cập nhật, không nhận lại; chờ coordinator giao task mới",
-  "done": [
-    251
-  ]
+  "done": []
 }
