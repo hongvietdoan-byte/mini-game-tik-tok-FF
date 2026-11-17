@@ -1,7 +1,7 @@
 {
   "role": "codex1",
   "last_read": 254,
-  "heartbeat": "2026-11-17T18:10:43+07:00",
+  "heartbeat": "2026-11-17T18:12:39+07:00",
   "state": "waiting",
   "task": "C-0252",
   "note": "Inbox trống; DP1/DP2/DP4 đã xong, DP3 thuộc codex2; chờ task mới từ coordinator",
