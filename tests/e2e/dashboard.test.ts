@@ -332,6 +332,22 @@ test('Live Control hiển thị giọng MC bật/tắt và preflight mcVoice', a
   await expect(page.getByTestId('mc-voice-session-status')).toContainText('Giọng MC đang tắt');
 });
 
+test('MC chat hoạt động trong MOCK và câu mẫu gửi lại được', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  await expect(page.getByTestId('mc-chat-panel')).toBeVisible();
+  await page.getByRole('button', { name: 'Mở sảnh' }).click();
+
+  const message = 'Nhớ theo dõi kênh để xem vòng sau!';
+  await page.getByLabel('Câu muốn gửi').fill(message);
+  await page.getByLabel('Đọc giọng').uncheck();
+  await page.getByRole('button', { name: 'Lưu mẫu' }).click();
+  await expect(page.getByRole('listitem').getByText(message, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Gửi mẫu' }).click();
+  await expect(page.getByTestId('mc-chat-queue-item').first()).toHaveAttribute('data-status', 'PLAYING');
+  await expect(page.getByTestId('mc-chat-mock-note')).toContainText('không gọi dịch vụ sinh giọng');
+});
+
 test('sau STOP hiện Tạo phiên mới, giữ lựa chọn và tạo phiên kế tiếp không cần tải lại', async ({ page }) => {
   const openSession = await mockClient.currentSession();
   await launchDashboard(page);

@@ -3,6 +3,7 @@ import {
   DEFAULT_NAME_FILTER_RULES,
   DEFAULT_NAME_FILTER_GROUP_POLICY,
   DEFAULT_PROTECTED_ENTITIES,
+  findNameFilterTextMatches,
   filterPlayerName,
   maskName,
   normalizeForMatch,
@@ -26,6 +27,16 @@ const customRule = (overrides: Partial<NameFilterRule> = {}): NameFilterRule => 
 });
 
 describe('name-filter: risk, representation và alias an toàn', () => {
+  it('soát câu dài theo luật mặc định và tùy chỉnh, trả đúng đoạn bị khớp', () => {
+    const config = { ...emptyConfig, rules: [customRule({ term: 'từ cấm operator' })] };
+    const text = `${'Một câu chúc mừng khán giả. '.repeat(3)}đ.ị.t và từ cấm operator, nhắc Garena bình thường.`;
+    expect(findNameFilterTextMatches(text, config, DEFAULT_NAME_FILTER_RULES)).toEqual([
+      { ruleId: 'profanity.vi.di', term: 'đĩ', matchedText: 'đ.ị', group: 'PROFANITY' },
+      { ruleId: 'profanity.vi.dit', term: 'địt', matchedText: 'đ.ị.t', group: 'PROFANITY' },
+      { ruleId: 'custom.test-rule', term: 'từ cấm operator', matchedText: 'từ cấm operator', group: 'PROFANITY' },
+    ]);
+  });
+
   it('tạo representation chuẩn hóa có dấu, bỏ dấu, leet, homoglyph, separators và chữ lặp', () => {
     expect(normalizeForMatch('Đ.ị\u200b.tttt 😈')).toBe('dit');
     expect(normalizeForMatch('l0ooonnn')).toBe('lon');

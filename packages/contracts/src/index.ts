@@ -155,6 +155,7 @@ export const McVoiceEventSchema = z.discriminatedUnion('type', [
   }).strict(),
   z.object({ type: z.literal('LEADERBOARD_GENERIC'), roundId: z.string().trim().min(1).max(128) }).strict(),
   z.object({ type: z.literal('VICTORY_GENERIC'), roundId: z.string().trim().min(1).max(128) }).strict(),
+  z.object({ type: z.literal('OPERATOR_CHAT'), chatId: z.string().uuid() }).strict(),
 ]);
 export type McVoiceEvent = z.infer<typeof McVoiceEventSchema>;
 
@@ -200,7 +201,7 @@ export const MAX_MC_READING_MS = 20_000;
 export const DEFAULT_MC_READING_MS = 5_000;
 
 export const McVoiceCueEventTypeSchema = z.enum([
-  'WELCOME', 'QUESTION', 'COUNTDOWN', 'TIMEOUT', 'SPAM_REMINDER', 'ANSWER_REVEAL', 'LEADERBOARD_GENERIC', 'VICTORY_GENERIC',
+  'WELCOME', 'QUESTION', 'COUNTDOWN', 'TIMEOUT', 'SPAM_REMINDER', 'ANSWER_REVEAL', 'LEADERBOARD_GENERIC', 'VICTORY_GENERIC', 'OPERATOR_CHAT',
 ]);
 export type McVoiceCueEventType = z.infer<typeof McVoiceCueEventTypeSchema>;
 
@@ -214,6 +215,23 @@ export const McVoiceCueSchema = z.object({
   bubbleText: z.string().trim().min(1).max(300).optional(),
 }).strict();
 export type McVoiceCue = z.infer<typeof McVoiceCueSchema>;
+
+export const McChatTextSchema = z.string().trim().min(1).max(120);
+export const McChatRequestSchema = z.object({ text: McChatTextSchema, speak: z.boolean().default(true) }).strict();
+export const McChatPresetRequestSchema = z.object({ text: McChatTextSchema }).strict();
+export const McChatPresetSchema = z.object({ id: z.string().uuid(), text: McChatTextSchema }).strict();
+export type McChatPreset = z.infer<typeof McChatPresetSchema>;
+
+export const McChatQueueItemSchema = z.object({
+  id: z.string().uuid(),
+  text: McChatTextSchema,
+  speak: z.boolean(),
+  status: z.enum(['GENERATING', 'QUEUED', 'PLAYING', 'DONE', 'ERROR', 'CANCELLED']),
+  createdAtMs: z.number().finite(),
+  updatedAtMs: z.number().finite(),
+  errorMessage: z.string().max(200).optional(),
+}).strict();
+export type McChatQueueItem = z.infer<typeof McChatQueueItemSchema>;
 
 /** Lịch countdown gửi một lần khi câu vào ACCEPTING; overlay tự xếp lịch theo giờ server. */
 export const McVoiceCountdownCueSchema = z.object({
@@ -964,6 +982,8 @@ export type PublicSnapshot = {
   fastestCorrectAnswer: FastestCorrectAnswer | null;
   /** Cue chỉ được gắn vào snapshot WS phát một lần; snapshot phục hồi luôn trả null. */
   mcVoiceCue?: McVoiceCue | null;
+  /** Bubble chữ-only của operator; âm thanh dùng mcVoiceCue cùng mốc phát. */
+  mcChatBubble?: { chatId: string; text: string; startsAtServerMs: number; endsAtServerMs: number } | null;
   /** Thông báo sảnh khi runtime đang chờ chuẩn bị audio câu đầu tiên. */
   lobbyMessage?: string;
   /** Lịch countdown bền theo câu; snapshot reconnect chỉ tự phát các mốc còn ở tương lai. */
@@ -1017,6 +1037,8 @@ export type AdminSnapshot = {
   }[];
   /** Thời gian còn lại trước khi bắt đầu vòng với fallback nếu audio câu 1 chưa sẵn sàng. */
   roundStartWait?: { durationMs: number; remainingMs: number } | null;
+  /** Hàng chờ chat MC chỉ trả trên snapshot admin. */
+  mcChatQueue?: McChatQueueItem[];
   pool: { eligible: number; unusedInSession: number; requiredNextRound: number; lowPoolWarning: boolean };
   simulator: { running: boolean; players: number } | null;
   error: { code: string; message: string } | null;

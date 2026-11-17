@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import {
   filterPlayerName,
+  findNameFilterTextMatches,
   DEFAULT_NAME_FILTER_RULES,
   DEFAULT_PROTECTED_ENTITIES,
   NAME_RULE_GROUPS,
@@ -247,6 +248,10 @@ export class NameFilterStore {
       checkedAt,
       protectedEntities: this.protectedEntities,
     });
+  }
+
+  findTextMatches(text: string) {
+    return findNameFilterTextMatches(text, this.current, DEFAULT_NAME_FILTER_RULES);
   }
 
   /** Lọc tên tạm trong RAM, không cấp alias bền vững cho người chưa được nhận vào phiên. */

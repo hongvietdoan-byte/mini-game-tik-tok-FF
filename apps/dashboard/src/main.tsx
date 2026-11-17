@@ -15,6 +15,7 @@ import { adminTokenForRuntime, overlayUrlForRuntime, shouldPersistAdminToken, ty
 import { SetupWizard } from './SetupWizard';
 import { QuestionReviewPage } from './QuestionReviewPage';
 import { NameModerationPage } from './NameModerationPage';
+import { McChatPanel } from './McChatPanel';
 import { createApiNameModerationDataSource, createApiNameModerationPolicyDataSource } from './nameModerationData';
 import { HudSettingsPage } from './HudSettingsPage';
 import { ThemePage } from './ThemePage';
@@ -569,6 +570,7 @@ function App() {
               <small>{mcVoicePreflightState === 'loading' ? 'Đang đọc preflight mcVoice…' : mcVoicePreflightState === 'unavailable' ? 'Không đọc được preflight mcVoice.' : mcVoicePreflight ? `Preflight mcVoice: ${preflightStatusName(mcVoicePreflight.status)} · ${mcVoicePreflight.reason}` : 'Chưa có kết quả preflight mcVoice.'}</small>
             </div>
             <div className="mc-status" data-testid="mc-bubble"><span className="mc-mark">MC</span><div><small>MC KELLY · {snapshot.public.mc.state.toUpperCase()}</small><p>{snapshot.public.mc.bubble}</p></div></div>
+            <McChatPanel client={client} token={token.trim()} snapshot={snapshot} isMock={isMock} />
             <div className="connection-line"><span className={`connection-dot connection-${snapshot.public.connection.toLowerCase()}`} />Nguồn bình luận <b>{connectionName(snapshot.public.connection)}</b><span className="connection-spacer" />WebSocket <b>{socketLabel(socketStatus)}</b></div>
             <div className="operator-answer"><div><small>ĐÁP ÁN ĐÚNG · CHỈ HIỂN THỊ CHO OPERATOR</small><strong>{snapshot.current?.correctOptionId ?? '—'}</strong></div><span>{snapshot.public.question?.options.find((option) => option.id === snapshot.current?.correctOptionId)?.text ?? 'Chưa có câu hỏi đang mở'}</span></div>
             <div className="answer-distribution"><b>Phân bố A / B / C / D</b><div>{(['A', 'B', 'C', 'D'] as const).map((option) => <span key={option}><i>{option}</i><strong>{snapshot.current?.optionCounts[option] ?? 0}</strong></span>)}</div></div>

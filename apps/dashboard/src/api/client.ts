@@ -7,6 +7,8 @@ import type {
   HudConfigUpdate,
   HudImageSlot,
   LiveSourceHealth,
+  McChatPreset,
+  McChatQueueItem,
   OverlayAudioState,
   Question,
   QuestionReview,
@@ -47,6 +49,12 @@ export interface DashboardClient {
   controlConnection(token: string, sessionId: string, action: 'LOSE' | 'RESTORE'): Promise<{ ok: boolean; status: string }>;
   controlSource(token: string, sessionId: string, action: SourceControlAction): Promise<{ ok: boolean; health: LiveSourceHealth }>;
   sendComment(token: string, sessionId: string, comment: { userId: string; displayName: string; text: string }): Promise<{ ok: boolean }>;
+  sendMcChat(token: string, sessionId: string, request: { text: string; speak: boolean }): Promise<{ ok: boolean; item: McChatQueueItem }>;
+  cancelMcChat(token: string, sessionId: string, chatId: string): Promise<{ ok: boolean; item: McChatQueueItem }>;
+  useMcChatTextFallback(token: string, sessionId: string, chatId: string): Promise<{ ok: boolean; item: McChatQueueItem }>;
+  getMcChatPresets(token: string): Promise<{ presets: McChatPreset[] }>;
+  addMcChatPreset(token: string, text: string): Promise<{ ok: boolean; presets: McChatPreset[] }>;
+  deleteMcChatPreset(token: string, presetId: string): Promise<{ ok: boolean; presets: McChatPreset[] }>;
   getQuestions(token: string): Promise<Question[]>;
   reviewQuestion(token: string, questionId: string, decision: QuestionReview['decision'], reason?: string): Promise<{ ok: boolean; question: Question }>;
   getSystemChecks(token: string): Promise<SystemChecksResponse>;
@@ -146,6 +154,36 @@ export const apiClient: DashboardClient = {
     return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/comments`, token, {
       method: 'POST', body: JSON.stringify(comment),
     });
+  },
+
+  sendMcChat(token, sessionId, request) {
+    return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/mc-chat`, token, {
+      method: 'POST', body: JSON.stringify(request),
+    });
+  },
+
+  cancelMcChat(token, sessionId, chatId) {
+    return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/mc-chat/${encodeURIComponent(chatId)}/cancel`, token, {
+      method: 'POST', body: '{}',
+    });
+  },
+
+  useMcChatTextFallback(token, sessionId, chatId) {
+    return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/mc-chat/${encodeURIComponent(chatId)}/fallback`, token, {
+      method: 'POST', body: '{}',
+    });
+  },
+
+  getMcChatPresets(token) {
+    return jsonRequest('/api/mc-chat-presets', token);
+  },
+
+  addMcChatPreset(token, text) {
+    return jsonRequest('/api/mc-chat-presets', token, { method: 'POST', body: JSON.stringify({ text }) });
+  },
+
+  deleteMcChatPreset(token, presetId) {
+    return jsonRequest(`/api/mc-chat-presets/${encodeURIComponent(presetId)}`, token, { method: 'DELETE' });
   },
 
   getQuestions(token) {

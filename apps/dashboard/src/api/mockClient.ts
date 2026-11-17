@@ -2,6 +2,7 @@ import {
   DEFAULT_HUD_CONFIG,
   HudConfigSchema,
   INITIAL_TEST_SAFE_ZONE,
+  McChatRequestSchema,
   SessionConfigSchema,
   SYSTEM_CHECK_IDS,
   type AdminSnapshot,
@@ -17,6 +18,8 @@ import {
   type LeaderboardEntry,
   type PublicLeaderboardEntry,
   type LiveSourceHealth,
+  type McChatPreset,
+  type McChatQueueItem,
   type PublicQuestion,
   type PublicSnapshot,
   type Question,
@@ -133,6 +136,9 @@ class MockDashboardClient implements DashboardClient {
   private commandResults = new Map<string, CommandResponse>();
   private activeThemeId: string | null = 'neon-arena';
   private themeVersion = 1;
+  private mcChatQueue: McChatQueueItem[] = [];
+  private mcChatPresets: McChatPreset[] = [];
+  private mcChatBubble: NonNullable<PublicSnapshot['mcChatBubble']> | null = null;
 
   private resolvedTheme(themeId = this.activeThemeId): ResolvedTheme {
     const definition = mockThemeDefinitions.find((theme) => theme.item.id === themeId && theme.item.valid);
@@ -205,6 +211,8 @@ class MockDashboardClient implements DashboardClient {
       this.answerCount = 0;
       this.participantCount = 34;
       this.optionCounts = { A: 4, B: 14, C: 3, D: 2 };
+      this.mcChatQueue = [];
+      this.mcChatBubble = null;
     }
     const snapshot = this.snapshot();
     this.emit();
@@ -239,7 +247,97 @@ class MockDashboardClient implements DashboardClient {
     const response = { status: 200, result };
     this.commandResults.set(envelope.commandId, response);
     this.emit();
+    this.pumpMockMcChat();
     return response;
+  }
+
+  async sendMcChat(_token: string, sessionId: string, request: { text: string; speak: boolean }) {
+    this.assertSession(sessionId);
+    if (this.snapshot().sessionStatus !== 'OPEN') throw new ApiError('Phiên đã đóng.', 409, 'SESSION_CLOSED');
+    const parsed = McChatRequestSchema.safeParse(request);
+    if (!parsed.success) throw new ApiError('Câu MC phải có từ 1 đến 120 ký tự.', 400, 'MC_CHAT_INVALID');
+    const active = this.mcChatQueue.filter((item) => !['DONE', 'CANCELLED'].includes(item.status));
+    if (active.length >= 5) throw new ApiError('Hàng chờ MC đã đủ 5 câu.', 429, 'MC_CHAT_QUEUE_FULL');
+    const speak = parsed.data.speak && this.config.mcVoiceEnabled === true;
+    const item: McChatQueueItem = {
+      id: crypto.randomUUID(), text: parsed.data.text, speak,
+      status: speak ? 'GENERATING' : 'QUEUED', createdAtMs: Date.now(), updatedAtMs: Date.now(),
+    };
+    this.mcChatQueue = [...this.mcChatQueue, item];
+    this.emit();
+    if (speak) {
+      window.setTimeout(() => {
+        if (this.mcChatQueue.find((entry) => entry.id === item.id)?.status !== 'GENERATING') return;
+        this.updateMockMcChat(item.id, 'QUEUED');
+        this.pumpMockMcChat();
+      }, 60);
+    }
+    this.pumpMockMcChat();
+    return { ok: true, item };
+  }
+
+  async cancelMcChat(_token: string, sessionId: string, chatId: string) {
+    this.assertSession(sessionId);
+    const item = this.mcChatQueue.find((entry) => entry.id === chatId);
+    if (!item || !['GENERATING', 'QUEUED', 'ERROR'].includes(item.status))
+      throw new ApiError('Chỉ huỷ được câu MC chưa phát.', 409, 'MC_CHAT_ALREADY_STARTED');
+    this.updateMockMcChat(chatId, 'CANCELLED');
+    return { ok: true, item: this.mcChatQueue.find((entry) => entry.id === chatId)! };
+  }
+
+  async useMcChatTextFallback(_token: string, sessionId: string, chatId: string) {
+    this.assertSession(sessionId);
+    const item = this.mcChatQueue.find((entry) => entry.id === chatId);
+    if (!item || item.status !== 'ERROR') throw new ApiError('Câu MC chưa sẵn sàng để chuyển sang chữ.', 409, 'MC_CHAT_NOT_FALLBACK_READY');
+    item.speak = false;
+    this.updateMockMcChat(chatId, 'QUEUED');
+    this.pumpMockMcChat();
+    return { ok: true, item: this.mcChatQueue.find((entry) => entry.id === chatId)! };
+  }
+
+  async getMcChatPresets(_token: string) {
+    return { presets: this.mcChatPresets.map((preset) => ({ ...preset })) };
+  }
+
+  async addMcChatPreset(_token: string, text: string) {
+    const parsed = McChatRequestSchema.shape.text.safeParse(text);
+    if (!parsed.success) throw new ApiError('Câu mẫu phải có từ 1 đến 120 ký tự.', 400, 'MC_CHAT_INVALID');
+    if (this.mcChatPresets.length >= 50) throw new ApiError('Danh sách đã đủ 50 câu mẫu.', 409, 'MC_CHAT_PRESETS_FULL');
+    this.mcChatPresets.push({ id: crypto.randomUUID(), text: parsed.data });
+    return { ok: true, presets: this.mcChatPresets.map((preset) => ({ ...preset })) };
+  }
+
+  async deleteMcChatPreset(_token: string, presetId: string) {
+    const before = this.mcChatPresets.length;
+    this.mcChatPresets = this.mcChatPresets.filter((preset) => preset.id !== presetId);
+    if (this.mcChatPresets.length === before) throw new ApiError('Không tìm thấy câu mẫu.', 404, 'MC_CHAT_PRESET_NOT_FOUND');
+    return { ok: true, presets: this.mcChatPresets.map((preset) => ({ ...preset })) };
+  }
+
+  private updateMockMcChat(id: string, status: McChatQueueItem['status']) {
+    this.mcChatQueue = this.mcChatQueue.map((item) => item.id === id ? { ...item, status, updatedAtMs: Date.now() } : item);
+    this.emit();
+  }
+
+  private pumpMockMcChat() {
+    if (!this.sessionId || !['LOBBY', 'REVEAL', 'LEADERBOARD', 'INTERMISSION', 'ROUND_END', 'VICTORY'].includes(this.state) ||
+      this.mcChatQueue.some((item) => item.status === 'PLAYING')) return;
+    const item = this.mcChatQueue.find((entry) => entry.status === 'QUEUED');
+    if (!item) return;
+    window.setTimeout(() => {
+      const current = this.mcChatQueue.find((entry) => entry.id === item.id);
+      if (current?.status !== 'QUEUED' || !['LOBBY', 'REVEAL', 'LEADERBOARD', 'INTERMISSION', 'ROUND_END', 'VICTORY'].includes(this.state)) return;
+      const startsAtServerMs = Date.now();
+      this.mcChatQueue = this.mcChatQueue.map((entry) => entry.id === current.id ? { ...entry, status: 'PLAYING', updatedAtMs: startsAtServerMs } : entry);
+      this.mcChatBubble = { chatId: current.id, text: current.text, startsAtServerMs, endsAtServerMs: startsAtServerMs + 5_000 };
+      this.emit();
+      window.setTimeout(() => {
+        if (this.mcChatBubble?.chatId === current.id) this.mcChatBubble = null;
+        this.updateMockMcChat(current.id, 'DONE');
+        this.emit();
+        this.pumpMockMcChat();
+      }, 5_000);
+    }, 30);
   }
 
   async controlSimulator(_token: string, sessionId: string, request: SimulatorRequest) {
@@ -531,6 +629,7 @@ class MockDashboardClient implements DashboardClient {
             ? 'Đã khóa đáp án. Cùng xem kết quả câu hỏi Free Fire nhé.'
             : 'Bình luận A, B, C hoặc D để tham gia câu hỏi Free Fire.',
       },
+      mcChatBubble: this.mcChatBubble && this.mcChatBubble.endsAtServerMs > Date.now() ? this.mcChatBubble : null,
       connection: this.connection,
       audience: null,
       safeZone: INITIAL_TEST_SAFE_ZONE,
@@ -557,6 +656,7 @@ class MockDashboardClient implements DashboardClient {
         rejected: Object.fromEntries(rejectReasons.map((reason) => [reason, this.recentRejections.filter((item) => item.reason === reason).length])) as AdminSnapshot['metrics']['rejected'],
       },
       recentRejections: [...this.recentRejections],
+      mcChatQueue: this.mcChatQueue.map((item) => ({ ...item })),
       pool: { eligible: 36, unusedInSession: 36, requiredNextRound: this.config.questionsPerRound, lowPoolWarning: false },
       simulator: this.simulator,
       error: null,
