@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 261,
-  "heartbeat": "2026-11-17T23:07:00+07:00",
+  "heartbeat": "2026-11-17T23:13:37+07:00",
   "state": "working",
-  "task": "C-0264",
-  "note": "Phần trăm largest-remainder đã implement và unit test pass; tiếp tục overlay/audio trong khi chờ điều phối phạm vi packages/contracts và quiz-core",
+  "task": "C-0270",
+  "note": "C-0264 phần % đã commit; đang chờ điều phối phạm vi packages/engine, chuyển sang dashboard hợp lệ và retry STALE",
   "done": []
 }
