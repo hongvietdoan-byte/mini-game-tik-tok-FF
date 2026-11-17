@@ -155,7 +155,10 @@ describe('MC Voice server API', () => {
     expect((await send({ type: 'OPEN_LOBBY' })).statusCode).toBe(200);
     await vi.waitFor(() => expect(publicMessages.some((message) => message.payload.mcVoiceCue &&
       (message.payload.mcVoiceCue as { eventType?: string }).eventType === 'WELCOME')).toBe(true), { timeout: 15_000 });
-    expect((await send({ type: 'START_ROUND' })).statusCode).toBe(200);
+    const start = await send({ type: 'START_ROUND' });
+    expect([200, 202]).toContain(start.statusCode);
+    if (start.statusCode === 202)
+      await vi.waitFor(() => expect(runtime.engine.state).toBe('PREPARE'), { timeout: 15_000 });
     for (let spent = 0; runtime.engine.state !== 'READING' && spent < 5_000; spent += 50) h.scheduler.advance(50);
     expect(runtime.engine.state).toBe('READING');
     const roundQuestionCount = h.store.roundQuestions(runtime.engine.round!.roundId).length;
@@ -231,7 +234,9 @@ describe('MC Voice server API', () => {
           operatorId: 'test', requestedAtMs: h.scheduler.now(), command },
       });
       await send({ type: 'OPEN_LOBBY' });
-      await send({ type: 'START_ROUND' });
+      const start = await send({ type: 'START_ROUND' });
+      expect([200, 202]).toContain(start.statusCode);
+      await vi.waitFor(() => expect(runtime.engine.state).toBe('PREPARE'), { timeout: 15_000 });
       for (let spent = 0; runtime.engine.state !== 'READING' && spent < 5_000; spent += 50) h.scheduler.advance(50);
       expect(runtime.engine.state).toBe('READING');
       expect(runtime.engine.timer?.durationMs).toBe(DEFAULT_MC_READING_MS);
