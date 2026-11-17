@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 258,
-  "heartbeat": "2026-11-17T21:59:37+07:00",
+  "heartbeat": "2026-11-17T22:00:12+07:00",
   "state": "working",
-  "task": "C-0258",
-  "note": "Đã ack; chuẩn bị worktree để lọc điểm 0 ở mọi bảng xếp hạng overlay",
+  "task": "C-0260",
+  "note": "C-0258 đã push và gửi report; bắt đầu C-0260 theo thứ tự thư",
   "done": []
 }
