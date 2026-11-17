@@ -58,8 +58,8 @@ if errorlevel 1 goto backup_error
 echo [3/3] Dang chay may chu tai http://127.0.0.1:8787 ...
 echo.
 echo  - Dashboard (dieu khien): http://127.0.0.1:8787/dashboard/
-echo  - Overlay (dua vao LIVE Studio, 1080x1920): http://127.0.0.1:8787/overlay/?role=program
-echo  - Tab xem thu: http://127.0.0.1:8787/overlay/
+echo  - Cua so game program (co tieng) se mo tu dong; dung Window Capture cua cua so nay trong LIVE Studio.
+echo  - Neu Edge khong tu mo cua so game: http://127.0.0.1:8787/overlay/?role=program
 echo  - Ma quan tri da duoc CHEP SAN vao clipboard: bam Ctrl+V o o dang nhap Dashboard.
 echo  - DUNG TAT cua so nay trong luc LIVE. Tat cua so = tat game.
 echo.
