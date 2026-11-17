@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { DEFAULT_HUD_CONFIG, type HudConfig } from '@quiz/contracts';
+import { DEFAULT_HUD_CONFIG, THEME_DEFAULT_TOKENS, type HudConfig, type ResolvedTheme } from '@quiz/contracts';
 import { getE2eAssetDirectory, getE2eTempDirectory } from './assets';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
 
@@ -78,6 +78,59 @@ async function openScene(page: Page, sceneName: string, expectedScene: string) {
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   return { stage, errors };
 }
+
+test('theme mặc định giữ pixel của overlay gốc ở sáu cảnh', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
+  const fallbackTheme: ResolvedTheme = { id: 'default', name: 'Giao diện mặc định', version: 1, tokens: {}, fonts: [], assets: {} };
+  const defaultTheme: ResolvedTheme = { ...fallbackTheme, version: 2, tokens: { ...THEME_DEFAULT_TOKENS } };
+  let activeTheme = fallbackTheme;
+  await page.route('**/api/theme', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeTheme) }));
+
+  const scenesToCompare = [
+    { mock: 'lobby', scene: 'LOBBY', state: 'LOBBY' },
+    { mock: 'reading', scene: 'QUESTION', state: 'READING' },
+    { mock: 'question', scene: 'QUESTION', state: 'ACCEPTING' },
+    { mock: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD' },
+    { mock: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
+    { mock: 'victory', scene: 'VICTORY', state: 'VICTORY' },
+  ];
+
+  for (const entry of scenesToCompare) {
+    activeTheme = fallbackTheme;
+    await openScene(page, entry.mock, entry.scene);
+    await expect(page.locator('html')).toHaveAttribute('data-theme-version', '1');
+    await expect(page.locator(`[data-testid="stage"][data-state="${entry.state}"]`)).toBeVisible();
+    const screenshotOptions = { animations: 'disabled' as const, mask: [page.locator('[data-testid="timer"]')], maskColor: '#ff00ff' };
+    const fallbackPng = await page.screenshot({ ...screenshotOptions, path: join(screenshotDirectory, `theme-baseline-${entry.mock}.png`) });
+
+    activeTheme = defaultTheme;
+    await page.clock.runFor(2_600);
+    await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
+    await expect(page.locator(`[data-testid="stage"][data-state="${entry.state}"]`)).toBeVisible();
+    const themedPng = await page.screenshot({ ...screenshotOptions, path: join(screenshotDirectory, `theme-default-${entry.mock}.png`) });
+    expect(themedPng.equals(fallbackPng), `${entry.mock}: default token overlay must be pixel-identical to CSS fallbacks`).toBe(true);
+  }
+});
+
+test('overlay tải theme khi mở, cập nhật theo version và gỡ token cũ', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
+  let activeTheme: ResolvedTheme = { id: 'event', name: 'Sự kiện', version: 1, tokens: { deep: '#123456' }, fonts: [], assets: {} };
+  await page.route('**/api/theme', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeTheme) }));
+  await page.goto('/?mock=lobby', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme-version', '1');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('#123456');
+
+  activeTheme = { ...activeTheme, version: 2, tokens: { deep: '#abcdef' } };
+  await page.clock.runFor(2_600);
+  await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('#abcdef');
+
+  activeTheme = { ...activeTheme, version: 3, tokens: {} };
+  await page.clock.runFor(2_600);
+  await expect(page.locator('html')).toHaveAttribute('data-theme-version', '3');
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('');
+});
 
 async function openLobbyWithTenLeaderboardEntries(page: Page) {
   const base = makeMockSnapshot('question');

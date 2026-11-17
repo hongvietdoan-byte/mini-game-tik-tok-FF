@@ -88,13 +88,19 @@ export function resolveMcAnimation(manifest: McSequenceManifest, state: McState)
 
 export function getMcFrameUrl(baseUrl: string, selection: McAnimationSelection, frameIndex: number): string | null {
   if (!Number.isInteger(frameIndex) || frameIndex < 0 || frameIndex >= selection.animation.frames) return null;
-  const base = baseUrl.replace(/\/+$/, '');
   const frameNumber = String(frameIndex + 1).padStart(4, '0');
-  return `${base}/${selection.animation.path}/${frameNumber}.png`;
+  return appendUrlPath(baseUrl, `${selection.animation.path}/${frameNumber}.png`);
 }
 
 export function getMcFallbackUrl(manifest: McSequenceManifest, baseUrl: string, staticFallback: string): string {
-  return manifest.fallback ? `${baseUrl.replace(/\/+$/, '')}/${manifest.fallback}` : staticFallback;
+  return manifest.fallback ? appendUrlPath(baseUrl, manifest.fallback) : staticFallback;
+}
+
+function appendUrlPath(baseUrl: string, childPath: string) {
+  const queryAt = baseUrl.indexOf('?');
+  const pathname = queryAt < 0 ? baseUrl : baseUrl.slice(0, queryAt);
+  const query = queryAt < 0 ? '' : baseUrl.slice(queryAt);
+  return `${pathname.replace(/\/+$/, '')}/${childPath.split('/').map(encodeURIComponent).join('/')}${query}`;
 }
 
 export function createMcPlayback(selection: McAnimationSelection, frameIndex = 0): McPlayback {

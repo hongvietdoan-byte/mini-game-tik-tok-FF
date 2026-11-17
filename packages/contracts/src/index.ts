@@ -18,7 +18,7 @@ export {
   type ThemeFont,
   type ThemeManifest,
 } from './theme';
-export { THEME_DEFAULT_TOKENS, type ThemeDefaultToken } from './theme-default-tokens';
+export { THEME_DEFAULT_TOKENS, THEME_DEFAULT_TOKEN_DESCRIPTIONS, type ThemeDefaultToken } from './theme-default-tokens';
 
 export const CONTRACT_VERSION = 1;
 
