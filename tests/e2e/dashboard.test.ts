@@ -57,6 +57,13 @@ async function launchDashboard(page: Page, options: { mock?: boolean; setupDone?
   await page.goto(`${dashboardUrl}/${mock ? '?mock=1' : ''}`);
 }
 
+async function stopDashboardSession(page: Page) {
+  await page.locator('.danger-actions').getByRole('button', { name: 'Dừng phiên' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Xác nhận: Dừng phiên' });
+  await dialog.getByLabel('Lý do').fill('Kết thúc phiên kiểm thử');
+  await dialog.getByRole('button', { name: 'Xác nhận' }).click();
+}
+
 async function createReviewPlaceholder(page: Page, kind: 'logo' | 'background'): Promise<Buffer> {
   const base64 = await page.evaluate((imageKind) => {
     const canvas = document.createElement('canvas');
@@ -319,6 +326,44 @@ test('Live Control hiển thị giọng MC bật/tắt và preflight mcVoice', a
   await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
   await expect(page.getByTestId('mc-voice-session-status')).toContainText('Giọng MC Tắt');
   await expect(page.getByTestId('mc-voice-session-status')).toContainText('Giọng MC đang tắt');
+});
+
+test('sau STOP hiện Tạo phiên mới, giữ lựa chọn và tạo phiên kế tiếp không cần tải lại', async ({ page }) => {
+  const openSession = await mockClient.currentSession();
+  await launchDashboard(page);
+  if (openSession) {
+    await expect(page.locator('.session-heading')).toBeVisible();
+    await stopDashboardSession(page);
+    await expect(page.getByTestId('closed-session')).toBeVisible();
+    await page.getByRole('button', { name: 'Tạo phiên mới' }).click();
+  }
+
+  const form = page.locator('.create-form');
+  await expect(form).toBeVisible();
+  await form.getByRole('button', { name: 'TikTok LIVE', exact: true }).click();
+  await form.getByLabel('Số câu mỗi vòng').selectOption('10');
+  await form.getByLabel('TikTok username').fill('@quiz_codex_stop');
+  await form.getByLabel('Giọng MC').uncheck();
+  await form.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  await expect(page.locator('.session-heading')).toContainText('Phiên LIVE');
+  await expect(page.locator('.tiktok-account')).toContainText('@quiz_codex_stop');
+
+  await stopDashboardSession(page);
+  const closed = page.getByTestId('closed-session');
+  await expect(closed).toBeVisible();
+  await expect(closed.getByRole('button', { name: 'Tạo phiên mới' })).toBeEnabled();
+  await expect(page.locator('.actions-panel')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Tạo phiên mới' }).click();
+
+  await expect(form).toBeVisible();
+  await expect(form.getByRole('button', { name: 'TikTok LIVE', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(form.getByLabel('TikTok username')).toHaveValue('@quiz_codex_stop');
+  await expect(form.getByLabel('Giọng MC')).not.toBeChecked();
+  await form.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+
+  await expect(page.locator('.session-heading')).toContainText('Phiên LIVE');
+  await expect(page.locator('.tiktok-account')).toContainText('@quiz_codex_stop');
+  await expect(page.getByTestId('mc-voice-session-status')).toContainText('Giọng MC Tắt');
 });
 
 test('chặn tạo phiên TikTok khi có ít hơn 10 câu đã duyệt', async ({ page }) => {
