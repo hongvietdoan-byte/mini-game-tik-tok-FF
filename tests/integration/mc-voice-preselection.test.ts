@@ -63,7 +63,14 @@ async function harness() {
   return result;
 }
 
-async function createVoiceSession(h: Awaited<ReturnType<typeof harness>>, opts: { mcVoiceEnabled?: boolean; seed?: number; packId?: string; lobbyMs?: number; mcVoiceStartWaitMs?: number } = {}) {
+async function createVoiceSession(h: Awaited<ReturnType<typeof harness>>, opts: {
+  mcVoiceEnabled?: boolean;
+  seed?: number;
+  packId?: string;
+  lobbyMs?: number;
+  mcVoiceStartWaitMs?: number;
+  selectionMode?: 'RANDOM' | 'DIFFICULTY';
+} = {}) {
   const response = await h.quiz.app.inject({
     method: 'POST',
     url: '/api/sessions',
@@ -75,6 +82,7 @@ async function createVoiceSession(h: Awaited<ReturnType<typeof harness>>, opts: 
         packId: opts.packId ?? 'demo',
         allowDemoQuestions: true,
         seed: opts.seed ?? 42,
+        questionSelectionMode: opts.selectionMode ?? 'RANDOM',
         questionsPerRound: 10,
         mcVoiceEnabled: opts.mcVoiceEnabled ?? true,
         ...(opts.mcVoiceStartWaitMs === undefined ? {} : { mcVoiceStartWaitMs: opts.mcVoiceStartWaitMs }),
@@ -280,7 +288,7 @@ describe('MC Voice lựa chọn trước trong LOBBY', () => {
       assetPromises.push(pending);
       return pending;
     });
-    const { runtime, send } = await createVoiceSession(h);
+    const { runtime, send } = await createVoiceSession(h, { selectionMode: 'DIFFICULTY' });
 
     const beforeLobbyVersion = runtime.engine.stateVersion;
     expect((await send({ type: 'OPEN_LOBBY' })).statusCode).toBe(200);
@@ -305,6 +313,7 @@ describe('MC Voice lựa chọn trước trong LOBBY', () => {
     expect((await send({ type: 'START_ROUND' })).statusCode).toBe(200);
     const snapshots = h.store.roundQuestions(`${runtime.id}:r1`).map((row) => row.snapshot);
     expect(snapshots).toHaveLength(10);
+    expect(snapshots[0]?.difficulty).toBe('EASY');
     const preselectedIds = readingSpy.mock.calls.map(([lines]) => questionInstanceIdForLines(lines));
     expect(preselectedIds).toEqual(snapshots.map((snapshot) => snapshot.questionInstanceId));
     for (const [index, snapshot] of snapshots.entries()) {

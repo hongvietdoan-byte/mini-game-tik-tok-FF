@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { QuestionSchema, type Question } from '@quiz/contracts';
-import { createPrng, isEligible, planPreferredDifficultyCounts, selectRound, snapshotQuestion } from './selection';
+import {
+  createPrng,
+  isEligible,
+  planPreferredDifficultyCounts,
+  selectRound,
+  shuffleInPlace,
+  snapshotQuestion,
+} from './selection';
 
 function question(index: number, overrides: Record<string, unknown> = {}): Question {
   return QuestionSchema.parse({
@@ -208,6 +215,59 @@ describe('selectRound', () => {
         ...Array(7).fill('EASY'), ...Array(5).fill('MEDIUM'), ...Array(3).fill('HARD'),
       ]);
       expect(first.snapshots.some((snapshot) => snapshot.questionId === 'q013')).toBe(false);
+    }
+  });
+
+  it('ưu tiên EASY ở đầu, dồn HARD về cuối, giữ option từng câu và sửa lại index/instance id', () => {
+    const pool = [
+      ...Array.from({ length: 2 }, (_, index) => question(index + 1, { difficulty: 'EASY' })),
+      ...Array.from({ length: 8 }, (_, index) => question(index + 3, { difficulty: 'MEDIUM' })),
+      ...Array.from({ length: 5 }, (_, index) => question(index + 11, { difficulty: 'HARD' })),
+    ];
+    const seed = 91;
+    const baselineRnd = createPrng(seed);
+    const baselineQuestions = shuffleInPlace([...pool].sort((a, b) => a.id.localeCompare(b.id)), baselineRnd);
+    const optionsByQuestion = new Map(
+      baselineQuestions.map((q, index) => [q.id, snapshotQuestion(q, index, 'round-7', baselineRnd).options]),
+    );
+    const result = selectRound(request(pool, { count: 15, seed }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const difficulties = result.snapshots.map((snapshot) => snapshot.difficulty);
+      expect(difficulties.slice(0, 2)).toEqual(['EASY', 'EASY']);
+      expect(
+        difficulties.every((difficulty, index) =>
+          difficulty !== 'HARD' || index >= Math.floor(difficulties.length / 2),
+        ),
+      ).toBe(true);
+      expect(difficulties.at(-1)).toBe('HARD');
+      expect(result.snapshots.map((snapshot) => snapshot.index)).toEqual(Array.from({ length: 15 }, (_, index) => index));
+      expect(result.snapshots.map((snapshot) => snapshot.questionInstanceId)).toEqual(
+        Array.from({ length: 15 }, (_, index) => `round-7:q${String(index + 1).padStart(2, '0')}`),
+      );
+      for (const snapshot of result.snapshots) {
+        expect(snapshot.options).toEqual(optionsByQuestion.get(snapshot.questionId));
+      }
+
+      const repeated = selectRound(request(pool, { count: 15, seed }));
+      expect(repeated).toEqual(result);
+    }
+  });
+
+  it('vòng không có EASY vẫn tạo đủ snapshots và đưa HARD về cuối', () => {
+    const pool = [
+      ...Array.from({ length: 7 }, (_, index) => question(index + 1, { difficulty: 'MEDIUM' })),
+      ...Array.from({ length: 8 }, (_, index) => question(index + 8, { difficulty: 'HARD' })),
+    ];
+    const result = selectRound(request(pool, { count: 15 }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.snapshots).toHaveLength(15);
+      expect(result.snapshots[0]?.difficulty).toBe('MEDIUM');
+      expect(result.snapshots[1]?.difficulty).toBe('MEDIUM');
+      expect(result.snapshots.at(-1)?.difficulty).toBe('HARD');
     }
   });
 

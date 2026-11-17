@@ -241,7 +241,11 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     const difficultyCounts = emptyDifficultyCounts();
     for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
     req.onDistribution?.({ counts: difficultyCounts, targetCounts: targetDifficultyCounts, tolerance });
-    const snapshots = chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd));
+    const snapshots = orderSnapshotsByDifficulty(
+      chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd)),
+      req.roundId,
+      rnd,
+    );
     return {
       ok: true,
       seed: req.seed,
@@ -273,8 +277,28 @@ export function selectRound(req: SelectionRequest): SelectionResult {
 
   const difficultyCounts = emptyDifficultyCounts();
   for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
-  const snapshots = chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd));
+  const snapshots = orderSnapshotsByDifficulty(
+    chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd)),
+    req.roundId,
+    rnd,
+  );
   return { ok: true, seed: req.seed, snapshots, reusedQuestionIds: reused.map((q) => q.id), difficultyCounts };
+}
+
+/** Xếp EASY → MEDIUM → HARD sau khi snapshot đáp án, để giữ nguyên phép xáo option hiện có. */
+function orderSnapshotsByDifficulty(
+  snapshots: readonly QuestionSnapshot[],
+  roundId: string,
+  rnd: () => number,
+): QuestionSnapshot[] {
+  const ordered = DIFFICULTY_ORDER.flatMap((difficulty) =>
+    shuffleInPlace(snapshots.filter((snapshot) => snapshot.difficulty === difficulty), rnd),
+  );
+  return ordered.map((snapshot, index) => ({
+    ...snapshot,
+    questionInstanceId: `${roundId}:q${String(index + 1).padStart(2, '0')}`,
+    index,
+  }));
 }
 
 function pickByDifficulty(
