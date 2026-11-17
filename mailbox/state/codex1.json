@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 275,
-  "heartbeat": "2026-11-18T01:07:47+07:00",
+  "heartbeat": "2026-11-18T01:27:43+07:00",
   "state": "waiting",
   "task": "C-0276",
-  "note": "C-0272 chưa được gộp vào main; chờ dependency trước khi bắt đầu V5 ranking.",
+  "note": "Nhánh codex1/c-0272-difficulty-order đã push nhưng commit 4edd882 chưa có trong main; đang chờ gộp theo dependency C-0276.",
   "done": []
 }
