@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -42,6 +42,77 @@ describe('ThemeStore', () => {
     expect(ThemeStore.validateDirectory(out).success).toBe(true);
     expect(() => exportDefaultTheme({ out, assets })).toThrow(/đã tồn tại/u);
     expect(exportDefaultTheme({ out, assets, force: true }).manifest.id).toBe('default');
+  });
+
+  it('bỏ qua tài liệu không hỗ trợ trong thư mục asset sequence và vẫn xuất theme hợp lệ', () => {
+    const root = temp();
+    const assets = join(root, 'assets-local');
+    const sequence = join(assets, 'mc', 'kelly');
+    mkdirSync(sequence, { recursive: true });
+    writeFileSync(join(sequence, 'frame-001.png'), Buffer.from([137, 80, 78, 71]));
+    writeFileSync(join(sequence, 'HUONG_DAN.txt'), 'Tài liệu hướng dẫn');
+    const out = join(root, 'default');
+
+    const exported = exportDefaultTheme({ out, assets });
+
+    expect(exported.warnings).toContainEqual(expect.stringContaining('HUONG_DAN.txt'));
+    expect(exported.copied).toContainEqual(expect.stringContaining('frame-001.png'));
+    expect(existsSync(join(out, 'assets', 'mc', 'kelly', 'frame-001.png'))).toBe(true);
+    expect(existsSync(join(out, 'assets', 'mc', 'kelly', 'HUONG_DAN.txt'))).toBe(false);
+    expect(ThemeStore.validateDirectory(out).success).toBe(true);
+  });
+
+  it('bỏ slot thư mục nếu bên trong chỉ có tài liệu không được hỗ trợ', () => {
+    const root = temp();
+    const assets = join(root, 'assets-local');
+    const sequence = join(assets, 'mc', 'kelly');
+    mkdirSync(sequence, { recursive: true });
+    writeFileSync(join(sequence, 'HUONG_DAN.txt'), 'Tài liệu hướng dẫn');
+    const out = join(root, 'default');
+
+    const exported = exportDefaultTheme({ out, assets });
+
+    expect(exported.manifest.assets['mc.sequenceDir']).toBeUndefined();
+    expect(exported.warnings).toContainEqual(expect.stringContaining('HUONG_DAN.txt'));
+    expect(exported.warnings).toContainEqual(expect.stringContaining('chưa có asset được hỗ trợ'));
+    expect(existsSync(join(out, 'assets', 'mc', 'kelly'))).toBe(false);
+    expect(ThemeStore.validateDirectory(out).success).toBe(true);
+  });
+
+  it('giữ phần mở rộng nguồn khi xuất asset âm thanh', () => {
+    const root = temp();
+    const assets = join(root, 'assets-local');
+    mkdirSync(join(assets, 'audio'), { recursive: true });
+    writeFileSync(join(assets, 'audio', 'victory.wav'), Buffer.from([1, 2, 3]));
+    const out = join(root, 'default');
+
+    const exported = exportDefaultTheme({ out, assets });
+
+    expect(exported.manifest.assets['audio.victory']).toBe('assets/audio/victory.wav');
+    expect(ThemeStore.validateDirectory(out).success).toBe(true);
+  });
+
+  it('dọn staging khi lỗi giữa chừng và giữ nguyên theme cũ khi --force', () => {
+    const root = temp();
+    const assets = join(root, 'assets-local');
+    mkdirSync(join(assets, 'arena'), { recursive: true });
+    writeFileSync(join(assets, 'arena', 'bg.jpg'), Buffer.from([1, 2, 3]));
+    mkdirSync(join(assets, 'chibi'), { recursive: true });
+    const oversized = join(assets, 'chibi', 'oversized.png');
+    writeFileSync(oversized, Buffer.alloc(0));
+    truncateSync(oversized, 50 * 1024 * 1024 + 1);
+
+    const parent = join(root, 'themes');
+    const out = join(parent, 'default');
+    expect(() => exportDefaultTheme({ out, assets })).toThrow(/lớn hơn 50 MB/u);
+    expect(existsSync(out)).toBe(false);
+    expect(readdirSync(parent)).toEqual([]);
+
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, 'keep.txt'), 'theme cũ');
+    expect(() => exportDefaultTheme({ out, assets, force: true })).toThrow(/lớn hơn 50 MB/u);
+    expect(readFileSync(join(out, 'keep.txt'), 'utf8')).toBe('theme cũ');
+    expect(readdirSync(parent)).toEqual(['default']);
   });
 
   it('fallback an toàn, liệt kê gói lỗi, lưu lựa chọn và tăng version khi reload', () => {
