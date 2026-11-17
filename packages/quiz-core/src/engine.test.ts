@@ -211,15 +211,24 @@ describe('MC Voice — pha READING', () => {
   });
 
   it('chỉ mở pha đọc khi phiên bật voice; ACK đúng câu mở ACCEPTING đúng một lần', () => {
-    const legacy = ok(elapse(beginRound(2)));
+    const prepare = beginRound(2);
+    expect(acceptWindow(prepare)).toBeNull();
+    const legacy = ok(elapse(prepare));
     expect(legacy.state).toBe('ACCEPTING');
 
-    const reading = reachReading(2);
+    const readingTransition = elapse(beginRound(2, true, 1, true));
+    expect(readingTransition.ok && readingTransition.events)
+      .toContainEqual({ type: 'QUESTION_OPENED', questionInstanceId: 'r1:q01', index: 0 });
+    const reading = ok(readingTransition);
     const qid = reading.round!.questionInstanceIds[reading.round!.questionIndex]!;
     expect(reading.state).toBe('READING');
     expect(reading.timer).toMatchObject({ durationMs: MAX_MC_READING_MS, remainingMs: MAX_MC_READING_MS });
     expect(sceneFor(reading)).toBe('QUESTION');
-    expect(acceptWindow(reading)).toBeNull();
+    const readingOpenAtMs = reading.acceptOpenAtMs!;
+    expect(acceptWindow(reading)).toEqual({
+      openAtMs: readingOpenAtMs,
+      deadlineMs: reading.timer!.deadlineMs! + TIMINGS.answerMs,
+    });
 
     const wrongQuestion = transition(reading, {
       kind: 'MC_READING_FINISHED', expectedStateVersion: reading.stateVersion, questionInstanceId: 'old-question',
@@ -236,12 +245,11 @@ describe('MC Voice — pha READING', () => {
     }, 2_000);
     expect(finished).toMatchObject({
       ok: true,
-      state: { state: 'ACCEPTING', acceptOpenAtMs: 2_000, timer: { durationMs: TIMINGS.answerMs } },
-      events: expect.arrayContaining([{ type: 'QUESTION_OPENED', questionInstanceId: qid, index: 0 }]),
+      state: { state: 'ACCEPTING', acceptOpenAtMs: readingOpenAtMs, timer: { durationMs: TIMINGS.answerMs } },
     });
     if (finished.ok) {
-      expect(acceptWindow(finished.state)?.openAtMs).toBe(2_000);
-      expect(finished.events.filter((event) => event.type === 'QUESTION_OPENED')).toHaveLength(1);
+      expect(acceptWindow(finished.state)).toEqual({ openAtMs: readingOpenAtMs, deadlineMs: 2_000 + TIMINGS.answerMs });
+      expect(finished.events.filter((event) => event.type === 'QUESTION_OPENED')).toHaveLength(0);
       const duplicate = transition(finished.state, {
         kind: 'MC_READING_FINISHED', expectedStateVersion: reading.stateVersion, questionInstanceId: qid,
       }, 2_001);
@@ -257,12 +265,12 @@ describe('MC Voice — pha READING', () => {
     }, 1_500);
     expect(fallback).toMatchObject({
       ok: true,
-      state: { state: 'ACCEPTING', acceptOpenAtMs: 1_500 },
+      state: { state: 'ACCEPTING', acceptOpenAtMs: reading.acceptOpenAtMs },
       events: expect.arrayContaining([
         { type: 'MC_READING_ABORTED', questionInstanceId: qid, reason: 'NO_AUDIO' },
-        { type: 'QUESTION_OPENED', questionInstanceId: qid, index: 0 },
       ]),
     });
+    expect(fallback.ok && fallback.events.some((event) => event.type === 'QUESTION_OPENED')).toBe(false);
 
     const timeout = elapse(reading);
     expect(timeout).toMatchObject({
@@ -281,8 +289,9 @@ describe('MC Voice — pha READING', () => {
     });
   });
 
-  it('pause đóng băng trần đọc; resume tiếp phần còn lại và vẫn chưa nhận comment', () => {
+  it('pause đóng băng trần đọc; resume tiếp phần còn lại và mở lại source window từ lúc resume', () => {
     let reading = reachReading(2);
+    const openAtMs = reading.acceptOpenAtMs!;
     const pauseAt = reading.timer!.deadlineMs! - 15_000;
     reading = ok(cmd(reading, { type: 'PAUSE' }, pauseAt));
     expect(reading.state).toBe('PAUSED');
@@ -293,7 +302,9 @@ describe('MC Voice — pha READING', () => {
     reading = ok(cmd(reading, { type: 'RESUME' }, resumeAt));
     expect(reading.state).toBe('READING');
     expect(reading.timer!.deadlineMs).toBe(resumeAt + 15_000);
-    expect(acceptWindow(reading)).toBeNull();
+    expect(reading.acceptOpenAtMs).toBe(resumeAt);
+    expect(openAtMs).toBeLessThan(resumeAt); // tốc độ/persistence vẫn dùng mốc đầu READING.
+    expect(acceptWindow(reading)).toEqual({ openAtMs: resumeAt, deadlineMs: resumeAt + 15_000 + TIMINGS.answerMs });
   });
 
   it('skip/void/stop/recovery đều xử lý được khi đang đọc mà không mở câu để chấm', () => {
@@ -317,6 +328,9 @@ describe('MC Voice — pha READING', () => {
     const recovered = transition(oneQuestionReading, { kind: 'PROCESS_RESTARTED', lastHeartbeatMs: 1_500 }, 1_700);
     expect(recovered).toMatchObject({ ok: true, state: { state: 'PAUSED', suspended: { from: 'READING', kind: 'RECOVERY' } } });
     if (recovered.ok) {
+      const resumed = cmd(recovered.state, { type: 'RESOLVE_RECOVERY', decision: 'RESUME', reason: 'Tiếp tục đọc' }, 1_800);
+      expect(resumed).toMatchObject({ ok: true, state: { state: 'READING', acceptOpenAtMs: 1_800 } });
+      expect(resumed.ok && acceptWindow(resumed.state)?.openAtMs).toBe(1_800);
       const recoveryVoid = cmd(recovered.state, { type: 'RESOLVE_RECOVERY', decision: 'VOID', reason: 'Huỷ câu sau khi phục hồi' }, 1_800);
       expect(recoveryVoid).toMatchObject({ ok: true, state: { state: 'LEADERBOARD', round: { voided: ['r1:q01'] } } });
     }

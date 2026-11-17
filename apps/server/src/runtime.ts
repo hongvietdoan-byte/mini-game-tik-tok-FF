@@ -638,17 +638,24 @@ export class SessionRuntime {
   /** Câu hỏi của vòng cho bộ chấm điểm: kèm thời điểm mở + độ dài cửa sổ (thưởng tốc độ). */
   private scoringQuestions(r: NonNullable<EngineState['round']>) {
     this.loadRound(r.roundId);
-    const opened = new Map(this.store.roundQuestions(r.roundId).map((q) => [q.id, q.openedAtMs]));
-    const windowMs = Math.max(0, Math.round(this.config.timings.answerMs / this.engine.speedMultiplier));
-    return [...this.snapshots.values()].map((s) => ({
-      questionInstanceId: s.questionInstanceId,
-      index: s.index,
-      correctOptionId: s.correctOptionId,
-      closed: r.closed.includes(s.questionInstanceId),
-      voided: r.voided.includes(s.questionInstanceId),
-      openedAtMs: opened.get(s.questionInstanceId) ?? null,
-      windowMs,
-    }));
+    const persisted = new Map(this.store.roundQuestions(r.roundId).map((q) => [q.id, q]));
+    const fallbackWindowMs = Math.max(0, Math.round(this.config.timings.answerMs / this.engine.speedMultiplier));
+    return [...this.snapshots.values()].map((s) => {
+      const question = persisted.get(s.questionInstanceId);
+      const openedAtMs = question?.openedAtMs ?? null;
+      const windowMs = openedAtMs !== null && question?.closedAtMs !== null && question?.closedAtMs !== undefined
+        ? Math.max(0, question.closedAtMs - openedAtMs)
+        : fallbackWindowMs;
+      return {
+        questionInstanceId: s.questionInstanceId,
+        index: s.index,
+        correctOptionId: s.correctOptionId,
+        closed: r.closed.includes(s.questionInstanceId),
+        voided: r.voided.includes(s.questionInstanceId),
+        openedAtMs,
+        windowMs,
+      };
+    });
   }
 
   private compareLedger(roundId: string, totals: Map<string, { score: number }>): string | null {
@@ -700,8 +707,14 @@ export class SessionRuntime {
         this.cancelCountdownSchedule();
       if (e.type === 'STATE_CHANGED' && e.from === 'PAUSED' && e.to === 'ACCEPTING') {
         this.cancelCountdownSchedule();
-        const resumedQuestionId = currentQuestionInstanceId(this.engine);
-        if (resumedQuestionId) this.scheduleQuestionCountdown(resumedQuestionId);
+      }
+      if (e.type === 'STATE_CHANGED' && e.to === 'ACCEPTING') {
+        const questionId = currentQuestionInstanceId(this.engine);
+        if (questionId) {
+          this.scheduleQuestionCountdown(questionId);
+          const questionIndex = this.engine.round?.questionIndex ?? -1;
+          if ([1, 4, 7].includes(questionIndex)) this.speakSpamReminder(questionId, questionIndex + 1);
+        }
       }
       if (e.type === 'ROUND_STARTED' && this.engine.round)
         this.preGenerateRoundVoice(this.engine.round.roundId, [...this.snapshots.values()]);
@@ -719,15 +732,16 @@ export class SessionRuntime {
       else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round)
         void this.speakGeneric({ type: 'LEADERBOARD_GENERIC', roundId: this.engine.round.roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!');
       if (e.type === 'QUESTION_OPENED') {
-        this.scheduleQuestionCountdown(e.questionInstanceId);
-        if ([1, 4, 7].includes(e.index)) this.speakSpamReminder(e.questionInstanceId, e.index + 1);
         const snap = this.snapshots.get(e.questionInstanceId);
-        if (snap && this.simulator)
+        if (snap && this.simulator) {
+          const answerDurationMs = Math.max(0, Math.round(this.engine.timings.answerMs / this.engine.speedMultiplier));
+          const readingDurationMs = this.engine.state === 'READING' ? this.engine.timer?.durationMs ?? 0 : 0;
           this.simulator.onQuestionOpened({
             questionInstanceId: e.questionInstanceId,
             correctOptionId: snap.correctOptionId,
-            windowMs: this.engine.timer?.durationMs ?? 0,
+            windowMs: readingDurationMs + answerDurationMs,
           });
+        }
       } else if (e.type === 'SESSION_STOPPED') {
         this.simulator?.stop();
         this.simulator = null;
