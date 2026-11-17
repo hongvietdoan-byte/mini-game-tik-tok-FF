@@ -65,7 +65,11 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
     const plan = voiceScheduler.current.consume(snapshot.mcVoiceCue, Date.now() + clockOffsetMs);
     if (!plan) return;
     const audio = engine.current;
-    audio?.stopMcVoice();
+    const countdownHasNotReachedItsPlaybackTime = plan.cue.eventType === 'COUNTDOWN' &&
+      plan.cue.startsAtServerMs > Date.now() + clockOffsetMs;
+    // A countdown snapshot arrives early so WebAudio can queue its exact start. Let the current
+    // word run until that time; the audio engine schedules its stop at the same playback boundary.
+    if (!countdownHasNotReachedItsPlaybackTime) audio?.stopMcVoice();
     if (plan.remainingMs <= 0) return;
     void audio?.playMcVoice(plan.cue, clockOffsetMs);
   }, [clockOffsetMs, role, snapshot.mcVoiceCue]);

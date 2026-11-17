@@ -57,7 +57,7 @@ describe('FfmpegMcVoiceAudioNormalizer', () => {
     expect(ffmpeg.args).toContain('1');
     expect(ffmpeg.args).toContain('44100');
     const filter = ffmpeg.args[ffmpeg.args.indexOf('-af') + 1]!;
-    expect(filter).toBe('silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse,loudnorm=I=-16:TP=-1.5:LRA=11');
+    expect(filter).toBe('silenceremove=start_periods=1:start_threshold=-40dB:start_silence=0.08,areverse,silenceremove=start_periods=1:start_threshold=-40dB:start_silence=0.08,areverse,loudnorm=I=-16:TP=-1.5:LRA=11');
     expect(ffmpeg.args.find((arg) => arg.includes('loudnorm'))).toContain('I=-16');
   });
 
@@ -78,7 +78,7 @@ describe('FfmpegMcVoiceAudioNormalizer', () => {
     const normalized = await new FfmpegMcVoiceAudioNormalizer({ ffmpegPath, ffprobePath, tempDirectory: root }).normalize({
       bytes: await readFile(inputPath), durationMs: 3_100, format: 'mp3',
     });
-    expect(normalized.durationMs).toBeGreaterThanOrEqual(2_500);
+    expect(normalized.durationMs).toBeGreaterThanOrEqual(2_400);
     expect(normalized.durationMs).toBeLessThanOrEqual(2_650);
     const outputPath = join(root, 'normalized.mp3');
     await writeFile(outputPath, normalized.bytes);
@@ -89,12 +89,33 @@ describe('FfmpegMcVoiceAudioNormalizer', () => {
     const starts = [...analysis.stderr.matchAll(/silence_start:\s*(-?\d+(?:\.\d+)?)/g)].map((match) => Number(match[1]));
     const ends = [...analysis.stderr.matchAll(/silence_end:\s*(-?\d+(?:\.\d+)?)/g)].map((match) => Number(match[1]));
 
-    expect(starts.length, analysis.stderr).toBeGreaterThanOrEqual(2);
+    expect(starts.length, analysis.stderr).toBeGreaterThanOrEqual(1);
     expect(starts[0], analysis.stderr).toBeGreaterThanOrEqual(0.9);
     expect(starts[0], analysis.stderr).toBeLessThanOrEqual(1.1);
     expect(ends[0], analysis.stderr).toBeGreaterThanOrEqual(1.4);
     expect(ends[0], analysis.stderr).toBeLessThanOrEqual(1.6);
-    expect(starts[1], analysis.stderr).toBeGreaterThanOrEqual(2.4);
+    expect(normalized.durationMs, analysis.stderr).toBeLessThanOrEqual(2_550);
+  });
+
+  it.skipIf(!hasRealFfmpeg)('cắt khoảng lặng đầu/cuối của câu một từ có đệm dài xuống dưới 600 ms', async () => {
+    const root = await tempDirectory();
+    const inputPath = join(root, 'single-word-with-padding.mp3');
+    const generated = await runTool(ffmpegPath, [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono:d=0.2',
+      '-f', 'lavfi', '-i', 'sine=frequency=660:sample_rate=44100:duration=0.32',
+      // Mô phỏng đuôi codec có noise floor −45 dB: ngưỡng cũ −50 dB coi đó là tiếng và giữ nguyên.
+      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100:duration=1,volume=0.005623',
+      '-filter_complex', '[1:a]afade=t=in:st=0:d=0.02,afade=t=out:st=0.22:d=0.1[word];[0:a][word][2:a]concat=n=3:v=0:a=1[out]',
+      '-map', '[out]', '-codec:a', 'libmp3lame', '-b:a', '128k', inputPath,
+    ]);
+    expect(generated.stderr).toBe('');
+
+    const normalized = await new FfmpegMcVoiceAudioNormalizer({ ffmpegPath, ffprobePath, tempDirectory: root }).normalize({
+      bytes: await readFile(inputPath), durationMs: 1_600, format: 'mp3',
+    });
+    expect(normalized.durationMs).toBeGreaterThanOrEqual(350);
+    expect(normalized.durationMs).toBeLessThanOrEqual(600);
   });
 
   it('từ chối output vượt 20 giây và không truyền lỗi công cụ thô', async () => {

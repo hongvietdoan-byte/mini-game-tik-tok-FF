@@ -29,6 +29,8 @@ export class OverlayAudioEngine {
   private readonly voiceBuffers = new Map<string, Promise<AudioBuffer | null>>();
   private readonly activeSources = new Set<AudioScheduledSourceNode>();
   private readonly activeBgmSources = new Set<ActiveBgm>();
+  private readonly activeVoiceSources = new Set<AudioBufferSourceNode>();
+  private readonly voiceStopAt = new WeakMap<AudioBufferSourceNode, number>();
   private requestedBgmTrack: BgmTrack | null | undefined;
   private bgmGeneration = 0;
   private voiceSource: AudioBufferSourceNode | null = null;
@@ -254,12 +256,11 @@ export class OverlayAudioEngine {
   }
 
   async playMcVoice(cue: McVoiceCue, clockOffsetMs: number) {
-    this.stopMcVoice();
+    const generation = ++this.voiceGeneration;
     const context = this.context;
     const voice = this.voice;
     if (!context || !voice || this.destroyed || this.mix.volume <= 0) return;
 
-    const generation = this.voiceGeneration;
     if (context.state !== 'running') await this.unlock();
     if (generation !== this.voiceGeneration || this.destroyed || context.state !== 'running') return;
 
@@ -267,7 +268,10 @@ export class OverlayAudioEngine {
     if (generation !== this.voiceGeneration || this.destroyed || !buffer || context.state !== 'running') return;
 
     const serverNowMs = Date.now() + clockOffsetMs;
-    const elapsedMs = Math.max(0, serverNowMs - cue.startsAtServerMs);
+    const lateByMs = serverNowMs - cue.startsAtServerMs;
+    if (cue.eventType === 'COUNTDOWN' && lateByMs > 400) return;
+    const preserveLateCountdown = cue.eventType === 'COUNTDOWN' && lateByMs > 0;
+    const elapsedMs = preserveLateCountdown ? 0 : Math.max(0, lateByMs);
     const remainingMs = cue.durationMs - elapsedMs;
     const offsetSeconds = elapsedMs / 1_000;
     if (remainingMs <= 0 || offsetSeconds >= buffer.duration) return;
@@ -277,10 +281,12 @@ export class OverlayAudioEngine {
     if (playbackSeconds <= 0) return;
 
     const source = context.createBufferSource();
+    const previousSource = this.voiceSource;
     source.buffer = buffer;
     source.connect(voice);
     source.onended = () => {
       this.activeSources.delete(source);
+      this.activeVoiceSources.delete(source);
       if (this.voiceSource === source) {
         this.voiceSource = null;
         this.setDucking(this.ducking);
@@ -288,21 +294,36 @@ export class OverlayAudioEngine {
     };
     this.voiceSource = source;
     this.activeSources.add(source);
+    this.activeVoiceSources.add(source);
     this.scheduleVoiceDucking(startAt, startAt + playbackSeconds);
     try {
       source.start(startAt, offsetSeconds, playbackSeconds);
     } catch {
       this.activeSources.delete(source);
-      if (this.voiceSource === source) this.voiceSource = null;
+      this.activeVoiceSources.delete(source);
+      if (this.voiceSource === source) this.voiceSource = previousSource;
       this.setDucking(this.ducking);
+      return;
+    }
+    if (previousSource) {
+      const previousStopAt = this.voiceStopAt.get(previousSource);
+      if (previousStopAt === undefined || startAt < previousStopAt) {
+        try {
+          previousSource.stop(startAt);
+          this.voiceStopAt.set(previousSource, startAt);
+        } catch {
+          // The previous clip may already have ended before this marker.
+        }
+      }
     }
   }
 
   stopMcVoice() {
     this.voiceGeneration += 1;
-    const source = this.voiceSource;
+    const sources = [...this.activeVoiceSources];
+    this.activeVoiceSources.clear();
     this.voiceSource = null;
-    if (source) {
+    for (const source of sources) {
       this.activeSources.delete(source);
       source.onended = null;
       try { source.stop(); } catch { /* Scheduled/ended sources are already silent. */ }

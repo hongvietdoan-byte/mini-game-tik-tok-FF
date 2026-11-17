@@ -82,6 +82,8 @@ const COUNTDOWN_SCRIPT: Readonly<Record<number, string>> = {
 };
 const SPAM_REMINDER_TEXT = 'Nhắc nhẹ nè: mỗi người chỉ một đáp án, bình luận đầu tiên mới được tính nhé!';
 const COUNTDOWN_SECONDS = [10, 5, 4, 3, 2, 1] as const;
+const COUNTDOWN_CUE_LEAD_MS = 300;
+const COUNTDOWN_CUE_LATE_TOLERANCE_MS = 400;
 
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
@@ -967,38 +969,46 @@ export class SessionRuntime {
 
   private scheduleVoiceCue(
     eventType: McVoiceEvent['type'], assetId: string, durationMs: number,
-    isCurrent: () => boolean, delayMs = 0, bubbleText?: string,
+    isCurrent: () => boolean, delayMs = 0, bubbleText?: string, mustFinishByMs = Number.POSITIVE_INFINITY,
   ) {
     const now = this.scheduler.now();
     const startsAtServerMs = Math.max(now + 80 + Math.max(0, delayMs), this.voiceTailAtMs);
     const previousVoiceTailAtMs = this.voiceTailAtMs;
-    this.voiceTailAtMs = startsAtServerMs + durationMs;
+    const scheduledTailAtMs = startsAtServerMs + durationMs;
+    this.voiceTailAtMs = scheduledTailAtMs;
     const handle = this.scheduler.setTimeout(() => {
       this.voiceHandles.delete(handle);
-      if (!this.disposed && isCurrent()) {
-        this.emitVoiceCue(eventType, assetId, durationMs, startsAtServerMs, bubbleText);
-      } else if (this.voiceTailAtMs === startsAtServerMs + durationMs) {
-        this.voiceTailAtMs = previousVoiceTailAtMs;
+      const actualStartAtMs = Math.max(startsAtServerMs, this.scheduler.now());
+      const current = !this.disposed && isCurrent();
+      if (!current || actualStartAtMs + durationMs > mustFinishByMs) {
+        if (this.voiceTailAtMs === scheduledTailAtMs) this.voiceTailAtMs = previousVoiceTailAtMs;
+        if (current && actualStartAtMs + durationMs > mustFinishByMs)
+          this.telemetry('LATE_AUDIO', eventType);
+        return;
       }
+      if (this.voiceTailAtMs === scheduledTailAtMs) this.voiceTailAtMs = actualStartAtMs + durationMs;
+      this.emitVoiceCue(eventType, assetId, durationMs, actualStartAtMs, bubbleText);
     }, startsAtServerMs - now);
     this.voiceHandles.add(handle);
   }
 
-  /** Gửi cue sớm 80 ms cho overlay nhưng giữ thời điểm phát đúng giây; không bao giờ xếp hàng. */
+  /** Gửi cue sớm để overlay chuẩn bị; countdown được phép trễ tối đa 400 ms và ngắt tail cũ. */
   private schedulePreciseVoiceCue(
     eventType: McVoiceEvent['type'], assetId: string, durationMs: number,
     startsAtServerMs: number, isCurrent: () => boolean,
   ) {
     const now = this.scheduler.now();
-    const sendAtServerMs = startsAtServerMs - 80;
-    if (sendAtServerMs <= now) return false;
+    const sendAtServerMs = startsAtServerMs - COUNTDOWN_CUE_LEAD_MS;
+    if (now > startsAtServerMs + COUNTDOWN_CUE_LATE_TOLERANCE_MS) return false;
     const handle = this.scheduler.setTimeout(() => {
       this.voiceHandles.delete(handle);
       const firedAt = this.scheduler.now();
-      if (this.disposed || !isCurrent() || firedAt > startsAtServerMs - 20 || this.voiceTailAtMs > startsAtServerMs) return;
-      this.voiceTailAtMs = startsAtServerMs + durationMs;
-      this.emitVoiceCue(eventType, assetId, durationMs, startsAtServerMs);
-    }, sendAtServerMs - now);
+      if (this.disposed || !isCurrent() || firedAt > startsAtServerMs + COUNTDOWN_CUE_LATE_TOLERANCE_MS) return;
+      const actualStartAtMs = Math.max(startsAtServerMs, firedAt);
+      // Countdown có quyền ngắt tail đang phát; lần sau ghi đè tail này nếu asset dài hơn khoảng cách mốc.
+      this.voiceTailAtMs = actualStartAtMs + durationMs;
+      this.emitVoiceCue(eventType, assetId, durationMs, actualStartAtMs);
+    }, Math.max(0, sendAtServerMs - now));
     this.voiceHandles.add(handle);
     return true;
   }
@@ -1098,7 +1108,7 @@ export class SessionRuntime {
     const cues = COUNTDOWN_SECONDS.flatMap((secondsRemaining) => {
       const key = `${questionInstanceId}:${secondsRemaining}`;
       const startsAtServerMs = timer.deadlineMs! - secondsRemaining * 1_000;
-      if (this.countdownCues.has(key) || startsAtServerMs - 80 <= now) return [];
+      if (this.countdownCues.has(key) || startsAtServerMs + COUNTDOWN_CUE_LATE_TOLERANCE_MS < now) return [];
       this.countdownCues.add(key);
       return [{
         key,
@@ -1109,7 +1119,7 @@ export class SessionRuntime {
     });
     void Promise.all(cues.map(async (cue) => ({ ...cue, asset: await this.voiceAsset(cue.event, cue.text) })))
       .then((prepared) => {
-        // Cues đã được sắp theo thời điểm phát. Nếu asset chưa sẵn trước mốc gửi 80 ms, bỏ cue đó.
+        // Cues đã được sắp theo thời điểm phát. Asset sẵn trước mốc gửi 300 ms sẽ được xếp đúng giây.
         for (const cue of prepared) {
           if (!cue.asset) continue;
           this.schedulePreciseVoiceCue(cue.event.type, cue.asset.assetId, cue.asset.durationMs,
@@ -1136,10 +1146,20 @@ export class SessionRuntime {
         this.telemetry('LATE_AUDIO', event.type);
         return;
       }
+      const timerDeadlineMs = this.engine.timer?.deadlineMs;
+      const countdownAtMs = timerDeadlineMs === undefined || timerDeadlineMs === null
+        ? Number.POSITIVE_INFINITY : timerDeadlineMs - 10_000;
+      // Snapshot countdown được gửi sớm 300 ms và ngắt voice ngay khi tới overlay.
+      // Chừa phần đệm đó để lời nhắc không bị cắt; nếu không đủ thời gian thì bỏ lời nhắc.
+      const reminderMustFinishByMs = countdownAtMs - COUNTDOWN_CUE_LEAD_MS;
+      if (startsAt + asset.durationMs > reminderMustFinishByMs) {
+        this.telemetry('LATE_AUDIO', event.type);
+        return;
+      }
       this.scheduleVoiceCue(event.type, asset.assetId, asset.durationMs,
         () => this.engine.state === 'ACCEPTING' && currentQuestionInstanceId(this.engine) === questionInstanceId &&
           this.scheduler.now() <= openedAtMs + 4_000,
-        Math.max(0, startsAt - now - 80), SPAM_REMINDER_TEXT);
+        Math.max(0, startsAt - now - 80), SPAM_REMINDER_TEXT, reminderMustFinishByMs);
     });
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { McVoiceCueScheduler } from './mc-voice';
+import { MC_COUNTDOWN_LATE_GRACE_MS, McVoiceCueScheduler } from './mc-voice';
 
 const cue = {
   cueId: '5313b7b7-5a67-4f2d-a17e-f9406f5f4321',
@@ -22,6 +22,20 @@ describe('MC voice cue scheduler', () => {
     const expired = scheduler.consume({ ...cue, cueId: '694a9b45-252b-4eba-8d3b-7108e729142b' }, 105_000);
     expect(expired?.remainingMs).toBe(0);
     expect(expired?.elapsedMs).toBe(5_000);
+  });
+
+  it('keeps a late countdown audible within 400 ms and drops it after the grace window', () => {
+    const scheduler = new McVoiceCueScheduler();
+    const countdown = { ...cue, eventType: 'COUNTDOWN' as const, durationMs: 329 };
+    const late = scheduler.consume(countdown, countdown.startsAtServerMs + MC_COUNTDOWN_LATE_GRACE_MS);
+    expect(late).toMatchObject({
+      elapsedMs: 0,
+      remainingMs: 329,
+      cue: { startsAtServerMs: countdown.startsAtServerMs + MC_COUNTDOWN_LATE_GRACE_MS },
+    });
+
+    expect(scheduler.consume({ ...countdown, cueId: '694a9b45-252b-4eba-8d3b-7108e729142b' },
+      countdown.startsAtServerMs + MC_COUNTDOWN_LATE_GRACE_MS + 1)).toBeNull();
   });
 
   it('rejects malformed cues and invalid clock values', () => {
