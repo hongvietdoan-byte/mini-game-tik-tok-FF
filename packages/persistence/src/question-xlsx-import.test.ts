@@ -328,5 +328,4 @@ describe('question XLSX importer', () => {
     }
   });
 });
-
-\n
+

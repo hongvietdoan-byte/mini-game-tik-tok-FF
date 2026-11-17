@@ -754,5 +754,4 @@ export function questionImportBackupPath(databasePath: string, now = new Date())
   const stamp = now.toISOString().replace(/[-:TZ.]/gu, '').slice(0, 14);
   return join(backupDir, `${basename(resolved)}.before-question-import-${stamp}.sqlite`);
 }
-
-\n
+
