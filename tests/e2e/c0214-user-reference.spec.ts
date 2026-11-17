@@ -12,7 +12,7 @@ const targetBoxes = {
   'Question board': { x: 425, y: 348, width: 570, height: 465 },
   Timer: { x: 830, y: 368, width: 128, height: 128 },
   'Question tab': { x: 455, y: 370, width: 225, height: 55 },
-  'Prompt frame': { x: 440, y: 510, width: 543, height: 145 },
+  'Prompt frame': { x: 440, y: 505, width: 543, height: 155 },
   'Answer grid': { x: 447, y: 670, width: 531, height: 125 },
   'Kelly portrait': { x: 130, y: 815, width: 205, height: 205 },
   'Kelly nameplate': { x: 92, y: 1018, width: 250, height: 49 },

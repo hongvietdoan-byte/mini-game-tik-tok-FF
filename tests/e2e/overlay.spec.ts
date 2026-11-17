@@ -305,6 +305,7 @@ test('C-0278 keeps the fixed question frame, clearer labels and 45-character ans
   mkdirSync(reviewDirectory, { recursive: true });
   const phases = [
     { name: 'question', scene: 'QUESTION', phase: 'short-answer', long: false },
+    { name: 'question-longest', scene: 'QUESTION', phase: 'long-prompt', long: false },
     { name: 'question-grid-balance', scene: 'QUESTION', phase: 'accepting', long: true },
     { name: 'reveal-grid-balance', scene: 'REVEAL', phase: 'reveal', long: true },
   ] as const;
@@ -316,7 +317,7 @@ test('C-0278 keeps the fixed question frame, clearer labels and 45-character ans
       stage.locator('.v3-board').boundingBox(), stage.locator('.v3-question').boundingBox(), stage.locator('.v3-top10').boundingBox(),
     ]);
     expect(boardBox).toMatchObject({ x: 425, y: 348, width: 570, height: 465 });
-    expect(promptBox).toMatchObject({ x: 440, y: 510, width: 543, height: 145 });
+    expect(promptBox).toMatchObject({ x: 440, y: 505, width: 543, height: 155 });
     expect(top10Box).toMatchObject({ x: 68, y: 348, width: 317, height: 462 });
     expect(top10Box!.x).toBeGreaterThanOrEqual(0);
     expect(top10Box!.x + top10Box!.width).toBeLessThan(boardBox!.x);
@@ -351,7 +352,10 @@ test('C-0278 keeps the fixed question frame, clearer labels and 45-character ans
       const [labelBox, answerBox] = await Promise.all([label.boundingBox(), answer.boundingBox()]);
       expect(labelBox).not.toBeNull();
       expect(answerBox).not.toBeNull();
-      if (entry.long) expect(labelBox!.y + labelBox!.height).toBeLessThanOrEqual(answerBox!.y + 1);
+      if (entry.long) {
+        expect(labelBox!.y + labelBox!.height).toBeLessThanOrEqual(answerBox!.y + 1);
+        expect(promptBox!.y + promptBox!.height, `${entry.phase}: question frame clears A-D labels`).toBeLessThanOrEqual(labelBox!.y);
+      }
       else expect(labelBox!.x + labelBox!.width).toBeLessThanOrEqual(answerBox!.x + 1);
       const metrics = await answer.evaluate((element) => {
         const range = document.createRange();
@@ -594,7 +598,7 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     roundCard: { x: 770, y: 133, width: 230, height: 95 },
     top10: { x: 68, y: 348, width: 317, height: 462 },
     board: { x: 425, y: 348, width: 570, height: 465 },
-    question: { x: 440, y: 510, width: 543, height: 145 },
+    question: { x: 440, y: 505, width: 543, height: 155 },
   } as const;
   for (const key of Object.keys(c0168Approved) as Array<keyof typeof c0168Approved>) {
     for (const dimension of ['x', 'y', 'width', 'height'] as const) {

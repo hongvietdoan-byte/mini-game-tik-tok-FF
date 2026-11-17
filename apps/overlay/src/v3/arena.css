@@ -1745,8 +1745,8 @@
 .v3-stage--user-question-layout.has-long-prompt .v3-question {
   left: 13px;
   right: 10px;
-  top: 160px;
-  height: 145px;
+  top: 155px;
+  height: 155px;
   box-sizing: border-box;
   padding: 8px 16px;
   font-size: 30px;
@@ -1835,8 +1835,6 @@
 .v3-stage--user-question-layout[data-scene="REVEAL"] .v3-fastest-callout { height: 145px !important; max-height: 145px; }
 .v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-mc-figure { left: 130px; width: 205px; height: 205px; }
 .v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-mc-figure img { width: 168px; height: auto; object-fit: initial; }
-.v3-stage--user-question-layout.has-long-prompt .v3-question,
-.v3-stage--user-question-layout.has-long-prompt.has-long-options .v3-question { top: 162px; height: 145px; }
 .v3-stage--user-question-layout.has-long-options .v3-options.has-long-option,
 .v3-stage--user-question-layout.has-long-prompt.has-long-options .v3-options.has-long-option { left: 20px; right: 15px; top: 320px; height: 125px; grid-template-rows: repeat(2, 60px); grid-auto-rows: 60px; gap: 5px 15px; }
 .v3-stage--user-question-layout .v3-question.is-long,
@@ -1880,6 +1878,21 @@
   line-height: 1;
   text-align: center;
   overflow-wrap: anywhere;
+}
+.v3-stage--question-user.v3-stage--user-question-layout .v3-options.has-long-label .v3-option,
+.v3-stage--question-user.v3-stage--user-question-layout.has-long-options .v3-options.has-long-option.has-long-label .v3-option,
+.v3-stage--question-user.v3-stage--user-question-layout.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option {
+  height: 74px;
+  min-height: 74px;
+}
+.v3-stage--question-user.v3-stage--user-question-layout .v3-options.has-long-label,
+.v3-stage--question-user.v3-stage--user-question-layout.has-long-options .v3-options.has-long-option.has-long-label,
+.v3-stage--question-user.v3-stage--user-question-layout.has-long-prompt.has-long-options .v3-options.has-long-option.has-long-label {
+  top: 310px;
+  height: 152px;
+  grid-template-rows: repeat(2, 74px);
+  grid-auto-rows: 74px;
+  gap: 4px 12px;
 }
 .v3-stage--user-question-layout .v3-options.has-long-label.is-revealed .v3-option-count {
   position: absolute;
