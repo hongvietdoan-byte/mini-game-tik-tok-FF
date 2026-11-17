@@ -250,6 +250,60 @@ describe('Nhận đáp án', () => {
     expect(r.publicSnapshot().reveal!.optionCounts).toEqual({ A: 1, B: 1, C: 0, D: 1 });
   });
 
+  it.each(['KAHOOT', 'CLASSIC'] as const)('nhận từ READING, đếm đáp án và tính thời gian từ lúc mở (%s)', async (scoringMode) => {
+    const h = await session({}, { mcVoiceEnabled: true, scoringMode });
+    await startRound(h, 0);
+    const r = rt(h);
+    const rid = roundId(h);
+    let eventNumber = 0;
+    const send = (userId: string, text: string, sourceTimestampMs?: number) => r.ingest({
+      source: 'MOCK', userId, displayName: userId, text,
+      eventId: `reading-${userId}-${eventNumber++}`,
+      ...(sourceTimestampMs === undefined ? {} : { sourceTimestampMs }),
+    });
+    const prepareQuestion = h.store.roundQuestions(rid)[0]!;
+    const correctOptionId = prepareQuestion.snapshot.correctOptionId;
+
+    expect(send('reader', correctOptionId)).toEqual({ accepted: false, reason: 'NOT_ACCEPTING' });
+    runUntil(h, () => r.engine.state === 'READING');
+    const questionId = currentQuestionInstanceId(r.engine)!;
+    const openAtMs = r.engine.acceptOpenAtMs!;
+    expect(questionId).toBe(prepareQuestion.id);
+    expect(h.store.roundQuestions(rid)[0]!.openedAtMs).toBe(openAtMs);
+    expect(r.publicSnapshot().answerCount).toBe(0);
+
+    // Source timestamp bắt đầu trong READING nhưng tới server muộn vẫn còn trong ngưỡng lag.
+    h.scheduler.advance(4_000);
+    expect(send('reader', correctOptionId, openAtMs + 500)).toEqual({ accepted: true });
+    const wrongOptionId = correctOptionId === 'A' ? 'B' : 'A';
+    expect(send('reader', wrongOptionId)).toEqual({ accepted: false, reason: 'DUPLICATE_ANSWER' });
+    expect(send('stale-reader', correctOptionId, openAtMs - 1))
+      .toEqual({ accepted: false, reason: 'STALE_SOURCE_TIMESTAMP' });
+    h.scheduler.advance(300);
+    expect(r.engine.state).toBe('READING');
+    expect(r.publicSnapshot().answerCount).toBe(1);
+
+    runUntil(h, () => r.engine.state === 'ACCEPTING');
+    expect(r.engine.acceptOpenAtMs).toBe(openAtMs);
+    expect(r.engine.timer?.durationMs).toBe(20_000); // ACCEPTING vẫn giữ nguyên 20 giây.
+    runUntil(h, () => r.engine.state === 'REVEAL');
+
+    const fastest = r.publicSnapshot().fastestCorrectAnswer!;
+    expect(fastest).toMatchObject({ questionInstanceId: questionId, responseMs: 4_000 });
+    const closedQuestion = h.store.roundQuestions(rid).find((question) => question.id === questionId)!;
+    expect(closedQuestion.openedAtMs).toBe(openAtMs);
+    expect(closedQuestion.closedAtMs).toBeGreaterThan(openAtMs + 20_000);
+    const scoredWindowMs = closedQuestion.closedAtMs! - openAtMs;
+    const expectedSpeedPoints = scoringMode === 'KAHOOT'
+      ? Math.round((1000 * (2 * scoredWindowMs - fastest.responseMs)) / (2 * scoredWindowMs)) - 500
+      : Math.floor((50 * (scoredWindowMs - fastest.responseMs)) / scoredWindowMs);
+    const speedEntry = h.store.ledgerRows(rid).find((entry) =>
+      entry.questionInstanceId === questionId && entry.playerId === h.store.findPlayerId('MOCK', 'reader') && entry.reason === 'SPEED');
+    expect(speedEntry?.points).toBe(expectedSpeedPoints);
+
+    expect(send('late-reader', correctOptionId)).toEqual({ accepted: false, reason: 'NOT_ACCEPTING' });
+  });
+
   it('cách ly sự kiện có sourceTimestamp cũ (bị đệm từ trước khi câu mở)', async () => {
     const h = await session();
     await startRound(h, 0);

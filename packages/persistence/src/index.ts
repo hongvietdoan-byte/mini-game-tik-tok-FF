@@ -48,6 +48,7 @@ export type RoundQuestionRow = {
   status: 'PENDING' | 'OPEN' | 'CLOSED' | 'VOIDED';
   voidedAfterReveal: boolean;
   openedAtMs: number | null;
+  closedAtMs: number | null;
 };
 
 export type StoredAnswer = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs: number };
@@ -435,6 +436,7 @@ export class Store {
       status: r.status,
       voidedAfterReveal: !!r.voided_after_reveal,
       openedAtMs: r.opened_at_ms ?? null,
+      closedAtMs: r.closed_at_ms ?? null,
     }));
   }
 

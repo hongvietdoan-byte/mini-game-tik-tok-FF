@@ -37,6 +37,18 @@ describe('decideComment', () => {
     expect(decideComment({ text: 'A', receivedAtMs: 120, sourceTimestampMs: 109 }, accepting, { maxSourceLagMs: 10 })).toEqual({ ok: false, reason: 'STALE_SOURCE_TIMESTAMP' });
     expect(decideComment({ text: 'A', receivedAtMs: 120, sourceTimestampMs: 110 }, accepting, { maxSourceLagMs: 10 })).toEqual({ ok: true, option: 'A' });
   });
+
+  it('nhận comment phát từ READING tới deadline ACCEPTING, từ chối PREPARE và comment gửi sau deadline', () => {
+    const readingWindow = { accepting: true, openAtMs: 100, deadlineMs: 26_000 } as const;
+    expect(decideComment({ text: 'A', receivedAtMs: 500, sourceTimestampMs: 250 }, readingWindow, { maxSourceLagMs: 5_000 }))
+      .toEqual({ ok: true, option: 'A' });
+    expect(decideComment({ text: 'A', receivedAtMs: 500 }, null, { maxSourceLagMs: 5_000 }))
+      .toEqual({ ok: false, reason: 'NOT_ACCEPTING' });
+    expect(decideComment({ text: 'A', receivedAtMs: 26_000 }, readingWindow, { maxSourceLagMs: 5_000 }))
+      .toEqual({ ok: false, reason: 'LATE' });
+    expect(decideComment({ text: 'A', receivedAtMs: 500, sourceTimestampMs: 99 }, readingWindow, { maxSourceLagMs: 5_000 }))
+      .toEqual({ ok: false, reason: 'STALE_SOURCE_TIMESTAMP' });
+  });
 });
 
 describe('sanitizeDisplayName', () => {

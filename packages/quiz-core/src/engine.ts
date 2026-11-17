@@ -141,11 +141,13 @@ export function remainingMs(s: EngineState, now: number): number {
   return Math.max(0, Math.min(s.timer.durationMs, s.timer.deadlineMs - now));
 }
 
-/** Cửa sổ nhận đáp án [openAtMs, deadlineMs) — null nếu không ở ACCEPTING đang chạy. */
+/** Cửa sổ nhận đáp án [openAtMs, deadlineMs): mở từ READING và đóng ở deadline ACCEPTING. */
 export function acceptWindow(s: EngineState): { openAtMs: number; deadlineMs: number } | null {
-  if (s.state !== 'ACCEPTING' || !s.timer || s.timer.deadlineMs === null || s.acceptOpenAtMs === null)
+  if ((s.state !== 'READING' && s.state !== 'ACCEPTING') || !s.timer || s.timer.deadlineMs === null || s.acceptOpenAtMs === null)
     return null;
-  return { openAtMs: s.acceptOpenAtMs, deadlineMs: s.timer.deadlineMs };
+  const answerDurationMs = Math.max(0, Math.round(s.timings.answerMs / s.speedMultiplier));
+  const deadlineMs = s.state === 'READING' ? s.timer.deadlineMs + answerDurationMs : s.timer.deadlineMs;
+  return { openAtMs: s.acceptOpenAtMs, deadlineMs };
 }
 
 export function sceneFor(s: EngineState): Scene {
@@ -289,8 +291,9 @@ function unfreeze(d: Draft, now: number) {
   d.s.suspended = null;
   go(d, sus.from);
   if (d.s.timer) d.s.timer.deadlineMs = now + d.s.timer.remainingMs;
-  // Cửa sổ nhận đáp án mở lại từ "now": comment trong lúc treo không bao giờ được tính.
-  if (sus.from === 'ACCEPTING') d.s.acceptOpenAtMs = now;
+  // Mốc nhận source mở lại từ "now" sau khi tạm dừng/gián đoạn, tránh tính comment bị đệm.
+  // opened_at_ms trong DB vẫn giữ mốc QUESTION_OPENED ban đầu để chấm tốc độ từ đầu READING.
+  if (sus.from === 'ACCEPTING' || sus.from === 'READING') d.s.acceptOpenAtMs = now;
 }
 
 function enterLobby(d: Draft, now: number) {
@@ -308,21 +311,29 @@ function enterPrepare(d: Draft, index: number, now: number) {
 }
 
 function enterReading(d: Draft, now: number) {
-  d.s.acceptOpenAtMs = null;
+  d.s.acceptOpenAtMs = now;
   go(d, 'READING');
   // Đây là giới hạn thời gian thật; không rút ngắn theo speedMultiplier của MOCK.
   d.s.timer = { durationMs: MAX_MC_READING_MS, remainingMs: MAX_MC_READING_MS, deadlineMs: now + MAX_MC_READING_MS };
-}
-
-function enterAccepting(d: Draft, now: number) {
-  go(d, 'ACCEPTING');
-  setTimer(d, d.s.timings.answerMs, now);
-  d.s.acceptOpenAtMs = now;
   d.events.push({
     type: 'QUESTION_OPENED',
     questionInstanceId: currentQuestionInstanceId(d.s)!,
     index: d.s.round!.questionIndex,
   });
+}
+
+function enterAccepting(d: Draft, now: number) {
+  const openedInReading = d.s.state === 'READING';
+  go(d, 'ACCEPTING');
+  setTimer(d, d.s.timings.answerMs, now);
+  if (!openedInReading) {
+    d.s.acceptOpenAtMs = now;
+    d.events.push({
+      type: 'QUESTION_OPENED',
+      questionInstanceId: currentQuestionInstanceId(d.s)!,
+      index: d.s.round!.questionIndex,
+    });
+  }
   // Không bao giờ mở câu hỏi "mù" khi nguồn comment đang mất kết nối.
   if (!d.s.connectionOk) freeze(d, 'CONNECTION', now);
 }
