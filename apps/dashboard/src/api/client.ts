@@ -10,6 +10,7 @@ import type {
   OverlayAudioState,
   Question,
   QuestionReview,
+  ResolvedTheme,
   SimulatorRequest,
   SystemCheck,
 } from '@quiz/contracts';
@@ -32,6 +33,9 @@ export type HudImageUploadResponse = {
   image: { id: string; width: number; height: number; mimeType: string };
   config: HudConfig;
 };
+export type AdminThemeItem = { id: string; name: string; valid: boolean; error?: string; active: boolean };
+export type AdminThemesResponse = { themes: AdminThemeItem[]; activeThemeId: string | null; themeVersion: number };
+export type SetActiveThemeResponse = { theme: ResolvedTheme; activeThemeId: string | null; themeVersion: number };
 
 export interface DashboardClient {
   getHealth(): Promise<HealthResponse>;
@@ -52,6 +56,11 @@ export interface DashboardClient {
   saveHud(token: string, update: HudConfigUpdate): Promise<HudConfig>;
   uploadHudImage(token: string, slot: HudImageSlot, file: File): Promise<HudImageUploadResponse>;
   resetHud(token: string): Promise<HudConfig>;
+  getThemes(token: string): Promise<AdminThemesResponse>;
+  getResolvedTheme(token: string, themeId: string): Promise<ResolvedTheme>;
+  getActiveTheme(): Promise<ResolvedTheme>;
+  reloadThemes(token: string): Promise<AdminThemesResponse>;
+  setActiveTheme(token: string, themeId: string): Promise<SetActiveThemeResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
 }
 
@@ -187,6 +196,26 @@ export const apiClient: DashboardClient = {
 
   resetHud(token) {
     return jsonRequest('/api/hud/reset', token, { method: 'POST', body: '{}' });
+  },
+
+  getThemes(token) {
+    return jsonRequest('/api/admin/themes', token);
+  },
+
+  getResolvedTheme(token, themeId) {
+    return jsonRequest(`/api/admin/themes/${encodeURIComponent(themeId)}/resolved`, token);
+  },
+
+  getActiveTheme() {
+    return jsonRequest('/api/theme', null);
+  },
+
+  reloadThemes(token) {
+    return jsonRequest('/api/admin/themes/reload', token, { method: 'POST', body: '{}' });
+  },
+
+  setActiveTheme(token, themeId) {
+    return jsonRequest('/api/admin/themes/active', token, { method: 'PUT', body: JSON.stringify({ themeId }) });
   },
 
   subscribe(token, onSnapshot, onStatus) {

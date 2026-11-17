@@ -124,6 +124,9 @@ describe('ThemeStore', () => {
     const store = new ThemeStore(themes, root);
     expect(store.resolveActive()).toMatchObject({ id: 'default', tokens: {}, version: 1 });
     expect(store.list()).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'broken', valid: false, error: expect.any(String) })]));
+    expect(store.resolve('halloween')).toMatchObject({ id: 'halloween', version: 1, assets: { 'brand.logo': '/themes/halloween/assets/logo.png?v=1' } });
+    expect(store.resolve('broken')).toBeNull();
+    expect(store.resolve('missing')).toBeNull();
     expect(store.setActive('halloween')).toBe(true);
     expect(store.resolveActive()).toMatchObject({ id: 'halloween', version: 2, assets: { 'brand.logo': '/themes/halloween/assets/logo.png?v=2' } });
     expect(store.reload()).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'halloween', active: true, valid: true })]));
@@ -160,6 +163,8 @@ describe('ThemeStore', () => {
     const root = temp();
     const themesDir = join(root, 'themes');
     writeTheme(themesDir);
+    mkdirSync(join(themesDir, 'broken'));
+    writeFileSync(join(themesDir, 'broken', 'theme.json'), '{bad json');
     const dbPath = join(root, 'quiz.db');
     const db = new Store(dbPath);
     const scheduler = new ManualScheduler();
@@ -175,6 +180,14 @@ describe('ThemeStore', () => {
     try {
       expect((await quiz.app.inject('/api/theme')).json()).toMatchObject({ id: 'default', version: 1 });
       expect((await quiz.app.inject('/api/admin/themes')).statusCode).toBe(401);
+      expect((await quiz.app.inject('/api/admin/themes/halloween/resolved')).statusCode).toBe(401);
+      const preview = await quiz.app.inject({ url: '/api/admin/themes/halloween/resolved', headers: auth });
+      expect(preview.statusCode).toBe(200);
+      expect(preview.json()).toMatchObject({ id: 'halloween', version: 1, tokens: { deep: '#101010' }, assets: { 'brand.logo': '/themes/halloween/assets/logo.png?v=1' } });
+      const invalidPreview = await quiz.app.inject({ url: '/api/admin/themes/broken/resolved', headers: auth });
+      expect(invalidPreview.statusCode).toBe(422);
+      expect(invalidPreview.json()).toMatchObject({ code: 'THEME_INVALID', message: expect.any(String) });
+      expect((await quiz.app.inject({ url: '/api/admin/themes/missing/resolved', headers: auth })).statusCode).toBe(404);
       expect((await quiz.app.inject({ method: 'PUT', url: '/api/admin/themes/active', headers: auth, payload: { themeId: 'halloween' } })).json())
         .toMatchObject({ activeThemeId: 'halloween', themeVersion: 2, theme: { id: 'halloween', version: 2 } });
       const file = await quiz.app.inject('/themes/halloween/assets/logo.png');

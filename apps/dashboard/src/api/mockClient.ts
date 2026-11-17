@@ -21,11 +21,35 @@ import {
   type PublicSnapshot,
   type Question,
   type QuestionReview,
+  type ResolvedTheme,
   type RejectReason,
   type SimulatorRequest,
   type SystemCheck,
 } from '@quiz/contracts';
-import { ApiError, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './client';
+import { ApiError, type AdminThemeItem, type AdminThemesResponse, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SelfTestResponse, type SetActiveThemeResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './client';
+
+const mockThemeImage = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g"><stop stop-color="#161b4e"/><stop offset="1" stop-color="#7049f5"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><circle cx="500" cy="80" r="42" fill="#ffcc58"/></svg>')}`;
+const mockThemeDefinitions: Array<{ item: Omit<AdminThemeItem, 'active'>; tokens: Record<string, string>; assets: ResolvedTheme['assets'] }> = [
+  {
+    item: { id: 'neon-arena', name: 'Đấu trường Neon', valid: true },
+    tokens: { deep: '#171A3D', violet: '#7049F5', gold: '#FFCC58', sky: '#8CC8FB', 'font-body': 'Segoe UI, sans-serif' },
+    assets: {
+      'arena.background': mockThemeImage,
+      'arena.questionBackground': mockThemeImage,
+      'brand.logo': mockThemeImage,
+      'mc.static': mockThemeImage,
+      'victory.background': mockThemeImage,
+      'victory.trophyStage': mockThemeImage,
+      'arena.flag.0': mockThemeImage,
+      'arena.flag.1': mockThemeImage,
+    },
+  },
+  {
+    item: { id: 'theme-broken', name: 'Gói theme lỗi', valid: false, error: 'tokens.width: Theme không được thay vị trí hoặc kích thước khung.' },
+    tokens: {},
+    assets: {},
+  },
+];
 
 const rejectReasons: RejectReason[] = [
   'INVALID_EVENT', 'NOT_AN_ANSWER', 'NOT_ACCEPTING', 'EARLY', 'LATE',
@@ -107,6 +131,52 @@ class MockDashboardClient implements DashboardClient {
   private listeners = new Set<(snapshot: AdminSnapshot, serverTimeMs: number) => void>();
   private statusListeners = new Set<(status: SocketStatus) => void>();
   private commandResults = new Map<string, CommandResponse>();
+  private activeThemeId: string | null = 'neon-arena';
+  private themeVersion = 1;
+
+  private resolvedTheme(themeId = this.activeThemeId): ResolvedTheme {
+    const definition = mockThemeDefinitions.find((theme) => theme.item.id === themeId && theme.item.valid);
+    if (!definition) return { id: 'default', name: 'Giao diện mặc định', version: this.themeVersion, tokens: {}, fonts: [], assets: {} };
+    return {
+      id: definition.item.id,
+      name: definition.item.name,
+      version: this.themeVersion,
+      tokens: { ...definition.tokens },
+      fonts: [],
+      assets: { ...definition.assets },
+    };
+  }
+
+  async getThemes(): Promise<AdminThemesResponse> {
+    return {
+      themes: mockThemeDefinitions.map(({ item }) => ({ ...item, active: item.id === this.activeThemeId })),
+      activeThemeId: this.activeThemeId,
+      themeVersion: this.themeVersion,
+    };
+  }
+
+  async getActiveTheme() {
+    return this.resolvedTheme();
+  }
+
+  async getResolvedTheme(_token: string, themeId: string) {
+    const theme = mockThemeDefinitions.find((item) => item.item.id === themeId && item.item.valid);
+    if (!theme) throw new ApiError('Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.', 422, 'THEME_INVALID');
+    return this.resolvedTheme(themeId);
+  }
+
+  async reloadThemes() {
+    this.themeVersion += 1;
+    return this.getThemes();
+  }
+
+  async setActiveTheme(_token: string, themeId: string): Promise<SetActiveThemeResponse> {
+    const theme = mockThemeDefinitions.find((item) => item.item.id === themeId && item.item.valid);
+    if (!theme) throw new ApiError('Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.', 422, 'THEME_INVALID');
+    this.activeThemeId = themeId;
+    this.themeVersion += 1;
+    return { theme: this.resolvedTheme(themeId), activeThemeId: this.activeThemeId, themeVersion: this.themeVersion };
+  }
 
   async getHealth() {
     return { ok: true, contractVersion: 1, sessionId: this.sessionId };
