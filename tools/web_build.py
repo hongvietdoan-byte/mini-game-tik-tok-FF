@@ -87,15 +87,53 @@ def write_build_markers(root: Path) -> tuple[str | None, list[str]]:
     return marker, []
 
 
+def ensure_build(root: Path) -> int:
+    """Build and verify stale/missing web dist before the launcher opens the app."""
+    fresh, stale = build_state(root)
+    if fresh:
+        print("[web] dashboard/overlay dist đã khớp source; bỏ qua build.")
+        return 0
+
+    for item in stale:
+        print(f"[web] cần build lại: {item}")
+    print("Đang cập nhật giao diện…", flush=True)
+    # shell=True is needed on Windows to resolve corepack.cmd; the command is constant.
+    try:
+        build = subprocess.run("corepack pnpm build:web", cwd=root, shell=True, check=False)
+    except OSError as error:
+        print(f"[web] không chạy được build:web: {error}")
+        return 1
+    if build.returncode != 0:
+        print(f"[web] build:web thất bại (mã {build.returncode}).")
+        return 1
+
+    try:
+        verify = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "verify", "--root", str(root)],
+            cwd=root,
+            check=False,
+        )
+    except OSError as error:
+        print(f"[web] không chạy được bước verify dist: {error}")
+        return 1
+    if verify.returncode != 0:
+        print(f"[web] verify dist thất bại (mã {verify.returncode}).")
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("check", "verify"))
+    parser.add_argument("action", choices=("check", "verify", "ensure"))
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args(argv)
     root = args.root.resolve()
+
+    if args.action == "ensure":
+        return ensure_build(root)
 
     if args.action == "verify":
         marker, errors = write_build_markers(root)
