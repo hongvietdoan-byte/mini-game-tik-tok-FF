@@ -30,6 +30,7 @@ import {
   connectionStatusTone,
   dangerousActions,
   formatTimeAgo,
+  formatRetryWait,
   hasHighSourceLatencyWarning,
   hasSilentAcceptingWarning,
   overlayUrlFromLocation,
@@ -75,6 +76,7 @@ function App() {
   const [questionsPerRound, setQuestionsPerRound] = useState(15);
   const [speedBonusMax, setSpeedBonusMax] = useState(50);
   const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
+  const [mcVoiceStartWaitSeconds, setMcVoiceStartWaitSeconds] = useState(30);
   const [mcVoicePreflight, setMcVoicePreflight] = useState<PreflightResponse['checks'][number] | null>(null);
   const [mcVoicePreflightState, setMcVoicePreflightState] = useState<'loading' | 'ready' | 'unavailable'>('ready');
   const mcVoicePreflightRequest = useRef(0);
@@ -214,10 +216,21 @@ function App() {
   }, [connectWithToken, desktopBridge]);
 
   useEffect(() => {
-    if (!snapshot?.public.timer?.running) return;
+    if (!snapshot?.public.timer?.running && !snapshot?.roundStartWait) return;
     const interval = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(interval);
-  }, [snapshot?.public.timer?.running, snapshot?.public.timer?.remainingMs, timerAnchor.serverTimeMs]);
+  }, [snapshot?.public.timer?.running, snapshot?.public.timer?.remainingMs, snapshot?.roundStartWait?.remainingMs, timerAnchor.serverTimeMs]);
+
+  useEffect(() => {
+    const retryAtMs = snapshot?.live.retryAtMs;
+    if (retryAtMs === null || retryAtMs === undefined || retryAtMs <= Date.now()) return;
+    const interval = window.setInterval(() => {
+      const currentMs = Date.now();
+      setNow(currentMs);
+      if (currentMs >= retryAtMs) window.clearInterval(interval);
+    }, 200);
+    return () => window.clearInterval(interval);
+  }, [snapshot?.live.retryAtMs]);
 
   useEffect(() => {
     if (snapshot?.public.state === 'ACCEPTING') setAcceptingSinceMs((value) => value ?? Date.now());
@@ -294,6 +307,7 @@ function App() {
       speedBonusMax,
       speedMultiplier: createMode === 'MOCK' ? Number(data.get('speedMultiplier')) : 1,
       mcVoiceEnabled,
+      mcVoiceStartWaitMs: mcVoiceStartWaitSeconds * 1_000,
       ...(createMode === 'TIKTOK' ? { tiktokUsername: tiktokUsername.trim() } : {}),
       ...(String(data.get('seed')).trim() ? { seed: Number(data.get('seed')) } : {}),
     });
@@ -345,7 +359,9 @@ function App() {
         setError(commandErrorMessage(response.status, message));
         setPendingEnvelope(null);
       } else {
-        setNotice('Đã gửi lệnh.');
+        setNotice(response.status === 202 && envelope.command.type === 'START_ROUND'
+          ? 'Đang chờ chuẩn bị giọng đọc câu 1.'
+          : 'Đã gửi lệnh.');
         setPendingEnvelope(null);
         await refreshSessionSnapshot();
         if (envelope.command.type === 'STOP'
@@ -387,6 +403,13 @@ function App() {
     }
     const enabled = action.type === 'SET_AUTO_MODE' ? !snapshot.autoMode : undefined;
     const command = commandForAction(action, snapshot, undefined, enabled);
+    void submitEnvelope(buildCommandEnvelope(snapshot, command, operatorId));
+  }
+
+  function startRoundImmediately() {
+    if (!snapshot) return;
+    const action: DashboardAction = { type: 'START_ROUND', label: 'Bắt đầu vòng' };
+    const command = { ...commandForAction(action, snapshot), startImmediately: true };
     void submitEnvelope(buildCommandEnvelope(snapshot, command, operatorId));
   }
 
@@ -473,9 +496,13 @@ function App() {
   const timerRemainingMs = snapshot?.public.timer
     ? Math.max(0, snapshot.public.timer.remainingMs - Math.max(0, now + timerAnchor.offsetMs - timerAnchor.serverTimeMs))
     : null;
+  const roundStartWaitRemainingMs = snapshot?.roundStartWait
+    ? Math.max(0, snapshot.roundStartWait.remainingMs - Math.max(0, now + timerAnchor.offsetMs - timerAnchor.serverTimeMs))
+    : null;
   const isTikTokAccepting = snapshot?.config.mode === 'TIKTOK' && snapshot.public.state === 'ACCEPTING';
   const silentWarning = Boolean(snapshot && isTikTokAccepting && hasSilentAcceptingWarning(snapshot.public.state, snapshot.live.lastCommentAtMs, acceptingSinceMs, now));
   const latencyWarning = Boolean(snapshot && isTikTokAccepting && hasHighSourceLatencyWarning(snapshot.public.state, snapshot.live.sourceLatencyP95Ms));
+  const retryWait = snapshot?.config.mode === 'TIKTOK' ? formatRetryWait(snapshot.live.retryAtMs, now) : null;
   const transportLabel = snapshot?.live.transport === 'WEBSOCKET' ? 'WebSocket'
     : snapshot?.live.transport === 'POLLING' ? 'Polling' : 'Chưa xác định';
   const formatMs = (value: number | null) => value === null ? '—' : `${Math.round(value).toLocaleString('vi-VN')} ms`;
@@ -579,14 +606,15 @@ function App() {
               </>}
             </div>
             {snapshot.config.mode === 'TIKTOK' && <div className={`tiktok-live-state ${snapshot.live.status === 'CONNECTED' ? 'is-live' : ''}`} role="status"><b>{snapshot.live.status === 'CONNECTED' ? 'Đang LIVE' : 'Chưa LIVE'}</b><span>{snapshot.live.status === 'CONNECTED' ? 'Đang nhận bình luận từ TikTok LIVE.' : snapshot.live.detail ?? 'Nguồn TikTok chưa kết nối. Bấm Kết nối để kiểm tra trạng thái LIVE.'}</span></div>}
+            {retryWait && <div className="source-detail" role="status" data-testid="tiktok-retry-wait">{retryWait} · Không tự kết nối lại trong thời gian này.</div>}
             {snapshot.live.detail && snapshot.config.mode !== 'TIKTOK' && <div className="source-detail" role="status">{snapshot.live.detail}</div>}
             {silentWarning && <div className="quiet-warning" role="status"><b>Chưa nhận bình luận mới trong hơn 5 giây</b><span>Kiểm tra kết nối WebSocket, trạng thái LIVE và cấu hình dịch vụ ký.</span></div>}
             {latencyWarning && <div className="quiet-warning" role="status"><b>Độ trễ nguồn p95 vượt 3 giây</b><span>Kiểm tra mạng và độ trễ của nguồn; số đo chỉ quan sát, không đổi ngưỡng trả lời.</span></div>}
             {snapshot.config.mode === 'TIKTOK' && snapshot.live.status !== 'CONNECTED' && <div className="source-detail" data-testid="round-rejections">Lý do bị loại trong vòng: {Object.entries(snapshot.live.rejectedThisRound).filter(([, count]) => count > 0).map(([reason, count]) => `${reason} ${count}`).join(' · ') || 'chưa có'} · ghi log {snapshot.live.rawRecordingEnabled ? 'đang bật (đã băm ID)' : 'đang tắt'}</div>}
             <div className="source-actions">
-              <button type="button" className="primary-button" disabled={busy} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
+              <button type="button" className="primary-button" disabled={busy || retryWait !== null} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
               <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('DISCONNECT')}>Ngắt</button>
-              <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('RECONNECT')}>Kết nối lại</button>
+              <button type="button" className="secondary-button" disabled={busy || retryWait !== null} onClick={() => void controlSource('RECONNECT')}>Kết nối lại</button>
             </div>
             {snapshot.config.mode === 'TIKTOK' && <p className="connector-note">Kết nối bằng connector cộng đồng; trạng thái nguồn và chi tiết kết nối do server cung cấp.</p>}
           </section>
@@ -594,12 +622,20 @@ function App() {
           <section className="panel actions-panel">
             <div className="panel-title"><div><span className="eyebrow">ĐIỀU HÀNH</span><h2>Lệnh an toàn</h2></div><label className="operator-input">Operator ID<input value={operatorId} onChange={(event) => setOperatorId(event.target.value)} maxLength={100} /></label></div>
             <div className="action-buttons">
-              {actions.map((action) => <button key={action.type} type="button" className="primary-button" disabled={busy || snapshot.sessionStatus !== 'OPEN'} onClick={() => beginAction(action)}>
+              {actions.map((action) => <button key={action.type} type="button" className="primary-button" disabled={busy || snapshot.sessionStatus !== 'OPEN' || (action.type === 'START_ROUND' && !!snapshot.roundStartWait)} onClick={() => beginAction(action)}>
                 {action.type === 'SET_AUTO_MODE' ? (snapshot.autoMode ? 'Tắt Auto' : 'Bật Auto') : action.label}
               </button>)}
               {snapshot.public.state === 'CONNECTION_INTERRUPTED' && <button className="primary-button" type="button" onClick={() => beginAction({ type: 'RESUME', label: 'Tiếp tục' })}>Tiếp tục</button>}
               {snapshot.public.state === 'ERROR' && <button className="primary-button" type="button" onClick={() => beginAction({ type: 'STOP', label: 'Dừng phiên', danger: true })}>Dừng phiên</button>}
             </div>
+            {snapshot.roundStartWait && roundStartWaitRemainingMs !== null && <div className="round-start-wait" role="status" data-testid="round-start-voice-wait">
+              <div><b>Đang chuẩn bị giọng đọc câu 1</b><span>Vòng tự bắt đầu sau tối đa {Math.ceil(roundStartWaitRemainingMs / 1_000)} giây.</span></div>
+              <progress aria-label="Tiến độ chờ giọng đọc câu 1" max={snapshot.roundStartWait.durationMs} value={snapshot.roundStartWait.durationMs - roundStartWaitRemainingMs} />
+              <div className="round-start-wait-actions">
+                <button type="button" className="secondary-button" disabled={busy} onClick={() => beginAction({ type: 'PAUSE', label: 'Tạm dừng' })}>Tạm dừng</button>
+                <button type="button" className="secondary-button" disabled={busy} onClick={startRoundImmediately}>Bắt đầu ngay</button>
+              </div>
+            </div>}
             <div className="danger-actions"><span>HÀNH ĐỘNG CẦN LÝ DO</span>{dangerousActions.map((action) => {
               const state = snapshot.public.state;
               const allowed = action.type === 'STOP' ? snapshot.sessionStatus === 'OPEN'
@@ -665,6 +701,7 @@ function App() {
           <p className="speed-bonus-note">Giảm dần từ lúc mở câu tới hết giờ; người xem mạng chậm có thể bị thiệt — đặt 0 để tắt.</p>
           <div className="score-cap-preview"><b>Điểm tối đa/vòng (Kahoot): {maxRoundScore(questionsPerRound, speedBonusMax, 'KAHOOT').toLocaleString('vi-VN')}</b><small>Classic: {questionsPerRound} × (100 + {speedBonusMax}) + 180 = {maxRoundScore(questionsPerRound, speedBonusMax, 'CLASSIC').toLocaleString('vi-VN')}</small></div>
           <label className="mc-voice-toggle"><input aria-label="Giọng MC" name="mcVoiceEnabled" type="checkbox" checked={mcVoiceEnabled} onChange={(event) => setMcVoiceEnabled(event.target.checked)} /><span><b>Giọng MC</b><small>Bật mặc định cho phiên mới; có thể tắt trước khi tạo.</small></span></label>
+          {mcVoiceEnabled && <label>Chờ giọng câu 1 tối đa (giây)<input aria-label="Thời gian chờ giọng câu 1" name="mcVoiceStartWaitSeconds" type="number" min="0" max="30" step="1" value={mcVoiceStartWaitSeconds} onChange={(event) => setMcVoiceStartWaitSeconds(Math.min(30, Math.max(0, Number(event.target.value) || 0)))} /><small>Đặt 0 để bỏ qua; phiên sẽ tự bắt đầu khi giọng sẵn sàng hoặc hết thời gian này.</small></label>}
           {createMode === 'TIKTOK' && <>
             <label>TikTok username<input name="tiktokUsername" required value={tiktokUsername} onChange={(event) => setTikTokUsername(event.target.value)} placeholder="@ten_tai_khoan hoặc URL TikTok LIVE" /></label>
             <div className="tiktok-warning" role="note">Kết nối TikTok dùng thư viện cộng đồng, KHÔNG CHÍNH THỨC — có thể ngừng hoạt động bất kỳ lúc nào. Chỉ đọc bình luận, không đăng nhập, không gửi tin.</div>

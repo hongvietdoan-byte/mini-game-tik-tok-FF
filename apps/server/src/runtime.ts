@@ -104,11 +104,20 @@ type ApplyFail = { ok: false; code: CommandResult extends infer R ? (R extends {
 type ApplyResult = ApplyOk | ApplyFail;
 
 type PreparedSelection = { round: PreparedRound; seed: number; snapshots: QuestionSnapshot[] };
+type RoundQuestionCount = NonNullable<Extract<CommandBody, { type: 'START_ROUND' }>['questionCount']>;
 type PreparedLobbyRound = {
   selection: PreparedSelection;
-  questionCount: number;
+  questionCount: RoundQuestionCount;
   allowReuse: boolean;
   signature: string;
+};
+type PendingRoundStart = {
+  selection: PreparedSelection;
+  questionCount: RoundQuestionCount;
+  allowReuse: boolean;
+  signature: string;
+  deadlineMs: number;
+  timeout: unknown;
 };
 type RoundVoicePreparation = { signature: string; promise: Promise<void> };
 type SpamAttempt = { atMs: number; reason: SpamWarningReason };
@@ -146,6 +155,7 @@ const MAX_SEEN_EVENTS = 100_000;
 const COMMENT_RATE_WINDOW_SECONDS = 5;
 const SOURCE_LATENCY_SAMPLE_LIMIT = 512;
 const HEARTBEAT_MS = 1_000;
+const DEFAULT_START_ROUND_VOICE_WAIT_MS = 30_000;
 const COUNTS_THROTTLE_MS = 250;
 const SPAM_CLEANUP_MS = 1_000;
 const MC_VOICE_TELEMETRY_REASONS = new Set([
@@ -199,6 +209,8 @@ export class SessionRuntime {
   private questionVoiceBundles = new Map<string, Promise<McVoiceReadingBundle | null>>();
   private voiceAssetPromises = new Map<string, Promise<{ assetId: string; durationMs: number } | null>>();
   private preparedLobbyRound: PreparedLobbyRound | null = null;
+  private pendingRoundStart: PendingRoundStart | null = null;
+  private readyQuestionVoiceKeys = new Set<string>();
   private roundVoicePreparation: RoundVoicePreparation | null = null;
   private voiceHandles = new Set<unknown>();
   private countdownSchedule: McVoiceCountdownSchedule | null = null;
@@ -394,6 +406,7 @@ export class SessionRuntime {
 
   dispose() {
     this.disposed = true;
+    this.cancelPendingRoundStart();
     for (const h of [
       this.timerHandle,
       this.heartbeatHandle,
@@ -823,6 +836,65 @@ export class SessionRuntime {
     return containsPlayerIdentity(text, this.voiceIdentityValues());
   }
 
+  private questionVoiceKey(snap: QuestionSnapshot) {
+    return `${snap.questionInstanceId}\u0000${JSON.stringify(snap)}`;
+  }
+
+  private cancelPendingRoundStart() {
+    const pending = this.pendingRoundStart;
+    if (!pending) return false;
+    this.scheduler.clearTimeout(pending.timeout);
+    this.pendingRoundStart = null;
+    return true;
+  }
+
+  private waitForRoundVoice(selection: PreparedSelection, questionCount: RoundQuestionCount, allowReuse: boolean, signature: string, now: number) {
+    const pending: PendingRoundStart = {
+      selection,
+      questionCount,
+      allowReuse,
+      signature,
+      deadlineMs: now + this.startRoundVoiceWaitMs(),
+      timeout: null,
+    };
+    this.pendingRoundStart = pending;
+    pending.timeout = this.scheduler.setTimeout(() => this.safe(() => this.finishPendingRoundStart(pending, 'TIMEOUT')), this.startRoundVoiceWaitMs());
+    this.emit([
+      { audience: 'public', message: this.wrap('STATE_SNAPSHOT', this.publicSnapshot(now)) },
+      { audience: 'admin', message: this.wrap('ADMIN_SNAPSHOT', this.adminSnapshot(now)) },
+    ]);
+    const firstQuestion = selection.snapshots[0];
+    if (firstQuestion) {
+      void this.prepareQuestionVoice(firstQuestion).then((bundle) => {
+        this.safe(() => this.finishPendingRoundStart(pending, bundle?.ok ? 'READY' : 'UNAVAILABLE'));
+      });
+    }
+  }
+
+  private startRoundVoiceWaitMs() {
+    return Math.min(30_000, Math.max(0, this.config.mcVoiceStartWaitMs ?? DEFAULT_START_ROUND_VOICE_WAIT_MS));
+  }
+
+  private finishPendingRoundStart(pending: PendingRoundStart, outcome: 'READY' | 'UNAVAILABLE' | 'TIMEOUT') {
+    if (this.disposed || this.pendingRoundStart !== pending) return;
+    this.cancelPendingRoundStart();
+    if (this.engine.state !== 'LOBBY' || this.engine.sessionStatus !== 'OPEN') {
+      this.emitAdmin();
+      return;
+    }
+    if (outcome === 'TIMEOUT') this.telemetry('TIMEOUT', 'QUESTION');
+    const result = this.apply({
+      kind: 'COMMAND',
+      expectedStateVersion: this.engine.stateVersion,
+      command: { type: 'START_ROUND', questionCount: pending.questionCount, allowReuse: pending.allowReuse },
+      preparedRound: pending.selection.round,
+    }, { prepared: pending.selection });
+    if (!result.ok) {
+      this.notice = { code: result.code, message: result.message };
+      this.emitAdmin();
+    }
+  }
+
   private questionVoiceLines(snap: QuestionSnapshot): McVoiceReadingLine[] {
     const event = McVoiceEventSchema.parse({
       type: 'QUESTION', questionInstanceId: snap.questionInstanceId, approvedQuestionVersion: String(snap.questionVersion),
@@ -846,7 +918,7 @@ export class SessionRuntime {
   private prepareQuestionVoice(snap: QuestionSnapshot) {
     // Một lựa chọn LOBBY có thể bị thay bằng lựa chọn mới nhưng cùng round/qid. Đưa snapshot vào
     // khóa RAM để audio cũ không bị dùng nhầm; khóa cache asset hiện có vẫn giữ nguyên.
-    const key = `${snap.questionInstanceId}\u0000${JSON.stringify(snap)}`;
+    const key = this.questionVoiceKey(snap);
     const existing = this.questionVoiceBundles.get(key);
     if (existing) return existing;
     const lines = this.questionVoiceLines(snap);
@@ -860,6 +932,7 @@ export class SessionRuntime {
     const service = this.deps.mcVoice!.service;
     const pending = service.prepareQuestionReading(lines).then((bundle) => {
       if (!bundle.ok) this.telemetry('TOO_LONG', 'QUESTION');
+      else this.readyQuestionVoiceKeys.add(key);
       return bundle;
     }).catch((error: unknown) => {
       this.telemetry(error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'FAILED', 'QUESTION');
@@ -1288,11 +1361,25 @@ export class SessionRuntime {
       const count = 'questionCount' in cmd && cmd.questionCount ? cmd.questionCount : this.config.questionsPerRound;
       const allowReuse = 'allowReuse' in cmd ? !!cmd.allowReuse : false;
       if (cmd.type === 'START_ROUND') {
-        const candidate = this.preparedLobbyRound;
-        this.preparedLobbyRound = null;
-        if (this.voiceEnabled() && candidate && candidate.questionCount === count && candidate.allowReuse === allowReuse &&
-          candidate.signature === this.lobbyRoundSignature(count, allowReuse, now)) {
-          prepared = candidate.selection;
+        const pending = this.pendingRoundStart;
+        if (pending && !cmd.startImmediately) {
+          const result: CommandResult = { ok: true, stateVersion: this.engine.stateVersion, state: this.engine.state, duplicate: false };
+          this.store.transaction(() => this.recordAction(env, result, now));
+          this.emitAdmin();
+          return { status: 202, result };
+        }
+        if (pending && cmd.startImmediately) {
+          if (pending.questionCount === count && pending.allowReuse === allowReuse &&
+            pending.signature === this.lobbyRoundSignature(count, allowReuse, now)) prepared = pending.selection;
+          this.cancelPendingRoundStart();
+        }
+        if (!prepared) {
+          const candidate = this.preparedLobbyRound;
+          this.preparedLobbyRound = null;
+          if (this.voiceEnabled() && candidate && candidate.questionCount === count && candidate.allowReuse === allowReuse &&
+            candidate.signature === this.lobbyRoundSignature(count, allowReuse, now)) {
+            prepared = candidate.selection;
+          }
         }
       }
       if (!prepared) {
@@ -1311,7 +1398,22 @@ export class SessionRuntime {
         }
         prepared = sel.prepared;
       }
+      if (cmd.type === 'START_ROUND' && !cmd.startImmediately && this.voiceEnabled() && prepared) {
+        const firstQuestion = prepared.snapshots[0];
+        const signature = this.lobbyRoundSignature(count, allowReuse, now);
+        if (firstQuestion && !this.readyQuestionVoiceKeys.has(this.questionVoiceKey(firstQuestion))) {
+          this.waitForRoundVoice(prepared, count, allowReuse, signature, now);
+          const result: CommandResult = { ok: true, stateVersion: this.engine.stateVersion, state: this.engine.state, duplicate: false };
+          this.store.transaction(() => this.recordAction(env, result, now));
+          return { status: 202, result };
+        }
+      }
     }
+
+    // PAUSE/STOP được reducer xác thực ngay bên dưới; clear trước khi snapshot được ghi để
+    // overlay không giữ bubble chờ giọng trong trạng thái đã tạm dừng hoặc kết thúc.
+    if (this.pendingRoundStart && env.expectedStateVersion === this.engine.stateVersion &&
+      (cmd.type === 'PAUSE' || cmd.type === 'STOP')) this.cancelPendingRoundStart();
 
     const res = this.apply(
       {
@@ -1579,8 +1681,10 @@ export class SessionRuntime {
     const currentOutageMs = this.outageStartedAtMs !== null && this.roundStartedAtMs !== null
       ? Math.max(0, now - Math.max(this.outageStartedAtMs, this.roundStartedAtMs))
       : 0;
+    const retryAtMs = this.adapter.retryAtMs?.() ?? null;
     return {
       ...this.health,
+      ...(retryAtMs !== null ? { retryAtMs } : {}),
       status: this.adapter.status(),
       transport: this.adapter.transport?.() ?? 'UNKNOWN',
       commentsPerSecondTotal: total / COMMENT_RATE_WINDOW_SECONDS,
@@ -2099,6 +2203,7 @@ export class SessionRuntime {
       participantCount: e.round ? this.participants : 0,
       fastestCorrectAnswer,
       mcVoiceCue,
+      ...(this.pendingRoundStart && e.state === 'LOBBY' ? { lobbyMessage: 'Chuẩn bị vào trận…' } : {}),
       mcVoiceCountdownSchedule: e.state === 'ACCEPTING' && qid &&
         this.countdownSchedule?.questionInstanceId === qid ? this.countdownSchedule : null,
       reveal: revealView,
@@ -2159,6 +2264,10 @@ export class SessionRuntime {
       metrics: { ...this.metrics, rejected: { ...this.metrics.rejected } },
       recentRejections: [...this.rejections].reverse().slice(0, 20),
       spamWarnings: this.spamWarnings(),
+      roundStartWait: this.pendingRoundStart ? {
+        durationMs: this.startRoundVoiceWaitMs(),
+        remainingMs: Math.max(0, this.pendingRoundStart.deadlineMs - now),
+      } : null,
       pool: this.pool(now),
       simulator: this.simulator ? { running: this.simulator.running, players: this.simulator.opts.players.length } : null,
       error: e.error ?? this.notice,

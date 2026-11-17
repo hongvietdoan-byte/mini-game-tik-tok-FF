@@ -67,14 +67,18 @@ class ReplayConnection implements TikTokConnectionLike {
 class UserOfflineError extends Error {}
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function setup(connections: ReplayConnection[], startMs = 1_800_000_000_000) {
+function setup(
+  connections: ReplayConnection[],
+  startMs = 1_800_000_000_000,
+  reconnect = { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
+) {
   const scheduler = new ManualScheduler(startMs);
   let index = 0;
   const adapter = new TikTokLiveAdapter({
     username: '@synthetic_live',
     scheduler,
     createConnection: () => connections[Math.min(index++, connections.length - 1)]!,
-    reconnect: { baseMs: 1_000, maxMs: 4_000, maxAttempts: 4 },
+    reconnect,
   });
   const comments: RawComment[] = [];
   const statuses: ConnectionStatus[] = [];
@@ -183,19 +187,23 @@ describe('TikTok connector replay', () => {
     const failedRetry = new ReplayConnection();
     failedRetry.failWith = new Error('ECONNRESET');
     const successfulRetry = new ReplayConnection();
-    const { adapter, scheduler, comments, statuses } = setup([first, failedRetry, successfulRetry]);
+    const { adapter, scheduler, comments, statuses } = setup(
+      [first, failedRetry, successfulRetry],
+      1_800_000_000_000,
+      { baseMs: 1_000, maxMs: 60_000, maxAttempts: 4 },
+    );
 
     await adapter.connect();
     first.emit('disconnected', { reason: 'mạng chập chờn' });
     expect(adapter.status()).toBe('RECONNECTING');
-    scheduler.advance(999);
+    scheduler.advance(4_999);
     expect(failedRetry.connects).toBe(0);
     scheduler.advance(1);
     await flush();
     expect(failedRetry.connects).toBe(1);
     expect(adapter.status()).toBe('RECONNECTING');
 
-    scheduler.advance(1_999);
+    scheduler.advance(9_999);
     expect(successfulRetry.connects).toBe(0);
     scheduler.advance(1);
     await flush();

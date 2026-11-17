@@ -63,7 +63,7 @@ async function harness() {
   return result;
 }
 
-async function createVoiceSession(h: Awaited<ReturnType<typeof harness>>, opts: { mcVoiceEnabled?: boolean; seed?: number; packId?: string } = {}) {
+async function createVoiceSession(h: Awaited<ReturnType<typeof harness>>, opts: { mcVoiceEnabled?: boolean; seed?: number; packId?: string; lobbyMs?: number; mcVoiceStartWaitMs?: number } = {}) {
   const response = await h.quiz.app.inject({
     method: 'POST',
     url: '/api/sessions',
@@ -77,7 +77,8 @@ async function createVoiceSession(h: Awaited<ReturnType<typeof harness>>, opts: 
         seed: opts.seed ?? 42,
         questionsPerRound: 10,
         mcVoiceEnabled: opts.mcVoiceEnabled ?? true,
-        timings: { ...DEFAULT_TIMINGS, prepareMs: 500, answerMs: 3_000 },
+        ...(opts.mcVoiceStartWaitMs === undefined ? {} : { mcVoiceStartWaitMs: opts.mcVoiceStartWaitMs }),
+        timings: { ...DEFAULT_TIMINGS, ...(opts.lobbyMs === undefined ? {} : { lobbyMs: opts.lobbyMs }), prepareMs: 500, answerMs: 3_000 },
       },
     },
   });
@@ -114,6 +115,155 @@ function altPackQuestions(): ReturnType<typeof makeQuestions> {
 }
 
 describe('MC Voice lựa chọn trước trong LOBBY', () => {
+  it('giữ ở LOBBY cho đến khi gói giọng câu 1 sẵn sàng rồi mới bắt đầu', async () => {
+    const h = await harness();
+    let releaseFirstQuestion!: () => void;
+    const firstQuestionGate = new Promise<void>((resolve) => { releaseFirstQuestion = resolve; });
+    vi.mocked(h.provider.synthesize).mockImplementation(async (request) => {
+      if (request.text.startsWith('Câu hỏi thử nghiệm số')) await firstQuestionGate;
+      return fakeAudio();
+    });
+    try {
+      const { runtime, send } = await createVoiceSession(h);
+      expect((await send({ type: 'OPEN_LOBBY' })).statusCode).toBe(200);
+      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+
+      expect((await send({ type: 'START_ROUND' })).statusCode).toBe(202);
+      expect(runtime.engine.state).toBe('LOBBY');
+      expect(runtime.adminSnapshot().roundStartWait).toMatchObject({ durationMs: 30_000, remainingMs: 30_000 });
+      expect(runtime.publicSnapshot().lobbyMessage).toBe('Chuẩn bị vào trận…');
+
+      releaseFirstQuestion();
+      await vi.waitFor(() => expect(runtime.engine.state).toBe('PREPARE'));
+      expect(runtime.adminSnapshot().roundStartWait).toBeNull();
+    } finally {
+      releaseFirstQuestion();
+    }
+  });
+
+  it('hết 30 giây thì bắt đầu với fallback và ghi telemetry an toàn', async () => {
+    const h = await harness();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let releaseFirstQuestion!: () => void;
+    const firstQuestionGate = new Promise<void>((resolve) => { releaseFirstQuestion = resolve; });
+    vi.mocked(h.provider.synthesize).mockImplementation(async (request) => {
+      if (request.text.startsWith('Câu hỏi thử nghiệm số')) await firstQuestionGate;
+      return fakeAudio();
+    });
+    try {
+      const { runtime, send } = await createVoiceSession(h);
+      await send({ type: 'OPEN_LOBBY' });
+      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+      expect((await send({ type: 'START_ROUND' })).statusCode).toBe(202);
+
+      h.scheduler.advance(30_000);
+      expect(runtime.engine.state).toBe('PREPARE');
+      expect(runtime.adminSnapshot().roundStartWait).toBeNull();
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('event=QUESTION reason=TIMEOUT'));
+    } finally {
+      releaseFirstQuestion();
+      warning.mockRestore();
+    }
+  });
+
+  it('áp dụng thời gian chờ câu 1 được cấu hình cho phiên', async () => {
+    const h = await harness();
+    let releaseFirstQuestion!: () => void;
+    const firstQuestionGate = new Promise<void>((resolve) => { releaseFirstQuestion = resolve; });
+    vi.mocked(h.provider.synthesize).mockImplementation(async (request) => {
+      if (request.text.startsWith('Câu hỏi thử nghiệm số')) await firstQuestionGate;
+      return fakeAudio();
+    });
+    try {
+      const { runtime, send } = await createVoiceSession(h, { mcVoiceStartWaitMs: 5_000 });
+      await send({ type: 'OPEN_LOBBY' });
+      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+      expect((await send({ type: 'START_ROUND' })).statusCode).toBe(202);
+      expect(runtime.adminSnapshot().roundStartWait).toMatchObject({ durationMs: 5_000, remainingMs: 5_000 });
+
+      h.scheduler.advance(4_999);
+      expect(runtime.engine.state).toBe('LOBBY');
+      h.scheduler.advance(1);
+      expect(runtime.engine.state).toBe('PREPARE');
+    } finally {
+      releaseFirstQuestion();
+    }
+  });
+
+  it('nút Bắt đầu ngay bỏ qua thời gian chờ, không đổi bộ câu đã chọn', async () => {
+    const h = await harness();
+    let releaseFirstQuestion!: () => void;
+    const firstQuestionGate = new Promise<void>((resolve) => { releaseFirstQuestion = resolve; });
+    vi.mocked(h.provider.synthesize).mockImplementation(async (request) => {
+      if (request.text.startsWith('Câu hỏi thử nghiệm số')) await firstQuestionGate;
+      return fakeAudio();
+    });
+    try {
+      const { runtime, send } = await createVoiceSession(h);
+      await send({ type: 'OPEN_LOBBY' });
+      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+      expect((await send({ type: 'START_ROUND' })).statusCode).toBe(202);
+      expect((await send({ type: 'START_ROUND', startImmediately: true })).statusCode).toBe(200);
+      expect(runtime.engine.state).toBe('PREPARE');
+      expect(runtime.adminSnapshot().roundStartWait).toBeNull();
+      expect(h.store.roundQuestions(`${runtime.id}:r1`)).toHaveLength(10);
+    } finally {
+      releaseFirstQuestion();
+    }
+  });
+
+  it.each([
+    { type: 'PAUSE', expected: 'PAUSED' },
+    { type: 'STOP', expected: 'IDLE' },
+  ] as const)('$type huỷ sạch lệnh bắt đầu đang chờ', async ({ type, expected }) => {
+    const h = await harness();
+    let releaseFirstQuestion!: () => void;
+    const firstQuestionGate = new Promise<void>((resolve) => { releaseFirstQuestion = resolve; });
+    vi.mocked(h.provider.synthesize).mockImplementation(async (request) => {
+      if (request.text.startsWith('Câu hỏi thử nghiệm số')) await firstQuestionGate;
+      return fakeAudio();
+    });
+    try {
+      const { runtime, send } = await createVoiceSession(h);
+      await send({ type: 'OPEN_LOBBY' });
+      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+      expect((await send({ type: 'START_ROUND' })).statusCode).toBe(202);
+      expect((await send(type === 'STOP' ? { type, reason: 'Dừng chờ' } : { type })).statusCode).toBe(200);
+      expect(runtime.engine.state).toBe(expected);
+      expect(runtime.adminSnapshot().roundStartWait).toBeNull();
+
+      releaseFirstQuestion();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(runtime.engine.state).toBe(expected);
+    } finally {
+      releaseFirstQuestion();
+    }
+  });
+
+  it('Auto mode cũng chờ bundle câu 1 trước khi chuyển khỏi LOBBY', async () => {
+    const h = await harness();
+    let releaseFirstQuestion!: () => void;
+    const firstQuestionGate = new Promise<void>((resolve) => { releaseFirstQuestion = resolve; });
+    vi.mocked(h.provider.synthesize).mockImplementation(async (request) => {
+      if (request.text.startsWith('Câu hỏi thử nghiệm số')) await firstQuestionGate;
+      return fakeAudio();
+    });
+    try {
+      const { runtime, send } = await createVoiceSession(h, { lobbyMs: 100 });
+      await send({ type: 'OPEN_LOBBY' });
+      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+      await send({ type: 'SET_AUTO_MODE', enabled: true });
+      h.scheduler.advance(100);
+      expect(runtime.engine.state).toBe('LOBBY');
+      expect(runtime.adminSnapshot().roundStartWait).not.toBeNull();
+
+      releaseFirstQuestion();
+      await vi.waitFor(() => expect(runtime.engine.state).toBe('PREPARE'));
+    } finally {
+      releaseFirstQuestion();
+    }
+  });
+
   it('chọn mà chưa ghi store; ưu tiên audio câu 1 trước các câu hỏi và reveal còn lại', async () => {
     const h = await harness();
     const timeline: string[] = [];
@@ -194,7 +344,10 @@ describe('MC Voice lựa chọn trước trong LOBBY', () => {
       // Không có API đổi cấu hình trong khi chạy; mô phỏng thay đổi pack trong LOBBY để xác minh
       // chữ ký bảo vệ lựa chọn trước và trường hợp qid giữ nguyên nhưng nội dung snapshot thay đổi.
       runtime.session.config.packId = 'alternate';
-      expect((await send({ type: 'START_ROUND' })).statusCode).toBe(200);
+      const start = await send({ type: 'START_ROUND' });
+      expect([200, 202]).toContain(start.statusCode);
+      if (start.statusCode === 202)
+        await vi.waitFor(() => expect(runtime.engine.state).toBe('PREPARE'), { timeout: 30_000, interval: 50 });
       const snapshots = h.store.roundQuestions(`${runtime.id}:r1`).map((row) => row.snapshot);
       expect(snapshots).toHaveLength(10);
       expect(snapshots.every((snapshot) => snapshot.questionId.startsWith('alt-'))).toBe(true);
@@ -234,7 +387,10 @@ describe('MC Voice lựa chọn trước trong LOBBY', () => {
     const normal = await createVoiceSession(normalHarness, { mcVoiceEnabled: false, seed: 9876 });
     expect((await early.send({ type: 'OPEN_LOBBY' })).statusCode).toBe(200);
     expect((await normal.send({ type: 'OPEN_LOBBY' })).statusCode).toBe(200);
-    expect((await early.send({ type: 'START_ROUND' })).statusCode).toBe(200);
+    const earlyStart = await early.send({ type: 'START_ROUND' });
+    expect([200, 202]).toContain(earlyStart.statusCode);
+    if (earlyStart.statusCode === 202)
+      await vi.waitFor(() => expect(early.runtime.engine.state).toBe('PREPARE'), { timeout: 30_000, interval: 50 });
     expect((await normal.send({ type: 'START_ROUND' })).statusCode).toBe(200);
     const earlySnapshots = earlyHarness.store.roundQuestions(`${early.runtime.id}:r1`).map((row) => row.snapshot);
     const normalSnapshots = normalHarness.store.roundQuestions(`${normal.runtime.id}:r1`).map((row) => row.snapshot);

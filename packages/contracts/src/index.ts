@@ -486,6 +486,8 @@ export const SessionConfigSchema = z
     timings: TimingsSchema.default({}),
     /** Bật luồng MC Voice cho phiên; mặc định tắt để phiên cũ tiếp tục PREPARE → ACCEPTING. */
     mcVoiceEnabled: z.boolean().optional(),
+    /** Thời gian chờ tối đa cho audio câu đầu vòng; 0 để bỏ qua thời gian chờ. */
+    mcVoiceStartWaitMs: z.number().int().min(0).max(30_000).default(30_000),
     /** Chỉ hợp lệ trong MOCK. */
     speedMultiplier: z.number().min(1).max(200).default(1),
     /** Cho phép câu hỏi DEMO/hư cấu — chỉ hợp lệ trong MOCK. */
@@ -530,12 +532,12 @@ type SessionConfigOutput = z.infer<typeof SessionConfigSchema>;
 export type SessionConfig =
   Omit<
     SessionConfigOutput,
-    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs'
+    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs'
   > &
   Partial<
     Pick<
       SessionConfigOutput,
-      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs'
+      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs'
     >
   >;
 
@@ -589,6 +591,8 @@ export const CommandBodySchema = z.discriminatedUnion('type', [
     questionCount: QuestionsPerRoundSchema.optional(),
     /** Chỉ dùng khi ngân hàng thiếu câu: operator CHỦ ĐỘNG cho phép lặp lại. */
     allowReuse: z.boolean().optional(),
+    /** Operator bỏ qua thời gian chờ audio câu 1 đang được chuẩn bị. */
+    startImmediately: z.boolean().optional(),
   }),
   z.object({ type: z.literal('PAUSE'), reason: optReason }),
   z.object({ type: z.literal('RESUME'), reason: optReason }),
@@ -960,6 +964,8 @@ export type PublicSnapshot = {
   fastestCorrectAnswer: FastestCorrectAnswer | null;
   /** Cue chỉ được gắn vào snapshot WS phát một lần; snapshot phục hồi luôn trả null. */
   mcVoiceCue?: McVoiceCue | null;
+  /** Thông báo sảnh khi runtime đang chờ chuẩn bị audio câu đầu tiên. */
+  lobbyMessage?: string;
   /** Lịch countdown bền theo câu; snapshot reconnect chỉ tự phát các mốc còn ở tương lai. */
   mcVoiceCountdownSchedule?: McVoiceCountdownSchedule | null;
   reveal: RevealView | null;
@@ -1009,6 +1015,8 @@ export type AdminSnapshot = {
     primaryReason: SpamWarningReason;
     lastAtMs: number;
   }[];
+  /** Thời gian còn lại trước khi bắt đầu vòng với fallback nếu audio câu 1 chưa sẵn sàng. */
+  roundStartWait?: { durationMs: number; remainingMs: number } | null;
   pool: { eligible: number; unusedInSession: number; requiredNextRound: number; lowPoolWarning: boolean };
   simulator: { running: boolean; players: number } | null;
   error: { code: string; message: string } | null;
@@ -1036,6 +1044,8 @@ export type LiveSourceHealth = {
   rejectedThisRound: Record<RejectReason, number>;
   rawRecordingEnabled: boolean;
   detail: string | null;
+  /** Có mặt trong thời gian cooldown của dịch vụ ký TikTok. */
+  retryAtMs?: number | null;
 };
 
 // ---------------------------------------------------------------------------
