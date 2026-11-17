@@ -135,6 +135,26 @@ describe('overlay BGM playback', () => {
     expect(probe.stops.filter((at) => at === undefined)).toHaveLength(3);
   });
 
+  it('lets the current word finish until the next countdown marker, then stops it at that exact start', async () => {
+    const probe = installAudioApi([]);
+    const engine = new OverlayAudioEngine(parseAudioMix(''), () => undefined);
+    const startsAt = Date.now();
+    const first = {
+      cueId: 'countdown-five', eventType: 'COUNTDOWN' as const,
+      assetUrl: `/api/mc-voice/assets/${'a'.repeat(64)}`, durationMs: 1_281, startsAtServerMs: startsAt,
+    };
+    await engine.playMcVoice(first, 0);
+    expect(probe.starts).toHaveLength(1);
+
+    await engine.playMcVoice({ ...first, cueId: 'countdown-four', durationMs: 436, startsAtServerMs: startsAt + 1_000 }, 0);
+    expect(probe.starts).toHaveLength(2);
+    expect(probe.stops).toEqual([probe.starts[1]!.at]);
+
+    engine.stopMcVoice();
+    expect(probe.stops.filter((at) => at === undefined)).toHaveLength(2);
+    engine.destroy();
+  });
+
   it('falls back to legacy bgm, then the generated loop when no audio files exist', async () => {
     const probe = installAudioApi(['bgm.ogg']);
     const engine = new OverlayAudioEngine(parseAudioMix('?bgm=0.25'), () => undefined);

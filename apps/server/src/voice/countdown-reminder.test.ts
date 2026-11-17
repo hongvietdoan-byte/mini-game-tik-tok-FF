@@ -44,7 +44,7 @@ async function makeRuntime(duration: (text: string) => number = () => 300) {
     name: 'MC cue test', config: { mode: 'MOCK', mcVoiceEnabled: true, allowDemoQuestions: true },
   }));
   opened.push({ root, runtime, store });
-  const cues: Array<{ eventType: string; startsAtServerMs: number; bubbleText?: string }> = [];
+  const cues: Array<{ eventType: string; startsAtServerMs: number; durationMs: number; bubbleText?: string }> = [];
   runtime.subscribe((batch) => {
     for (const item of batch) {
       if (item.audience === 'public' && item.message.type === 'STATE_SNAPSHOT' && item.message.payload.mcVoiceCue)
@@ -58,27 +58,90 @@ async function makeRuntime(duration: (text: string) => number = () => 300) {
 }
 
 describe('cue đếm ngược và nhắc luật MC', () => {
-  it('phát câu 10 giây và các từ đếm đúng mốc; bỏ một từ nếu từ trước còn phát', async () => {
-    const { runtime, scheduler, cues } = await makeRuntime((text) => text === 'Năm' ? 1_500 : 300);
+  it('phát đủ 6/6 mốc khi scheduler trễ 0–300 ms, kể cả asset có tail dài', async () => {
+    const { runtime, scheduler, cues } = await makeRuntime((text) => ({
+      'Còn 10 giây!': 1_040, Năm: 500, Bốn: 436, Ba: 1_281, Hai: 450, Một: 329,
+    })[text] ?? 300);
     const start = scheduler.now();
     runtime.engine.state = 'ACCEPTING';
     runtime.engine.round = { roundId: 'mock-round', roundNumber: 1, questionInstanceIds: ['mock-q'], questionIndex: 0, closed: [], voided: [] };
     runtime.engine.timer = { durationMs: 20_000, remainingMs: 20_000, deadlineMs: start + 20_000 };
     const internal = runtime as unknown as {
       scheduleQuestionCountdown(questionInstanceId: string): void;
+      schedulePreciseVoiceCue(
+        eventType: 'COUNTDOWN', assetId: string, durationMs: number, startsAtServerMs: number, isCurrent: () => boolean,
+      ): boolean;
       voiceHandles: Set<unknown>;
+    };
+    const jitterMs = [0, 100, 200, 300, 50, 250];
+    const originalSetTimeout = scheduler.setTimeout.bind(scheduler);
+    const originalPreciseSchedule = internal.schedulePreciseVoiceCue.bind(internal);
+    internal.schedulePreciseVoiceCue = (...args) => {
+      const jitter = jitterMs.shift() ?? 0;
+      const restoreSetTimeout = scheduler.setTimeout;
+      scheduler.setTimeout = (fn, delayMs) => originalSetTimeout(fn, delayMs + jitter);
+      try { return originalPreciseSchedule(...args); }
+      finally { scheduler.setTimeout = restoreSetTimeout; }
     };
     internal.scheduleQuestionCountdown('mock-q');
     await vi.waitFor(() => expect(internal.voiceHandles.size).toBe(COUNTDOWN.length));
 
-    scheduler.advance(9_920);
-    expect(cues).toContainEqual(expect.objectContaining({ eventType: 'COUNTDOWN', startsAtServerMs: start + 10_000 }));
-    scheduler.advance(5_000);
-    expect(cues).toContainEqual(expect.objectContaining({ eventType: 'COUNTDOWN', startsAtServerMs: start + 15_000 }));
-    scheduler.advance(1_000);
-    expect(cues.some((cue) => cue.eventType === 'COUNTDOWN' && cue.startsAtServerMs === start + 16_000)).toBe(false);
-    scheduler.advance(1_000);
-    expect(cues).toContainEqual(expect.objectContaining({ eventType: 'COUNTDOWN', startsAtServerMs: start + 17_000 }));
+    scheduler.advance(20_000);
+    const countdown = cues.filter((cue) => cue.eventType === 'COUNTDOWN');
+    expect(countdown).toHaveLength(6);
+    expect(countdown.map((cue) => cue.startsAtServerMs)).toEqual(COUNTDOWN.map((_, index) =>
+      start + [10_000, 15_000, 16_000, 17_000, 18_000, 19_000][index]!));
+    expect(countdown.find((cue) => cue.startsAtServerMs === start + 17_000)?.durationMs).toBe(1_281);
+    expect(countdown.find((cue) => cue.startsAtServerMs === start + 10_000)?.durationMs).toBe(1_040);
+  });
+
+  it('vẫn phát khi callback trễ đúng 400 ms và bỏ khi vượt ngưỡng', async () => {
+    const { runtime, scheduler, cues } = await makeRuntime();
+    const start = scheduler.now();
+    runtime.engine.state = 'ACCEPTING';
+    runtime.engine.round = { roundId: 'mock-round', roundNumber: 1, questionInstanceIds: ['mock-q'], questionIndex: 0, closed: [], voided: [] };
+    runtime.engine.timer = { durationMs: 20_000, remainingMs: 20_000, deadlineMs: start + 20_000 };
+    const internal = runtime as unknown as {
+      scheduleQuestionCountdown(questionInstanceId: string): void;
+      schedulePreciseVoiceCue(
+        eventType: 'COUNTDOWN', assetId: string, durationMs: number, startsAtServerMs: number, isCurrent: () => boolean,
+      ): boolean;
+      voiceHandles: Set<unknown>;
+    };
+    const originalSetTimeout = scheduler.setTimeout.bind(scheduler);
+    const originalPreciseSchedule = internal.schedulePreciseVoiceCue.bind(internal);
+    const jitter = 700; // Timer is requested at marker−300 ms, so this fires exactly marker+400 ms.
+    internal.schedulePreciseVoiceCue = (...args) => {
+      const restoreSetTimeout = scheduler.setTimeout;
+      scheduler.setTimeout = (fn, delayMs) => originalSetTimeout(fn, delayMs + jitter);
+      try { return originalPreciseSchedule(...args); }
+      finally { scheduler.setTimeout = restoreSetTimeout; }
+    };
+    internal.scheduleQuestionCountdown('mock-q');
+    await vi.waitFor(() => expect(internal.voiceHandles.size).toBe(COUNTDOWN.length));
+    scheduler.advance(20_000);
+    expect(cues.filter((cue) => cue.eventType === 'COUNTDOWN')).toHaveLength(6);
+    expect(cues.filter((cue) => cue.eventType === 'COUNTDOWN').map((cue) => cue.startsAtServerMs)).toEqual(
+      [10_000, 15_000, 16_000, 17_000, 18_000, 19_000].map((offset) => start + offset + 400));
+
+    const tooLate = await makeRuntime();
+    const tooLateStart = tooLate.scheduler.now();
+    tooLate.runtime.engine.state = 'ACCEPTING';
+    tooLate.runtime.engine.round = { roundId: 'mock-round', roundNumber: 1, questionInstanceIds: ['mock-late'], questionIndex: 0, closed: [], voided: [] };
+    tooLate.runtime.engine.timer = { durationMs: 20_000, remainingMs: 20_000, deadlineMs: tooLateStart + 20_000 };
+    const lateInternal = tooLate.runtime as unknown as typeof internal;
+    const lateOriginalSetTimeout = tooLate.scheduler.setTimeout.bind(tooLate.scheduler);
+    const lateOriginalSchedule = lateInternal.schedulePreciseVoiceCue.bind(lateInternal);
+    lateInternal.schedulePreciseVoiceCue = (...args) => {
+      const restoreSetTimeout = tooLate.scheduler.setTimeout;
+      tooLate.scheduler.setTimeout = (fn, delayMs) => lateOriginalSetTimeout(fn, delayMs + 701);
+      try { return lateOriginalSchedule(...args); }
+      finally { tooLate.scheduler.setTimeout = restoreSetTimeout; }
+    };
+    lateInternal.scheduleQuestionCountdown('mock-late');
+    await vi.waitFor(() => expect(lateInternal.voiceHandles.size).toBe(COUNTDOWN.length));
+    tooLate.scheduler.advance(20_000);
+    expect(tooLate.cues.filter((cue) => cue.eventType === 'COUNTDOWN')).toHaveLength(0);
   });
 
   it('nhắc một lần, đợi voiceTail và gửi bong bóng; bỏ nếu phải chờ quá 4 giây', async () => {
@@ -108,6 +171,27 @@ describe('cue đếm ngược và nhắc luật MC', () => {
     internal.speakSpamReminder('mock-q5', 5);
     scheduler.advance(5_000);
     expect(cues.filter((cue) => cue.eventType === 'SPAM_REMINDER')).toHaveLength(1);
+  });
+
+  it('bỏ lời nhắc nếu không thể kết thúc trước cue 10 giây', async () => {
+    const { runtime, scheduler, cues } = await makeRuntime(() => 300);
+    const start = scheduler.now();
+    runtime.engine.state = 'ACCEPTING';
+    runtime.engine.round = { roundId: 'mock-round', roundNumber: 1, questionInstanceIds: ['mock-q'], questionIndex: 1, closed: [], voided: [] };
+    runtime.engine.timer = { durationMs: 12_000, remainingMs: 12_000, deadlineMs: start + 12_000 };
+    const internal = runtime as unknown as {
+      speakSpamReminder(questionInstanceId: string, questionNumber: number): void;
+      voiceTailAtMs: number;
+      voiceHandles: Set<unknown>;
+      voiceAssetPromises: Map<string, Promise<unknown>>;
+    };
+    internal.voiceTailAtMs = start + 1_500;
+    internal.speakSpamReminder('mock-q', 2);
+    await Promise.all(internal.voiceAssetPromises.values());
+    await Promise.resolve();
+    expect(internal.voiceHandles.size).toBe(0);
+    scheduler.advance(2_000);
+    expect(cues.filter((cue) => cue.eventType === 'SPAM_REMINDER')).toHaveLength(0);
   });
 
   it('phát câu Hết giờ khi vào reveal bằng asset chung đã làm nóng trước', async () => {
