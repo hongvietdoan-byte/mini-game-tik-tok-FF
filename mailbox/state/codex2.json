@@ -1,12 +1,13 @@
 {
   "role": "codex2",
   "last_read": 261,
-  "heartbeat": "2026-11-18T00:30:08+07:00",
+  "heartbeat": "2026-11-18T00:31:35+07:00",
   "state": "working",
   "task": "C-0273",
   "note": "Đang sửa regression E2E long-content 45 ký tự; C-0270 đã tạm dừng trong worktree riêng, C-0264 được mở phạm vi theo C-0274.",
   "done": [
     273,
-    274
+    274,
+    277
   ]
 }
