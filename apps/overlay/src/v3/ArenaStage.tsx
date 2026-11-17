@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
+import { positiveScoreEntries } from '../overlayLogic';
 import { shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
 import { BrandMark } from './BrandMark';
@@ -489,7 +490,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
         </svg>
       </div>
       <BrandHeader snapshot={snapshot} />
-      <Top10 entries={snapshot.leaderboard?.entries ?? []} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
+      <Top10 entries={positiveScoreEntries(snapshot.leaderboard?.entries ?? [])} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
       <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={fastest} fastestVariant={fastestVariant} />
       <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} />

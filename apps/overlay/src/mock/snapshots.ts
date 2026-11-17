@@ -68,16 +68,21 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'question-clamp-text': { scene: 'QUESTION', state: 'ACCEPTING' },
   // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
   reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'reveal-zero-score': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'reveal-clamp-text': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-a': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-a-long': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-b': { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
+  'top10-zero-score': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
+  'top10-zero-score-empty': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-short': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-long-name': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-xss': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'round-winner': { scene: 'ROUND_WINNER', state: 'ROUND_END' },
   victory: { scene: 'VICTORY', state: 'VICTORY' },
+  'victory-zero-score': { scene: 'VICTORY', state: 'VICTORY' },
+  'victory-zero-score-empty': { scene: 'VICTORY', state: 'VICTORY' },
   'victory-tie': { scene: 'VICTORY', state: 'VICTORY' },
   'victory-name-test': { scene: 'VICTORY', state: 'VICTORY' },
   intermission: { scene: 'INTERMISSION', state: 'INTERMISSION' },
@@ -96,6 +101,20 @@ function podium(tied: boolean): PublicPodium {
       { place: 1, rank: 1, tied, entries: [{ ...first, rank: 1, tied }] },
       { place: 3, rank: 3, tied: false, entries: [third] },
     ],
+  };
+}
+
+function zeroScorePodium(empty: boolean): PublicPodium {
+  const demo = podium(false);
+  return {
+    ...demo,
+    slots: demo.slots.map((slot) => ({
+      ...slot,
+      entries: slot.entries.map((entry) => ({
+        ...entry,
+        score: empty || slot.place === 3 ? 0 : entry.score,
+      })),
+    })),
   };
 }
 
@@ -126,7 +145,12 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
   if (!mapped) return null;
   const short = name === 'top10-short';
   const isFastestMock = name === 'fastest-a' || name === 'fastest-a-long' || name === 'fastest-b';
-  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'paused'].includes(name);
+  const isZeroScoreMock = name.includes('zero-score');
+  const emptyZeroScoreMock = name.endsWith('-zero-score-empty');
+  const mockLeaderboard = isZeroScoreMock
+    ? leaderboard.map((entry, index) => ({ ...entry, score: emptyZeroScoreMock || index >= 6 ? 0 : entry.score }))
+    : leaderboard;
+  const question = ['prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-zero-score', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'paused'].includes(name);
   const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
   const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
@@ -151,18 +175,18 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     { id: 'D' as const, text: 'Bỏ qua vùng an toàn để tiếp tục nhặt thêm trang bị.' },
   ];
   const optionsVisible = name !== 'prepare';
-  const isReveal = name === 'reveal' || name === 'reveal-clamp-text' || isFastestMock;
+  const isReveal = name === 'reveal' || name === 'reveal-zero-score' || name === 'reveal-clamp-text' || isFastestMock;
   const visibleLeaderboard = name === 'question-long-name' || name === 'top10-long-name'
-    ? leaderboard.map((entry, index) => index === 0
+    ? mockLeaderboard.map((entry, index) => index === 0
       ? { ...entry, safeDisplayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
       : entry)
     : name === 'top10-xss'
-      ? leaderboard.map((entry, index) => index === 2
+      ? mockLeaderboard.map((entry, index) => index === 2
         ? { ...entry, safeDisplayName: '<script>window.__xss=1</script>' }
         : index === 3
           ? { ...entry, safeDisplayName: '<img src=x onerror="window.__xss=1">' }
           : entry)
-      : leaderboard;
+      : mockLeaderboard;
   return {
     contractVersion: 1,
     sessionId: 'demo-session',
@@ -222,11 +246,13 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     } : null,
     leaderboard: question
       ? { kind: 'COMPACT', entries: visibleLeaderboard.slice(0, 10) }
-      : ['top10', 'top10-short', 'top10-long-name', 'top10-xss', 'round-winner', 'victory', 'victory-tie'].includes(name)
+      : ['top10', 'top10-zero-score', 'top10-zero-score-empty', 'top10-short', 'top10-long-name', 'top10-xss', 'round-winner', 'victory', 'victory-tie', 'victory-zero-score', 'victory-zero-score-empty'].includes(name)
         ? { kind: name === 'top10' || name === 'top10-short' || name === 'top10-long-name' || name === 'top10-xss' ? 'FULL' : 'COMPACT', entries: short ? visibleLeaderboard.slice(0, 3) : visibleLeaderboard.slice(0, name === 'round-winner' ? 3 : 10) }
         : null,
     podium: name === 'victory-name-test'
       ? victoryNameTestPodium()
+      : name === 'victory-zero-score' || name === 'victory-zero-score-empty'
+        ? zeroScorePodium(emptyZeroScoreMock)
       : name === 'victory' || name === 'victory-tie'
         ? podium(name === 'victory-tie')
         : null,
@@ -241,7 +267,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
           ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
           : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
-    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'paused'].includes(name) ? mockAudience(isReveal) : null,
+    audience: ['lobby', 'prepare', 'reading', 'reading-longest', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-clamp-text', 'reveal', 'reveal-zero-score', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'paused'].includes(name) ? mockAudience(isReveal) : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   } as PublicSnapshot;
 }

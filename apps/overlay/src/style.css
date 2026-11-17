@@ -104,6 +104,7 @@ h1 span, h2 span { color: var(--gold); }
 .leaderboard-compact .leaderboard-row { min-height: 122px; grid-template-columns: 76px 1fr 180px; font-size: 33px; }
 .victory-scene h2 { font-size: 72px; }
 .podium-row { width: min(860px, 100%); margin: 105px auto 0; display: flex; justify-content: center; align-items: end; gap: 10px; }
+.podium-empty { margin: 105px auto 0; text-align: center; font-size: 24px; font-weight: 700; }
 .podium-card { position: relative; width: 280px; display: flex; flex-direction: column; align-items: center; }
 .podium-card.place-1 { order: 2; }
 .podium-card.place-2 { order: 1; }

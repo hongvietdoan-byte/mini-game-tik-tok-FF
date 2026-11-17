@@ -1,4 +1,4 @@
-import type { PublicLeaderboardEntry, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
+import type { PublicLeaderboardEntry, PublicPodium, PublicPodiumSlot, PublicSnapshot } from '@quiz/contracts';
 
 export function selectNewestSnapshot(
   current: PublicSnapshot | null,
@@ -33,6 +33,20 @@ export function leaderboardPages(entries: PublicLeaderboardEntry[], pageSize = 5
   const pages: PublicLeaderboardEntry[][] = [];
   for (let i = 0; i < entries.length; i += safeSize) pages.push(entries.slice(i, i + safeSize));
   return pages;
+}
+
+/** Ranking panels omit players who have not earned any points; source order stays authoritative. */
+export function positiveScoreEntries(entries: PublicLeaderboardEntry[]): PublicLeaderboardEntry[] {
+  return entries.filter((entry) => entry.score > 0);
+}
+
+/** Keep the podium layout and ranks, but remove empty/zero-score winner slots. */
+export function positiveScorePodium(podium: PublicPodium | null): PublicPodium | null {
+  if (!podium) return null;
+  const slots = podium.slots
+    .map((slot) => ({ ...slot, entries: positiveScoreEntries(slot.entries) }))
+    .filter((slot) => slot.entries.length > 0);
+  return { ...podium, slots };
 }
 
 export function podiumLeftToRight(slots: PublicPodiumSlot[]): PublicPodiumSlot[] {

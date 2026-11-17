@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { McStateSchema, type PublicLeaderboardEntry, type PublicPodiumSlot, type PublicSnapshot } from '@quiz/contracts';
-import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight } from './overlayLogic';
+import { interpolateRemainingMs, leaderboardPages, podiumLeftToRight, positiveScoreEntries, positiveScorePodium } from './overlayLogic';
 import { useSnapshot } from './net/useSnapshot';
 import { MOCK_SCENES } from './mock/snapshots';
 import { ArenaStage, McBubbleText, V3_SCENES } from './v3/ArenaStage';
@@ -52,6 +52,7 @@ function Leaderboard({ entries, compact = false, allowLegacyNames }: { entries: 
       {(() => { const name = publicPlayerName(entry, `Người chơi ${entry.rank}`, allowLegacyNames); return <span className="player-name" title={name}>{name}{entry.tied && <small>ĐỒNG HẠNG</small>}</span>; })()}
       <span className="score">{entry.score.toLocaleString('vi-VN')}<small>điểm</small></span>
     </div>)}
+    {entries.length === 0 && <div className="leaderboard-empty">Chưa có người chơi đạt điểm</div>}
   </div>;
 }
 
@@ -72,7 +73,8 @@ function Podium({ slots, tied, allowLegacyNames }: { slots: PublicPodiumSlot[]; 
 function SceneContent({ snapshot, remainingMs, allowLegacyNames }: { snapshot: PublicSnapshot; remainingMs: number; allowLegacyNames: boolean }) {
   const { scene } = snapshot;
   const [page, setPage] = useState(0);
-  const entries = snapshot.leaderboard?.entries ?? [];
+  const entries = positiveScoreEntries(snapshot.leaderboard?.entries ?? []);
+  const podium = positiveScorePodium(snapshot.podium);
   const reveal = snapshot.reveal;
   const pages = useMemo(() => leaderboardPages(entries, 5), [entries]);
   useEffect(() => {
@@ -138,7 +140,9 @@ function SceneContent({ snapshot, remainingMs, allowLegacyNames }: { snapshot: P
 
   if (scene === 'VICTORY') return <section className="victory-scene">
     <div className="eyebrow">VINH DANH NHÀ VÔ ĐỊCH</div><h2>VINH QUANG<br /><span>THUỘC VỀ</span></h2>
-    {snapshot.podium && <Podium slots={snapshot.podium.slots} tied={snapshot.podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />}
+    {podium?.slots.length
+      ? <Podium slots={podium.slots} tied={podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />
+      : <div className="podium-empty">Chưa có người chơi đạt điểm</div>}
   </section>;
 
   if (scene === 'INTERMISSION') return <section className="intermission-scene">
