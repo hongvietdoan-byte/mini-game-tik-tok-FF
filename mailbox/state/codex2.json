@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 261,
-  "heartbeat": "2026-11-17T22:59:12+07:00",
+  "heartbeat": "2026-11-17T23:00:02+07:00",
   "state": "working",
-  "task": "C-0261",
-  "note": "Đã đồng bộ nhánh task; thêm E2E kiểm tra 4 ô đáp án ở READING, ACCEPTING và REVEAL",
+  "task": "C-0264",
+  "note": "C-0261 đã push/report; bắt đầu C-0264 với cập nhật C-0265/C-0266",
   "done": []
 }
