@@ -15,7 +15,6 @@ const normalActions: Record<GameState, DashboardAction[]> = {
   ],
   READING: [
     { type: 'PAUSE', label: 'Tạm dừng' },
-    { type: 'MANUAL_NEXT', label: 'Tiếp' },
   ],
   ACCEPTING: [
     { type: 'PAUSE', label: 'Tạm dừng' },
@@ -26,10 +25,9 @@ const normalActions: Record<GameState, DashboardAction[]> = {
   ],
   LEADERBOARD: [
     { type: 'MANUAL_NEXT', label: 'Tiếp' },
-    { type: 'NEXT_ROUND', label: 'Vòng mới' },
     { type: 'SET_AUTO_MODE', label: 'Bật Auto' },
   ],
-  ROUND_END: [{ type: 'NEXT_ROUND', label: 'Vòng mới' }],
+  ROUND_END: [{ type: 'MANUAL_NEXT', label: 'Tiếp' }],
   VICTORY: [{ type: 'NEXT_ROUND', label: 'Vòng mới' }],
   INTERMISSION: [{ type: 'NEXT_ROUND', label: 'Vòng mới' }],
   PAUSED: [{ type: 'RESUME', label: 'Tiếp tục' }],
@@ -40,6 +38,33 @@ const normalActions: Record<GameState, DashboardAction[]> = {
 export function actionsFor(snapshot: AdminSnapshot): DashboardAction[] {
   if (snapshot.recoveryPending) return [];
   return [...(normalActions[snapshot.public.state] ?? [])];
+}
+
+const STALE_RETRY_COMMANDS = new Set<CommandType>([
+  'PAUSE', 'RESUME', 'MANUAL_NEXT', 'NEXT_ROUND', 'SET_AUTO_MODE',
+]);
+
+/** Chỉ tự gửi lại lệnh an toàn khi transition engine vẫn cho phép ở snapshot mới. */
+export function canRetryStaleCommand(command: CommandType, snapshot: AdminSnapshot): boolean {
+  if (!STALE_RETRY_COMMANDS.has(command) || snapshot.sessionStatus !== 'OPEN' || snapshot.recoveryPending) return false;
+  const state = snapshot.public.state;
+  switch (command) {
+    case 'PAUSE':
+      return ['LOBBY', 'PREPARE', 'READING', 'ACCEPTING', 'REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY', 'INTERMISSION'].includes(state);
+    case 'RESUME':
+      if (state === 'PAUSED')
+        return snapshot.suspendedFrom !== null &&
+          (snapshot.suspendedFrom !== 'ACCEPTING' || snapshot.public.connection === 'CONNECTED');
+      return state === 'CONNECTION_INTERRUPTED' && snapshot.public.connection === 'CONNECTED';
+    case 'MANUAL_NEXT':
+      return ['PREPARE', 'REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY', 'INTERMISSION'].includes(state);
+    case 'NEXT_ROUND':
+      return state === 'VICTORY' || state === 'INTERMISSION';
+    case 'SET_AUTO_MODE':
+      return state !== 'ERROR';
+    default:
+      return false;
+  }
 }
 
 export function shouldAcceptSnapshotSeq(

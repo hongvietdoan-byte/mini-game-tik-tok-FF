@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { AdminSnapshot, CommandBody } from '@quiz/contracts';
+import { DEFAULT_TIMINGS, GameStateSchema, type AdminSnapshot, type CommandBody, type CommandType, type GameState } from '@quiz/contracts';
+import { createInitialState, transition, type EngineInput, type EngineState } from '@quiz/quiz-core';
 import {
   actionsFor,
   buildCommandEnvelope,
+  canRetryStaleCommand,
   checkStatusTone,
   commandErrorMessage,
   commandForAction,
@@ -37,6 +39,43 @@ function snapshot(state: AdminSnapshot['public']['state'] = 'LOBBY'): AdminSnaps
   };
 }
 
+function engineStateFor(state: GameState): EngineState {
+  const initial = createInitialState({
+    sessionId: 'dashboard-actions', mode: 'MOCK', timings: DEFAULT_TIMINGS,
+    leaderboardInterval: 5, speedMultiplier: 1,
+  });
+  const needsRound = ['PREPARE', 'READING', 'ACCEPTING', 'REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY', 'INTERMISSION', 'PAUSED'].includes(state);
+  const needsTimer = ['LOBBY', 'PREPARE', 'READING', 'ACCEPTING', 'REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY', 'INTERMISSION'].includes(state);
+  return {
+    ...initial,
+    state,
+    connectionOk: state !== 'CONNECTION_INTERRUPTED',
+    timer: needsTimer ? { durationMs: 1_000, remainingMs: 1_000, deadlineMs: 1_000 } : null,
+    round: needsRound ? {
+      roundId: 'dashboard-round', roundNumber: 1, questionInstanceIds: ['dashboard-question'],
+      questionIndex: 0, closed: state === 'LEADERBOARD' || state === 'ROUND_END' || state === 'VICTORY' || state === 'INTERMISSION' ? ['dashboard-question'] : [],
+      voided: [],
+    } : null,
+    suspended: state === 'PAUSED'
+      ? { from: 'ACCEPTING', kind: 'PAUSE' }
+      : state === 'CONNECTION_INTERRUPTED' ? { from: 'ACCEPTING', kind: 'CONNECTION' } : null,
+    error: state === 'ERROR' ? { code: 'E2E_ERROR', message: 'e2e' } : null,
+  };
+}
+
+function commandResultFor(state: GameState, command: CommandType) {
+  const engine = engineStateFor(state);
+  const input: EngineInput = {
+    kind: 'COMMAND',
+    expectedStateVersion: engine.stateVersion,
+    command: command === 'SET_AUTO_MODE' ? { type: command, enabled: true } : { type: command } as CommandBody,
+    ...(command === 'START_ROUND' ? {
+      preparedRound: { roundId: 'prepared', roundNumber: 1, questionInstanceIds: ['prepared-question'] },
+    } : {}),
+  };
+  return transition(engine, input, 0);
+}
+
 describe('dashboard command logic', () => {
   it('builds an envelope from the displayed version and keeps a command id for retry', () => {
     const envelope = buildCommandEnvelope(snapshot(), { type: 'OPEN_LOBBY' }, ' host ', 'fixed-command-id', 1234);
@@ -54,6 +93,35 @@ describe('dashboard command logic', () => {
     expect(actionsFor(snapshot('ACCEPTING')).map((action) => action.type)).toEqual(['PAUSE']);
     expect(actionsFor(snapshot('PAUSED')).map((action) => action.type)).toEqual(['RESUME']);
     expect(actionsFor({ ...snapshot('ACCEPTING'), recoveryPending: true })).toEqual([]);
+  });
+
+  it('chỉ đưa nút điều khiển hợp lệ theo transition engine ở mọi trạng thái', () => {
+    for (const state of GameStateSchema.options) {
+      for (const action of actionsFor(snapshot(state))) {
+        expect(commandResultFor(state, action.type).ok, `${state}/${action.type}`).toBe(true);
+      }
+    }
+    expect(actionsFor(snapshot('READING')).map(({ type }) => type)).toEqual(['PAUSE']);
+    expect(actionsFor(snapshot('ROUND_END')).map(({ type }) => type)).toEqual(['MANUAL_NEXT']);
+  });
+
+  it('chỉ retry stale cho lệnh an toàn khi engine vẫn chấp nhận ở trạng thái mới', () => {
+    const safeCommands: CommandType[] = ['PAUSE', 'RESUME', 'MANUAL_NEXT', 'NEXT_ROUND', 'SET_AUTO_MODE'];
+    for (const state of GameStateSchema.options) {
+      const current = snapshot(state);
+      const currentSnapshot: AdminSnapshot = {
+        ...current,
+        public: { ...current.public, state, connection: state === 'CONNECTION_INTERRUPTED' ? 'BLOCKED' : 'CONNECTED' },
+        suspendedFrom: state === 'PAUSED' || state === 'CONNECTION_INTERRUPTED' ? 'ACCEPTING' : null,
+      };
+      for (const command of safeCommands) {
+        expect(canRetryStaleCommand(command, currentSnapshot), `${state}/${command}`)
+          .toBe(commandResultFor(state, command).ok);
+      }
+    }
+    expect(canRetryStaleCommand('STOP', snapshot('LOBBY'))).toBe(false);
+    expect(canRetryStaleCommand('PAUSE', { ...snapshot('PREPARE'), recoveryPending: true })).toBe(false);
+    expect(canRetryStaleCommand('NEXT_ROUND', { ...snapshot('VICTORY'), sessionStatus: 'CLOSED' })).toBe(false);
   });
 
   it('creates session-sized commands and requires explicit reasons for dangerous commands', () => {
