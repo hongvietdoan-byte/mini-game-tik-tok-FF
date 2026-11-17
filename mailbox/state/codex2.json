@@ -1,9 +1,14 @@
 {
   "role": "codex2",
   "last_read": 261,
-  "heartbeat": "2026-11-17T23:07:00+07:00",
+  "heartbeat": "2026-11-18T00:42:27+07:00",
   "state": "working",
   "task": "C-0264",
-  "note": "Phần trăm largest-remainder đã implement và unit test pass; tiếp tục overlay/audio trong khi chờ điều phối phạm vi packages/contracts và quiz-core",
-  "done": []
+  "note": "C-0270 đã push/report; resume C-0264/65/66 với phạm vi contracts được C-0274 cho phép, trong worktree riêng",
+  "done": [
+    270,
+    273,
+    274,
+    277
+  ]
 }
