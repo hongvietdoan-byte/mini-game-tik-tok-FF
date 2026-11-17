@@ -389,9 +389,10 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
     ? 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!'
     : questionBackground ? (voiceBubble?.text ?? snapshot.mc.bubble) : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
+  const hasLongLabels = snapshot.question?.options.some((option) => option.text.length > 30) ?? false;
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
   const userQuestionLayout = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', userQuestionLayout && 'v3-stage--user-question-layout', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', userQuestionLayout && 'v3-stage--user-question-layout', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongLabels && 'has-long-labels', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} loopVideo={snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL'} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
