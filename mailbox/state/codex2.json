@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 270,
-  "heartbeat": "2026-11-18T01:22:16+07:00",
+  "heartbeat": "2026-11-18T01:56:11+07:00",
   "state": "working",
-  "task": "C-0271",
-  "note": "Bắt đầu chỉnh cửa sổ program 1080×1920 trong worktree riêng; kiểm tra kích thước trang và ghi hướng dẫn LIVE Studio",
+  "task": "C-0278",
+  "note": "Đang làm C-0278 trên nhánh codex2/c-option-grid-balance; C-0271 tạm giữ nguyên ở worktree riêng",
   "done": [
     273,
     274,
