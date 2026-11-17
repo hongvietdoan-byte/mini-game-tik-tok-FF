@@ -9,6 +9,7 @@ import {
   connectionStatusLabel,
   connectionStatusTone,
   formatTimeAgo,
+  hasHighSourceLatencyWarning,
   hasSilentAcceptingWarning,
   overlayUrlFromLocation,
   overlayUrlForRole,
@@ -86,13 +87,16 @@ describe('dashboard command logic', () => {
     expect(connectionStatusTone('BLOCKED')).toBe('fail');
   });
 
-  it('formats comment age and warns only after 10 seconds while accepting', () => {
+  it('formats comment age and warns after five seconds / high p95 only while accepting', () => {
     expect(formatTimeAgo(null, 20_000)).toBe('Chưa có bình luận');
     expect(formatTimeAgo(19_500, 20_000)).toBe('Vừa xong');
     expect(formatTimeAgo(18_500, 20_000)).toBe('1 giây trước');
-    expect(hasSilentAcceptingWarning('ACCEPTING', null, 10_000, 20_000)).toBe(false);
-    expect(hasSilentAcceptingWarning('ACCEPTING', null, 10_000, 20_001)).toBe(true);
-    expect(hasSilentAcceptingWarning('PREPARE', null, 0, 20_001)).toBe(false);
+    expect(hasSilentAcceptingWarning('ACCEPTING', null, 10_000, 15_000)).toBe(false);
+    expect(hasSilentAcceptingWarning('ACCEPTING', null, 10_000, 15_001)).toBe(true);
+    expect(hasSilentAcceptingWarning('PREPARE', null, 0, 15_001)).toBe(false);
+    expect(hasHighSourceLatencyWarning('ACCEPTING', 3_000)).toBe(false);
+    expect(hasHighSourceLatencyWarning('ACCEPTING', 3_001)).toBe(true);
+    expect(hasHighSourceLatencyWarning('REVEAL', 4_000)).toBe(false);
   });
 
   it('builds overlay URLs from the current app origin for dev and packaged routes', () => {

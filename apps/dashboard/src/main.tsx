@@ -30,6 +30,7 @@ import {
   connectionStatusTone,
   dangerousActions,
   formatTimeAgo,
+  hasHighSourceLatencyWarning,
   hasSilentAcceptingWarning,
   overlayUrlFromLocation,
   overlayUrlForRole,
@@ -405,7 +406,17 @@ function App() {
   const timerRemainingMs = snapshot?.public.timer
     ? Math.max(0, snapshot.public.timer.remainingMs - Math.max(0, now + timerAnchor.offsetMs - timerAnchor.serverTimeMs))
     : null;
-  const silentWarning = snapshot ? hasSilentAcceptingWarning(snapshot.public.state, snapshot.live.lastCommentAtMs, acceptingSinceMs, now) : false;
+  const isTikTokAccepting = snapshot?.config.mode === 'TIKTOK' && snapshot.public.state === 'ACCEPTING';
+  const silentWarning = Boolean(snapshot && isTikTokAccepting && hasSilentAcceptingWarning(snapshot.public.state, snapshot.live.lastCommentAtMs, acceptingSinceMs, now));
+  const latencyWarning = Boolean(snapshot && isTikTokAccepting && hasHighSourceLatencyWarning(snapshot.public.state, snapshot.live.sourceLatencyP95Ms));
+  const transportLabel = snapshot?.live.transport === 'WEBSOCKET' ? 'WebSocket'
+    : snapshot?.live.transport === 'POLLING' ? 'Polling' : 'Chưa xác định';
+  const formatMs = (value: number | null) => value === null ? '—' : `${Math.round(value).toLocaleString('vi-VN')} ms`;
+  const formatRate = (value: number) => `${value.toFixed(1)} / giây`;
+  const formatDuration = (value: number) => {
+    const seconds = Math.floor(value / 1_000);
+    return `${Math.floor(seconds / 60)} phút ${seconds % 60} giây`;
+  };
 
   return <main className="app-shell">
     <header className="topbar">
@@ -483,10 +494,20 @@ function App() {
               <div><small>COMMENT GẦN NHẤT</small><b data-testid="last-comment-age">{formatTimeAgo(snapshot.live.lastCommentAtMs, now)}</b></div>
               <div><small>TỔNG COMMENT</small><b>{snapshot.live.commentsReceived}</b></div>
               <div><small>SỐ LẦN KẾT NỐI LẠI</small><b>{snapshot.live.reconnects}</b></div>
+              {snapshot.config.mode === 'TIKTOK' && <>
+                <div><small>TRANSPORT</small><b data-testid="live-transport">{transportLabel}</b></div>
+                <div><small>COMMENT / GIÂY · TỔNG (5 GIÂY)</small><b data-testid="comment-rate-total">{formatRate(snapshot.live.commentsPerSecondTotal)}</b></div>
+                <div><small>COMMENT / GIÂY · CÂU HIỆN TẠI (5 GIÂY)</small><b data-testid="comment-rate-question">{formatRate(snapshot.live.commentsPerSecondQuestion)}</b></div>
+                <div><small>ĐỘ TRỄ NGUỒN P50 / P95</small><b data-testid="source-latency">{formatMs(snapshot.live.sourceLatencyP50Ms)} / {formatMs(snapshot.live.sourceLatencyP95Ms)}</b></div>
+                <div><small>KẾT NỐI LẠI VÒNG NÀY</small><b>{snapshot.live.reconnectsThisRound}</b></div>
+                <div><small>THỜI GIAN MẤT KẾT NỐI · VÒNG NÀY</small><b>{formatDuration(snapshot.live.downtimeMsThisRound)}</b></div>
+              </>}
             </div>
             {snapshot.config.mode === 'TIKTOK' && <div className={`tiktok-live-state ${snapshot.live.status === 'CONNECTED' ? 'is-live' : ''}`} role="status"><b>{snapshot.live.status === 'CONNECTED' ? 'Đang LIVE' : 'Chưa LIVE'}</b><span>{snapshot.live.detail ?? 'Nguồn TikTok chưa kết nối. Bấm Kết nối để kiểm tra trạng thái LIVE.'}</span></div>}
             {snapshot.live.detail && snapshot.config.mode !== 'TIKTOK' && <div className="source-detail" role="status">{snapshot.live.detail}</div>}
-            {silentWarning && <div className="quiet-warning" role="status"><b>Chưa có comment mới hơn 10 giây</b><span>Trạng thái đang nhận đáp án. Kiểm tra nguồn comment và kết nối LIVE.</span></div>}
+            {silentWarning && <div className="quiet-warning" role="status"><b>Chưa nhận bình luận mới trong hơn 5 giây</b><span>Kiểm tra kết nối WebSocket, trạng thái LIVE và cấu hình dịch vụ ký.</span></div>}
+            {latencyWarning && <div className="quiet-warning" role="status"><b>Độ trễ nguồn p95 vượt 3 giây</b><span>Kiểm tra mạng và độ trễ của nguồn; số đo chỉ quan sát, không đổi ngưỡng trả lời.</span></div>}
+            {snapshot.config.mode === 'TIKTOK' && <div className="source-detail" data-testid="round-rejections">Lý do bị loại trong vòng: {Object.entries(snapshot.live.rejectedThisRound).map(([reason, count]) => `${reason} ${count}`).join(' · ')} · ghi log {snapshot.live.rawRecordingEnabled ? 'đang bật (đã băm ID)' : 'đang tắt'}</div>}
             <div className="source-actions">
               <button type="button" className="primary-button" disabled={busy} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
               <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('DISCONNECT')}>Ngắt</button>

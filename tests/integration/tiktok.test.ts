@@ -204,11 +204,19 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
     h.conn.emit('chat', chat('1002', 'xin chào', 'm3', now)); // không phải đáp án
     h.conn.emit('chat', chat('1003', 'A', 'm1', now)); // trùng msgId → loại
     h.conn.emit('chat', { user: { nickname: 'không id' }, content: 'A', common: { msgId: 'm9' } }); // không có mã ổn định → bỏ
+    h.conn.emit('chat', chat('1004', 'A', 'm4', now - 30_000)); // đo stale trước khi loại
     expect(rt.metrics.accepted).toBe(1);
     expect(rt.metrics.rejected.DUPLICATE_ANSWER).toBe(1);
     expect(rt.metrics.rejected.NOT_AN_ANSWER).toBe(1);
     expect(rt.metrics.rejected.DUPLICATE_EVENT).toBe(1);
-    expect(rt.adminSnapshot().live.commentsReceived).toBe(4);
+    expect(rt.metrics.rejected.STALE_SOURCE_TIMESTAMP).toBe(1);
+    const telemetry = rt.adminSnapshot().live;
+    expect(telemetry.commentsReceived).toBe(5);
+    expect(telemetry.commentsPerSecondTotal).toBe(1);
+    expect(telemetry.commentsPerSecondQuestion).toBe(1);
+    expect(telemetry.sourceLatencyP95Ms).toBeGreaterThan(3_000);
+    expect(telemetry.rejectedThisRound.STALE_SOURCE_TIMESTAMP).toBe(1);
+    expect(telemetry.transport).toBe('WEBSOCKET');
 
     for (let i = 0; i < 100 && rt.engine.state === 'ACCEPTING'; i++) h.scheduler.advance(250);
     // Kahoot: trả lời gần như ngay khi mở → gần 1000 (500–1000)
@@ -241,10 +249,12 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
 
     h.conn.emit('disconnected', { reason: 'mạng chập chờn' });
     expect(rt.engine.state).toBe('CONNECTION_INTERRUPTED');
-    expect(rt.adminSnapshot().live.detail).toContain('mạng chập chờn');
+    expect(rt.adminSnapshot().live.detail).toContain('WebSocket bị ngắt');
     h.scheduler.advance(2_000); // backoff → tự kết nối lại
     await new Promise((r) => setTimeout(r, 0));
     expect(rt.adminSnapshot().live.status).toBe('CONNECTED');
+    expect(rt.adminSnapshot().live.reconnectsThisRound).toBe(1);
+    expect(rt.adminSnapshot().live.downtimeMsThisRound).toBeGreaterThan(0);
     expect(rt.engine.state).toBe('CONNECTION_INTERRUPTED');
     expect((await cmd({ type: 'RESUME' })).statusCode).toBe(200);
     expect(rt.engine.state).toBe('ACCEPTING');

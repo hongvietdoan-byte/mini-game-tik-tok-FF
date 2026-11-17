@@ -474,7 +474,7 @@ describe('C-0057 — luồng operator TIKTOK qua HTTP API và WebSocket', () => 
     expect(runtime(h).engine.state).toBe('CONNECTION_INTERRUPTED');
     const interrupted = await request(h, 'GET', `/api/sessions/${h.sessionId}/state`);
     expect(interrupted.body.live).toMatchObject({ status: 'RECONNECTING' });
-    expect(interrupted.body.live.detail).toContain('mạng LIVE bị ngắt');
+    expect(interrupted.body.live.detail).toContain('WebSocket bị ngắt');
 
     const reconnect = await request(h, 'POST', `/api/sessions/${h.sessionId}/source`, { action: 'RECONNECT' });
     expect(reconnect.status).toBe(200);

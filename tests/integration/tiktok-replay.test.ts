@@ -388,6 +388,8 @@ describe('TikTok comment replay qua runtime', () => {
     expect(h.adapter().status()).toBe('CONNECTED');
     expect(runtime.engine.state).toBe('CONNECTION_INTERRUPTED');
     expect(runtime.liveHealth().reconnects).toBe(1);
+    expect(runtime.liveHealth().reconnectsThisRound).toBe(1);
+    expect(runtime.liveHealth().downtimeMsThisRound).toBeGreaterThan(0);
 
     await command(h, sessionId, { type: 'RESUME' });
     expect(runtime.engine.state).toBe('ACCEPTING');

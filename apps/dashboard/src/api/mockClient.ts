@@ -325,10 +325,22 @@ class MockDashboardClient implements DashboardClient {
     return {
       source: 'MOCK',
       status: this.connection,
+      transport: 'UNKNOWN',
       connectedSinceMs: this.connectedSinceMs,
       lastCommentAtMs: this.lastCommentAtMs,
       commentsReceived: this.commentsReceived,
       reconnects: this.reconnects,
+      reconnectsThisRound: 0,
+      downtimeMsThisRound: 0,
+      commentsPerSecondTotal: 0,
+      commentsPerSecondQuestion: 0,
+      sourceLatencyP50Ms: null,
+      sourceLatencyP95Ms: null,
+      rejectedThisRound: {
+        INVALID_EVENT: 0, NOT_AN_ANSWER: 0, NOT_ACCEPTING: 0, EARLY: 0, LATE: 0,
+        DUPLICATE_EVENT: 0, DUPLICATE_ANSWER: 0, STALE_SOURCE_TIMESTAMP: 0,
+      },
+      rawRecordingEnabled: false,
       detail: this.sourceDetail,
     };
   }
@@ -457,15 +469,7 @@ class MockDashboardClient implements DashboardClient {
       autoMode: this.autoMode,
       recoveryPending: false,
       suspendedFrom: this.suspendedFrom,
-      live: {
-        source: 'MOCK',
-        status: this.connection,
-        connectedSinceMs: this.connectedSinceMs,
-        lastCommentAtMs: this.lastCommentAtMs,
-        commentsReceived: this.commentsReceived,
-        reconnects: this.reconnects,
-        detail: this.sourceDetail,
-      },
+      live: this.liveHealth(),
       overlay: { clients: 0, lastAckStateVersion: null, lastAckAtMs: null },
       config: this.config,
       current: questionVisible ? {

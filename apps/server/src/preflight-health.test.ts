@@ -9,7 +9,14 @@ import {
 } from './preflight-health';
 
 const connected: LiveSourceHealth = {
-  source: 'TIKTOK', status: 'CONNECTED', connectedSinceMs: 1, detail: null, reconnects: 0,
+  source: 'TIKTOK', status: 'CONNECTED', transport: 'WEBSOCKET', connectedSinceMs: 1, detail: null, reconnects: 0,
+  reconnectsThisRound: 0, downtimeMsThisRound: 0, commentsPerSecondTotal: 0, commentsPerSecondQuestion: 0,
+  sourceLatencyP50Ms: null, sourceLatencyP95Ms: null,
+  rejectedThisRound: {
+    INVALID_EVENT: 0, NOT_AN_ANSWER: 0, NOT_ACCEPTING: 0, EARLY: 0, LATE: 0,
+    DUPLICATE_EVENT: 0, DUPLICATE_ANSWER: 0, STALE_SOURCE_TIMESTAMP: 0,
+  },
+  rawRecordingEnabled: false,
   commentsReceived: 2, lastCommentAtMs: 9_800,
 };
 
