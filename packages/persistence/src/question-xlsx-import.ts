@@ -43,6 +43,7 @@ export type QuestionXlsxImportPlan = {
   packId: string | null;
   topicsToCreate: Array<{ id: string; packId: string; name: string }>;
   correctAnswerChanges: number;
+  tooLongWarnings: QuestionImportIssue[];
   counts: QuestionImportCounts;
   errors: QuestionImportIssue[];
   warnings: QuestionImportIssue[];
@@ -140,14 +141,16 @@ function normalizeHeader(value: string): string {
 function checkHeaders(worksheet: ExcelJS.Worksheet, date1904: boolean) {
   const header = worksheet.getRow(1);
   const required: Array<{ column: number; label: string; accepts: (value: string) => boolean }> = [
-    { column: 1, label: 'ID (A)', accepts: (value) => value === 'id' },
+    { column: 1, label: 'ID (A)', accepts: (value) => value === 'id' || value.startsWith('id ') },
     { column: 2, label: 'Chủ đề (B)', accepts: (value) => value.includes('chu de') || value === 'topic' },
     { column: 3, label: 'Độ khó (C)', accepts: (value) => value.includes('do kho') || value === 'difficulty' },
     { column: 4, label: 'Câu hỏi (D)', accepts: (value) => value.includes('cau hoi') || value === 'question' },
+    { column: 5, label: 'Số ký tự (E)', accepts: (value) => value.includes('so ky tu') || value === 'length' },
     ...COLUMN.options.map((column, index) => ({
       column,
       label: `Phương án ${index + 1} (${String.fromCharCode(64 + column)})`,
-      accepts: (value: string) => /phuong an|dap an|option/u.test(value),
+      accepts: (value: string) => value.includes(`phuong an ${index + 1}`)
+        || value.includes(`dap an ${index + 1}`) || value.includes(`option ${index + 1}`),
     })),
     { column: 10, label: 'Đáp án đúng (J)', accepts: (value) => value.includes('dap an dung') || value === 'correct' },
     { column: 11, label: 'Giải thích (K)', accepts: (value) => value.includes('giai thich') || value === 'explanation' },
@@ -287,7 +290,11 @@ function contentChanges(before: Question, after: Question, snapshot: DbSnapshot,
   return changes;
 }
 
-function readContent(row: WorkbookQuestionRow, errors: QuestionImportIssue[]): {
+function readContent(
+  row: WorkbookQuestionRow,
+  errors: QuestionImportIssue[],
+  tooLongWarnings: QuestionImportIssue[],
+): {
   topic: string;
   difficulty: Difficulty;
   prompt: string;
@@ -337,7 +344,8 @@ function readContent(row: WorkbookQuestionRow, errors: QuestionImportIssue[]): {
     }, QUESTION_WARNING_LIMITS);
     for (const warning of warnings) {
       const label = warning.field === 'prompt' ? 'Câu hỏi' : `Phương án ${Number(warning.optionId?.slice(1)) || 0}`;
-      addError(`${label} quá dài theo ngưỡng question-length: ${warning.characterCount}/${warning.limit} ký tự.`);
+      tooLongWarnings.push(issue(row,
+        `${label} vượt ngưỡng question-length: ${warning.characterCount}/${warning.limit} ký tự; sẽ bị loại khỏi vòng chơi.`));
     }
   }
   if (!valid || !difficultyResult.success || correctIndex < 0) return null;
@@ -401,6 +409,7 @@ export async function createQuestionXlsxImportPlan(
   const counts: QuestionImportCounts = { keep: 0, edit: 0, delete: 0, add: 0, unknown: 0 };
   const errors: QuestionImportIssue[] = [];
   const warnings: QuestionImportIssue[] = [];
+  const tooLongWarnings: QuestionImportIssue[] = [];
   const operations: PlannedQuestionImport[] = [];
   const topicsToCreate: QuestionXlsxImportPlan['topicsToCreate'] = [];
   const answerChangedIds = new Set<string>();
@@ -462,7 +471,7 @@ export async function createQuestionXlsxImportPlan(
       const mismatch = actionMismatchWarning(row, 'THEM');
       if (mismatch) warnings.push(issue(row, mismatch));
       if (!packId) continue; // Lỗi pack đã được ghi ở phần suy luận phía trên.
-      const content = readContent(row, errors);
+      const content = readContent(row, errors, tooLongWarnings);
       if (!content) {
         if (row.topic.trim()) resolveTopic(packId, row.topic.normalize('NFKC').replace(/\s+/gu, ' ').trim(), row);
         continue;
@@ -508,7 +517,7 @@ export async function createQuestionXlsxImportPlan(
     const mismatch = actionMismatchWarning(row, inferredAction);
     if (mismatch && !(inferredAction === 'GIU' && row.action === 'SUA')) warnings.push(issue(row, mismatch));
 
-    const content = readContent(row, errors);
+    const content = readContent(row, errors, tooLongWarnings);
     if (!content) {
       if (row.topic.trim()) resolveTopic(before.packId, row.topic.normalize('NFKC').replace(/\s+/gu, ' ').trim(), row);
       continue;
@@ -539,7 +548,7 @@ export async function createQuestionXlsxImportPlan(
   }
 
   return { workbookName: basename(workbookPath), packId, topicsToCreate,
-    correctAnswerChanges: answerChangedIds.size, counts, errors, warnings, operations };
+    correctAnswerChanges: answerChangedIds.size, tooLongWarnings, counts, errors, warnings, operations };
 }
 
 function stableQuestion(question: Question): string {
@@ -675,13 +684,25 @@ export function renderQuestionXlsxImportReport(
     `- Pack suy ra: ${plan.packId ? `\`${plan.packId}\`` : 'chưa xác định'}`,
     `- Số câu sẽ đổi đáp án đúng: ${plan.correctAnswerChanges}`,
     '',
+  ];
+
+  if (plan.tooLongWarnings.length > 0) {
+    lines.push('## Quá dài — sẽ bị loại khỏi vòng chơi', '',
+      'Các câu dưới đây vẫn được nhập/giữ theo thao tác đã chọn; hệ thống question-length tự loại chúng khỏi pool chơi.', '');
+    for (const warning of plan.tooLongWarnings) {
+      lines.push(`- Dòng ${warning.rowNumber} (${warning.questionId}): ${warning.message}`);
+    }
+    lines.push('');
+  }
+
+  lines.push(
     '## Tổng hợp',
     '',
     '| Giữ | Sửa | Xoá | Thêm | Dòng chưa nhận diện |',
     '|---:|---:|---:|---:|---:|',
     `| ${plan.counts.keep} | ${plan.counts.edit} | ${plan.counts.delete} | ${plan.counts.add} | ${plan.counts.unknown} |`,
     '',
-  ];
+  );
 
   if (edits.length > 0) {
     lines.push('## Thay đổi trước / sau', '');
@@ -754,4 +775,3 @@ export function questionImportBackupPath(databasePath: string, now = new Date())
   const stamp = now.toISOString().replace(/[-:TZ.]/gu, '').slice(0, 14);
   return join(backupDir, `${basename(resolved)}.before-question-import-${stamp}.sqlite`);
 }
-

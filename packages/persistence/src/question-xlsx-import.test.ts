@@ -17,8 +17,8 @@ import { removeTestTempRoot, testTempRoot } from '../../../tests/support/tempRoo
 const allocated: string[] = [];
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const HEADERS = [
-  'ID', 'Chủ đề', 'Độ khó', 'Câu hỏi', 'Số ký tự', 'Phương án 1', 'Phương án 2', 'Phương án 3',
-  'Phương án 4', 'Đáp án đúng', 'Giải thích', 'Hành động', 'Ghi chú',
+  'ID (không sửa)', 'Chủ đề', 'Độ khó', 'Câu hỏi', 'Số ký tự', 'Phương án 1', 'Phương án 2', 'Phương án 3',
+  'Phương án 4', 'Đáp án đúng (1-4)', 'Giải thích', 'Hành động', 'Ghi chú',
 ];
 
 type WorkbookRow = {
@@ -65,11 +65,14 @@ function seedDatabase(path: string) {
     approvalStatus: 'APPROVED',
     version: 1,
   });
+  const longQuestion = question('q-long', 'L'.repeat(111));
+  longQuestion.options[0]!.text = 'O'.repeat(29);
   store.seedQuestions({ id: 'pack-demo', name: 'Pack demo' }, [
     question('q-edit', 'Câu hỏi cũ'),
     question('q-keep', 'Câu hỏi giữ'),
     question('q-delete', 'Câu hỏi xoá'),
     question('q-noop', 'Câu hỏi không đổi'),
+    longQuestion,
   ], 100);
   store.raw.prepare('UPDATE subtopics SET name = ? WHERE id = ?').run('Tổng quát', 'topic-general');
   store.close();
@@ -208,7 +211,10 @@ describe('question XLSX importer', () => {
     const messages = plan.errors.map((error) => error.message);
     expect(messages).toContain('ID bị lặp trong workbook.');
     expect(messages).toContain('ID "missing-id" không tồn tại trong DB.');
-    expect(messages).toContain('Câu hỏi quá dài theo ngưỡng question-length: 111/110 ký tự.');
+    expect(plan.tooLongWarnings).toContainEqual(expect.objectContaining({
+      rowNumber: 2,
+      message: 'Câu hỏi vượt ngưỡng question-length: 111/110 ký tự; sẽ bị loại khỏi vòng chơi.',
+    }));
     expect(messages.some((message) => message.includes('Phương án 1 và 2 trùng nhau.'))).toBe(true);
     expect(messages.some((message) => message.includes('Thiếu phương án 3.'))).toBe(true);
     expect(messages).toContain('Đáp án đúng phải là số 1–4.');
@@ -301,6 +307,42 @@ describe('question XLSX importer', () => {
     }
   });
 
+  it('allows apply when an unchanged question exceeds question-length and lists it in the prominent report section', async () => {
+    const root = tempRoot();
+    const dbPath = join(root, 'quiz.db');
+    const workbookPath = join(root, 'long-unchanged-synthetic.xlsx');
+    const backupPath = join(root, 'backup.sqlite');
+    const longPrompt = 'L'.repeat(111);
+    const longOption = 'O'.repeat(29);
+    seedDatabase(dbPath);
+    await writeWorkbook(workbookPath, [
+      { id: 'q-long', topic: 'Tổng quát', difficulty: 'MEDIUM', prompt: longPrompt,
+        options: [longOption, 'Hai', 'Ba', 'Bốn'], correct: 2, explanation: 'Giải thích cũ', action: 'Giữ' },
+      { id: 'q-edit', topic: 'Tổng quát', difficulty: 'MEDIUM', prompt: 'Câu đã sửa',
+        options: ['Một', 'Hai', 'Ba', 'Bốn'], correct: 2, explanation: 'Giải thích cũ', action: '' },
+    ]);
+
+    const plan = await createQuestionXlsxImportPlan(workbookPath, dbPath);
+    expect(plan.errors).toEqual([]);
+    expect(plan.counts).toMatchObject({ keep: 1, edit: 1 });
+    expect(plan.tooLongWarnings).toHaveLength(2);
+    const report = renderQuestionXlsxImportReport(plan, { applyRequested: false });
+    expect(report).toContain('## Quá dài — sẽ bị loại khỏi vòng chơi');
+    expect(report).toContain('Dòng 2 (q-long)');
+    expect(report).toContain('Phương án 1 vượt ngưỡng question-length: 29/28 ký tự; sẽ bị loại khỏi vòng chơi.');
+    expect(report.indexOf('## Quá dài')).toBeLessThan(report.indexOf('## Tổng hợp'));
+
+    const result = await applyQuestionXlsxImportPlan(plan, dbPath, backupPath, 888);
+    expect(result).toMatchObject({ edited: 1, backupPath });
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      expect(readQuestion(db, 'q-long')).toMatchObject({ prompt: longPrompt, version: 1, approval_status: 'APPROVED' });
+      expect(readQuestion(db, 'q-edit')).toMatchObject({ prompt: 'Câu đã sửa', version: 2, approval_status: 'PENDING_REVIEW' });
+    } finally {
+      db.close();
+    }
+  });
+
   it('CLI writes a Vietnamese adjacent report and keeps dry-run read-only', async () => {
     const root = tempRoot();
     const dbPath = join(root, 'quiz.db');
@@ -328,4 +370,3 @@ describe('question XLSX importer', () => {
     }
   });
 });
-
