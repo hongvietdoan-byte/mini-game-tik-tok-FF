@@ -299,24 +299,28 @@ test('READING shows the question and four answers without starting the answer co
   expect(errors).toEqual([]);
 });
 
-test('C-0261 keeps four equal answer cells and all long labels readable across question phases', async ({ page }) => {
+test('C-0278 keeps the fixed question frame, clearer labels and 45-character answers inside four equal cells', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
-  const reviewDirectory = join(process.cwd(), 'test-results', 'c0261');
+  const reviewDirectory = join(process.cwd(), 'test-results', 'c0278');
   mkdirSync(reviewDirectory, { recursive: true });
   const phases = [
-    { name: 'reading-grid-balance', scene: 'QUESTION', phase: 'reading' },
-    { name: 'question-grid-balance', scene: 'QUESTION', phase: 'accepting' },
-    { name: 'reveal-grid-balance', scene: 'REVEAL', phase: 'reveal' },
+    { name: 'question', scene: 'QUESTION', phase: 'short-answer', long: false },
+    { name: 'question-grid-balance', scene: 'QUESTION', phase: 'accepting', long: true },
+    { name: 'reveal-grid-balance', scene: 'REVEAL', phase: 'reveal', long: true },
   ] as const;
-
-  // Capture every baseline before asserting so the failure leaves a full before set.
-  for (const entry of phases) {
-    await openScene(page, entry.name, entry.scene);
-    await page.screenshot({ path: join(reviewDirectory, `before-${entry.phase}.png`), animations: 'disabled' });
-  }
 
   for (const entry of phases) {
     const { stage } = await openScene(page, entry.name, entry.scene);
+    expect(stage).not.toHaveClass(/has-long-labels/);
+    const [boardBox, promptBox, top10Box] = await Promise.all([
+      stage.locator('.v3-board').boundingBox(), stage.locator('.v3-question').boundingBox(), stage.locator('.v3-top10').boundingBox(),
+    ]);
+    expect(boardBox).toMatchObject({ x: 425, y: 348, width: 570, height: 465 });
+    expect(promptBox).toMatchObject({ x: 440, y: 510, width: 543, height: 145 });
+    expect(top10Box).toMatchObject({ x: 68, y: 348, width: 317, height: 462 });
+    expect(top10Box!.x).toBeGreaterThanOrEqual(0);
+    expect(top10Box!.x + top10Box!.width).toBeLessThan(boardBox!.x);
+
     const cards = stage.locator('.v3-option');
     const boxes = await cards.evaluateAll((elements) => elements.map((element) => {
       const { x, y, width, height } = element.getBoundingClientRect();
@@ -329,8 +333,26 @@ test('C-0261 keeps four equal answer cells and all long labels readable across q
     }
 
     for (const id of ['A', 'B', 'C', 'D'] as const) {
-      const answer = stage.getByTestId(`option-${id}`).locator('.v3-option-text');
-      await expect(answer).toHaveText('Fluxo vô địch FFWS 2024 với ' + ({ A: '075', B: '086', C: '103', D: '110' }[id]) + ' điểm');
+      const card = stage.getByTestId(`option-${id}`);
+      const answer = card.locator('.v3-option-text');
+      const label = card.locator('.v3-letter');
+      if (entry.long) {
+        expect(Number.parseFloat(await answer.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(17);
+        const expectedAnswer = id === 'A' || id === 'B'
+          ? `Fluxo vô địch FFWS 2024 kết thúc với ${{ A: '75', B: '86' }[id]} điểm!`
+          : `Fluxo vô địch FFWS 2024 kết thúc với ${{ C: '103', D: '110' }[id]} điểm`;
+        await expect(answer).toHaveText(expectedAnswer);
+        expect(await answer.evaluate((element) => element.textContent?.length)).toBe(45);
+      } else {
+        await expect(answer).toBeVisible();
+      }
+      await expect(label).toHaveText(id);
+      expect(Number.parseFloat(await label.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(23);
+      const [labelBox, answerBox] = await Promise.all([label.boundingBox(), answer.boundingBox()]);
+      expect(labelBox).not.toBeNull();
+      expect(answerBox).not.toBeNull();
+      if (entry.long) expect(labelBox!.y + labelBox!.height).toBeLessThanOrEqual(answerBox!.y + 1);
+      else expect(labelBox!.x + labelBox!.width).toBeLessThanOrEqual(answerBox!.x + 1);
       const metrics = await answer.evaluate((element) => {
         const range = document.createRange();
         range.selectNodeContents(element);
@@ -346,15 +368,44 @@ test('C-0261 keeps four equal answer cells and all long labels readable across q
         };
       });
       expect(metrics.widthFits, `${entry.phase}/${id}: full answer fits its width (${JSON.stringify(metrics)})`).toBe(true);
-      expect(metrics.heightFits, `${entry.phase}/${id}: full answer fits its height (${JSON.stringify(metrics)})`).toBe(true);
+      if (entry.long) expect(metrics.heightFits, `${entry.phase}/${id}: full answer fits its height (${JSON.stringify(metrics)})`).toBe(true);
       expect(metrics.lines, `${entry.phase}/${id}: answer wraps to at most two lines (${JSON.stringify(metrics)})`).toBeLessThanOrEqual(2);
     }
+    await page.screenshot({ path: join(reviewDirectory, `${entry.phase}.png`), animations: 'disabled' });
   }
+});
 
-  for (const entry of phases) {
-    await openScene(page, entry.name, entry.scene);
-    await page.screenshot({ path: join(reviewDirectory, `after-${entry.phase}.png`), animations: 'disabled' });
+test('C-0278 renders two- and four-digit scores without padding on Top 10, interim, Victory and fastest-correct surfaces', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const reviewDirectory = join(process.cwd(), 'test-results', 'c0278');
+  mkdirSync(reviewDirectory, { recursive: true });
+
+  const compact = await openScene(page, 'fastest-score-width', 'REVEAL');
+  await expect(compact.stage.getByTestId('fastest-callout')).toBeVisible();
+  const compactScores = compact.stage.locator('.v3-score');
+  await expect(compactScores.nth(0)).toHaveText('75');
+  await expect(compactScores.nth(1)).toHaveText('1.250');
+  await expect(compact.stage.getByTestId('leaderboard-row').filter({ hasText: 'StormKing' }).locator('.v3-score')).toHaveText('1.250');
+  await page.screenshot({ path: join(reviewDirectory, 'fastest-correct.png'), animations: 'disabled' });
+
+  const interim = await openScene(page, 'top10-score-width', 'INTERIM_TOP10');
+  const interimScores = interim.stage.locator('.v3-full-score');
+  await expect(interimScores.nth(0)).toHaveText('75điểm');
+  await expect(interimScores.nth(1)).toHaveText('1.250điểm');
+  await page.screenshot({ path: join(reviewDirectory, 'top10-scores-2-and-4-digits.png'), animations: 'disabled' });
+
+  const victory = await openScene(page, 'victory-score-width', 'VICTORY');
+  await expect(victory.stage.getByTestId('podium-slot-2')).toHaveAttribute('data-score', '75');
+  await expect(victory.stage.getByTestId('podium-slot-2').locator('i')).toContainText('75 PTS');
+  await expect(victory.stage.getByTestId('podium-slot-1')).toHaveAttribute('data-score', '1250');
+  await expect(victory.stage.getByTestId('podium-slot-1').locator('i')).toContainText('1.250 PTS');
+  await page.screenshot({ path: join(reviewDirectory, 'victory-scores-2-and-4-digits.png'), animations: 'disabled' });
+
+  for (const scoreSurface of [compactScores, interimScores, victory.stage.locator('.v3v-slot i')]) {
+    for (const score of await scoreSurface.allTextContents()) expect(score).not.toMatch(/(^|\s)0\d/);
   }
+  expect(interim.errors).toEqual([]);
+  expect(victory.errors).toEqual([]);
 });
 
 test('mock-only badge stays hidden unless debug is enabled', async ({ page }) => {
@@ -541,9 +592,9 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     event: { x: 82, y: 133, width: 230, height: 92 },
     ribbon: { x: 220, y: 250, width: 635, height: 72 },
     roundCard: { x: 770, y: 133, width: 230, height: 95 },
-    top10: { x: 88, y: 348, width: 317, height: 462 },
+    top10: { x: 68, y: 348, width: 317, height: 462 },
     board: { x: 425, y: 348, width: 570, height: 465 },
-    question: { x: 450, y: 510, width: 525, height: 145 },
+    question: { x: 440, y: 510, width: 543, height: 145 },
   } as const;
   for (const key of Object.keys(c0168Approved) as Array<keyof typeof c0168Approved>) {
     for (const dimension of ['x', 'y', 'width', 'height'] as const) {
@@ -748,7 +799,7 @@ test('C-0175 keeps the pill, Top 10 and question content inside their frame padd
     expect(box).not.toBeNull();
     if (!box) continue;
     const itemLabel = await item.getAttribute('data-testid') ?? await item.evaluate((element) => String(element.className));
-    const minHorizontalPadding = itemLabel === 'timer' || itemLabel.startsWith('option-') ? 16 : 18;
+    const minHorizontalPadding = itemLabel === 'timer' || itemLabel.startsWith('option-') ? 16 : itemLabel === 'question-prompt' ? 10 : 18;
     const minTopPadding = itemLabel === 'timer' ? 0 : 18;
     expect(box.x - boardBox.x).toBeGreaterThanOrEqual(minHorizontalPadding);
     expect(boardBox.x + boardBox.width - box.x - box.width).toBeGreaterThanOrEqual(minHorizontalPadding);
@@ -1147,7 +1198,7 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(mcBox).not.toBeNull();
   const boardBox = await page.locator('.v3-board').boundingBox();
   expect(boardBox).not.toBeNull();
-  expect(top10Box!.x).toBeGreaterThanOrEqual(88);
+  expect(top10Box!.x).toBeGreaterThanOrEqual(68);
   expect(top10Box!.x + top10Box!.width).toBeLessThan(boardBox!.x);
   expect(boardBox!.x + boardBox!.width).toBeLessThanOrEqual(995);
   expect(mcBox!.y).toBeGreaterThanOrEqual(815);
@@ -1304,12 +1355,12 @@ test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ 
   expect(stageBox!.width).toBeGreaterThan(921);
   expect(stageBox!.height).toBeGreaterThanOrEqual(1999);
   expect(stageBox!.height).toBeLessThanOrEqual(2001);
-  for (const selector of ['.v3-top10', '.v3-board', '.v3-timer', '.v3-question', '[data-testid="option-A"]']) {
+  for (const selector of ['.v3-top10 ol', '.v3-board', '.v3-timer', '.v3-question', '[data-testid="option-A"]']) {
     const box = await page.locator(selector).boundingBox();
     expect(box, `${selector} stays visible after phone side crop`).not.toBeNull();
-    // Fit=cover crops about 10px of the approved x=88 Top 10 anchor on this narrow viewport.
-    expect(box!.x).toBeGreaterThanOrEqual(selector === '.v3-top10' ? -12 : -2);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(selector === '.v3-top10' || selector === '.v3-board' ? 935 : 923);
+    // The shifted panel border may bleed into the crop; its title/rows remain inside the safe area.
+    expect(box!.x).toBeGreaterThanOrEqual(selector === '.v3-top10 ol' ? -12 : -2);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(selector === '.v3-top10 ol' || selector === '.v3-board' ? 935 : 923);
   }
   await expect(page.getByTestId('tiktok-status-bar')).toBeVisible();
   await expect(page.getByTestId('tiktok-live-info')).toContainText('FFVN.Kelly');

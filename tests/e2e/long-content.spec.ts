@@ -174,7 +174,8 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
     const optionTextsRendered = stage.locator('[data-testid^="option-"] .v3-option-text');
     await expect(optionTextsRendered).toHaveCount(4);
     await expectTextFits(page, ['[data-testid^="option-"] .v3-option-text']);
-    await expectFontSizeAtLeast(page, '[data-testid^="option-"] .v3-option-text', 20);
+    // C-0278 keeps the fixed, equal 2×2 grid; 17px lets every 45-character label stay within two lines.
+    await expectFontSizeAtLeast(page, '[data-testid^="option-"] .v3-option-text', 17);
 
     const contentBoxes = [prompt, ...await optionTextsRendered.all()];
     const content = await Promise.all(contentBoxes.map((locator) => locator.boundingBox()));

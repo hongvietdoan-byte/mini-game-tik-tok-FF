@@ -1737,16 +1737,14 @@
 .v3-header .v3-round-card .v3-round-label { font-size: 20px !important; }
 .v3-stage--header-b .v3-round-card { height: 95px; grid-template-rows: 26px 44px 20px; gap: 1px; padding: 1px 8px; }
 .v3-stage--user-question-layout { --v3-mid-shift: -180px; }
-.v3-stage--user-question-layout .v3-top10 { left: 88px; top: calc(528px + var(--v3-mid-shift)); width: 317px; height: 462px; box-sizing: border-box; z-index: 10; }
+.v3-stage--user-question-layout .v3-top10 { left: 68px; top: calc(528px + var(--v3-mid-shift)); width: 317px; height: 462px; box-sizing: border-box; z-index: 10; }
 .v3-stage--user-question-layout .v3-board { left: 425px; top: calc(528px + var(--v3-mid-shift)); width: 570px; height: 465px !important; box-sizing: border-box; z-index: 10; }
-/* C-0273: chỉ mở rộng bảng khi có nhãn dài để bốn ô 2×2 vẫn bằng nhau và đủ bề ngang đọc chữ 45 ký tự. */
-.v3-stage--user-question-layout.has-long-labels .v3-board { left: 410px; width: 640px; }
 .v3-stage--user-question-layout .v3-board-tab { left: 28px; top: 20px; width: 225px; height: 55px; box-sizing: border-box; padding: 0 36px 0 28px; }
 .v3-stage--user-question-layout .v3-timer { top: 18px; right: 35px; width: 128px; height: 128px; }
 .v3-stage--user-question-layout .v3-question,
 .v3-stage--user-question-layout.has-long-prompt .v3-question {
-  left: 23px;
-  right: 18px;
+  left: 13px;
+  right: 10px;
   top: 160px;
   height: 145px;
   box-sizing: border-box;
@@ -1772,6 +1770,7 @@
 }
 .v3-stage--user-question-layout .v3-option,
 .v3-stage--user-question-layout .v3-options.has-long-option .v3-option { height: 60px; min-height: 60px; }
+.v3-stage--user-question-layout .v3-option-text { line-height: 1; }
 .v3-stage--user-question-layout .v3-mc,
 .v3-stage--user-question-layout.has-long-prompt .v3-mc,
 .v3-stage--user-question-layout.has-long-options .v3-mc,
@@ -1848,10 +1847,10 @@
 /* C-0261: long answers keep the A/B/C/D marker above a shared two-line text area. */
 .v3-stage--user-question-layout .v3-options.has-long-label .v3-option {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 18px minmax(0, 1fr);
+  grid-template-rows: 22px minmax(0, 1fr);
   align-content: stretch;
   gap: 0;
-  padding: 4px 12px 7px;
+  padding: 1px 8px 2px;
 }
 .v3-stage--user-question-layout .v3-options.has-long-label.is-revealed .v3-option {
   grid-template-columns: minmax(0, 1fr);
@@ -1864,8 +1863,8 @@
   grid-column: 1;
   grid-row: 1;
   align-self: center;
-  justify-self: start;
-  font-size: 20px;
+  justify-self: center;
+  font-size: 23px;
   line-height: 1;
 }
 .v3-stage--user-question-layout .v3-options.has-long-label .v3-option-text,
@@ -1877,7 +1876,7 @@
   justify-self: stretch;
   min-width: 0;
   padding: 0;
-  font-size: 20px;
+  font-size: 17px;
   line-height: 1;
   text-align: center;
   overflow-wrap: anywhere;

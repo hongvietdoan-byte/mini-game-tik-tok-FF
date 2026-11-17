@@ -9,9 +9,9 @@ const supportsFastestMocks = Boolean(makeMockSnapshot('fastest-a')) && Boolean(m
 const seatColumns = [160, 350, 540, 730, 920];
   const seatRows = [1839, 1734.33, 1629.67, 1525, 1420.33, 1315.67, 1211];
 const reference = {
-  top10: { x: 88, y: 348, width: 317, height: 462 },
+  top10: { x: 68, y: 348, width: 317, height: 462 },
   board: { x: 425, y: 348, width: 570, height: 465 },
-  prompt: { x: 450, y: 510, width: 525, height: 145 },
+  prompt: { x: 440, y: 510, width: 543, height: 145 },
   options: { x: 447, y: 670, width: 531, height: 125 },
   mc: { x: 0, y: 815, width: 1080, height: 252 },
   figure: { x: 130, y: 815, width: 205, height: 205 },

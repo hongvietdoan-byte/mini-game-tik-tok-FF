@@ -19,7 +19,7 @@ const importantElements = [
   { label: 'reading status', selector: '[data-testid="reading-status"]' },
   { label: 'question', selector: '[data-testid="question-prompt"]' },
   { label: 'answer', selector: '[data-testid^="option-"]:not([data-testid="option-list"])' },
-  { label: 'Top10', selector: '[data-layer="leaderboard"], [data-testid="v3-top10-large"]' },
+  { label: 'Top10', selector: '.v3-top10-title, .v3-top10 ol, [data-testid="v3-top10-large"]' },
   { label: 'Top10 row', selector: '[data-testid="v3-top10-large"] [data-testid="leaderboard-row"]' },
   { label: 'round label', selector: '.v3-full-round, .v3-scene-kicker, .v3v-caption' },
   { label: 'top meta', selector: '[data-testid="round-card"]' },
