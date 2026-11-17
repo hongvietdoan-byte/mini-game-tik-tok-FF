@@ -12,6 +12,7 @@ export type CreateSessionConfigInput = {
   tiktokUsername?: string;
   seed?: number;
   mcVoiceEnabled?: boolean;
+  mcVoiceStartWaitMs?: number;
 };
 
 export function buildSessionConfig(input: CreateSessionConfigInput) {
@@ -20,6 +21,7 @@ export function buildSessionConfig(input: CreateSessionConfigInput) {
     questionsPerRound: input.questionsPerRound,
     speedBonusMax: input.speedBonusMax,
     mcVoiceEnabled: input.mcVoiceEnabled ?? true,
+    ...(input.mcVoiceStartWaitMs === undefined ? {} : { mcVoiceStartWaitMs: input.mcVoiceStartWaitMs }),
     allowDemoQuestions: input.mode === 'MOCK',
     speedMultiplier: input.mode === 'MOCK' ? input.speedMultiplier : 1,
     ...(input.mode === 'TIKTOK' && input.tiktokUsername ? { tiktokUsername: input.tiktokUsername } : {}),

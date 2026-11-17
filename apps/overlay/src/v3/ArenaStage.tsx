@@ -386,7 +386,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubble = snapshot.scene === 'LOBBY'
-    ? 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!'
+    ? (snapshot.lobbyMessage ?? 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!')
     : questionBackground ? (voiceBubble?.text ?? snapshot.mc.bubble) : undefined;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;

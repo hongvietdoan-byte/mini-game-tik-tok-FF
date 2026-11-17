@@ -1,0 +1,409 @@
+NHÀ THÔNG THÁI FREE FIRE
+
+Retention, Achievement & Theme Identity – Implementation
+Specification V5.0
+
+Ngày: 17/11/2026
+Đối tượng: Claude Coordinator / Claude Code / Codex
+Loại: Change request cho codebase đang hoạt động; KHÔNG phải yêu cầu tạo dự án mới.
+Nguồn đối chiếu: TONG-HOP-BUILD-BA-VUONG-DAI-CHIEN.docx (báo cáo LIVE 17/11), Master Plan V4 và các
+quyết định mới nhất của chủ dự án trong hội thoại.
+Ưu tiên quyết định: Các quyết định trong tài liệu V5 thay thế yêu cầu cũ nếu có mâu thuẫn; những phần
+không đề cập tiếp tục theo codebase/đặc tả đã duyệt.
+
+1. MỤC TIÊU VÀ PHẠM VI
+
+Mục tiêu: tăng động lực tiếp tục trả lời và cơ hội được vinh danh cho người chơi KHÔNG nằm trong Top 10
+tổng điểm, mà không gây quá tải Overlay khi có 5.000–10.000 người tham gia. Giữ luật Kahoot hiện hành,
+MC Kelly, khán đài chibi, Victory và pipeline TikTok hiện tại.
+
+Các quyết định đã khóa:
+
+1. Tên sản phẩm/tool và Dashboard: Nhà Thông Thái Free Fire. Storm Arena / Bá Vương Đại Chiến là Theme
+Pack/sự kiện, không phải tên toàn bộ ứng dụng.
+
+2. Mỗi câu: công bố Top 3 người trả lời ĐÚNG nhanh nhất, có tên đã lọc và thời gian. Không đổi điểm hiện
+hành.
+
+3. Mỗi chặng 5 câu: Top 3 điểm chặng, hiển thị rõ tên chặng và khoảng câu, ghi “BXH CHẶNG – KHÔNG PHẢI
+BXH TOÀN TRẬN”.
+
+4. BXH chính: Top 10 tổng điểm toàn trận; Victory Top 3 vẫn dựa trên BXH toàn trận, không lấy người thắng
+chặng hay danh hiệu phụ.
+
+5. Có BXH danh hiệu cá nhân cạnh tranh (Top 3/5) và thành tích cộng đồng (chỉ tổng số người đạt). Mỗi danh
+hiệu có điều kiện, metric, tie policy, scope và display policy rõ ràng.
+
+6. Tên, icon, màu, tiêu đề, nhạc/animation của danh hiệu lấy từ Theme Pack/đợt sự kiện; core engine chỉ biết
+achievement IDs và logic.
+
+7. Không làm rank/XP/tích điểm cá nhân dài hạn qua nhiều phiên. Lưu lịch sử phiên tối thiểu phục vụ kiểm
+thử, đối soát, analytics; có retention policy.
+
+8. Không popup/ticker xác nhận từng comment hay phát hiệu ứng riêng cho từng người gửi comment. Có thể
+hiển thị bộ đếm tổng hợp đã trả lời, throttled.
+
+9. Đã nhận đáp án ngay khi 4 lựa chọn hiển thị theo bản cập nhật hiện hành. KHÔNG giao lại task này; chỉ
+regression-test để tránh lỗi.
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                          1
+10. MC Kelly không đọc tên, username, ID hoặc comment người xem trong MVP. Mọi BXH dùng
+safeDisplayName đã lọc; voice chỉ nói lời dẫn tổng quát.
+11. Không thay đổi scoring formula, TikTok adapter, quiz-core hoặc UI asset đã duyệt nếu không có bằng
+chứng cần thiết.
+
+2. BỐI CẢNH TỪ LIVE THẬT 17/11
+
+Báo cáo ghi: 72 người có đáp án được tính toàn buổi; vòng 1 có 62 người, 15 câu; mỗi câu khoảng 10–20 đáp
+án; 836 comment nhận được, 244 đáp án được tính, 328 comment trùng, 201 gửi sớm theo logic cũ; vòng
+1→2 nghỉ 16 phút do lỗi vận hành; vòng 2 chỉ 14 người. Có lỗi reconnect, thiếu audio, lệch ô đáp án và chất
+lượng upload. Không suy ra tỷ lệ retention theo cohort từ tổng số đáp án mỗi câu; cần player-level metrics để
+xác nhận. Logic nhận từ lúc hiển thị đáp án đã được cập nhật, nên không dùng số comment gửi sớm cũ làm
+bằng chứng lỗi hiện tại.
+
+P0 vận hành vẫn phải được ưu tiên song song: reconnect ổn định; giọng MC câu 1; build/launcher; cửa sổ
+1080×1920; lỗi nút Next; layout đáp án; bitrate thực tế. Các thay đổi retention không được che lấp blocker
+LIVE.
+
+3. PHÂN BIỆT 3 CẤP BXH BẮT BUỘC
+
+· Cấp · ID · Scope · Metric · Thời điểm · Hiển thị ·
+· --- · --- · --- · --- · --- · --- ·
+· Câu · QUESTION_FASTEST_CORRECT · 1 questionInstance · Thời điểm server nhận đáp án đúng hợp lệ ·
+REVEAL · Top 3; tiêu đề “TOP 3 TRẢ LỜI ĐÚNG NHANH NHẤT – CÂU N” ·
+· Chặng · STAGE_POINTS · 5 câu liên tiếp · Tổng score events của 5 câu · Sau câu 5/10/15 · Top 3; “BXH
+CHẶNG X – CÂU A–B – KHÔNG PHẢI BXH TOÀN TRẬN” ·
+· Toàn trận · ROUND_TOTAL_POINTS · 15 câu · Tổng điểm quiz-core hiện hành · BXH chính + Victory · Top 10
+/ Victory Top 3 ·
+
+Không dùng chung tên biến top3 thiếu scope. Dùng questionTop3, stageTop3, roundTop3. Không tự cộng
+thêm điểm từ BXH danh hiệu.
+
+3.1 Top 3 nhanh nhất mỗi câu
+
+ • Chỉ xét đáp án đầu tiên hợp lệ của từng player, đúng đáp án, trong cửa sổ nhận hợp lệ.
+ • Thời gian là acceptedAt từ server, tính từ mốc mở nhận đáp án đã được engine chốt, không lấy thời gian
+
+    người dùng tự khai báo. Hiển thị đơn vị giây, tối đa 2 chữ số thập phân; chỉ hiển thị nếu mốc có nghĩa và
+    dữ liệu đủ tin cậy.
+ • Khi nhiều event cùng timestamp, tie phải deterministic, không khẳng định một người “nhanh hơn” nếu
+    không có độ phân giải. Có thể đồng hạng hoặc dùng event ingestion sequence cho thứ tự hiển thị với chú
+    thích nội bộ; tuyệt đối không tính điểm mới.
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                           2
+ • Nếu ít hơn 3 người đúng, chỉ hiển thị số người thực tế; nếu 0 người đúng, hiển thị “Chưa có người trả lời
+    đúng”.
+
+ • Không lộ lựa chọn của người chơi trong giai đoạn trả lời.
+ • Không đưa tên vào TTS.
+
+3.2 Top 3 chặng
+
+ • Chặng 1: câu 1–5; chặng 2: 6–10; chặng 3: 11–15. Cấu hình tổng quát phải hỗ trợ số câu/trận khác 15
+    (chia theo stage boundaries của rules).
+
+ • stageScore = SUM(scoreEvents.amount WHERE questionIndex in stage), bao gồm điểm thưởng streak đã
+    phát sinh tại câu đó, kể cả streak kéo từ chặng trước.
+
+ • SUM(stageScore) phải bằng roundScore theo các score events có trong round; nếu có adjustment/cancel
+    phải áp dụng cùng logic nguồn.
+
+ • Người mới vào giữa vòng có thể tranh Top chặng tiếp theo. Không reset tổng điểm và không cộng
+    stageScore lần hai.
+
+ • Công bố tại checkpoint, không kéo dài quá nhiều; cuối câu 15 ưu tiên Victory và có thể hiển thị chặng 3 ở
+    khung tổng kết ngắn, không chồng hai màn full-screen.
+
+4. DANH HIỆU CÁ NHÂN: ENGINE VÀ BXH
+
+Danh hiệu là một lớp phân tích trên kết quả đã chấm, không phải một game scoring thứ hai. Cần
+achievement registry (definition) và evaluator theo event, snapshot deterministic để đối soát.
+
+· ID ổn định · Metric · Scope · Top hiển thị · Điều kiện/tie policy đề xuất ·
+· --- · --- · --- · --- · --- ·
+· FASTEST_CORRECT · Thời gian đáp án đúng · Câu · 3 · Cùng logic Question Top 3; không tạo thêm BXH
+trùng nội dung ·
+· STAGE_CHAMPION · Điểm chặng · Chặng · 3 · Cùng logic Stage Top 3 ·
+· LONGEST_STREAK · Chuỗi đúng dài nhất · Toàn trận · 3 · Tie = đồng hạng theo chuỗi; giới hạn số dòng hiển
+thị, có chỉ báo đồng hạng ·
+· MOST_CORRECT · Số câu đúng · Toàn trận · 5 · Ưu tiên số câu đúng tuyệt đối; nếu muốn “tỷ lệ chính xác” là
+metric khác, yêu cầu số câu tham gia tối thiểu ·
+· COMEBACK · Số bậc cải thiện thứ hạng trong chặng · Chặng · 3 · Chỉ xét người có rank ở cả mốc đầu và cuối
+chặng; minimum participation; không coi người mới vào là “lội ngược dòng” ·
+· PERFECT_STAGE · Đúng toàn bộ câu trong chặng · Chặng · Tổng số + có thể Top phụ nếu metric phụ hợp lệ
+· Nếu có hàng nghìn người đạt: chỉ hiện số lượng; không tự chọn 3 người ngẫu nhiên gọi là Top ·
+· FULL_PARTICIPATION · Số câu có đáp án hợp lệ · Toàn trận · Tổng số, không cần Top · Nếu nhiều người cùng
+15/15, thống kê cộng đồng thay vì BXH vô nghĩa ·
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                          3
+· FIRST_CORRECT · Lần đầu trả lời đúng · Trong trận · Tổng số · Không cần popup tên; thống kê khi có ý nghĩa
+·
+· ROUND_CHAMPION · Tổng điểm · Toàn trận · Victory Top 3 · Không tạo BXH thứ hai trùng Victory ·
+
+Phân biệt rõ MOST_CORRECT với ACCURACY_RATE: Nếu theme muốn danh hiệu “Bậc Thầy Chính Xác” dựa
+trên tỷ lệ, cần tối thiểu 5 câu tham gia, hiển thị correct/answered và %; nếu dựa trên số đúng, label phải nói
+“NHIỀU CÂU ĐÚNG NHẤT”. Không trộn hai metric.
+
+4.1 Luật tie và tính công bằng
+
+ • Định nghĩa rank theo metric chính; người cùng metric đồng hạng. Có thể cắt tối đa N dòng và thêm “+X
+    người đồng hạng” nếu cần; không giả tạo thứ tự thành tích.
+
+ • Với comeback, thứ hạng đầu chặng cần snapshot rõ ràng; không dùng rank null để tính delta vô hạn. Khi
+    số người cùng điểm thay đổi, rank phải lấy từ cùng quy tắc xếp hạng và snapshot.
+
+ • Chỉ tính player có answer events hợp lệ; không lấy từ tổng comment hay raw chat.
+ • Không được phát danh hiệu lặp khi WebSocket reconnect, render lại hoặc recovery. Key phát thưởng phải
+
+    idempotent (roundId + achievementId + scopeId + playerId).
+ • Khi câu bị hủy/regrade, cập nhật lại snapshot và danh hiệu, không giữ kết quả sai.
+
+5. VỊ TRÍ VÀ THỜI ĐIỂM HIỂN THỊ
+
+Nguyên tắc: Không biến mỗi câu thành một lễ trao giải. UI là presentation schedule, không kéo dài game
+engine.
+
+· Thời điểm · Primary · Secondary · Thời lượng định hướng ·
+· --- · --- · --- · --- ·
+· REVEAL từng câu · Đáp án đúng + thống kê % · Top 3 đúng nhanh nhất câu; có thể thay thế phần dưới
+panel · Nằm trong pha Reveal hiện tại; không tự thêm pha mới ·
+· Sau câu 5 · Top 3 chặng 1, ghi rõ “CÂU 01–05 / KHÔNG PHẢI BXH TOÀN TRẬN” · Một danh hiệu cạnh tranh
+nổi bật (vd chuỗi đúng) hoặc thống kê cộng đồng · Khoảng 4–6s trong checkpoint, phải đo tác động tổng thời
+gian ·
+· Sau câu 10 · Top 3 chặng 2 · Một danh hiệu khác nếu đủ dữ liệu · Như trên ·
+· Sau câu 15 · Top 3 chặng 3 ở recap gọn · Sau đó Victory Top 3 toàn trận theo reference đã duyệt · Không
+kéo dài đáng kể quá trình sang vòng mới ·
+· LOBBY / chuyển vòng · Có thể luân phiên BXH Top 3/5 danh hiệu của trận trước · Countdown vòng mới, luật
+chơi · Chỉ dùng thời gian lobby đang có; không kéo dài lobby để chiếu danh hiệu ·
+· VICTORY · Top 3 toàn trận + cúp/sân khấu gốc · Không nhồi nhiều danh hiệu nhỏ · 8–10s mục tiêu, không
+thay visual reference ·
+
+Overlay: chỉ render tối đa một khu vực vinh danh chính và một thông tin phụ ngắn. Không xuất toàn bộ danh
+sách 10.000 người; không ticker xác nhận từng comment. Safe zone TikTok là preset cấu hình, phải QA bằng
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                            4
+HUD simulator và máy thật.
+
+MC: không đọc tên/ID/comment, kể cả người được vinh danh. Có thể đọc lời chung: “Top ba nhanh nhất của
+câu hỏi này đã lộ diện!” hoặc “Đây là bảng xếp hạng chặng hai, không phải bảng tổng!”
+
+6. THEME-DRIVEN ACHIEVEMENTS
+
+Engine quản lý achievement IDs + metric/evaluation. Theme/event quản lý tên, subtitle, màu, icon, motion,
+audio cue, số dòng, có bật hay không và slot hiển thị. Không cho Theme Pack chạy code tùy ý hoặc thay đổi
+scoring.
+
+Ví dụ cấu hình (tên danh hiệu chỉ là đề xuất cho Storm Arena, không phải tên chính thức):
+
+    {
+      "schemaVersion": 1,
+      "themeId": "storm-arena",
+      "eventId": "ba-vuong-dai-chien-2026",
+      "achievements": {
+        "LONGEST_STREAK": {
+          "enabled": true,
+          "title": "Chuỗi Bão Tố",
+          "subtitle": "TOP 3 CHUỖI ĐÚNG DÀI NHẤT – TOÀN TRẬN",
+          "icon": "assets/achievements/streak.png",
+          "accentColor": "#FFCC58",
+          "maxRows": 3,
+          "displaySlot": "stage-recap"
+        },
+        "MOST_CORRECT": {
+          "enabled": true,
+          "title": "Bậc Thầy Kiến Thức",
+          "subtitle": "TOP 5 SỐ CÂU ĐÚNG – TOÀN TRẬN",
+          "maxRows": 5,
+          "displaySlot": "lobby-rotation"
+        },
+        "COMEBACK": {
+          "enabled": true,
+          "title": "Vua Lội Ngược Dòng",
+          "subtitle": "TOP 3 TĂNG HẠNG – CHẶNG HIỆN TẠI",
+          "maxRows": 3,
+          "displaySlot": "stage-recap"
+        }
+      }
+
+    }
+
+ • Event override > Theme default > application fallback; validate manifest và asset paths.
+
+ • Nếu thiếu title/icon/animation: dùng fallback an toàn, không crash.
+
+ • Cấu hình danh hiệu chỉ có tác dụng từ round tiếp theo nếu đang LIVE, trừ thay đổi hiển thị thuần túy đã
+    được kiểm soát.
+
+ • Dashboard cần mục “Danh hiệu theo chủ đề”: bật/tắt, đổi tên/subtitle, chọn icon/màu, chọn Top 3/5 và
+    slot; có Preview, Validate, Reset to Theme Default.
+
+ • Không cho phép Dashboard tùy ý tạo metric mới bằng biểu thức thực thi; metric mới phải có code và test
+    trong evaluator.
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                        5
+7. ĐỔI TÊN ỨNG DỤNG
+
+Tên hiển thị: Nhà Thông Thái Free Fire trong Dashboard, launcher, titlebar, installer, tài liệu người dùng, màn
+Setup/Settings, shortcut. Overlay phát LIVE hiển thị tên theme/event, ví dụ Bá Vương Đại Chiến, không ép
+branding app lên sân đấu.
+
+Không đổi vội: package IDs, database paths, API endpoints, internal namespaces, installer app ID, user data
+directory; cần migration plan và backward compatibility nếu đổi. Tránh làm mất dữ liệu hoặc hỏng launcher
+đã dùng được. Audit toàn bộ strings và phân loại user-facing vs technical identifiers trước khi sửa.
+
+8. DỮ LIỆU, HIỆU NĂNG VÀ RIÊNG TƯ
+
+ • Không xây rank, XP, cấp bậc hoặc profile cá nhân liên phiên; không có leaderboard tuần tích lũy điểm.
+ • Giữ data per-session cần thiết để đối soát score/achievements và analytics; đưa ra retention policy cấu
+
+    hình được (ví dụ 7/30 ngày, cần operator duyệt). Tránh giữ raw comment lâu dài không cần thiết.
+ • Lưu aggregate metric snapshots và Top N thay vì broadcast toàn bộ leaderboard tới overlay.
+ • Ở quy mô 5.000–10.000 player, evaluator có thể tính từ score events/indexed tables; đo latency và
+
+    memory, không khẳng định hiệu năng chỉ từ benchmark cũ.
+ • WebSocket throttle/coalesce cho counters và standings; không broadcast từng sự kiện answer cho
+
+    animation người chơi.
+ • Chỉ xuất safeDisplayName sang Overlay; không đưa raw nickname sang MC TTS, kể cả qua audio cache.
+ • Thêm index phù hợp trên (roundId, questionInstanceId, playerId), (roundId, playerId) và score events;
+
+    không thay đổi uniqueness hiện tại.
+
+9. DATA CONTRACTS (ĐỀ XUẤT, CẦN MAP VỚI
+CODE THỰC TẾ)
+
+type RankingScope = 'QUESTION' | 'STAGE' | 'ROUND';
+type AchievementId =
+
+ | 'FASTEST_CORRECT' | 'STAGE_CHAMPION' | 'LONGEST_STREAK'
+ | 'MOST_CORRECT' | 'COMEBACK' | 'PERFECT_STAGE'
+ | 'FULL_PARTICIPATION' | 'FIRST_CORRECT' | 'ROUND_CHAMPION';
+
+interface RankedEntry {
+ playerId: string;
+ safeDisplayName: string;
+ rank: number;
+ metricValue: number;
+ metricUnit: 'ms' | 'points' | 'questions' | 'places' | 'percent';
+ tied?: boolean;
+
+}
+interface AchievementLeaderboardSnapshot {
+
+ roundId: string;
+ scope: RankingScope;
+ scopeId: string; // questionInstanceId, stageId, roundId
+ achievementId: AchievementId;
+ metricKey: string;
+ entries: RankedEntry[];
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                             6
+      totalQualified: number;
+      tiedOverflowCount?: number;
+      finalizedAt: number;
+      revision: number;
+    }
+    interface StageDefinition {
+      stageId: string;
+      stageIndex: number;
+      firstQuestionIndex: number;
+      lastQuestionIndex: number;
+    }
+
+Không nhất thiết tạo bảng mới cho mọi loại BXH. Ưu tiên derived views/snapshots có revision, giữ nguồn
+
+chân lý là answer + score events. Tất cả snapshot phải gắn roundId và không rò sang round mới.
+
+10. EVENT FLOW VÀ STATE MACHINE
+
+1. Khi đáp án hiển thị và engine mở nhận theo logic đã triển khai, nhận answer event. Không tạo feedback
+tên từng người.
+2. Khi khóa câu: quiz-core xác nhận kết quả; tính questionTop3 đúng nhanh nhất và các metric increment;
+tạo snapshot bất biến cho reveal.
+3. Reveal: công bố đáp án và Top 3 nhanh nhất trong khung hiện có; nếu không đủ không giả tạo người.
+4. Cập nhật round total Top 10 theo scoring hiện tại.
+5. Sau câu 5/10/15: tính stageTop3 từ score events; evaluate stage achievements; presentation scheduler
+chọn tối đa 1 secondary showcase.
+6. Cuối trận: finalize round achievements, Victory lấy round Top 3; lobby có thể xoay Top 3/5 danh hiệu khác
+khi đang chờ vòng sau.
+7. Pause/Resume/Skip/Cancel/Recover phải đảm bảo không phát lại danh hiệu, không hiển thị snapshot sai
+phiên; WebSocket reconnect nhận latest snapshot theo revision.
+
+Không mở thêm pha thời gian mới nếu không thật cần thiết. Dùng các pha hiện có, chỉ đề xuất thay đổi
+duration sau khi có screenshot/timeline QA.
+
+11. ANALYTICS GIỮ CHÂN (KHÔNG PHẢI RANK
+DÀI HẠN)
+
+Đo theo session/round, không tích lũy thành tích người chơi qua nhiều ngày:
+ • Cohort Q1 → Q5 → Q10 → Q15 theo cùng playerId.
+ • % player trả lời >=5, >=10, =15 câu.
+ • Số người mới vào mỗi câu và số người chơi lại ở round 2 trong cùng LIVE session.
+ • Thời gian giữa các round, số lỗi reconnect, số câu thiếu voice.
+ • % comment đầu tiên hợp lệ được nhận; số comment trùng, không đúng format.
+ • Tỷ lệ người tham gia có ít nhất một achievement; phân bổ thành tích.
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                          7
+ • Average question duration và time-to-next-question.
+Đừng diễn giải số người trả lời mỗi câu là retention cohort. Trình bày trước/sau thay đổi có cùng điều kiện
+LIVE, có chú thích về upload bitrate, traffic và lỗi kỹ thuật.
+
+12. TEST PLAN / ACCEPTANCE
+
+Functional:
+ • Top 3 nhanh nhất chỉ từ đáp án đúng, event hợp lệ; tie; 0–2 người đúng; không nhầm question.
+ • Stage 1/2/3 đúng phạm vi, tổng stage score khớp round score; streak xuyên chặng; player vào muộn.
+ • COMEBACK không xếp hạng người mới không có rank đầu chặng; MOST_CORRECT đúng metric; accuracy
+    nếu bật có min attempts.
+ • Khi hủy/regrade câu, danh hiệu và BXH được cập nhật đúng.
+ • Không cộng điểm phụ; không thay đổi scoring hiện hành.
+ • Không có ticker xác nhận tên hay MC đọc tên.
+ • Tên hiển thị qua filter; không leak raw nickname qua Overlay/WebSocket/TTS.
+ • Không duplicate award/reveal sau reconnect, restart, pause/resume.
+ • Theme override và fallback hoạt động; đổi theme không đổi metric.
+ • Không làm hỏng dữ liệu phiên cũ hoặc launcher sau rename.
+
+Performance:
+ • Test 100, 1.000, 5.000, 10.000 player, phân bố comment dồn cục; report p50/p95/p99 latency, CPU, RAM,
+    websocket payload, DB growth; không mất đáp án do code nội bộ.
+ • Top N được giới hạn và update theo batch; không render danh sách người chơi đầy đủ.
+
+Visual/Operational:
+ • Screenshot 1080×1920, HUD TikTok Simulator, test chữ dài và tên dài.
+ • Nhãn CÂU, CHẶNG, TOÀN TRẬN phải dễ phân biệt, đặc biệt “KHÔNG PHẢI BXH TOÀN TRẬN”.
+ • Kiểm tra không kéo dài nhịp câu quá mức; Victory giữ nguyên sân khấu/cúp gốc, ba nhân vật đứng trên
+    sàn/bục dưới cùng không che cúp.
+ • Test qua cửa sổ LIVE Studio thực tế và xác minh nguồn comment.
+
+13. THỨ TỰ TRIỂN KHAI ĐỀ XUẤT
+
+Phase 0 – Audit và chốt dữ liệu (không code): đọc V5, inspect codebase, đối chiếu schema/state/score
+events, tìm các thay đổi P0 vận hành chưa xong, gap matrix, migration plan, screenshot kế hoạch UI, dự kiến
+timeline.
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                         8
+Phase 1 – Ranking core: Top 3 nhanh nhất mỗi câu + stage scoring + stage Top 3, tests deterministic,
+contracts; không thay scoring.
+Phase 2 – Achievement evaluator: LONGEST_STREAK, MOST_CORRECT, COMEBACK, cộng đồng; tie policy;
+snapshots; unit/integration tests.
+Phase 3 – Presentation: Reveal, checkpoint, Lobby rotation, dashboard preview, safe-zone screenshots;
+không tăng thời gian chờ vô lý.
+Phase 4 – Theme config + rename: registry, event override, UI label rename, migration compatibility.
+Phase 5 – Load/Live QA: 10k simulator, regression tests, operational QA, analytics baseline.
+Không thực hiện song song thay đổi code xung đột vào quiz-core và overlay. Mỗi phase cần commit/PR riêng,
+test, screenshot (nếu visual), và báo cáo bằng chứng trước khi merge.
+
+14. OUTPUT CLAUDE PHẢI TRẢ TRƯỚC KHI CODE
+
+1. Audit hiện trạng: đã có / thiếu / xung đột.
+2. Gap Matrix theo từng yêu cầu V5.
+3. Map module/file sẽ sửa (đường dẫn thật, không suy đoán).
+4. Data migration/backward compatibility plan.
+5. Ranking rules & tie cases đã cụ thể hóa.
+6. Timeline trình chiếu dự kiến không tăng nhịp chờ.
+7. Test plan, performance plan và rollback.
+8. Task board P0/P1/P2, dependency và owner.
+CHỜ CHỦ DỰ ÁN DUYỆT AUDIT + PLAN TRƯỚC KHI CODE.
+
+NHÀ THÔNG THÁI FREE FIRE • SPEC V5.0                                                                       9
+
