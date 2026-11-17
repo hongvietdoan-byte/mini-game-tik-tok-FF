@@ -525,11 +525,11 @@ function App() {
                 <div><small>THỜI GIAN MẤT KẾT NỐI · VÒNG NÀY</small><b>{formatDuration(snapshot.live.downtimeMsThisRound)}</b></div>
               </>}
             </div>
-            {snapshot.config.mode === 'TIKTOK' && <div className={`tiktok-live-state ${snapshot.live.status === 'CONNECTED' ? 'is-live' : ''}`} role="status"><b>{snapshot.live.status === 'CONNECTED' ? 'Đang LIVE' : 'Chưa LIVE'}</b><span>{snapshot.live.detail ?? 'Nguồn TikTok chưa kết nối. Bấm Kết nối để kiểm tra trạng thái LIVE.'}</span></div>}
+            {snapshot.config.mode === 'TIKTOK' && <div className={`tiktok-live-state ${snapshot.live.status === 'CONNECTED' ? 'is-live' : ''}`} role="status"><b>{snapshot.live.status === 'CONNECTED' ? 'Đang LIVE' : 'Chưa LIVE'}</b><span>{snapshot.live.status === 'CONNECTED' ? 'Đang nhận bình luận từ TikTok LIVE.' : snapshot.live.detail ?? 'Nguồn TikTok chưa kết nối. Bấm Kết nối để kiểm tra trạng thái LIVE.'}</span></div>}
             {snapshot.live.detail && snapshot.config.mode !== 'TIKTOK' && <div className="source-detail" role="status">{snapshot.live.detail}</div>}
             {silentWarning && <div className="quiet-warning" role="status"><b>Chưa nhận bình luận mới trong hơn 5 giây</b><span>Kiểm tra kết nối WebSocket, trạng thái LIVE và cấu hình dịch vụ ký.</span></div>}
             {latencyWarning && <div className="quiet-warning" role="status"><b>Độ trễ nguồn p95 vượt 3 giây</b><span>Kiểm tra mạng và độ trễ của nguồn; số đo chỉ quan sát, không đổi ngưỡng trả lời.</span></div>}
-            {snapshot.config.mode === 'TIKTOK' && <div className="source-detail" data-testid="round-rejections">Lý do bị loại trong vòng: {Object.entries(snapshot.live.rejectedThisRound).filter(([, count]) => count > 0).map(([reason, count]) => `${reason} ${count}`).join(' · ') || 'chưa có'} · ghi log {snapshot.live.rawRecordingEnabled ? 'đang bật (đã băm ID)' : 'đang tắt'}</div>}
+            {snapshot.config.mode === 'TIKTOK' && snapshot.live.status !== 'CONNECTED' && <div className="source-detail" data-testid="round-rejections">Lý do bị loại trong vòng: {Object.entries(snapshot.live.rejectedThisRound).filter(([, count]) => count > 0).map(([reason, count]) => `${reason} ${count}`).join(' · ') || 'chưa có'} · ghi log {snapshot.live.rawRecordingEnabled ? 'đang bật (đã băm ID)' : 'đang tắt'}</div>}
             <div className="source-actions">
               <button type="button" className="primary-button" disabled={busy} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
               <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('DISCONNECT')}>Ngắt</button>
