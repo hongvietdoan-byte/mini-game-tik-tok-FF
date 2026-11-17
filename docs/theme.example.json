@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "tet-2027",
+  "name": "Tết 2027",
+  "description": "Ví dụ để thay màu, font và asset theo sự kiện.",
+  "tokens": {
+    "deep": "#183E35",
+    "gold": "#F2C14E",
+    "font-body": "'Segoe UI', sans-serif"
+  },
+  "fonts": [
+    {
+      "family": "Tet Display",
+      "file": "fonts/tet-display.woff2",
+      "weight": 700,
+      "style": "normal"
+    }
+  ],
+  "assets": {
+    "arena.background": "assets/arena/background-placeholder.jpg",
+    "brand.logo": "assets/brand/logo-placeholder.png",
+    "audio.victory": "assets/audio/victory-placeholder.mp3",
+    "chibi.bankDir": "assets/chibi",
+    "mc.static": "assets/mc/mc-placeholder.png",
+    "mc.sequenceDir": "assets/mc/sequence"
+  }
+}

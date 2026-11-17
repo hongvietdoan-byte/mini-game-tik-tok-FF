@@ -60,7 +60,7 @@ try {
 } catch {
   console.log('[quiz] chưa có kho chibi (assets-local/chibi/manifest.json) — dùng hình giữ chỗ');
 }
-const quiz = await buildApp({ store, scheduler, adminToken, repositoryRoot: ROOT, webRoots, characterPool, mcVoice: mcVoice ?? undefined, logger: process.env.QUIZ_LOG === '1' });
+const quiz = await buildApp({ store, scheduler, adminToken, repositoryRoot: ROOT, webRoots, themesDir: process.env.QUIZ_THEMES_DIR ?? join(DATA, 'themes'), characterPool, mcVoice: mcVoice ?? undefined, logger: process.env.QUIZ_LOG === '1' });
 const recovered = await quiz.recover();
 if (recovered)
   console.log(`[quiz] khôi phục phiên ${recovered.id} → ${recovered.engine.state} (chờ operator chọn Tiếp tục / Huỷ câu / Dừng)`);
