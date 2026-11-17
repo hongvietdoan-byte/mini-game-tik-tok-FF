@@ -30,6 +30,7 @@ import {
   connectionStatusTone,
   dangerousActions,
   formatTimeAgo,
+  formatRetryWait,
   hasHighSourceLatencyWarning,
   hasSilentAcceptingWarning,
   overlayUrlFromLocation,
@@ -218,6 +219,17 @@ function App() {
     const interval = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(interval);
   }, [snapshot?.public.timer?.running, snapshot?.public.timer?.remainingMs, timerAnchor.serverTimeMs]);
+
+  useEffect(() => {
+    const retryAtMs = snapshot?.live.retryAtMs;
+    if (retryAtMs === null || retryAtMs === undefined || retryAtMs <= Date.now()) return;
+    const interval = window.setInterval(() => {
+      const currentMs = Date.now();
+      setNow(currentMs);
+      if (currentMs >= retryAtMs) window.clearInterval(interval);
+    }, 200);
+    return () => window.clearInterval(interval);
+  }, [snapshot?.live.retryAtMs]);
 
   useEffect(() => {
     if (snapshot?.public.state === 'ACCEPTING') setAcceptingSinceMs((value) => value ?? Date.now());
@@ -476,6 +488,7 @@ function App() {
   const isTikTokAccepting = snapshot?.config.mode === 'TIKTOK' && snapshot.public.state === 'ACCEPTING';
   const silentWarning = Boolean(snapshot && isTikTokAccepting && hasSilentAcceptingWarning(snapshot.public.state, snapshot.live.lastCommentAtMs, acceptingSinceMs, now));
   const latencyWarning = Boolean(snapshot && isTikTokAccepting && hasHighSourceLatencyWarning(snapshot.public.state, snapshot.live.sourceLatencyP95Ms));
+  const retryWait = snapshot?.config.mode === 'TIKTOK' ? formatRetryWait(snapshot.live.retryAtMs, now) : null;
   const transportLabel = snapshot?.live.transport === 'WEBSOCKET' ? 'WebSocket'
     : snapshot?.live.transport === 'POLLING' ? 'Polling' : 'Chưa xác định';
   const formatMs = (value: number | null) => value === null ? '—' : `${Math.round(value).toLocaleString('vi-VN')} ms`;
@@ -579,14 +592,15 @@ function App() {
               </>}
             </div>
             {snapshot.config.mode === 'TIKTOK' && <div className={`tiktok-live-state ${snapshot.live.status === 'CONNECTED' ? 'is-live' : ''}`} role="status"><b>{snapshot.live.status === 'CONNECTED' ? 'Đang LIVE' : 'Chưa LIVE'}</b><span>{snapshot.live.status === 'CONNECTED' ? 'Đang nhận bình luận từ TikTok LIVE.' : snapshot.live.detail ?? 'Nguồn TikTok chưa kết nối. Bấm Kết nối để kiểm tra trạng thái LIVE.'}</span></div>}
+            {retryWait && <div className="source-detail" role="status" data-testid="tiktok-retry-wait">{retryWait} · Không tự kết nối lại trong thời gian này.</div>}
             {snapshot.live.detail && snapshot.config.mode !== 'TIKTOK' && <div className="source-detail" role="status">{snapshot.live.detail}</div>}
             {silentWarning && <div className="quiet-warning" role="status"><b>Chưa nhận bình luận mới trong hơn 5 giây</b><span>Kiểm tra kết nối WebSocket, trạng thái LIVE và cấu hình dịch vụ ký.</span></div>}
             {latencyWarning && <div className="quiet-warning" role="status"><b>Độ trễ nguồn p95 vượt 3 giây</b><span>Kiểm tra mạng và độ trễ của nguồn; số đo chỉ quan sát, không đổi ngưỡng trả lời.</span></div>}
             {snapshot.config.mode === 'TIKTOK' && snapshot.live.status !== 'CONNECTED' && <div className="source-detail" data-testid="round-rejections">Lý do bị loại trong vòng: {Object.entries(snapshot.live.rejectedThisRound).filter(([, count]) => count > 0).map(([reason, count]) => `${reason} ${count}`).join(' · ') || 'chưa có'} · ghi log {snapshot.live.rawRecordingEnabled ? 'đang bật (đã băm ID)' : 'đang tắt'}</div>}
             <div className="source-actions">
-              <button type="button" className="primary-button" disabled={busy} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
+              <button type="button" className="primary-button" disabled={busy || retryWait !== null} onClick={() => void controlSource('CONNECT')}>Kết nối</button>
               <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('DISCONNECT')}>Ngắt</button>
-              <button type="button" className="secondary-button" disabled={busy} onClick={() => void controlSource('RECONNECT')}>Kết nối lại</button>
+              <button type="button" className="secondary-button" disabled={busy || retryWait !== null} onClick={() => void controlSource('RECONNECT')}>Kết nối lại</button>
             </div>
             {snapshot.config.mode === 'TIKTOK' && <p className="connector-note">Kết nối bằng connector cộng đồng; trạng thái nguồn và chi tiết kết nối do server cung cấp.</p>}
           </section>

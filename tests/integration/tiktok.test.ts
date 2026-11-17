@@ -249,8 +249,8 @@ describe('Phiên TIKTOK (adapter cộng đồng, kết nối giả)', () => {
 
     h.conn.emit('disconnected', { reason: 'mạng chập chờn' });
     expect(rt.engine.state).toBe('CONNECTION_INTERRUPTED');
-    expect(rt.adminSnapshot().live.detail).toContain('WebSocket bị ngắt');
-    h.scheduler.advance(2_000); // backoff → tự kết nối lại
+    expect(rt.adminSnapshot().live.detail).toContain('rớt nhanh');
+    h.scheduler.advance(5_000); // rớt nhanh → backoff tối thiểu 5 giây rồi tự kết nối lại
     await new Promise((r) => setTimeout(r, 0));
     expect(rt.adminSnapshot().live.status).toBe('CONNECTED');
     expect(rt.adminSnapshot().live.reconnectsThisRound).toBe(1);

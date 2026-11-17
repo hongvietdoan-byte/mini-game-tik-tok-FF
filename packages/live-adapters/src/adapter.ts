@@ -15,6 +15,8 @@ export interface LiveAdapter {
   healthCheck(): Promise<{ ok: boolean; detail: string }>;
   /** Lỗi/ghi chú gần nhất của nguồn (tuỳ chọn) — hiển thị ở Connection Manager. */
   describe?(): string | null;
+  /** Thời điểm server cho phép thử lại, nếu nguồn áp giới hạn tạm thời. */
+  retryAtMs?(): number | null;
 }
 
 class Emitter<T> {

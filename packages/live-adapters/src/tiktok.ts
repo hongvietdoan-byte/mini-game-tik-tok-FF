@@ -46,6 +46,11 @@ export type TikTokAdapterOptions = {
 
 export const TIKTOK_UNOFFICIAL_NOTICE =
   'Kết nối KHÔNG CHÍNH THỨC qua tiktok-live-connector (ký request bởi Euler Stream) — dùng tạm trong lúc chờ kênh chính thức của TikTok.';
+const DEFAULT_SIGNATURE_RETRY_MS = 5 * 60_000;
+const SIGNATURE_RATE_LIMIT_DETAIL = 'Dịch vụ ký kết nối đang giới hạn lượt.';
+const PRIVATE_LIVE_HINT = 'Nếu LIVE đang để chế độ Bạn bè/riêng tư, game chỉ đọc được LIVE Công khai.';
+const CONNECTION_STABILITY_MS = 60_000;
+const RAPID_DISCONNECT_LIMIT = 3;
 
 /** Chuẩn hoá @username / URL → username. */
 export function normalizeTikTokUsername(input: string): string {
@@ -85,8 +90,14 @@ export class TikTokLiveAdapter implements LiveAdapter {
   private commentSubs = new Set<(c: RawComment) => void>();
   private statusSubs = new Set<(s: ConnectionStatus) => void>();
   private manualStop = false;
+  private connectedOnce = false;
   private attempts = 0;
+  private rapidDisconnects = 0;
+  private connectedAtMs: number | null = null;
+  private connectionStable = false;
   private retryHandle: unknown = null;
+  private stabilityHandle: unknown = null;
+  private retryAt: number | null = null;
   private lastError: string | null = null;
   private transportState: TikTokTransport = 'UNKNOWN';
   /** Monotonic deque giữ min(now - createTime) trên 200 comment gần nhất. */
@@ -104,6 +115,9 @@ export class TikTokLiveAdapter implements LiveAdapter {
   }
   describe() {
     return this.lastError;
+  }
+  retryAtMs() {
+    return this.retryAt;
   }
   transport(): TikTokTransport {
     return this.transportState;
@@ -124,6 +138,16 @@ export class TikTokLiveAdapter implements LiveAdapter {
   }
 
   async connect(): Promise<void> {
+    if (this.retryAt !== null) {
+      const remainingMs = this.retryAt - this.opts.scheduler.now();
+      if (remainingMs > 0) {
+        this.lastError = `${SIGNATURE_RATE_LIMIT_DETAIL} Thử lại được sau ${formatRetryDuration(remainingMs)}.`;
+        this.setStatus('DISCONNECTED');
+        throw new Error(this.lastError);
+      }
+      this.retryAt = null;
+      this.lastError = null;
+    }
     this.manualStop = false;
     this.clearRetry();
     if (this.st === 'CONNECTED') return;
@@ -133,18 +157,36 @@ export class TikTokLiveAdapter implements LiveAdapter {
       const conn = await this.openConnection();
       await conn.connect();
       this.conn = conn;
-      this.attempts = 0;
+      this.connectedOnce = true;
+      this.retryAt = null;
       this.lastError = null;
+      this.connectedAtMs = this.opts.scheduler.now();
+      this.connectionStable = false;
+      this.clearStabilityTimer();
+      this.stabilityHandle = this.opts.scheduler.setTimeout(() => {
+        if (this.conn === conn && this.st === 'CONNECTED') this.markConnectionStable();
+      }, CONNECTION_STABILITY_MS);
       // v2.5.0 chỉ resolve connect sau khi setupWebsocket mở socket.
       if (this.transportState === 'UNKNOWN') this.transportState = 'WEBSOCKET';
       this.setStatus('CONNECTED');
     } catch (err) {
-      this.lastError = describeError(err, this.username);
       await this.dropConnection();
-      if (isOffline(err)) {
-        // Tài khoản chưa LIVE / không lấy được Room ID: không spam thử lại — operator bấm Kết nối lại khi đã lên sóng.
+      if (isSignatureRateLimit(err)) {
+        // Dịch vụ ký đã giới hạn lượt: không tự thử lại và giữ cooldown kể cả khi operator bấm sớm.
+        const retryAfterMs = retryAfterMsFromError(err, this.opts.scheduler.now()) ?? DEFAULT_SIGNATURE_RETRY_MS;
+        this.retryAt = this.opts.scheduler.now() + retryAfterMs;
+        this.manualStop = true;
+        this.lastError = describeError(err, this.username, this.connectedOnce);
         this.setStatus('DISCONNECTED');
-      } else this.scheduleRetry();
+      } else if (isOffline(err)) {
+        // Chưa LIVE hoặc đã kết thúc: dừng retry tự động, tránh tạo thêm lượt ký vô ích.
+        this.manualStop = true;
+        this.lastError = describeError(err, this.username, this.connectedOnce);
+        this.setStatus('DISCONNECTED');
+      } else {
+        this.lastError = describeError(err, this.username, this.connectedOnce);
+        this.scheduleRetry();
+      }
       throw new Error(this.lastError);
     }
   }
@@ -152,6 +194,9 @@ export class TikTokLiveAdapter implements LiveAdapter {
   async disconnect(): Promise<void> {
     this.manualStop = true;
     this.clearRetry();
+    this.clearStabilityTimer();
+    this.connectedAtMs = null;
+    this.connectionStable = false;
     await this.dropConnection();
     this.setStatus('DISCONNECTED');
   }
@@ -180,6 +225,7 @@ export class TikTokLiveAdapter implements LiveAdapter {
     const now = this.opts.scheduler.now();
     const c = mapTikTokChat(data);
     if (!c) return;
+    if (this.st === 'CONNECTED') this.markConnectionStable();
     let sourceTimestampMs: number | undefined;
     if (c.createTimeMs !== undefined) {
       const sequence = this.offsetSequence++;
@@ -216,15 +262,62 @@ export class TikTokLiveAdapter implements LiveAdapter {
 
   private handleDisconnected(info: any) {
     this.conn = null;
+    const now = this.opts.scheduler.now();
+    const wasStable = this.connectionStable;
+    const connectedAtMs = this.connectedAtMs;
+    const rapidDrop = !wasStable && connectedAtMs !== null && now - connectedAtMs < CONNECTION_STABILITY_MS;
+    this.clearStabilityTimer();
+    this.connectedAtMs = null;
+    this.connectionStable = false;
     if (this.manualStop) {
       this.transportState = 'UNKNOWN';
       this.setStatus('DISCONNECTED');
       return;
     }
-    void info;
+    if (rapidDrop) this.rapidDisconnects += 1;
+    else if (wasStable || (connectedAtMs !== null && now - connectedAtMs >= CONNECTION_STABILITY_MS)) {
+      this.rapidDisconnects = 0;
+      this.attempts = 0;
+    }
     this.transportState = 'UNKNOWN';
-    this.lastError = 'WebSocket bị ngắt. Đang thử kết nối lại.';
+    const error = info?.exception ?? info?.error ?? info;
+    if (isSignatureRateLimit(error)) {
+      const retryAfterMs = retryAfterMsFromError(error, this.opts.scheduler.now()) ?? DEFAULT_SIGNATURE_RETRY_MS;
+      this.retryAt = this.opts.scheduler.now() + retryAfterMs;
+      this.manualStop = true;
+      this.lastError = describeError(error, this.username, this.connectedOnce);
+      this.setStatus('DISCONNECTED');
+      return;
+    }
+    if (isOffline(error) && this.connectedOnce) {
+      this.manualStop = true;
+      this.lastError = describeError(error, this.username, true);
+      this.setStatus('DISCONNECTED');
+      return;
+    }
+    if (this.rapidDisconnects >= RAPID_DISCONNECT_LIMIT) {
+      this.manualStop = true;
+      this.lastError = 'Kết nối TikTok chập chờn (có thể LIVE để chế độ Bạn bè/riêng tư hoặc LIVE đã tắt) — kiểm tra rồi bấm Kết nối.';
+      this.setStatus('DISCONNECTED');
+      return;
+    }
+    this.lastError = rapidDrop
+      ? 'Kết nối TikTok vừa rớt nhanh. Đang chờ backoff trước khi thử lại.'
+      : 'WebSocket bị ngắt. Đang thử kết nối lại.';
     this.scheduleRetry();
+  }
+
+  private markConnectionStable() {
+    this.clearStabilityTimer();
+    this.connectionStable = true;
+    this.connectedAtMs = null;
+    this.attempts = 0;
+    this.rapidDisconnects = 0;
+  }
+
+  private clearStabilityTimer() {
+    if (this.stabilityHandle !== null) this.opts.scheduler.clearTimeout(this.stabilityHandle);
+    this.stabilityHandle = null;
   }
 
   private scheduleRetry() {
@@ -236,8 +329,10 @@ export class TikTokLiveAdapter implements LiveAdapter {
       return;
     }
     this.setStatus('RECONNECTING');
-    const backoff = Math.max(0, baseMs) * 2 ** this.attempts;
-    const delay = Math.min(maxMs, this.attempts === 0 ? 1_000 : backoff);
+    const minimumDelayMs = this.rapidDisconnects > 0 ? 5_000 : 0;
+    const backoff = Math.max(minimumDelayMs, Math.max(0, baseMs)) * 2 ** this.attempts;
+    const cap = Math.max(minimumDelayMs, Math.min(60_000, Math.max(0, maxMs)));
+    const delay = Math.min(cap, this.attempts === 0 && minimumDelayMs === 0 ? 1_000 : backoff);
     this.attempts += 1;
     this.retryHandle = this.opts.scheduler.setTimeout(() => {
       this.retryHandle = null;
@@ -274,23 +369,65 @@ function isOffline(err: unknown) {
   return name === 'UserOfflineError' || /offline|not live|isn't online/i.test(String((err as Error)?.message ?? err)) || isRoomIdFailure(err);
 }
 
+function isSignatureRateLimit(err: unknown) {
+  const nested = (err as { cause?: unknown } | null)?.cause;
+  return errorName(err) === 'SignatureRateLimitError' || errorName(nested) === 'SignatureRateLimitError' ||
+    /rate.?limit|\b429\b/i.test(`${errorName(err)} ${errorMessage(err)}`);
+}
+
+function retryAfterMsFromError(err: unknown, nowMs: number): number | undefined {
+  const error = err as Record<string, unknown> | null;
+  const nested = error?.cause as Record<string, unknown> | null;
+  for (const source of [error, nested]) {
+    const raw = source?.retryAfterMs;
+    const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : Number.NaN;
+    if (Number.isFinite(value) && value >= 0) return Math.ceil(value);
+  }
+  const response = (error?.response ?? nested?.response) as { headers?: Headers | Record<string, unknown> } | undefined;
+  const headerValue = (headers: Headers | Record<string, unknown> | undefined) => {
+    if (!headers) return undefined;
+    if (typeof (headers as Headers).get === 'function') return (headers as Headers).get('retry-after') ?? undefined;
+    const record = headers as Record<string, unknown>;
+    const found = record['retry-after'] ?? record['Retry-After'];
+    return typeof found === 'string' ? found : undefined;
+  };
+  const rawRetryAfter = error?.retryAfter ?? nested?.retryAfter ?? headerValue(response?.headers);
+  if (typeof rawRetryAfter === 'number' && Number.isFinite(rawRetryAfter) && rawRetryAfter >= 0)
+    return Math.ceil(rawRetryAfter * 1_000);
+  if (typeof rawRetryAfter === 'string') {
+    const seconds = Number(rawRetryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+    const timestamp = Date.parse(rawRetryAfter);
+    if (Number.isFinite(timestamp)) return Math.max(0, timestamp - nowMs);
+  }
+  return undefined;
+}
+
 /** "Failed to retrieve Room ID…": thường là chưa LIVE (đôi khi TikTok chặn tạm) — coi như chưa LIVE, không tự thử lại dồn dập. */
 function isRoomIdFailure(err: unknown) {
   return /room\s*id/i.test(String((err as Error)?.message ?? err));
 }
 
-function describeError(err: unknown, username: string) {
-  if (isRoomIdFailure(err)) return `Không lấy được phòng LIVE của @${username} — thường do chưa phát LIVE (hoặc TikTok tạm chặn). Bắt đầu LIVE rồi bấm Kết nối lại`;
-  if (isOffline(err)) return `@${username} hiện chưa phát LIVE — bắt đầu LIVE rồi bấm Kết nối lại`;
+function describeError(err: unknown, username: string, connectedOnce = false) {
+  if (isSignatureRateLimit(err)) return `${SIGNATURE_RATE_LIMIT_DETAIL} Kiểm tra gói/khoá ký nếu lỗi tiếp diễn.`;
+  if (isRoomIdFailure(err) || isOffline(err)) {
+    const offlineMessage = connectedOnce
+      ? 'LIVE có thể đã kết thúc — bấm Kết nối khi LIVE lại.'
+      : `@${username} hiện chưa phát LIVE — bắt đầu LIVE rồi bấm Kết nối lại.`;
+    return `${offlineMessage} ${PRIVATE_LIVE_HINT}`;
+  }
   const name = errorName(err);
   const msg = errorMessage(err);
-  if (name === 'SignatureRateLimitError' || /rate.?limit|\b429\b/i.test(`${name} ${msg}`))
-    return 'Dịch vụ ký kết nối đang giới hạn lượt. Chờ theo thời gian retry rồi bấm Kết nối lại; kiểm tra gói/khoá ký nếu lỗi tiếp diễn.';
   if (/signapierror|signature|signing|euler/i.test(`${name} ${msg}`))
-    return `Lỗi ký kết nối${name ? ` (${name})` : ''}. Kiểm tra cấu hình khoá ký; không cần cookie TikTok. Xem lại dịch vụ ký rồi thử kết nối lại.`;
+    return `Lỗi ký kết nối${name ? ` (${name})` : ''}. Kiểm tra cấu hình khoá ký; không cần cookie TikTok. Xem lại dịch vụ ký rồi thử kết nối lại. ${PRIVATE_LIVE_HINT}`;
   if (/websocket|socket/i.test(`${name} ${msg}`))
-    return `Kết nối WebSocket thất bại${name ? ` (${name})` : ''}. Kiểm tra mạng và trạng thái LIVE rồi thử kết nối lại.`;
-  return `Kết nối TikTok thất bại${name ? ` (${name})` : ''}. Kiểm tra mạng và trạng thái LIVE rồi thử kết nối lại.`;
+    return `Kết nối WebSocket thất bại${name ? ` (${name})` : ''}. Kiểm tra mạng và trạng thái LIVE rồi thử kết nối lại. ${PRIVATE_LIVE_HINT}`;
+  return `Kết nối TikTok thất bại${name ? ` (${name})` : ''}. Kiểm tra mạng và trạng thái LIVE rồi thử kết nối lại. ${PRIVATE_LIVE_HINT}`;
+}
+
+function formatRetryDuration(ms: number) {
+  const totalSeconds = Math.ceil(Math.max(0, ms) / 1_000);
+  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
 
 function errorName(err: unknown): string {
