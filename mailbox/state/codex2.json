@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 256,
-  "heartbeat": "2026-11-17T21:11:42+07:00",
-  "state": "waiting",
-  "task": "C-0256",
-  "note": "Inbox không có thư mới; C-0256 đã report và đang chờ coordinator rà/gộp, DP3 đã có owner codex2",
+  "heartbeat": "2026-11-17T21:31:58+07:00",
+  "state": "working",
+  "task": "C-0258",
+  "note": "Đã ack; chuẩn bị worktree để lọc điểm 0 ở mọi bảng xếp hạng overlay",
   "done": []
 }
