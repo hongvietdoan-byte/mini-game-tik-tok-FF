@@ -62,6 +62,7 @@ function App() {
   const moderationPolicyDataSource = useMemo(() => isMock ? undefined : createApiNameModerationPolicyDataSource(token.trim()), [token]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<AdminSnapshot | null>(null);
+  const sessionEnded = snapshot?.sessionStatus !== undefined && snapshot.sessionStatus !== 'OPEN';
   const [timerAnchor, setTimerAnchor] = useState({ serverTimeMs: Date.now(), offsetMs: 0 });
   const [now, setNow] = useState(Date.now());
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
@@ -122,6 +123,17 @@ function App() {
     mcVoicePreflightRequest.current += 1;
     disconnectRef.current?.();
   }, []);
+
+  useEffect(() => {
+    if (!sessionEnded) return;
+    disconnectRef.current?.();
+    disconnectRef.current = null;
+    setSocketStatus('disconnected');
+    setNeedsSession(true);
+    setPage('live');
+    setPendingDanger(null);
+    setPendingEnvelope(null);
+  }, [sessionEnded]);
 
   const connectSession = useCallback((id: string, next: AdminSnapshot, auth: string) => {
     disconnectRef.current?.();
@@ -244,6 +256,22 @@ function App() {
     }
   }
 
+  function startNewSession() {
+    mcVoicePreflightRequest.current += 1;
+    disconnectRef.current?.();
+    disconnectRef.current = null;
+    setSessionId(null);
+    setSnapshot(null);
+    setNeedsSession(true);
+    setPage('live');
+    setSocketStatus('disconnected');
+    setError('');
+    setNotice('');
+    setPendingDanger(null);
+    setPendingEnvelope(null);
+    setReason('');
+  }
+
   async function createSession(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -320,8 +348,30 @@ function App() {
         setNotice('Đã gửi lệnh.');
         setPendingEnvelope(null);
         await refreshSessionSnapshot();
+        if (envelope.command.type === 'STOP'
+          || (envelope.command.type === 'RESOLVE_RECOVERY' && envelope.command.decision === 'STOP')) {
+          try {
+            if (!await client.currentSession()) {
+              setSnapshot((current) => current ? { ...current, sessionStatus: 'CLOSED' } : current);
+            }
+          } catch {
+            // Keep the refreshed state when the current-session endpoint is temporarily unavailable.
+          }
+        }
       }
     } catch (cause) {
+      if (envelope.command.type === 'STOP'
+        || (envelope.command.type === 'RESOLVE_RECOVERY' && envelope.command.decision === 'STOP')) {
+        try {
+          if (!await client.currentSession()) {
+            setSnapshot((current) => current ? { ...current, sessionStatus: 'CLOSED' } : current);
+            setPendingEnvelope(null);
+            return;
+          }
+        } catch {
+          // Fall through to the regular connection error when session status is unknown.
+        }
+      }
       setError('Mất kết nối khi gửi lệnh. Có thể gửi lại bằng chính commandId này.');
     } finally {
       setBusy(false);
@@ -487,7 +537,10 @@ function App() {
         </div>
       </section>}
 
-      {page === 'theme' ? <ThemePage client={client} token={token.trim()} isMock={isMock} /> : page === 'hud' ? <HudSettingsPage client={client} token={token.trim()} overlayUrl={overlayUrl} isMock={isMock} /> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'moderation' ? <NameModerationPage overlayUrl={overlayUrl} isMock={isMock} dataSource={moderationDataSource} policyDataSource={moderationPolicyDataSource} /> : page === 'live' ? <div className="dashboard-grid">
+      {page === 'theme' ? <ThemePage client={client} token={token.trim()} isMock={isMock} /> : page === 'hud' ? <HudSettingsPage client={client} token={token.trim()} overlayUrl={overlayUrl} isMock={isMock} /> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'moderation' ? <NameModerationPage overlayUrl={overlayUrl} isMock={isMock} dataSource={moderationDataSource} policyDataSource={moderationPolicyDataSource} /> : page === 'live' ? sessionEnded ? <section className="page-content closed-session" data-testid="closed-session">
+        <div className="page-heading"><div><span className="eyebrow">LIVE CONTROL</span><h2>Phiên đã kết thúc</h2><p>Phiên này đã đóng. Bạn có thể tạo phiên mới với các lựa chọn hiện tại.</p></div></div>
+        <button className="primary-button" type="button" onClick={startNewSession}>Tạo phiên mới</button>
+      </section> : <div className="dashboard-grid">
         <div className="main-column">
           <section className="panel state-panel">
             <div className="panel-title"><div><span className="eyebrow">TRẠNG THÁI HIỆN TẠI</span><h2>{stateName(snapshot.public.state)}</h2></div><span className={`state-chip state-${snapshot.public.state.toLowerCase()}`}>{sceneName(snapshot.public.state, snapshot.public.scene)}</span></div>
