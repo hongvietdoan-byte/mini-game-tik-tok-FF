@@ -4,6 +4,22 @@
  */
 import { z } from 'zod';
 
+export {
+  THEME_ASSET_SLOTS,
+  THEME_ALLOWED_EXTENSIONS,
+  THEME_TOKEN_KEY,
+  THEME_GEOMETRY_TOKEN,
+  MAX_THEME_FILE_BYTES,
+  ThemeAssetSlotSchema,
+  ThemeAssetSlot,
+  ThemeManifestSchema,
+  ThemeRelativePathSchema,
+  type ResolvedTheme,
+  type ThemeFont,
+  type ThemeManifest,
+} from './theme';
+export { THEME_DEFAULT_TOKENS, type ThemeDefaultToken } from './theme-default-tokens';
+
 export const CONTRACT_VERSION = 1;
 
 // ---------------------------------------------------------------------------
@@ -910,6 +926,8 @@ export type PublicSnapshot = {
   contractVersion: number;
   /** Phiên bản nội dung HUD; server gắn vào snapshot WS để overlay nạp lại cấu hình khi đổi. */
   hudVersion?: number;
+  /** Phiên bản theme; thay đổi khi nạp lại hoặc chọn gói khác. */
+  themeVersion?: number;
   sessionId: string;
   stateVersion: number;
   state: GameState;

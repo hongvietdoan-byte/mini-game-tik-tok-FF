@@ -43,6 +43,7 @@ import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
 import { serveAssets, serveSpa } from './static';
+import { ThemeStore } from './theme-store';
 import { McVoiceCache } from './voice/cache';
 import { McVoicePreGenerateManager } from './voice/pre-generate';
 import { EnvironmentMcVoiceCredentialStore, mcVoiceSettingsForEvent, McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile } from './voice/types';
@@ -84,6 +85,8 @@ export type AppOptions = {
   characterPool?: readonly string[];
   /** Thư mục chứa hud.json và hud-assets; mặc định cùng thư mục với DB. */
   hudDataDir?: string;
+  /** Kho theme; mặc định là themes cạnh DB (build đóng gói truyền data/themes rõ ràng). */
+  themesDir?: string;
   /** Cấu hình voice runtime được cấp ngoài repo; khi bỏ trống không gọi provider. */
   mcVoice?: {
     credentials?: McVoiceCredentialStore;
@@ -132,6 +135,7 @@ const MockCommentSchema = z.object({
 export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const { store, scheduler } = opts;
   const hudStore = new HudConfigStore(opts.hudDataDir ?? dirname(store.path));
+  const themeStore = new ThemeStore(opts.themesDir ?? join(dirname(store.path), 'themes'), dirname(store.path));
   const allowed = new Set(opts.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
   const rawCommentRecorder = process.env.TIKTOK_RECORD_RAW_COMMENTS === '1'
     ? new TikTokRawCommentRecorder(join(process.cwd(), 'data'), () => scheduler.now())
@@ -207,7 +211,9 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   let ackPendingSinceMs = scheduler.now();
   let observedStateVersion = 0;
   let lastSelfTest: SelfTestResult | null = null;
-  const withHudVersion = (snapshot: PublicSnapshot): PublicSnapshot => ({ ...snapshot, hudVersion: hudStore.get().version });
+  const withHudVersion = (snapshot: PublicSnapshot): PublicSnapshot => ({
+    ...snapshot, hudVersion: hudStore.get().version, themeVersion: themeStore.version,
+  });
   const withHudVersionOnMessage = (message: WsMessage): WsMessage => {
     if (message.type === 'STATE_SNAPSHOT') return { ...message, payload: withHudVersion(message.payload) };
     if (message.type === 'ADMIN_SNAPSHOT')
@@ -245,7 +251,7 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     // Existing WebSocket clients survive a session switch. Give each role the new
     // runtime snapshot immediately instead of leaving the overlay on the old lobby
     // until another command happens to publish a state event.
-    const publicSnapshot = JSON.stringify(next.wrap('STATE_SNAPSHOT', next.publicSnapshot()));
+    const publicSnapshot = JSON.stringify(next.wrap('STATE_SNAPSHOT', withHudVersion(next.publicSnapshot())));
     for (const ws of overlayClients) if (ws.readyState === 1) ws.send(publicSnapshot);
     const adminSnapshot = JSON.stringify(next.wrap('ADMIN_SNAPSHOT', next.adminSnapshot()));
     for (const ws of adminClients) if (ws.readyState === 1) ws.send(adminSnapshot);
@@ -640,6 +646,14 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const servedOverlay = opts.webRoots?.overlay ? serveSpa(app, '/overlay', opts.webRoots.overlay) : false;
   if (servedDashboard) app.get('/', async (_req, reply) => reply.redirect('/dashboard/'));
   if (opts.webRoots?.assets) serveAssets(app, '/assets', opts.webRoots.assets);
+  app.get<{ Params: { themeId: string; '*': string } }>('/themes/:themeId/*', async (req, reply) => {
+    const file = themeStore.resolveFile(req.params.themeId, req.params['*'] ?? '');
+    if (!file) return reply.code(404).send('Không tìm thấy asset theme.');
+    return reply.type(file.mimeType)
+      .header('cache-control', 'public, max-age=300')
+      .header('x-content-type-options', 'nosniff')
+      .send(readFileSync(file.path));
+  });
 
   app.get('/health', async () => ({
     ok: true,
@@ -649,6 +663,31 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   }));
 
   app.get('/api/hud', async () => hudStore.get());
+
+  app.get('/api/theme', async () => themeStore.resolveActive());
+
+  app.get('/api/admin/themes', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return { themes: themeStore.list(), activeThemeId: themeStore.activeThemeId, themeVersion: themeStore.version };
+  });
+
+  app.put('/api/admin/themes/active', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = z.object({ themeId: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u) }).strict().safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    if (!themeStore.setActive(parsed.data.themeId)) {
+      return reply.code(422).send({ ok: false, code: 'THEME_INVALID', message: 'Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.' });
+    }
+    pushHudSnapshots();
+    return { theme: themeStore.resolveActive(), activeThemeId: themeStore.activeThemeId, themeVersion: themeStore.version };
+  });
+
+  app.post('/api/admin/themes/reload', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const themes = themeStore.reload();
+    pushHudSnapshots();
+    return { themes, activeThemeId: themeStore.activeThemeId, themeVersion: themeStore.version };
+  });
 
   app.put('/api/hud', async (req, reply) => {
     if (!guard(req, reply, true)) return reply;
@@ -867,7 +906,8 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       parsed.data,
     );
     attachRuntime(runtime);
-    return reply.code(201).send({ sessionId: runtime.id, snapshot: runtime.adminSnapshot() });
+    const snapshot = runtime.adminSnapshot();
+    return reply.code(201).send({ sessionId: runtime.id, snapshot: { ...snapshot, public: withHudVersion(snapshot.public) } });
   });
 
   app.get<{ Params: { id: string } }>('/api/sessions/:id/state', async (req, reply) => {
@@ -875,9 +915,10 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!s) return reply;
     if (req.headers.authorization !== undefined) {
       if (!guard(req, reply, false)) return reply;
-      return s.adminSnapshot();
+      const snapshot = s.adminSnapshot();
+      return { ...snapshot, public: withHudVersion(snapshot.public) };
     }
-    return s.publicSnapshot();
+    return withHudVersion(s.publicSnapshot());
   });
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/commands', async (req, reply) => {
