@@ -1,9 +1,34 @@
-# HANDOFF — phiên coordinator (cập nhật 13/11/2026 ~16:00)
+# HANDOFF — phiên coordinator (cập nhật 17/11/2026 chiều)
 
 **PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 13/11 ~16:00) — ĐÃ NHẬN 13/11 15:57.**
 
 ## Mới nhất 13/11 ~16:00 — đọc khối này trước, các khối dưới đã cũ
-- **Cập nhật 16/11 tối (MỚI NHẤT):** người dùng bảo gộp để chạy live thử. Checkout chính đã `ff` tới origin/main (đủ C-0227/C-0229/C-0230 + HANDOFF) và đã `corepack pnpm build:web`. Kiểm tra cuối trên main: typecheck PASS, 448 test PASS, privacy PASS; E2E (Codex báo) 93/93 với asset thật, 92 + 1 skip với placeholder. Chạy live: mở sảnh, chờ vài chục giây cho câu 1 có giọng rồi mới bấm bắt đầu; lần đầu sinh lại ~60+ câu giọng (policy 3, tốn lượt). Nhạc nền chỉnh qua tham số overlay `bgm` (`bgm=0` tắt). Đang chờ người dùng báo kết quả chạy live.
+- **Cập nhật 17/11 chiều (MỚI NHẤT — đọc khối này trước):** main `6117e74`+. Hôm nay đã gộp:
+  - **C-0233:** ghế khán giả cập nhật ngay qua `AUDIENCE_UPDATED`, bỏ lazy-load chibi.
+  - **C-0234:** server ghi nhận người spam đáp án. Panel cảnh báo trên Dashboard đã **huỷ** vì người dùng không muốn.
+  - **C-0238:** MC đếm ngược "Còn 10 giây!", rồi "Năm, Bốn, Ba, Hai, Một" đúng từng giây; cue nào trễ hoặc chồng thì bỏ. "Hết giờ!" khi đóng câu. Nhắc "mỗi người chỉ một đáp án, bình luận đầu tiên mới được tính" ở câu 2/5/8. Từ điển phát âm `data/mc-pronunciation.json` (ignore) chỉ đổi text gửi đi sinh giọng.
+  - **C-0237:** simulator 20.000 người; chấm điểm theo delta, ghi SQLite theo lô. Đo 20k: 0 đáp án mất, ingest p99 khoảng 2 ms, chấm cộng xếp hạng khoảng 0,3 s. Máy bị throttle thì ANSWER_COUNTS có lúc trễ khoảng 4 s. Lệnh đo `pnpm bench:simulator-20k`.
+  - **C-0239:** chỉ số luồng bình luận TikTok thật trên Dashboard (bình luận/giây, trễ p50/p95, kết nối lại, lý do loại), cảnh báo khi im lặng hơn 5 s hoặc p95 trên 3 s. Kết nối lại lần đầu ≤1 s. Ghi và phát lại JSONL bật bằng `TIKTOK_RECORD_RAW_COMMENTS=1`, xem `docs/TIKTOK_INGEST_DIAGNOSTICS.md`.
+  - **C-0240/C-0242/C-0244/C-0246:** **theme theo sự kiện**. Gói theme ở `data/themes/<id>/` (ignore), gồm `theme.json` (55 token CSS `--theme-*`, font, asset theo slot) cùng `assets/` và `fonts/`. Các lệnh `pnpm theme:validate`, `pnpm theme:export-default [--force]`. Dashboard có tab "Giao diện / Theme" (quét lại, xem trước, áp dụng); overlay đổi theme ngay qua `themeVersion`. Theme mặc định trùng pixel với giao diện cũ (E2E so 6 cảnh). Theme **không** đổi vị trí hay kích thước khung. Hướng dẫn ở `docs/THEME.md`.
+
+  Kiểm tra cuối trên main: typecheck PASS, 489 test PASS, test:load PASS, privacy PASS. E2E do Codex báo: 96 PASS với asset thật, 95 + 1 skip với placeholder.
+
+  Đã làm ở máy (không có trong repo):
+  - Theme mặc định xuất ra `data/themes/default`, zip gửi người dùng ở `assets-local/themes/theme-default-1117.zip`. Video nền lặp và dãy ảnh MC chưa có file nên chưa vào theme.
+  - Từ điển phát âm 75 mục, **phiên âm theo âm tiếng Anh, không dịch nghĩa** (người dùng chốt). Chưa nghe thử bằng giọng thật.
+
+  Quyết định của người dùng hôm nay:
+  - Không thêm thời gian ân hạn sau deadline, vì sẽ ảnh hưởng kết quả.
+  - Lọc tên bậy đã có từ 15/11 (tab "Kiểm duyệt tên"). Đã hướng dẫn tự thử bằng bình luận tay với simulator tắt.
+
+  Chặn live TikTok thật: tài khoản cần LIVE từ điện thoại ít nhất 25 phút để mở LIVE Studio. Gợi ý trong buổi đó nhờ 5–10 người bình luận để đối chiếu xem game có nhận đủ không.
+
+  Còn treo:
+  - Người dùng cần **mở lại CHAY_GAME** để nhận server mới; lần đầu sẽ sinh 8 câu giọng chung mới và các câu có từ trong từ điển phát âm.
+  - Cửa sổ preview CHAY_GAME không phát tiếng (chỉ `role=program` có audio, docs nói khác) — đã hỏi giao Codex 2 sửa, người dùng chưa trả lời.
+
+  Codex1 và Codex2 đang rảnh. Codex2 từng ngừng hoạt động khoảng 02:00–14:30; khi đó C-0241 được chuyển sang codex1.
+- **Cập nhật 16/11 tối:** người dùng bảo gộp để chạy live thử. Checkout chính đã `ff` tới origin/main (đủ C-0227/C-0229/C-0230 + HANDOFF) và đã `corepack pnpm build:web`. Kiểm tra cuối trên main: typecheck PASS, 448 test PASS, privacy PASS; E2E (Codex báo) 93/93 với asset thật, 92 + 1 skip với placeholder. Chạy live: mở sảnh, chờ vài chục giây cho câu 1 có giọng rồi mới bấm bắt đầu; lần đầu sinh lại ~60+ câu giọng (policy 3, tốn lượt). Nhạc nền chỉnh qua tham số overlay `bgm` (`bgm=0` tắt). Đang chờ người dùng báo kết quả chạy live.
 - **Cập nhật 16/11 chiều:** main đã gộp C-0227 (chọn trước vòng ở LOBBY, sinh giọng câu 1 trước), C-0229 (E2E chạy với asset placeholder), C-0230 (nhạc nền sảnh `bgm-lobby` / lúc chơi `bgm-game`, lặp, crossfade 1 s, mặc định 0,18, tắt ở VICTORY). CI chỉ chạy bấm tay (bỏ trigger push, người dùng không muốn mail). Âm thanh CC0 (Kenney + OpenGameArt) ở `assets-local/audio/` (ignore), nguồn ghi trong `NGUON-AM-THANH.txt`; nhạc 182 s người dùng gửi chỉ là dự phòng ở `assets-local/audio-src/`. Người dùng: sảnh KHÔNG đếm người, tự bấm bắt đầu. Codex1/Codex2 rảnh. Chưa chạy live sau các thay đổi (lần đầu sinh lại ~60+ câu giọng).
 - **Cập nhật 16/11 sáng:** main `a30f69b` đã gộp C-0225 + C-0226 (MC đọc "A: …/B: …", ngắt 700/400 ms co dần theo ngân sách READING, `voiceSettingsByEvent` tuỳ chọn, WELCOME phát khi vào LOBBY, bộ lọc chuẩn hoá chỉ cắt lặng đầu/cuối — bản cũ xén ~0,3 s tiếng trước mỗi khoảng lặng, policy version 3). typecheck, 436 test, e2e 93, privacy PASS. **Người dùng duyệt mẫu giọng cảm xúc, "hết cụt"**; đã ghi thông số cảm xúc vào profile cục bộ `data/mc-voice-profile.json` (bị ignore, KHÔNG ghi giá trị vào thư/repo). Cache cũ (policy 2) không dùng nữa → vòng thử kế sẽ sinh lại ~60+ câu (tốn lượt, hỏi người dùng trước). Còn chờ người dùng: câu chào MC, 5 PNG dáng MC, video loop.
 - **(ĐÃ XONG — người dùng chọn giao Codex 1, thành C-0227)** Câu hỏi cũ 16/11: coordinator đã giải thích KHÔNG sinh trước toàn bộ giọng (139 câu duyệt; đáp án bị xáo mỗi vòng ở `packages/quiz-core/src/selection.ts:299` và text đã có chữ cái → phủ đủ cần ~2.900 câu; endpoint `/api/mc-voice/pre-generate` sinh theo thứ tự gốc nên phần lớn không khớp live). Live tự sinh ở ROUND_STARTED (`runtime.ts preGenerateRoundVoice`, ~60 lượt/vòng mới, có cache). Đề xuất chờ duyệt: giao codex1 sinh giọng sớm hơn (ngay khi chọn xong câu của vòng/ở sảnh) để câu 1 kịp có giọng (PREPARE chỉ 8 s). Hỏi lại người dùng: "giao Codex 1 hay giữ nguyên?". Codex1/Codex2 đang rảnh. Thư mục `.claude/worktrees/coord-voice` đã gỡ khỏi git nhưng còn file (bị khoá) — xoá tay được. 4 PNG chưa track ở gốc repo là ảnh người dùng — không commit (repo public).
