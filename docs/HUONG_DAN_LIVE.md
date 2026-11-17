@@ -65,6 +65,16 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
 
 ## Sửa câu hỏi
 
+Với workbook review có sheet `Cau hoi` (cột A–M theo mẫu coordinator), chạy dry-run trước:
+
+```powershell
+pnpm questions:import-xlsx "<file.xlsx>"
+```
+
+Lệnh mặc định chỉ đọc workbook và DB, in tổng số Giữ/Sửa/Xoá/Thêm, số câu đổi đáp án đúng, chi tiết trước/sau, lỗi/cảnh báo theo dòng và ghi `<ten-file>.import-report.md` cạnh workbook. Hành động được suy ra từ nội dung so với DB; cột L chỉ là gợi ý, có thể để trống. Chỉ `Xoá` ở cột L mới archive câu. Dòng không có ID nhưng có câu hỏi được nhận là câu mới; chủ đề mới sẽ được tạo trong pack. So khớp chủ đề bỏ qua khác biệt hoa/thường và khoảng trắng. Nếu không suy ra được pack từ ID câu hiện hữu (hoặc workbook chỉ có câu mới), truyền thêm `--pack-id <id>`. Chỉ chạy `pnpm questions:import-xlsx "<file.xlsx>" --apply` sau khi dry-run không còn lỗi. Trước khi ghi, lệnh tạo backup SQLite trong thư mục `backups` cạnh DB và áp dụng mọi thay đổi trong một transaction. Sửa/Thêm chuyển câu về `PENDING_REVIEW` + `UNVERIFIED`; Xoá chuyển sang `ARCHIVED`, không xoá lịch sử. Tab Câu hỏi của Dashboard có duyệt hàng loạt để operator duyệt các câu vừa nhập. Cột E chỉ là công thức số ký tự; cột M là ghi chú operator và không được lưu vào DB. Không commit workbook hoặc report chứa nội dung câu hỏi.
+
+Workbook cũ `BO_CAU_HOI.xlsx` dùng sheet `TAT_CA` và tiếp tục theo quy trình dưới đây:
+
 Mở `BO_CAU_HOI.xlsx`, chỉ sửa dữ liệu trong sheet `TAT_CA`, rồi lưu file. Chạy `py tools\question_bank.py import --from BO_CAU_HOI.xlsx --dry-run` để xem lỗi trước; khi đã kiểm tra, chạy lại bỏ `--dry-run` để sao lưu DB và nhập các dòng hợp lệ. `Dùng = KHÔNG` lưu câu ở trạng thái ARCHIVED, không xóa câu hay lịch sử; workbook được tạo bằng `py tools\question_bank.py export --out BO_CAU_HOI.xlsx` và không đưa vào Git.
 
 ## Sự cố thường gặp

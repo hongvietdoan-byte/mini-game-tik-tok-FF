@@ -23,6 +23,7 @@
     "mc-voice:real-check": "tsx tools/mc_voice_real_check.ts",
     "theme:validate": "tsx tools/theme-cli.ts validate",
     "theme:export-default": "tsx tools/theme-cli.ts export-default",
+    "questions:import-xlsx": "tsx tools/questions_import_xlsx.ts",
     "privacy:check": "node scripts/privacy-check.mjs",
     "ci": "node scripts/privacy-check.mjs && tsc --noEmit -p tsconfig.json && vitest run --project unit --project integration",
     "start": "corepack pnpm build:web && corepack pnpm server",
