@@ -39,16 +39,17 @@ if ([string]::IsNullOrWhiteSpace($EdgePath) -or -not (Test-Path -LiteralPath $Ed
 
 if ([string]::IsNullOrWhiteSpace($EdgePath)) { exit 0 }
 
-$previewProfile = Join-Path $Root 'data\edge-preview-profile'
+$programProfile = Join-Path $Root 'data\edge-program-profile'
 $dashboardProfile = Join-Path $Root 'data\edge-dashboard-profile'
-New-Item -ItemType Directory -Force -Path $previewProfile | Out-Null
+New-Item -ItemType Directory -Force -Path $programProfile | Out-Null
 New-Item -ItemType Directory -Force -Path $dashboardProfile | Out-Null
 
-$previewArguments = @(
-  '--app=http://127.0.0.1:8787/overlay/?role=preview',
+$programArguments = @(
+  '--app=http://127.0.0.1:8787/overlay/?role=program',
   '--autoplay-policy=no-user-gesture-required',
   '--no-first-run',
-  ('--user-data-dir="{0}"' -f $previewProfile)
+  '--window-size=540,960',
+  ('--user-data-dir="{0}"' -f $programProfile)
 )
 $dashboardArguments = @(
   '--app=http://127.0.0.1:8787/dashboard/',
@@ -56,5 +57,5 @@ $dashboardArguments = @(
   ('--user-data-dir="{0}"' -f $dashboardProfile)
 )
 
-Start-Process -FilePath $EdgePath -ArgumentList $previewArguments
+Start-Process -FilePath $EdgePath -ArgumentList $programArguments
 Start-Process -FilePath $EdgePath -ArgumentList $dashboardArguments

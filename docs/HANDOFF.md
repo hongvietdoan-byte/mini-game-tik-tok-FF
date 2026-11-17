@@ -25,7 +25,7 @@
 
   Còn treo:
   - Người dùng cần **mở lại CHAY_GAME** để nhận server mới; lần đầu sẽ sinh 8 câu giọng chung mới và các câu có từ trong từ điển phát âm.
-  - Cửa sổ preview CHAY_GAME không phát tiếng (chỉ `role=program` có audio, docs nói khác) — đã hỏi giao Codex 2 sửa, người dùng chưa trả lời.
+  - C-0250 đổi launcher CHAY_GAME sang một cửa sổ overlay `role=program` có audio cùng Dashboard; dùng Window Capture cửa sổ này trong LIVE Studio (nhánh `codex2/c-one-window`, chờ gộp).
 
   Codex1 và Codex2 đang rảnh. Codex2 từng ngừng hoạt động khoảng 02:00–14:30; khi đó C-0241 được chuyển sang codex1.
 - **Cập nhật 16/11 tối:** người dùng bảo gộp để chạy live thử. Checkout chính đã `ff` tới origin/main (đủ C-0227/C-0229/C-0230 + HANDOFF) và đã `corepack pnpm build:web`. Kiểm tra cuối trên main: typecheck PASS, 448 test PASS, privacy PASS; E2E (Codex báo) 93/93 với asset thật, 92 + 1 skip với placeholder. Chạy live: mở sảnh, chờ vài chục giây cho câu 1 có giọng rồi mới bấm bắt đầu; lần đầu sinh lại ~60+ câu giọng (policy 3, tốn lượt). Nhạc nền chỉnh qua tham số overlay `bgm` (`bgm=0` tắt). Đang chờ người dùng báo kết quả chạy live.
