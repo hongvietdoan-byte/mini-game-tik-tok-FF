@@ -299,6 +299,64 @@ test('READING shows the question and four answers without starting the answer co
   expect(errors).toEqual([]);
 });
 
+test('C-0261 keeps four equal answer cells and all long labels readable across question phases', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const reviewDirectory = join(process.cwd(), 'test-results', 'c0261');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const phases = [
+    { name: 'reading-grid-balance', scene: 'QUESTION', phase: 'reading' },
+    { name: 'question-grid-balance', scene: 'QUESTION', phase: 'accepting' },
+    { name: 'reveal-grid-balance', scene: 'REVEAL', phase: 'reveal' },
+  ] as const;
+
+  // Capture every baseline before asserting so the failure leaves a full before set.
+  for (const entry of phases) {
+    await openScene(page, entry.name, entry.scene);
+    await page.screenshot({ path: join(reviewDirectory, `before-${entry.phase}.png`), animations: 'disabled' });
+  }
+
+  for (const entry of phases) {
+    const { stage } = await openScene(page, entry.name, entry.scene);
+    const cards = stage.locator('.v3-option');
+    const boxes = await cards.evaluateAll((elements) => elements.map((element) => {
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+    expect(boxes).toHaveLength(4);
+    for (const box of boxes.slice(1)) {
+      expect(Math.abs(box.width - boxes[0]!.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.height - boxes[0]!.height)).toBeLessThanOrEqual(1);
+    }
+
+    for (const id of ['A', 'B', 'C', 'D'] as const) {
+      const answer = stage.getByTestId(`option-${id}`).locator('.v3-option-text');
+      await expect(answer).toHaveText('Fluxo vô địch FFWS 2024 với ' + ({ A: '075', B: '086', C: '103', D: '110' }[id]) + ' điểm');
+      const metrics = await answer.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const lineTops = [...new Set(Array.from(range.getClientRects()).filter((rect) => rect.width && rect.height).map((rect) => Math.round(rect.top)))];
+        return {
+          widthFits: element.scrollWidth <= element.clientWidth,
+          heightFits: element.scrollHeight <= element.clientHeight,
+          lines: lineTops.length,
+          clientWidth: element.clientWidth,
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+          fontSize: getComputedStyle(element).fontSize,
+        };
+      });
+      expect(metrics.widthFits, `${entry.phase}/${id}: full answer fits its width (${JSON.stringify(metrics)})`).toBe(true);
+      expect(metrics.heightFits, `${entry.phase}/${id}: full answer fits its height (${JSON.stringify(metrics)})`).toBe(true);
+      expect(metrics.lines, `${entry.phase}/${id}: answer wraps to at most two lines (${JSON.stringify(metrics)})`).toBeLessThanOrEqual(2);
+    }
+  }
+
+  for (const entry of phases) {
+    await openScene(page, entry.name, entry.scene);
+    await page.screenshot({ path: join(reviewDirectory, `after-${entry.phase}.png`), animations: 'disabled' });
+  }
+});
+
 test('mock-only badge stays hidden unless debug is enabled', async ({ page }) => {
   await openScene(page, 'question', 'QUESTION');
   await expect(page.getByTestId('demo-badge')).toHaveCount(0);

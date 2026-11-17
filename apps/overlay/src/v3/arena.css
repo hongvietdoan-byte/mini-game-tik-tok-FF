@@ -1763,7 +1763,7 @@
   right: 15px;
   top: 320px;
   height: 125px;
-  grid-template-columns: 218px 298px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: repeat(2, 60px);
   grid-auto-rows: 60px;
   gap: 5px 15px;
@@ -1842,6 +1842,48 @@
 .v3-stage--user-question-layout .v3-question.is-xlong,
 .v3-stage--user-question-layout.has-long-prompt .v3-question,
 .v3-stage--user-question-layout.has-long-prompt.has-long-options .v3-question { font-size: 24px; line-height: 1.05; }
+
+/* C-0261: long answers keep the A/B/C/D marker above a shared two-line text area. */
+.v3-stage--user-question-layout .v3-options.has-long-label .v3-option {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 18px minmax(0, 1fr);
+  align-content: stretch;
+  gap: 0;
+  padding: 4px 12px 7px;
+}
+.v3-stage--user-question-layout .v3-options.has-long-label.is-revealed .v3-option {
+  grid-template-columns: minmax(0, 1fr);
+}
+.v3-stage--user-question-layout .v3-options.has-long-label .v3-letter {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+  font-size: 20px;
+  line-height: 1;
+}
+.v3-stage--user-question-layout .v3-options.has-long-label .v3-option-text,
+.v3-stage--user-question-layout .v3-options.has-long-label .v3-option-text.is-long,
+.v3-stage--user-question-layout .v3-options.has-long-label .v3-option-text.is-xlong {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: stretch;
+  justify-self: stretch;
+  min-width: 0;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.v3-stage--user-question-layout .v3-options.has-long-label.is-revealed .v3-option-count {
+  position: absolute;
+  top: 5px;
+  right: 14px;
+  z-index: 1;
+  font-size: 12px;
+  line-height: 1;
+}
 
 /* All shared-header scenes use the same C-0216 ribbon position, including non-question scenes. */
 .v3-stage:not(.v3-stage--question-user) .v3-header .v3-title.is-wide .v3-title-ribbon { left: 10px; margin-top: 10px; }
