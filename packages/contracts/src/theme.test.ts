@@ -7,7 +7,11 @@ const valid = {
   name: 'Mùa đông',
   tokens: { deep: '#123456', 'font-body': "'Segoe UI', sans-serif" },
   fonts: [{ family: 'Theme Sans', file: 'fonts/theme.woff2', weight: 400, style: 'normal' }],
-  assets: { 'arena.background': 'assets/arena/bg.jpg', 'audio.victory': 'assets/audio/victory.mp3' },
+  assets: {
+    'arena.background': 'assets/arena/bg.jpg',
+    'audio.victory': 'assets/audio/victory.mp3',
+    'audio.victory-music-1': 'assets/audio/victory-music-1.mp3',
+  },
 };
 
 describe('ThemeManifestSchema', () => {

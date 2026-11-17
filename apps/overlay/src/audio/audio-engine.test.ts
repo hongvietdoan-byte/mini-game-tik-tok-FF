@@ -176,6 +176,17 @@ describe('overlay BGM playback', () => {
     engine.destroy();
 
     vi.unstubAllGlobals();
+    const oneTrack = installAudioApi(['victory-music-1.mp3']);
+    const oneTrackEngine = new OverlayAudioEngine(parseAudioMix(''), () => undefined);
+    oneTrackEngine.syncVictoryMusic(mock('victory'), false);
+    await vi.waitFor(() => expect(oneTrack.starts).toHaveLength(1));
+    oneTrackEngine.syncVictoryMusic(mock('lobby'));
+    oneTrackEngine.syncVictoryMusic({ ...roundTwo, sessionId: 'another-session' }, false);
+    await vi.waitFor(() => expect(oneTrack.starts).toHaveLength(2));
+    expect(oneTrack.starts.at(-1)).toMatchObject({ label: 'victory-music-1.mp3', loop: false });
+    oneTrackEngine.destroy();
+
+    vi.unstubAllGlobals();
     const noTracks = installAudioApi([]);
     const silentEngine = new OverlayAudioEngine(parseAudioMix(''), () => undefined);
     silentEngine.syncVictoryMusic(mock('victory'), false);
