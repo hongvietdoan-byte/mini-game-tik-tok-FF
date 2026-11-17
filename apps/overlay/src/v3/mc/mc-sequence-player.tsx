@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { McState } from '@quiz/contracts';
+import { themeAssetChildUrl, useTheme } from '../../theme';
 import {
   advanceMcPlayback,
   getMcFallbackUrl,
@@ -24,7 +25,7 @@ export function loadMcSequenceManifest(assetBaseUrl: string): Promise<McSequence
   if (cached) return cached;
 
   const loading = Promise.resolve()
-    .then(() => fetch(`${baseUrl}/manifest.json`))
+    .then(() => fetch(themeAssetChildUrl(baseUrl, 'manifest.json')))
     .then((response) => response.ok ? response.json() as Promise<unknown> : null)
     .then((value) => parseMcSequenceManifest(value))
     .catch(() => null);
@@ -80,38 +81,42 @@ export type McSequenceProps = {
 /** Phát PNG sequence ngoài assets-local; khi thiếu sequence sẽ dùng ảnh tĩnh Kelly. */
 export function McSequence({
   state,
-  assetBaseUrl = DEFAULT_ASSET_BASE,
-  staticFallbackSrc = DEFAULT_STATIC_FALLBACK,
+  assetBaseUrl,
+  staticFallbackSrc,
 }: McSequenceProps) {
+  const theme = useTheme();
+  const resolvedAssetBaseUrl = assetBaseUrl ?? theme.assets['mc.sequenceDir'] ?? DEFAULT_ASSET_BASE;
+  const resolvedStaticFallbackSrc = staticFallbackSrc ?? theme.assets['mc.static'] ?? DEFAULT_STATIC_FALLBACK;
   const [manifest, setManifest] = useState<McSequenceManifest | null>(null);
   const [playback, setPlayback] = useState<McPlayback | null>(null);
   const [failedOver, setFailedOver] = useState(false);
   const [staticUnavailable, setStaticUnavailable] = useState(false);
+  const [themeStaticUnavailable, setThemeStaticUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setManifest(null);
     setPlayback(null);
-    void loadMcSequenceManifest(assetBaseUrl).then((value) => {
+    void loadMcSequenceManifest(resolvedAssetBaseUrl).then((value) => {
       if (!cancelled) setManifest(value);
     });
     return () => {
       cancelled = true;
     };
-  }, [assetBaseUrl]);
+  }, [resolvedAssetBaseUrl]);
 
   useEffect(() => {
     let cancelled = false;
     setPlayback(null);
     if (!manifest) return () => { cancelled = true; };
 
-    void preloadForState(manifest, state, assetBaseUrl, cachedImageLoader).then((nextPlayback) => {
+    void preloadForState(manifest, state, resolvedAssetBaseUrl, cachedImageLoader).then((nextPlayback) => {
       if (!cancelled) setPlayback(nextPlayback);
     });
     return () => {
       cancelled = true;
     };
-  }, [assetBaseUrl, manifest, state]);
+  }, [resolvedAssetBaseUrl, manifest, state]);
 
   useEffect(() => {
     if (!manifest || !playback) return;
@@ -122,15 +127,17 @@ export function McSequence({
   }, [manifest, playback?.name, playback?.animation.fps, playback?.animation.loop, playback?.animation.then]);
 
   const fallbackSrc = manifest
-    ? getMcFallbackUrl(manifest, assetBaseUrl, staticFallbackSrc)
-    : staticFallbackSrc;
-  const frameSrc = manifest && playback ? getMcFrameUrl(assetBaseUrl, playback, playback.frameIndex) : null;
-  const requestedSrc = failedOver ? staticFallbackSrc : frameSrc ?? fallbackSrc;
+    ? getMcFallbackUrl(manifest, resolvedAssetBaseUrl, resolvedStaticFallbackSrc)
+    : resolvedStaticFallbackSrc;
+  const frameSrc = manifest && playback ? getMcFrameUrl(resolvedAssetBaseUrl, playback, playback.frameIndex) : null;
+  const displayedStaticFallback = themeStaticUnavailable ? DEFAULT_STATIC_FALLBACK : resolvedStaticFallbackSrc;
+  const requestedSrc = failedOver ? displayedStaticFallback : frameSrc ?? fallbackSrc;
 
   useEffect(() => {
     setFailedOver(false);
     setStaticUnavailable(false);
-  }, [frameSrc, fallbackSrc]);
+    setThemeStaticUnavailable(false);
+  }, [frameSrc, fallbackSrc, resolvedStaticFallbackSrc, theme.version]);
 
   if (staticUnavailable) return null;
   return (
@@ -142,7 +149,8 @@ export function McSequence({
         draggable={false}
         data-mc-animation={playback?.name ?? 'fallback'}
         onError={() => {
-          if (requestedSrc !== staticFallbackSrc) setFailedOver(true);
+          if (requestedSrc !== displayedStaticFallback) setFailedOver(true);
+          else if (displayedStaticFallback !== DEFAULT_STATIC_FALLBACK) setThemeStaticUnavailable(true);
           else setStaticUnavailable(true);
         }}
       />

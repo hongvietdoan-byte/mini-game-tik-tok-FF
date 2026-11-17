@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSyn
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { THEME_DEFAULT_TOKENS, type ThemeAssetSlot } from '@quiz/contracts';
+import { THEME_DEFAULT_TOKENS, THEME_DEFAULT_TOKEN_DESCRIPTIONS, type ThemeAssetSlot } from '@quiz/contracts';
 import { ThemeStore } from '../apps/server/src/theme-store';
 
 type SlotSource = { slot: ThemeAssetSlot; source: string; destination: string; directory?: boolean };
@@ -35,6 +35,20 @@ function safeSource(root: string, relative: string) {
   const rel = resolve(root, relative).slice(resolve(root).length);
   if (rel.startsWith(sep + '..') || resolve(root, relative) === resolve(root)) throw new Error(`Asset nằm ngoài thư mục nguồn: ${relative}`);
   return current;
+}
+
+function renameWithRetry(source: string, destination: string) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      renameSync(source, destination);
+      return;
+    } catch (error) {
+      const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : '';
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(code) || attempt === 4) throw error;
+      // Windows antivirus/indexers can briefly lock a newly completed staging directory.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * (attempt + 1));
+    }
+  }
 }
 
 const EXPORTABLE_ASSET_EXTENSIONS = new Set([
@@ -136,6 +150,7 @@ export function exportDefaultTheme(options: { out: string; assets: string; force
       name: basename(out) === 'default' ? 'Bá Vương Đại Chiến' : basename(out),
       description: 'Theme mặc định được xuất từ asset cục bộ hiện có.',
       tokens: THEME_DEFAULT_TOKENS,
+      tokenDescriptions: THEME_DEFAULT_TOKEN_DESCRIPTIONS,
       fonts: [],
       assets: manifestAssets,
     };
@@ -144,13 +159,13 @@ export function exportDefaultTheme(options: { out: string; assets: string; force
     if (existsSync(out)) {
       if (!options.force) throw new Error(`Thư mục đích đã tồn tại: ${out}. Dùng --force để cập nhật.`);
       backup = join(dirname(out), `.${basename(out)}.backup-${randomUUID()}`);
-      renameSync(out, backup);
+      renameWithRetry(out, backup);
     }
     try {
-      renameSync(staging, out);
+      renameWithRetry(staging, out);
     } catch (error) {
       if (backup) {
-        renameSync(backup, out);
+        renameWithRetry(backup, out);
         backup = null;
       }
       throw error;

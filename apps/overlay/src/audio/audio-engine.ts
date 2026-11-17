@@ -1,6 +1,6 @@
 import { countdownTickPattern, loadBgmWithFallback, selectBgmTrack, type AudioCue, type AudioMix, type AudioSlot, type BgmFileExtension, type BgmTrack } from './audio-cues';
 import { MC_VOICE_DUCKING_GAIN } from './audio-cues';
-import type { McVoiceCue } from '@quiz/contracts';
+import type { McVoiceCue, ThemeAssetSlot } from '@quiz/contracts';
 import type { PublicSnapshot } from '@quiz/contracts';
 
 export type AudioEngineState = 'disabled' | 'running' | 'suspended' | 'unavailable';
@@ -35,8 +35,10 @@ export class OverlayAudioEngine {
   private voiceGeneration = 0;
   private destroyed = false;
   private ducking = 1;
+  private assetUrls: Partial<Record<ThemeAssetSlot, string>>;
 
-  constructor(private readonly mix: AudioMix, private readonly onState: StateListener) {
+  constructor(private readonly mix: AudioMix, private readonly onState: StateListener, assetUrls: Partial<Record<ThemeAssetSlot, string>> = {}) {
+    this.assetUrls = assetUrls;
     if (mix.volume <= 0) {
       this.context = null;
       this.master = null;
@@ -77,6 +79,23 @@ export class OverlayAudioEngine {
     this.publishState();
 
     if (this.context.state === 'suspended') void this.unlock();
+  }
+
+  setThemeAssets(assetUrls: Partial<Record<ThemeAssetSlot, string>>) {
+    const previous = this.assetUrls;
+    const sameAudioAssets = (Object.keys(assetUrls) as ThemeAssetSlot[])
+      .filter((slot) => slot.startsWith('audio.'))
+      .every((slot) => previous[slot] === assetUrls[slot])
+      && (Object.keys(previous) as ThemeAssetSlot[])
+        .filter((slot) => slot.startsWith('audio.'))
+        .every((slot) => previous[slot] === assetUrls[slot]);
+    if (sameAudioAssets) return;
+    this.assetUrls = assetUrls;
+    this.buffers.clear();
+    if (this.requestedBgmTrack !== undefined) {
+      const generation = ++this.bgmGeneration;
+      void this.transitionBgm(this.requestedBgmTrack, generation);
+    }
   }
 
   private publishState() {
@@ -326,12 +345,22 @@ export class OverlayAudioEngine {
   }
 
   private loadFile(slot: AudioSlot, extensions: readonly BgmFileExtension[] = AUDIO_FILE_EXTENSIONS): Promise<AudioBuffer | null> {
-    const cacheKey = `${slot}:${extensions.join(',')}`;
+    const themeSlot = `audio.${slot}` as ThemeAssetSlot;
+    const themedUrl = this.assetUrls[themeSlot];
+    const cacheKey = `${themedUrl ?? ''}:${slot}:${extensions.join(',')}`;
     const cached = this.buffers.get(cacheKey);
     if (cached) return cached;
 
     const request = (async () => {
       if (!this.context) return null;
+      if (themedUrl) {
+        try {
+          const response = await fetch(themedUrl, { cache: 'force-cache' });
+          if (response.ok) return await this.context.decodeAudioData(await response.arrayBuffer());
+        } catch {
+          // Theme audio is optional; continue with the bundled clip or synthesized cue.
+        }
+      }
       for (const extension of extensions) {
         try {
           const response = await fetch(`/assets/audio/${slot}.${extension}`, { cache: 'force-cache' });
