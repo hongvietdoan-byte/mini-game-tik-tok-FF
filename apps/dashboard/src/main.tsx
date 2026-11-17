@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client';
 import {
   DANGEROUS_COMMANDS,
-  SessionConfigSchema,
   type AdminSnapshot,
   type CommandBody,
   type CommandEnvelope,
@@ -10,7 +9,7 @@ import {
   type CreateSessionRequest,
   type SimulatorRequest,
 } from '@quiz/contracts';
-import { ApiError, apiClient, type DashboardClient, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './api/client';
+import { ApiError, apiClient, type DashboardClient, type PreflightResponse, type SelfTestResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './api/client';
 import { mockClient } from './api/mockClient';
 import { adminTokenForRuntime, overlayUrlForRuntime, shouldPersistAdminToken, type StormArenaInfo } from './desktopBridge';
 import { SetupWizard } from './SetupWizard';
@@ -20,7 +19,7 @@ import { createApiNameModerationDataSource, createApiNameModerationPolicyDataSou
 import { HudSettingsPage } from './HudSettingsPage';
 import { ThemePage } from './ThemePage';
 import { isSetupComplete, SETUP_DONE_KEY } from './setupWizardLogic';
-import { approvedQuestionCount, canCreateTikTokSession, displayTikTokUsername, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
+import { approvedQuestionCount, buildSessionConfig, canCreateTikTokSession, displayTikTokUsername, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
 import {
   actionsFor,
   buildCommandEnvelope,
@@ -74,6 +73,10 @@ function App() {
   const [createMode, setCreateMode] = useState<'MOCK' | 'TIKTOK'>('MOCK');
   const [questionsPerRound, setQuestionsPerRound] = useState(15);
   const [speedBonusMax, setSpeedBonusMax] = useState(50);
+  const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
+  const [mcVoicePreflight, setMcVoicePreflight] = useState<PreflightResponse['checks'][number] | null>(null);
+  const [mcVoicePreflightState, setMcVoicePreflightState] = useState<'loading' | 'ready' | 'unavailable'>('ready');
+  const mcVoicePreflightRequest = useRef(0);
   const [tiktokUsername, setTikTokUsername] = useState(() => {
     try { return localStorage.getItem(TIKTOK_USERNAME_KEY) ?? ''; } catch { return ''; }
   });
@@ -115,7 +118,10 @@ function App() {
     return () => { active = false; };
   }, [needsSession, token, questionReviewRevision]);
 
-  useEffect(() => () => disconnectRef.current?.(), []);
+  useEffect(() => () => {
+    mcVoicePreflightRequest.current += 1;
+    disconnectRef.current?.();
+  }, []);
 
   const connectSession = useCallback((id: string, next: AdminSnapshot, auth: string) => {
     disconnectRef.current?.();
@@ -125,6 +131,16 @@ function App() {
     setNeedsSession(false);
     setError('');
     setSocketStatus('connecting');
+    const preflightRequest = ++mcVoicePreflightRequest.current;
+    setMcVoicePreflight(null);
+    setMcVoicePreflightState('loading');
+    void client.getPreflight(auth).then((preflight) => {
+      if (mcVoicePreflightRequest.current !== preflightRequest) return;
+      setMcVoicePreflight(preflight.checks.find((check) => check.id === 'mcVoice') ?? null);
+      setMcVoicePreflightState('ready');
+    }).catch(() => {
+      if (mcVoicePreflightRequest.current === preflightRequest) setMcVoicePreflightState('unavailable');
+    });
     disconnectRef.current = client.subscribe(auth, (nextSnapshot, serverTimeMs) => {
       setSnapshot(nextSnapshot);
       setTimerAnchor({ serverTimeMs, offsetMs: serverTimeMs - Date.now() });
@@ -244,12 +260,12 @@ function App() {
       setPage('questions');
       return;
     }
-    const config = SessionConfigSchema.parse({
+    const config = buildSessionConfig({
       mode: createMode,
       questionsPerRound,
       speedBonusMax,
-      allowDemoQuestions: createMode === 'MOCK',
       speedMultiplier: createMode === 'MOCK' ? Number(data.get('speedMultiplier')) : 1,
+      mcVoiceEnabled,
       ...(createMode === 'TIKTOK' ? { tiktokUsername: tiktokUsername.trim() } : {}),
       ...(String(data.get('seed')).trim() ? { seed: Number(data.get('seed')) } : {}),
     });
@@ -481,6 +497,10 @@ function App() {
               <Metric label="ĐÃ TRẢ LỜI" value={snapshot.public.answerCount} />
               <Metric label="NGƯỜI THAM GIA" value={snapshot.public.participantCount} />
             </div>
+            <div className="mc-voice-session-status" role="status" data-testid="mc-voice-session-status">
+              <span>Giọng MC <b>{snapshot.config.mcVoiceEnabled === true ? 'Bật' : 'Tắt'}</b></span>
+              <small>{mcVoicePreflightState === 'loading' ? 'Đang đọc preflight mcVoice…' : mcVoicePreflightState === 'unavailable' ? 'Không đọc được preflight mcVoice.' : mcVoicePreflight ? `Preflight mcVoice: ${preflightStatusName(mcVoicePreflight.status)} · ${mcVoicePreflight.reason}` : 'Chưa có kết quả preflight mcVoice.'}</small>
+            </div>
             <div className="mc-status" data-testid="mc-bubble"><span className="mc-mark">MC</span><div><small>MC KELLY · {snapshot.public.mc.state.toUpperCase()}</small><p>{snapshot.public.mc.bubble}</p></div></div>
             <div className="connection-line"><span className={`connection-dot connection-${snapshot.public.connection.toLowerCase()}`} />Nguồn bình luận <b>{connectionName(snapshot.public.connection)}</b><span className="connection-spacer" />WebSocket <b>{socketLabel(socketStatus)}</b></div>
             <div className="operator-answer"><div><small>ĐÁP ÁN ĐÚNG · CHỈ HIỂN THỊ CHO OPERATOR</small><strong>{snapshot.current?.correctOptionId ?? '—'}</strong></div><span>{snapshot.public.question?.options.find((option) => option.id === snapshot.current?.correctOptionId)?.text ?? 'Chưa có câu hỏi đang mở'}</span></div>
@@ -591,6 +611,7 @@ function App() {
           <label>Thưởng tốc độ tối đa<input name="speedBonusMax" type="number" min="0" max="500" step="1" value={speedBonusMax} onChange={(event) => setSpeedBonusMax(Number(event.target.value))} /></label>
           <p className="speed-bonus-note">Giảm dần từ lúc mở câu tới hết giờ; người xem mạng chậm có thể bị thiệt — đặt 0 để tắt.</p>
           <div className="score-cap-preview"><b>Điểm tối đa/vòng (Kahoot): {maxRoundScore(questionsPerRound, speedBonusMax, 'KAHOOT').toLocaleString('vi-VN')}</b><small>Classic: {questionsPerRound} × (100 + {speedBonusMax}) + 180 = {maxRoundScore(questionsPerRound, speedBonusMax, 'CLASSIC').toLocaleString('vi-VN')}</small></div>
+          <label className="mc-voice-toggle"><input aria-label="Giọng MC" name="mcVoiceEnabled" type="checkbox" checked={mcVoiceEnabled} onChange={(event) => setMcVoiceEnabled(event.target.checked)} /><span><b>Giọng MC</b><small>Bật mặc định cho phiên mới; có thể tắt trước khi tạo.</small></span></label>
           {createMode === 'TIKTOK' && <>
             <label>TikTok username<input name="tiktokUsername" required value={tiktokUsername} onChange={(event) => setTikTokUsername(event.target.value)} placeholder="@ten_tai_khoan hoặc URL TikTok LIVE" /></label>
             <div className="tiktok-warning" role="note">Kết nối TikTok dùng thư viện cộng đồng, KHÔNG CHÍNH THỨC — có thể ngừng hoạt động bất kỳ lúc nào. Chỉ đọc bình luận, không đăng nhập, không gửi tin.</div>
@@ -747,6 +768,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function socketLabel(status: SocketStatus) {
   return status === 'connected' ? 'Đã kết nối' : status === 'reconnecting' ? 'Đang kết nối lại' : status === 'connecting' ? 'Đang kết nối' : 'Đã ngắt';
+}
+
+function preflightStatusName(status: PreflightResponse['checks'][number]['status']) {
+  return status === 'PASS' ? 'Đạt' : status === 'FAIL' ? 'Cần xử lý' : 'Cảnh báo';
 }
 
 function stateName(state: string) {

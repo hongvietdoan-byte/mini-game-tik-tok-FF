@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { DEFAULT_HUD_CONFIG, type HudConfig } from '@quiz/contracts';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { SessionConfigSchema } from '@quiz/contracts';
+import { SessionConfigSchema, type CreateSessionRequest } from '@quiz/contracts';
 import { mockClient } from '../../apps/dashboard/src/api/mockClient';
 import type { NameModerationSettingsResponse, NameRuleGroup } from '../../apps/dashboard/src/nameModerationData';
 
@@ -269,6 +269,56 @@ test('phiên TikTok chặn username trống, ẩn tuỳ chọn MOCK và tạo đ
   await expect(page.getByRole('heading', { name: 'Phiên LIVE' })).toBeVisible();
   await expect(page.getByText('@quiz_codex', { exact: true })).toBeVisible();
   expect(page.url()).not.toContain(adminToken);
+});
+
+test('form gửi mcVoiceEnabled mặc định bật cho MOCK/TikTok và false khi tắt công tắc', async ({ page }) => {
+  const requests: CreateSessionRequest[] = [];
+  await page.route('**/api/sessions/current', (route) => route.fulfill({ json: { sessionId: null } }));
+  await page.route('**/api/questions', (route) => route.fulfill({ json: makeQuestions(10, 10) }));
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() !== 'POST') return route.fulfill({ json: { sessionId: null } });
+    requests.push(route.request().postDataJSON() as CreateSessionRequest);
+    await route.fulfill({ status: 500, json: { message: 'Đã ghi nhận payload kiểm thử.' } });
+  });
+  await launchDashboard(page, { mock: false });
+  await page.getByLabel('Mã quản trị').fill(adminToken);
+  await page.getByRole('button', { name: 'Kết nối', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tạo phiên MOCK' })).toBeVisible();
+
+  const voiceToggle = page.getByRole('checkbox', { name: 'Giọng MC' });
+  const createButton = page.getByRole('button', { name: 'Tạo phiên và mở Live Control' });
+  await expect(voiceToggle).toBeChecked();
+  await createButton.click();
+  await expect(page.getByRole('alert')).toContainText('Đã ghi nhận payload kiểm thử.');
+  expect(requests[0]?.config).toMatchObject({ mode: 'MOCK', mcVoiceEnabled: true });
+
+  await page.getByRole('button', { name: 'TikTok LIVE', exact: true }).click();
+  await page.getByLabel('Số câu mỗi vòng').selectOption('10');
+  await page.getByLabel('TikTok username').fill('@quiz_codex');
+  await expect(createButton).toBeEnabled();
+  await expect(voiceToggle).toBeChecked();
+  await createButton.click();
+  await expect(page.getByRole('alert')).toContainText('Đã ghi nhận payload kiểm thử.');
+  expect(requests[1]?.config).toMatchObject({ mode: 'TIKTOK', tiktokUsername: '@quiz_codex', mcVoiceEnabled: true });
+
+  await voiceToggle.uncheck();
+  await createButton.click();
+  await expect(page.getByRole('alert')).toContainText('Đã ghi nhận payload kiểm thử.');
+  expect(requests[2]?.config).toMatchObject({ mode: 'TIKTOK', tiktokUsername: '@quiz_codex', mcVoiceEnabled: false });
+});
+
+test('Live Control hiển thị giọng MC bật/tắt và preflight mcVoice', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  const voiceStatus = page.getByTestId('mc-voice-session-status');
+  await expect(voiceStatus).toContainText('Giọng MC Bật');
+  await expect(voiceStatus).toContainText('Preflight mcVoice: Cảnh báo');
+
+  await page.goto(`${dashboardUrl}/?mock=1`);
+  await page.getByRole('checkbox', { name: 'Giọng MC' }).uncheck();
+  await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  await expect(page.getByTestId('mc-voice-session-status')).toContainText('Giọng MC Tắt');
+  await expect(page.getByTestId('mc-voice-session-status')).toContainText('Giọng MC đang tắt');
 });
 
 test('chặn tạo phiên TikTok khi có ít hơn 10 câu đã duyệt', async ({ page }) => {

@@ -1,8 +1,31 @@
-import type { Question } from '@quiz/contracts';
+import { SessionConfigSchema, type Question } from '@quiz/contracts';
 
 const TIKTOK_USERNAME_PATTERN = /^(https?:\/\/(www\.)?tiktok\.com\/)?@?[A-Za-z0-9._]{2,24}(\/live)?\/?$/;
 
 export type QuestionStatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export type CreateSessionConfigInput = {
+  mode: 'MOCK' | 'TIKTOK';
+  questionsPerRound: number;
+  speedBonusMax: number;
+  speedMultiplier: number;
+  tiktokUsername?: string;
+  seed?: number;
+  mcVoiceEnabled?: boolean;
+};
+
+export function buildSessionConfig(input: CreateSessionConfigInput) {
+  return SessionConfigSchema.parse({
+    mode: input.mode,
+    questionsPerRound: input.questionsPerRound,
+    speedBonusMax: input.speedBonusMax,
+    mcVoiceEnabled: input.mcVoiceEnabled ?? true,
+    allowDemoQuestions: input.mode === 'MOCK',
+    speedMultiplier: input.mode === 'MOCK' ? input.speedMultiplier : 1,
+    ...(input.mode === 'TIKTOK' && input.tiktokUsername ? { tiktokUsername: input.tiktokUsername } : {}),
+    ...(input.seed === undefined ? {} : { seed: input.seed }),
+  });
+}
 
 export function isValidTikTokUsername(username: string): boolean {
   return TIKTOK_USERNAME_PATTERN.test(username.trim());
