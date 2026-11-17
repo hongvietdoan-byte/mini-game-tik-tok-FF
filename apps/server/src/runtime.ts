@@ -1579,8 +1579,10 @@ export class SessionRuntime {
     const currentOutageMs = this.outageStartedAtMs !== null && this.roundStartedAtMs !== null
       ? Math.max(0, now - Math.max(this.outageStartedAtMs, this.roundStartedAtMs))
       : 0;
+    const retryAtMs = this.adapter.retryAtMs?.() ?? null;
     return {
       ...this.health,
+      ...(retryAtMs !== null ? { retryAtMs } : {}),
       status: this.adapter.status(),
       transport: this.adapter.transport?.() ?? 'UNKNOWN',
       commentsPerSecondTotal: total / COMMENT_RATE_WINDOW_SECONDS,

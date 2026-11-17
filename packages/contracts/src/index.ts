@@ -1036,6 +1036,8 @@ export type LiveSourceHealth = {
   rejectedThisRound: Record<RejectReason, number>;
   rawRecordingEnabled: boolean;
   detail: string | null;
+  /** Có mặt trong thời gian cooldown của dịch vụ ký TikTok. */
+  retryAtMs?: number | null;
 };
 
 // ---------------------------------------------------------------------------

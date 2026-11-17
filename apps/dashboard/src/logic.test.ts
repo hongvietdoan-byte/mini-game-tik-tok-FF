@@ -9,6 +9,7 @@ import {
   connectionStatusLabel,
   connectionStatusTone,
   formatTimeAgo,
+  formatRetryWait,
   hasHighSourceLatencyWarning,
   hasSilentAcceptingWarning,
   overlayUrlFromLocation,
@@ -97,6 +98,12 @@ describe('dashboard command logic', () => {
     expect(hasHighSourceLatencyWarning('ACCEPTING', 3_000)).toBe(false);
     expect(hasHighSourceLatencyWarning('ACCEPTING', 3_001)).toBe(true);
     expect(hasHighSourceLatencyWarning('REVEAL', 4_000)).toBe(false);
+  });
+
+  it('hiển thị cooldown ký theo phút:giây rồi bỏ cảnh báo khi hết hạn', () => {
+    expect(formatRetryWait(301_500, 1_000)).toBe('Thử lại được sau 05:01');
+    expect(formatRetryWait(2_000, 2_000)).toBeNull();
+    expect(formatRetryWait(null, 1_000)).toBeNull();
   });
 
   it('builds overlay URLs from the current app origin for dev and packaged routes', () => {

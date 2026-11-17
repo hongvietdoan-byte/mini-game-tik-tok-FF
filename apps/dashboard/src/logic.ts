@@ -80,6 +80,16 @@ export function formatTimeAgo(timestampMs: number | null, nowMs: number): string
   return seconds < 1 ? 'Vừa xong' : `${seconds} giây trước`;
 }
 
+export function formatRetryWait(retryAtMs: number | null | undefined, nowMs: number): string | null {
+  if (retryAtMs === null || retryAtMs === undefined) return null;
+  const remainingMs = retryAtMs - nowMs;
+  if (remainingMs <= 0) return null;
+  const totalSeconds = Math.ceil(remainingMs / 1_000);
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `Thử lại được sau ${minutes}:${seconds}`;
+}
+
 export function hasSilentAcceptingWarning(
   state: GameState,
   lastCommentAtMs: number | null,

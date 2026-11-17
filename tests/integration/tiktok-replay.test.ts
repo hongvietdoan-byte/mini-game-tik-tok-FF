@@ -380,7 +380,7 @@ describe('TikTok comment replay qua runtime', () => {
     first.emit('disconnected', { reason: 'mất mạng giữa câu' });
     expect(h.adapter().status()).toBe('RECONNECTING');
     expect(runtime.engine.state).toBe('CONNECTION_INTERRUPTED');
-    h.scheduler.advance(999);
+    h.scheduler.advance(4_999);
     expect(reconnected.connects).toBe(0);
     h.scheduler.advance(1);
     await flush();
@@ -440,5 +440,28 @@ describe('TikTok comment replay qua runtime', () => {
       detail: expect.stringContaining('chưa phát LIVE'),
     });
     expect(offline.connects).toBe(1);
+  });
+
+  it('đưa thời điểm được phép kết nối lại do rate limit lên admin health', async () => {
+    const limited = new ReplayConnection();
+    limited.failWith = Object.assign(new Error('private signer response'), {
+      name: 'SignatureRateLimitError',
+      retryAfterMs: 12_000,
+    });
+    const h = await bootReplay([limited]);
+    const created = await h.inject('POST', '/api/sessions', {
+      name: 'Phiên rate limit fixture',
+      config: { mode: 'TIKTOK', tiktokUsername: 'synthetic_live', questionsPerRound: 10 },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    await flush();
+
+    const health = h.quiz.runtime()?.liveHealth();
+    expect(health).toMatchObject({
+      status: 'DISCONNECTED',
+      retryAtMs: h.scheduler.now() + 12_000,
+      detail: expect.stringContaining('giới hạn lượt'),
+    });
+    expect(limited.connects).toBe(1);
   });
 });
