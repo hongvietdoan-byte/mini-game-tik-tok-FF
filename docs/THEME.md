@@ -76,6 +76,7 @@ Tên slot là cố định. Nếu bỏ một slot, giao diện dùng asset mặc
 | `victory.trophyStage` | Ảnh cúp/sân khấu |
 | `audio.question-enter`, `audio.countdown-tick`, `audio.timeout`, `audio.correct-answer`, `audio.top10`, `audio.victory`, `audio.transition` | Hiệu ứng âm thanh từng sự kiện |
 | `audio.bgm-lobby`, `audio.bgm-game`, `audio.bgm` | Nhạc sảnh, nhạc trong lượt và nhạc dự phòng |
+| `audio.victory-music-1`, `audio.victory-music-2` | Nhạc vinh danh phát một lần sau jingle VICTORY; slot thứ 2 là tùy chọn, vòng được chọn luân phiên theo số vòng |
 
 Các slot file trỏ tới tệp trong `assets/`; hai slot `chibi.bankDir` và `mc.sequenceDir` trỏ tới thư mục. Font khai báo riêng trong mảng `fonts` và tệp phải là WOFF2. Với `mc.sequenceDir`, server chỉ phục vụ thêm đúng file metadata `manifest.json` trong thư mục sequence để overlay tìm các frame; các JSON khác không được phục vụ.
 

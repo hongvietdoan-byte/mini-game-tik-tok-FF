@@ -202,7 +202,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
             : isReveal ? 9_000
               : name.startsWith('top10') ? 6_000
                 : name === 'intermission' ? 30_000
-                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 18_000
+                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 10_000
                     : 20_000,
       remainingMs: name === 'lobby' ? 30_000
         : name === 'prepare' ? 8_000
@@ -210,7 +210,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
             : isReveal ? 9_000
               : name.startsWith('top10') ? 6_000
                 : name === 'intermission' ? 30_000
-                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 18_000
+                  : name === 'victory' || name === 'victory-tie' || name === 'victory-name-test' ? 10_000
                     : 16_000,
       running: name !== 'paused',
     },

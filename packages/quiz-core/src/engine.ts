@@ -405,8 +405,9 @@ function advance(d: Draft, now: number): boolean {
       d.events.push({ type: 'VICTORY_STARTED', roundId: d.s.round!.roundId });
       return true;
     case 'VICTORY':
-      go(d, 'INTERMISSION');
-      setTimer(d, d.s.timings.intermissionMs, now);
+      d.s.round = null;
+      d.s.completedRounds += 1;
+      enterLobby(d, now);
       return true;
     case 'INTERMISSION':
       d.s.round = null;

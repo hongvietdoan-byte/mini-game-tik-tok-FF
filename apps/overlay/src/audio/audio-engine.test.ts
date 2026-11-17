@@ -11,15 +11,17 @@ type AudioProbe = {
   stops: (number | undefined)[];
   resumes: number;
   closes: number;
+  setCurrentTime: (seconds: number) => void;
 };
 
 function installAudioApi(available: string[], initialState: AudioContextState = 'running', audioBodies: Record<string, string> = {}) {
-  const probe: AudioProbe = { fetched: [], starts: [], ramps: [], gainTargets: [], stops: [], resumes: 0, closes: 0 };
+  let currentTime = 12;
+  const probe: AudioProbe = { fetched: [], starts: [], ramps: [], gainTargets: [], stops: [], resumes: 0, closes: 0, setCurrentTime: (seconds) => { currentTime = seconds; } };
   let resumeAttempts = 0;
   let gainIndex = 0;
   class FakeAudioContext {
     state = initialState;
-    currentTime = 12;
+    get currentTime() { return currentTime; }
     sampleRate = 44_100;
     destination = {} as AudioDestinationNode;
     onstatechange: ((this: BaseAudioContext, ev: Event) => unknown) | null = null;
@@ -133,6 +135,53 @@ describe('overlay BGM playback', () => {
     engine.destroy();
     expect(probe.closes).toBe(1);
     expect(probe.stops.filter((at) => at === undefined)).toHaveLength(3);
+  });
+
+  it('plays the victory jingle before one non-looping track, rotates by round, and fades it over 0.5 s on exit', async () => {
+    const probe = installAudioApi(['victory.mp3', 'victory-music-1.mp3', 'victory-music-2.mp3']);
+    const engine = new OverlayAudioEngine(parseAudioMix(''), () => undefined);
+    const victory = mock('victory');
+    engine.syncVictoryMusic(victory, true);
+    await vi.waitFor(() => expect(probe.starts).toHaveLength(2));
+    expect(probe.starts[0]).toMatchObject({ label: 'victory.mp3', loop: false, at: 12.012 });
+    expect(probe.starts[1]).toMatchObject({ label: 'victory-music-1.mp3', loop: false, at: 20.012 });
+
+    // Snapshot refreshes in the same victory do not restart either clip.
+    engine.syncVictoryMusic(victory, true);
+    expect(probe.starts).toHaveLength(2);
+
+    probe.setCurrentTime(20.5);
+    engine.syncVictoryMusic(mock('lobby'));
+    expect(probe.ramps).toContainEqual({ value: 0, at: 21 });
+    expect(probe.stops).toContain(21.025);
+
+    for (const [roundNumber, expectedTrack] of [[2, 'victory-music-2.mp3'], [3, 'victory-music-1.mp3']] as const) {
+      const nextVictory = { ...victory, round: { ...victory.round!, roundNumber } };
+      engine.syncVictoryMusic(nextVictory, true);
+      await vi.waitFor(() => expect(probe.starts).toHaveLength(roundNumber === 2 ? 4 : 6));
+      expect(probe.starts.at(-1)).toMatchObject({ label: expectedTrack, loop: false });
+      probe.setCurrentTime(30 + roundNumber * 10);
+      engine.syncVictoryMusic(mock('lobby'));
+    }
+    engine.destroy();
+  });
+
+  it('starts a stable rotation track after reconnect without replaying the jingle, and stays silent without tracks', async () => {
+    const probe = installAudioApi(['victory-music-1.mp3', 'victory-music-2.mp3']);
+    const engine = new OverlayAudioEngine(parseAudioMix(''), () => undefined);
+    const roundTwo = { ...mock('victory'), round: { ...mock('victory').round!, roundNumber: 2 } };
+    engine.syncVictoryMusic(roundTwo, false);
+    await vi.waitFor(() => expect(probe.starts).toHaveLength(1));
+    expect(probe.starts[0]).toMatchObject({ label: 'victory-music-2.mp3', loop: false });
+    engine.destroy();
+
+    vi.unstubAllGlobals();
+    const noTracks = installAudioApi([]);
+    const silentEngine = new OverlayAudioEngine(parseAudioMix(''), () => undefined);
+    silentEngine.syncVictoryMusic(mock('victory'), false);
+    await vi.waitFor(() => expect(noTracks.fetched).toContain('/assets/audio/victory-music-1.ogg'));
+    expect(noTracks.starts).toEqual([]);
+    silentEngine.destroy();
   });
 
   it('lets the current word finish until the next countdown marker, then stops it at that exact start', async () => {

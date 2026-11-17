@@ -16,7 +16,7 @@ describe('overlay audio cues', () => {
     expect(parseAudioMix('?sfx=nope&bgm=0.25').sfx).toBe(0.6);
   });
 
-  it('selects the lobby loop before a round and the game loop during gameplay, leaving victory to its jingle', () => {
+  it('selects lobby/game loops and leaves the one-shot victory sequence to its dedicated engine', () => {
     const activeRound = mock('question');
     expect(selectBgmTrack(mock('lobby'))).toBe('bgm-lobby');
     for (const state of ['PREPARE', 'READING', 'ACCEPTING', 'REVEAL', 'LEADERBOARD'] as const)

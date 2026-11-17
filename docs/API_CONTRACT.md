@@ -84,7 +84,7 @@ Mã HTTP của `/commands`:
 | `leaderboardMs` — BXH ngắn sau câu | 4 s | 9 s | Có |
 | `bigLeaderboardMs` — BXH lớn | 6 s | 6 s | Không |
 | `roundEndMs` — kết thúc vòng | 2 s | 2 s | Không |
-| `victoryMs` — vinh danh | 18 s | 18 s | Không |
+| `victoryMs` — vinh danh | 18 s | 10 s | Không |
 | `intermissionMs` — nghỉ giữa vòng | 25 s | 30 s | Có |
 
 Pha MC đọc câu dùng `MAX_MC_READING_MS = 20 s` nhưng overlay hiện trạng thái đọc, không hiện bộ đếm; giá trị này giữ nguyên. Session đã lưu với thời lượng tường minh tiếp tục giữ cấu hình cũ; giá trị mới chỉ điền cho cấu hình thiếu trường hoặc tạo session mới.

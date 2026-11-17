@@ -14,6 +14,8 @@ describe('ThemeManifestSchema', () => {
   it('nhận theme hợp lệ và giữ enum slot đóng', () => {
     expect(ThemeManifestSchema.parse(valid)).toMatchObject({ description: '', assets: valid.assets });
     expect(THEME_ASSET_SLOTS).toContain('audio.countdown-tick');
+    expect(THEME_ASSET_SLOTS).toContain('audio.victory-music-1');
+    expect(THEME_ASSET_SLOTS).toContain('audio.victory-music-2');
     expect(ThemeManifestSchema.safeParse({ ...valid, assets: { 'unknown.slot': 'a.png' } }).success).toBe(false);
   });
 
