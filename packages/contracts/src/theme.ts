@@ -86,6 +86,7 @@ export const ThemeManifestSchema = z.object({
         ctx.addIssue({ code: 'custom', path: [key], message: 'Theme không được thay vị trí hoặc kích thước khung.' });
     }
   }),
+  tokenDescriptions: z.record(z.string(), z.string().trim().max(200)).optional(),
   fonts: z.array(ThemeFontSchema).max(32).default([]),
   assets: ThemeAssetsSchema.default({}),
 }).strict();

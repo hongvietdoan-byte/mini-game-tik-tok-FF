@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
 import { hudImageUrl } from './hudText';
 import { ArenaLoopVideo } from './ArenaLoopVideo';
+import type { ThemeAssetSlot } from '@quiz/contracts';
+import { themeAssetUrl, useTheme } from '../theme';
 
 function ArenaFlag({ index }: { index: number }) {
   const [available, setAvailable] = useState(true);
+  const [failedTheme, setFailedTheme] = useState(false);
+  const theme = useTheme();
+  const themedSrc = themeAssetUrl(theme, `arena.flag.${index - 1}` as ThemeAssetSlot, '');
+  const src = themedSrc && !failedTheme ? themedSrc : `/assets/arena/flags/flag-${index}.png`;
   const side = index <= 4 ? 'left' : 'right';
+  useEffect(() => { setAvailable(true); setFailedTheme(false); }, [theme.version, themedSrc]);
 
   return (
     <span
@@ -16,11 +23,14 @@ function ArenaFlag({ index }: { index: number }) {
       <i className="v3-arena-flag-fallback">V</i>
       {available && (
         <img
-          src={`/assets/arena/flags/flag-${index}.png`}
+          src={src}
           alt=""
           draggable={false}
           decoding="async"
-          onError={() => setAvailable(false)}
+          onError={() => {
+            if (themedSrc && !failedTheme && src === themedSrc) setFailedTheme(true);
+            else setAvailable(false);
+          }}
         />
       )}
     </span>
@@ -34,16 +44,20 @@ export function ArenaBackdrop({
   showFlags = arena,
   backgroundId = null,
 }: { arena?: boolean; questionBackground?: boolean; loopVideo?: boolean; showFlags?: boolean; backgroundId?: string | null }) {
-  const [failedBackground, setFailedBackground] = useState<string | null>(null);
-  useEffect(() => setFailedBackground(null), [backgroundId]);
-  const useCustomBackground = !!backgroundId && failedBackground !== backgroundId;
+  const theme = useTheme();
+  const [failedSources, setFailedSources] = useState<string[]>([]);
   const fallbackBackground = questionBackground ? '/assets/arena/bg-question-user.jpg' : '/assets/arena/bg.jpg';
-  const backgroundSrc = hudImageUrl(useCustomBackground ? backgroundId : null, fallbackBackground);
+  const themeBackground = themeAssetUrl(theme, questionBackground ? 'arena.questionBackground' : 'arena.background', '')
+    || (questionBackground ? theme.assets['arena.background'] ?? '' : '');
+  const customBackground = backgroundId ? hudImageUrl(backgroundId, '') : '';
+  const backgroundSrc = [customBackground, themeBackground, fallbackBackground].find((source) => source && !failedSources.includes(source)) ?? fallbackBackground;
+  const isStaticQuestionBackground = questionBackground && backgroundSrc === fallbackBackground;
   const backgroundClass = questionBackground ? ' v3-bg--question-user' : '';
+  useEffect(() => setFailedSources([]), [backgroundId, questionBackground, theme.version]);
   return (
     <div className={`v3-bg${arena ? ' v3-bg--arena' : ''}${backgroundClass}`} data-layer="background-storm" aria-hidden="true">
       {arena && <>
-        <img className={`v3-arena-backdrop-image${questionBackground && !useCustomBackground ? ' v3-arena-backdrop-image--user' : ''}`} data-testid="arena-background" src={backgroundSrc} alt="" draggable={false} decoding="async" onError={() => { if (useCustomBackground && backgroundId) setFailedBackground(backgroundId); }} />
+        <img className={`v3-arena-backdrop-image${isStaticQuestionBackground ? ' v3-arena-backdrop-image--user' : ''}`} data-testid="arena-background" src={backgroundSrc} alt="" draggable={false} decoding="async" onError={() => setFailedSources((current) => current.includes(backgroundSrc) ? current : [...current, backgroundSrc])} />
         {loopVideo && <ArenaLoopVideo poster={backgroundSrc} className="v3-arena-backdrop-video" testId="arena-background-video" />}
       </>}
       <span className="v3-storm" />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { themeAssetUrl, useTheme } from '../theme';
 
 const ARENA_LOOP_SOURCES = [
   { src: '/assets/arena/bg-loop.webm', type: 'video/webm' },
@@ -14,6 +15,15 @@ export function ArenaLoopVideo({
   className: string;
   testId: string;
 }) {
+  const theme = useTheme();
+  const themedWebm = themeAssetUrl(theme, 'arena.loopVideoWebm', '');
+  const themedMp4 = themeAssetUrl(theme, 'arena.loopVideoMp4', '');
+  const sources = [
+    ...(themedWebm ? [{ src: themedWebm, type: 'video/webm' }] : []),
+    ...(themedMp4 ? [{ src: themedMp4, type: 'video/mp4' }] : []),
+    ...ARENA_LOOP_SOURCES.filter((source) => source.src !== themedWebm && source.src !== themedMp4),
+  ];
+  const sourceKey = sources.map((source) => source.src).join('|');
   const [failed, setFailed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -21,7 +31,7 @@ export function ArenaLoopVideo({
   useEffect(() => {
     setFailed(false);
     setPlaying(false);
-  }, [poster]);
+  }, [poster, sourceKey]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -54,7 +64,7 @@ export function ArenaLoopVideo({
       onError={() => setFailed(true)}
       onPlaying={() => setPlaying(true)}
     >
-      {ARENA_LOOP_SOURCES.map((source) => <source key={source.src} src={source.src} type={source.type} />)}
+      {sources.map((source) => <source key={source.src} src={source.src} type={source.type} />)}
     </video>
   );
 }

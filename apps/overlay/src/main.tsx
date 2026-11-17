@@ -11,6 +11,7 @@ import { AudioFxLayer } from './v3/AudioFxLayer';
 import { overlayFitFromSearch, overlayRoleFromSearch, overlayStageScale } from './overlayRole';
 import { publicPlayerName } from './publicPlayerName';
 import { HudConfigProvider, useLiveHudConfig } from './hudConfig';
+import { ThemeProvider } from './theme';
 import type { AudioEngineState } from './audio/audio-engine';
 import './style.css';
 
@@ -249,7 +250,7 @@ function App() {
     rightFromY: queryPixelOverride(query, 'safeRightFromY', snapshot.safeZone.rightFromY ?? 0, 1920),
   } : undefined;
 
-  return <HudConfigProvider config={hudConfig}><main className={`viewport viewport-${overlayRole}`} data-fit={fit} data-role={overlayRole}>
+  return <ThemeProvider themeVersion={networkSnapshot?.themeVersion} mock={mockScene !== null}><HudConfigProvider config={hudConfig}><main className={`viewport viewport-${overlayRole}`} data-fit={fit} data-role={overlayRole}>
     {snapshot ? <div id="stage" className={fxLow ? 'fx-low' : undefined} data-testid="stage" data-scene={snapshot.scene} data-state={snapshot.state} data-fx-level={fxLow ? 'low' : 'full'} style={{
       transform: `translate(-50%, -50%) scale(${scale})`,
       '--safe-top': `${safeZone!.top}px`,
@@ -273,7 +274,7 @@ function App() {
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
     {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} clockOffsetMs={clockOffsetMs} role={overlayRole} onAudioStateChange={setAudioState} />}
-  </main></HudConfigProvider>;
+  </main></HudConfigProvider></ThemeProvider>;
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

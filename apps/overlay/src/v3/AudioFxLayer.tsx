@@ -5,6 +5,7 @@ import { AudioCueTracker, parseAudioMix, type AudioCue, type VisualCue } from '.
 import { OverlayAudioEngine, type AudioEngineState } from '../audio/audio-engine';
 import { McVoiceCueScheduler } from '../audio/mc-voice';
 import type { OverlayRole } from '../overlayRole';
+import { useTheme } from '../theme';
 
 const MIX = parseAudioMix(location.search);
 const FX_LOW = new URLSearchParams(location.search).get('fx') === 'low';
@@ -21,6 +22,7 @@ function useReducedMotion() {
 }
 
 export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, clockOffsetMs, role, onAudioStateChange }: { snapshot: PublicSnapshot; remainingMs: number; clockOffsetMs: number; role: OverlayRole; onAudioStateChange?: (state: AudioEngineState) => void }) {
+  const theme = useTheme();
   const tracker = useRef(new AudioCueTracker());
   const voiceScheduler = useRef(new McVoiceCueScheduler());
   const engine = useRef<OverlayAudioEngine | null>(null);
@@ -43,7 +45,7 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       return;
     }
     if (cleanupTimer.current !== null) window.clearTimeout(cleanupTimer.current);
-    const instance = engine.current ?? new OverlayAudioEngine(MIX, publishAudioState);
+    const instance = engine.current ?? new OverlayAudioEngine(MIX, publishAudioState, theme.assets);
     engine.current = instance;
     return () => {
       cleanupTimer.current = window.setTimeout(() => {
@@ -53,6 +55,10 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       }, 0);
     };
   }, [publishAudioState, role]);
+
+  useEffect(() => {
+    engine.current?.setThemeAssets(theme.assets);
+  }, [theme]);
 
   useEffect(() => {
     if (role !== 'program') return;

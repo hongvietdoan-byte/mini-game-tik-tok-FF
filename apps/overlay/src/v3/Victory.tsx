@@ -7,6 +7,7 @@ import { publicPlayerName } from '../publicPlayerName';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle, hudImageUrl } from './hudText';
 import { ArenaLoopVideo } from './ArenaLoopVideo';
+import { themeAssetChildUrl, themeAssetUrl, useTheme } from '../theme';
 
 const ASSET = '/assets';
 const VICTORY_BACKGROUND = `${ASSET}/victory/bg-user-cover.jpg`;
@@ -25,25 +26,38 @@ const VICTORY_LAYOUT = {
 
 function VictoryLogo() {
   const config = useHudConfig();
+  const theme = useTheme();
   const customLogo = config.images.logo ? hudImageUrl(config.images.logo, '') : null;
-  const [ok, setOk] = useState(true);
-  const [failedCustom, setFailedCustom] = useState(false);
-  useEffect(() => { setFailedCustom(false); setOk(true); }, [customLogo]);
-  const source = customLogo && !failedCustom ? customLogo : `${ASSET}/brand/logo.png`;
-  return ok
-    ? <img className="v3v-event-logo" src={source} alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí" draggable={false} decoding="async" data-testid="v3v-event-logo" onError={() => { if (customLogo && !failedCustom) setFailedCustom(true); else setOk(false); }} />
+  const themeLogo = themeAssetUrl(theme, 'brand.logo', '');
+  const fallbackLogo = `${ASSET}/brand/logo.png`;
+  const candidates = [...new Set([customLogo, themeLogo, fallbackLogo].filter((source): source is string => !!source))];
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const source = candidates.find((candidate) => !failedSources.includes(candidate));
+  useEffect(() => { setFailedSources([]); }, [customLogo, theme.version, themeLogo]);
+  return source
+    ? <img className="v3v-event-logo" src={source} alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí" draggable={false} decoding="async" data-testid="v3v-event-logo" onError={() => setFailedSources((current) => current.includes(source) ? current : [...current, source])} />
     : <div className="v3v-logo-fallback"><BrandMark /></div>;
 }
 
 function Chibi({ entry }: { entry: PublicLeaderboardEntry }) {
   const [ok, setOk] = useState(true);
+  const [failedTheme, setFailedTheme] = useState(false);
+  const theme = useTheme();
+  const themeBank = theme.assets['chibi.bankDir'];
+  const themedSrc = themeBank && entry.characterId ? themeAssetChildUrl(themeBank, `${entry.characterId}.png`) : '';
+  const fallbackSrc = entry.characterId ? `${ASSET}/chibi/${entry.characterId}.png` : '';
+  const source = themedSrc && !failedTheme ? themedSrc : fallbackSrc;
+  useEffect(() => { setOk(true); setFailedTheme(false); }, [entry.characterId, theme.version, themedSrc]);
   return ok && entry.characterId ? (
     <img
-      src={`${ASSET}/chibi/${entry.characterId}.png`}
+      src={source}
       alt=""
       draggable={false}
       decoding="async"
-      onError={() => setOk(false)}
+      onError={() => {
+        if (themedSrc && !failedTheme && source === themedSrc) setFailedTheme(true);
+        else setOk(false);
+      }}
     />
   ) : (
     <div className="v3v-chibi-placeholder" aria-hidden="true" />
@@ -164,14 +178,17 @@ function VictoryConfetti() {
 
 export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot: PublicSnapshot; allowLegacyNames?: boolean }) {
   const config = useHudConfig();
+  const theme = useTheme();
   const customBackground = config.images.bgVictory ? hudImageUrl(config.images.bgVictory, '') : null;
-  const [failedCustomBackground, setFailedCustomBackground] = useState(false);
-  useEffect(() => setFailedCustomBackground(false), [customBackground]);
-  const backgroundSource = customBackground && !failedCustomBackground ? customBackground : VICTORY_BACKGROUND;
+  const themeBackground = themeAssetUrl(theme, 'victory.userCover', '') || themeAssetUrl(theme, 'victory.background', '')
+    || themeAssetUrl(theme, 'victory.trophyStage', '');
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const backgroundSource = [customBackground, themeBackground, VICTORY_BACKGROUND].find((source) => source && !failedSources.includes(source)) ?? VICTORY_BACKGROUND;
   const podium = snapshot.podium;
+  useEffect(() => setFailedSources([]), [customBackground, theme.version, themeBackground]);
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene}>
-      <img className="v3v-bg-image" src={backgroundSource} alt="" draggable={false} decoding="async" data-testid="victory-background" onError={() => { if (customBackground && !failedCustomBackground) setFailedCustomBackground(true); }} />
+      <img className="v3v-bg-image" src={backgroundSource} alt="" draggable={false} decoding="async" data-testid="victory-background" onError={() => setFailedSources((current) => current.includes(backgroundSource) ? current : [...current, backgroundSource])} />
       <ArenaLoopVideo poster={backgroundSource} className="v3v-bg-video" testId="victory-background-video" />
       <VictoryConfetti />
       <header className="v3v-header">

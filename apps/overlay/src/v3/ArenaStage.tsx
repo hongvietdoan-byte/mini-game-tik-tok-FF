@@ -1,10 +1,11 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
 import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
 import { McSequence } from './mc/mc-sequence-player';
+import { themeAssetChildUrl, useTheme } from '../theme';
 import { ArenaBackdrop } from './ArenaBackdrop';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle } from './hudText';
@@ -274,10 +275,19 @@ const AUDIENCE_FRONT_Y = 1880;
 
 function SeatChibi({ characterId }: { characterId: string }) {
   const [ok, setOk] = useState(true);
+  const [failedTheme, setFailedTheme] = useState(false);
+  const theme = useTheme();
+  const themeBank = theme.assets['chibi.bankDir'];
+  const themedSrc = themeBank ? themeAssetChildUrl(themeBank, `${characterId}.png`) : '';
+  const src = themedSrc && !failedTheme ? themedSrc : `${ASSET_BASE}/chibi/${characterId}.png`;
+  useEffect(() => { setOk(true); setFailedTheme(false); }, [theme.version, themedSrc]);
   if (!ok) return null;
   return (
     <div className="v3-chibi-img" aria-hidden="true">
-      <img src={`${ASSET_BASE}/chibi/${characterId}.png`} alt="" width={92} height={104} decoding="async" draggable={false} onError={() => setOk(false)} />
+      <img src={src} alt="" width={92} height={104} decoding="async" draggable={false} onError={() => {
+        if (themedSrc && !failedTheme && src === themedSrc) setFailedTheme(true);
+        else setOk(false);
+      }} />
     </div>
   );
 }

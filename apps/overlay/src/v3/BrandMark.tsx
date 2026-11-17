@@ -1,16 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle, hudImageUrl } from './hudText';
+import { themeAssetUrl, useTheme } from '../theme';
 
 export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: boolean }) {
   const config = useHudConfig();
+  const theme = useTheme();
   const customLogo = config.images.logo ? hudImageUrl(config.images.logo, '') : null;
   const fallbackLogo = '/assets/brand/logo.png';
-  const [failedSource, setFailedSource] = useState<string | null>(null);
+  const themeLogo = themeAssetUrl(theme, 'brand.logo', '');
+  const candidates = [...new Set([customLogo, themeLogo, fallbackLogo].filter((source): source is string => !!source))];
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const imageSource = candidates.find((source) => !failedSources.includes(source)) ?? null;
   const ribbonRef = useRef<HTMLDivElement>(null);
-  useEffect(() => setFailedSource(null), [customLogo]);
-  const imageSource = customLogo && failedSource !== customLogo ? customLogo : fallbackLogo;
-  const logoAvailable = failedSource !== fallbackLogo;
+  useEffect(() => setFailedSources([]), [customLogo, theme.version, themeLogo]);
+  const logoAvailable = imageSource !== null;
   const ribbonText = ribbon ?? config.texts.arenaTitle;
   const ribbonStyle = wide ? undefined : fitHudTextStyle(ribbonText, 252, 16, 9);
 
@@ -63,7 +67,7 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
               alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí"
               draggable={false}
               decoding="async"
-              onError={() => setFailedSource(imageSource)}
+              onError={() => imageSource && setFailedSources((current) => current.includes(imageSource) ? current : [...current, imageSource])}
             />
           ) : (
             <>
@@ -85,7 +89,7 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
           src={imageSource}
           alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí"
           draggable={false}
-          onError={() => setFailedSource(imageSource)}
+          onError={() => imageSource && setFailedSources((current) => current.includes(imageSource) ? current : [...current, imageSource])}
         />
       ) : (
         <>
