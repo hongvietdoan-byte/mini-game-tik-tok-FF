@@ -1,9 +1,16 @@
 {
   "role": "codex2",
   "last_read": 287,
-  "heartbeat": "2026-11-18T20:47:52+07:00",
+  "heartbeat": "2026-11-19T01:30:32+07:00",
   "state": "waiting",
   "task": "C-0287",
   "note": "Inbox trống; đã báo coordinator rảnh Y-0501; DP3 đang cập nhật, chờ task mới",
-  "done": []
+  "done": [
+    293,
+    295,
+    296,
+    297,
+    300,
+    301
+  ]
 }
