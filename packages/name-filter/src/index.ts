@@ -381,6 +381,43 @@ function buildMatches(input: NameRepresentations, config: NameFilterConfig, comp
   };
 }
 
+export type NameFilterTextMatch = {
+  ruleId: string;
+  term: string;
+  matchedText: string;
+  group: NameRuleGroup;
+};
+
+/** Kiểm tra toàn bộ câu theo các luật tên mặc định và luật operator, không giới hạn 16 grapheme hiển thị tên. */
+export function findNameFilterTextMatches(
+  text: string,
+  config: NameFilterConfig,
+  defaultRules: readonly NameFilterRule[] = [],
+): NameFilterTextMatch[] {
+  const normalized = safeText(text);
+  if (!normalized) return [];
+  const input = buildRepresentations(normalized);
+  // Whitelist và protected entities chỉ dành cho tên tài khoản; không áp dụng chúng cho lời MC.
+  const compiled = compileFilter(config, defaultRules, []);
+  const rulesFound = new Map<string, RuleMatch>();
+  const discardEntities = new Map<string, EntityMatch>();
+  const leetText = input.variants[0]!;
+  const repeatedText = input.variants[1]!;
+  if (leetText.chars === repeatedText.chars) {
+    collectMatches(runMatcher(input, 'leet', compiled.plainText), rulesFound, discardEntities);
+  } else {
+    collectMatches(runMatcher(input, 'leet', compiled.representations.leet), rulesFound, discardEntities);
+    collectMatches(runMatcher(input, 'leet-repeated', compiled.representations['leet-repeated']), rulesFound, discardEntities);
+  }
+  const matches = [...rulesFound.values()].flatMap(({ rule, spans }) => spans.map((span) => ({
+    ruleId: rule.id,
+    term: rule.term,
+    matchedText: input.graphemes.slice(span.start, span.end + 1).join(''),
+    group: rule.group,
+  })));
+  return [...new Map(matches.map((match) => [`${match.ruleId}\0${match.matchedText}`, match])).values()];
+}
+
 function isVerified(playerId: string | null, config: NameFilterConfig) {
   if (!playerId) return false;
   const separator = playerId.indexOf(':');

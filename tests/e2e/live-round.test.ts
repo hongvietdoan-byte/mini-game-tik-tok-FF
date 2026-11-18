@@ -209,6 +209,46 @@ test.afterEach(async () => {
   if (errors.length) throw new AggregateError(errors, 'Lỗi khi dọn E2E sau test.');
 });
 
+test('C-0262: dashboard gửi chat MC và overlay hiện đúng chữ khi MC bắt đầu', async ({ page }) => {
+  test.setTimeout(90_000);
+  const running = await boot();
+  const created = await running.app.app.inject({
+    method: 'POST', url: '/api/sessions', headers: { authorization: `Bearer ${adminToken}` },
+    payload: { name: 'C-0262 MC chat overlay', config: {
+      mode: 'MOCK', packId: 'demo', questionsPerRound: 10, allowDemoQuestions: true,
+      seed: 42, mcVoiceEnabled: false, timings: { lobbyMs: 0, prepareMs: 500, answerMs: 20_000, revealMs: 500 },
+    } },
+  });
+  expect(created.statusCode).toBe(201);
+  const sessionId = (created.json() as { sessionId: string }).sessionId;
+  const runtime = currentRuntime(running.app);
+  runtime.dispatch({ commandId: randomUUID(), expectedStateVersion: runtime.engine.stateVersion, operatorId: 'e2e',
+    requestedAtMs: running.scheduler.now(), command: { type: 'OPEN_LOBBY' } });
+
+  const overlay = await page.context().newPage();
+  await overlay.setViewportSize({ width: 1080, height: 1920 });
+  await overlay.goto(running.overlayUrl);
+  await expect(overlay.getByTestId('stage')).toHaveAttribute('data-scene', 'LOBBY');
+
+  await page.addInitScript(({ token }) => {
+    localStorage.setItem('quiz.setupDone', '1');
+    sessionStorage.setItem('quiz.adminToken', token);
+  }, { token: adminToken });
+  await page.goto(running.dashboardUrl);
+  await page.getByLabel('Mã quản trị').fill(adminToken);
+  await page.getByRole('button', { name: 'Kết nối', exact: true }).click();
+  await expect(page.getByTestId('mc-chat-panel')).toBeVisible();
+  const message = 'Xin chào mọi người, vòng tiếp theo sắp bắt đầu!';
+  await page.getByLabel('Câu muốn gửi').fill(message);
+  await page.getByLabel('Đọc giọng').uncheck();
+  await page.getByRole('button', { name: 'Gửi', exact: true }).click();
+  await expect(page.getByTestId('mc-chat-queue-item').first()).toHaveAttribute('data-status', 'QUEUED');
+  running.scheduler.advance(80);
+  await expect(page.getByTestId('mc-chat-queue-item').first()).toContainText('Đang phát');
+  await expect(overlay.getByTestId('mc-bubble')).toContainText(message);
+  await expect(overlay.getByTestId('mc-bubble')).toBeVisible();
+});
+
 test('C-0203: fastestCorrectAnswer từ server MOCK hiện trên overlay; mcVoiceEnabled không tự phát giọng', async ({ page }) => {
   test.setTimeout(90_000);
   const running = await boot();

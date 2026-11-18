@@ -1,0 +1,36 @@
+.mc-chat-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(140, 200, 251, .24);
+  border-radius: 14px;
+  background: rgba(8, 12, 41, .48);
+}
+.mc-chat-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mc-chat-heading h3 { margin: 2px 0 0; font-size: 16px; }
+.mc-chat-queue-count { min-width: 38px; padding: 5px 9px; border-radius: 999px; background: rgba(140, 200, 251, .13); text-align: center; font-weight: 700; }
+.mc-chat-input-label { color: #c9d9f5; font-size: 12px; font-weight: 700; }
+.mc-chat-panel textarea { width: 100%; min-height: 56px; resize: vertical; border: 1px solid #38436f; border-radius: 9px; padding: 9px 10px; color: #f6f7ff; background: #101638; font: inherit; }
+.mc-chat-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.mc-chat-controls > span { margin-right: auto; color: #a8b4d5; font-size: 12px; }
+.mc-chat-controls label { display: inline-flex; align-items: center; gap: 6px; color: #d6def1; font-size: 13px; }
+.mc-chat-panel button { border: 0; border-radius: 8px; padding: 7px 11px; color: #151934; background: #8cc8fb; font-weight: 700; cursor: pointer; }
+.mc-chat-panel button:disabled { opacity: .48; cursor: not-allowed; }
+.mc-chat-panel button.mc-chat-secondary { color: #dbe7ff; background: #343d67; }
+.mc-chat-panel button.mc-chat-remove { color: #ffc9d0; background: #5a2639; }
+.mc-chat-mock-note, .mc-chat-empty { color: #a8b4d5; font-size: 12px; }
+.mc-chat-feedback { margin: 0; color: #a9ffbf; font-size: 12px; }
+.mc-chat-feedback.is-error, .mc-chat-error-detail { color: #ffacb8; }
+.mc-chat-list-block { display: grid; gap: 7px; }
+.mc-chat-list-block h4 { margin: 3px 0 0; font-size: 13px; }
+.mc-chat-empty { margin: 0; }
+.mc-chat-presets, .mc-chat-queue { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.mc-chat-presets li, .mc-chat-queue li { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 9px; background: rgba(255, 255, 255, .045); }
+.mc-chat-presets li > span, .mc-chat-queue-copy { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.mc-chat-presets button, .mc-chat-queue button { flex: 0 0 auto; padding: 6px 8px; font-size: 11px; }
+.mc-chat-queue-copy { display: grid; gap: 3px; }
+.mc-chat-queue-copy b { font-size: 12px; font-weight: 500; }
+.mc-chat-status, .mc-chat-error-detail { color: #b9c9e8; font-size: 11px; }
+.mc-chat-status.status-playing { color: #a9ffbf; }
+.mc-chat-status.status-error { color: #ffacb8; }

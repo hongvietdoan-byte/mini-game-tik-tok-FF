@@ -39,7 +39,7 @@ export function LeaderboardStage({ snapshot, allowLegacyNames = false }: { snaps
       <p className="v3-full-footnote">TÍCH LŨY ĐIỂM · TIẾP TỤC CHIẾN ĐẤU</p>
     </section>
     <div className="v3-top10-guide" data-testid="top10-guide">
-      <McKelly snapshot={snapshot} bubbleOverride="BXH trực tiếp! Cùng xem ai đang dẫn đầu và bám sát Top 10 nhé." />
+      <McKelly snapshot={snapshot} bubbleOverride={snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? 'BXH trực tiếp! Cùng xem ai đang dẫn đầu và bám sát Top 10 nhé.'} />
     </div>
   </div>;
 }
@@ -72,6 +72,7 @@ export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicS
       <p>Hãy sẵn sàng cho chặng tiếp theo</p>
       <FullTimer snapshot={snapshot} remainingMs={remainingMs} />
     </section>
+    <McKelly snapshot={snapshot} bubbleOverride={snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble} />
   </div>;
 }
 

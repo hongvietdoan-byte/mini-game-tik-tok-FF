@@ -14,6 +14,7 @@ import {
   HudConfigUpdateSchema,
   HudImageSlotSchema,
   McVoicePreGenerateRequestSchema,
+  McChatPresetRequestSchema,
   McVoiceEventSchema,
   McVoiceSettingsUpdateSchema,
   McVoiceTestRequestSchema,
@@ -48,6 +49,7 @@ import { McVoiceCache } from './voice/cache';
 import { McVoicePreGenerateManager } from './voice/pre-generate';
 import { EnvironmentMcVoiceCredentialStore, mcVoiceSettingsForEvent, McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile } from './voice/types';
 import { McVoiceService } from './voice/service';
+import { McChatPresetStore } from './mc-chat-presets';
 import { questionVoiceScripts } from './voice/question-script';
 import { containsPlayerIdentity } from './voice/safety';
 import { preflightAssets } from './preflight-assets';
@@ -135,6 +137,7 @@ const MockCommentSchema = z.object({
 export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const { store, scheduler } = opts;
   const hudStore = new HudConfigStore(opts.hudDataDir ?? dirname(store.path));
+  const mcChatPresetStore = new McChatPresetStore(join(dirname(store.path), 'mc-chat-presets.json'));
   const themeStore = new ThemeStore(opts.themesDir ?? join(dirname(store.path), 'themes'), dirname(store.path));
   const allowed = new Set(opts.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
   const rawCommentRecorder = process.env.TIKTOK_RECORD_RAW_COMMENTS === '1'
@@ -936,6 +939,55 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     if (!s) return reply;
     const out = s.dispatch(req.body);
     return reply.code(out.status).send(out.result);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/sessions/:id/mc-chat', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const s = sessionOr404(req.params.id, reply);
+    if (!s) return reply;
+    const out = s.sendMcChat(req.body);
+    return reply.code(out.status).send(out.result);
+  });
+
+  app.post<{ Params: { id: string; chatId: string } }>('/api/sessions/:id/mc-chat/:chatId/fallback', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const s = sessionOr404(req.params.id, reply);
+    if (!s) return reply;
+    const out = s.useMcChatTextFallback(req.params.chatId);
+    return reply.code(out.status).send(out.result);
+  });
+
+  app.post<{ Params: { id: string; chatId: string } }>('/api/sessions/:id/mc-chat/:chatId/cancel', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const s = sessionOr404(req.params.id, reply);
+    if (!s) return reply;
+    const out = s.cancelMcChat(req.params.chatId);
+    return reply.code(out.status).send(out.result);
+  });
+
+  app.get('/api/mc-chat-presets', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return { presets: mcChatPresetStore.list() };
+  });
+
+  app.post('/api/mc-chat-presets', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = McChatPresetRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const preset = mcChatPresetStore.add(parsed.data);
+    if (!preset) return reply.code(409).send({ ok: false, code: 'MC_CHAT_PRESETS_FULL', message: 'Danh sách đã đủ 50 câu mẫu.' });
+    rt?.recordMcChatPresetAction('MC_CHAT_PRESET_ADD', { ok: true, presetId: preset.id });
+    return { ok: true, presets: mcChatPresetStore.list() };
+  });
+
+  app.delete<{ Params: { presetId: string } }>('/api/mc-chat-presets/:presetId', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const presetId = z.string().uuid().safeParse(req.params.presetId);
+    if (!presetId.success) return reply.code(400).send({ ok: false, code: 'MC_CHAT_PRESET_INVALID', message: 'Mã câu mẫu không hợp lệ.' });
+    if (!mcChatPresetStore.remove(presetId.data))
+      return reply.code(404).send({ ok: false, code: 'MC_CHAT_PRESET_NOT_FOUND', message: 'Không tìm thấy câu mẫu.' });
+    rt?.recordMcChatPresetAction('MC_CHAT_PRESET_REMOVE', { ok: true, presetId: presetId.data });
+    return { ok: true, presets: mcChatPresetStore.list() };
   });
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/simulator', async (req, reply) => {
