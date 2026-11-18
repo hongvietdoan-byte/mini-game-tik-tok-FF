@@ -1,10 +1,15 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
+  ACHIEVEMENT_IDS,
+  THEME_DEFAULT_ACHIEVEMENTS,
   MAX_THEME_FILE_BYTES,
   THEME_ALLOWED_EXTENSIONS,
   ThemeManifestSchema,
   ThemeRelativePathSchema,
+  type AchievementId,
+  type AchievementThemePresentation,
+  type PublicAchievementSnapshot,
   type ResolvedTheme,
   type ThemeAssetSlot,
   type ThemeManifest,
@@ -124,6 +129,21 @@ export class ThemeStore {
       if (extname(font.file).toLowerCase() !== '.woff2') throw new Error(`fonts[${index}].file: chỉ hỗ trợ .woff2.`);
       validatePath(font.file, `fonts[${index}].file`, false, new Set(['.woff2']));
     }
+    const validateAchievementIcons = (overrides: Record<string, { icon?: string | null }>, prefix: string) => {
+      for (const [achievementId, override] of Object.entries(overrides)) {
+        if (!override.icon) continue;
+        const label = `${prefix}.${achievementId}.icon`;
+        try { validatePath(override.icon, label, false, IMAGE_EXTENSIONS); }
+        catch (error) {
+          const message = error instanceof Error ? error.message : 'không đọc được tệp';
+          throw new Error(message.startsWith(`${label}:`) ? message : `${label}: không thể xác thực icon (${message}).`);
+        }
+      }
+    };
+    const { eventOverrides, ...baseAchievementOverrides } = manifest.achievements ?? {};
+    validateAchievementIcons(baseAchievementOverrides, 'achievements');
+    for (const [eventId, overrides] of Object.entries(eventOverrides ?? {}))
+      validateAchievementIcons(overrides, `achievements.eventOverrides.${eventId}`);
     return { id, name: manifest.name, manifest, directory };
   }
 
@@ -187,26 +207,67 @@ export class ThemeStore {
     return true;
   }
 
-  resolveActive(): ResolvedTheme {
+  resolveActive(eventId?: string): ResolvedTheme {
     this.scan();
     const theme = this.state.activeThemeId ? this.valid.get(this.state.activeThemeId) : undefined;
-    if (!theme) return { id: 'default', name: 'Giao diện mặc định', version: this.state.version, tokens: {}, fonts: [], assets: {} };
-    return this.resolveTheme(theme);
+    if (!theme) return {
+      id: 'default', name: 'Giao diện mặc định', version: this.state.version, tokens: {}, fonts: [], assets: {},
+      achievements: this.mergeAchievementPresentations(undefined, eventId, () => ''),
+    };
+    return this.resolveTheme(theme, eventId);
   }
 
-  resolve(themeId: string): ResolvedTheme | null {
+  resolve(themeId: string, eventId?: string): ResolvedTheme | null {
     this.scan();
     const theme = this.valid.get(themeId);
-    return theme ? this.resolveTheme(theme) : null;
+    return theme ? this.resolveTheme(theme, eventId) : null;
   }
 
-  private resolveTheme(theme: LoadedTheme): ResolvedTheme {
+  /** Lấy cấu hình danh hiệu đang có hiệu lực cho snapshot mà không quét lại thư mục theme. */
+  resolveAchievementPresentations(eventId?: string): Record<AchievementId, AchievementThemePresentation> {
+    const activeTheme = this.state.activeThemeId ? this.valid.get(this.state.activeThemeId) : undefined;
+    const url = activeTheme
+      ? (path: string) => `/themes/${encodeURIComponent(activeTheme.id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${this.state.version}`
+      : () => '';
+    return this.mergeAchievementPresentations(activeTheme, eventId, url);
+  }
+
+  decorateAchievementSnapshots(snapshots: readonly PublicAchievementSnapshot[], eventId?: string): PublicAchievementSnapshot[] {
+    const presentations = this.resolveAchievementPresentations(eventId);
+    return snapshots.map((snapshot) => ({ ...snapshot, presentation: presentations[snapshot.achievementId] }));
+  }
+
+  private mergeAchievementPresentations(
+    theme: LoadedTheme | undefined,
+    eventId: string | undefined,
+    url: (path: string) => string,
+  ): Record<AchievementId, AchievementThemePresentation> {
+    const { eventOverrides, ...baseOverrides } = theme?.manifest.achievements ?? {};
+    const forEvent = eventId ? eventOverrides?.[eventId] : undefined;
+    return Object.fromEntries(ACHIEVEMENT_IDS.map((id) => {
+      const themeOverride = baseOverrides[id] ?? {};
+      const eventOverride = forEvent?.[id] ?? {};
+      const iconPath = eventOverride.icon !== undefined ? eventOverride.icon : themeOverride.icon ?? null;
+      return [id, {
+        enabled: eventOverride.enabled ?? themeOverride.enabled ?? THEME_DEFAULT_ACHIEVEMENTS[id].enabled,
+        title: eventOverride.title ?? themeOverride.title ?? THEME_DEFAULT_ACHIEVEMENTS[id].title,
+        subtitle: eventOverride.subtitle ?? themeOverride.subtitle ?? THEME_DEFAULT_ACHIEVEMENTS[id].subtitle,
+        icon: iconPath ? url(iconPath) : null,
+        accentColor: eventOverride.accentColor ?? themeOverride.accentColor ?? THEME_DEFAULT_ACHIEVEMENTS[id].accentColor,
+        maxRows: eventOverride.maxRows ?? themeOverride.maxRows ?? THEME_DEFAULT_ACHIEVEMENTS[id].maxRows,
+        displaySlot: eventOverride.displaySlot ?? themeOverride.displaySlot ?? THEME_DEFAULT_ACHIEVEMENTS[id].displaySlot,
+      } satisfies AchievementThemePresentation];
+    })) as Record<AchievementId, AchievementThemePresentation>;
+  }
+
+  private resolveTheme(theme: LoadedTheme, eventId?: string): ResolvedTheme {
     const url = (path: string) => `/themes/${encodeURIComponent(theme.id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${this.state.version}`;
     const assets: Partial<Record<ThemeAssetSlot, string>> = {};
     for (const [slot, path] of Object.entries(theme.manifest.assets)) if (path) assets[slot as ThemeAssetSlot] = url(path);
     return {
       id: theme.id, name: theme.name, version: this.state.version, tokens: theme.manifest.tokens,
       fonts: theme.manifest.fonts.map((font) => ({ family: font.family, url: url(font.file), weight: font.weight, style: font.style })), assets,
+      achievements: this.mergeAchievementPresentations(theme, eventId, url),
     };
   }
 

@@ -3,6 +3,7 @@
  * Mọi package khác chỉ phụ thuộc vào đây; không package nào được định nghĩa lại các kiểu này.
  */
 import { z } from 'zod';
+import type { AchievementId, AchievementThemePresentation } from './theme';
 
 export {
   THEME_ASSET_SLOTS,
@@ -12,6 +13,19 @@ export {
   MAX_THEME_FILE_BYTES,
   ThemeAssetSlotSchema,
   ThemeAssetSlot,
+  ACHIEVEMENT_IDS,
+  ACHIEVEMENT_MAX_ROWS,
+  ACHIEVEMENT_DISPLAY_SLOTS,
+  AchievementIdSchema,
+  AchievementDisplaySlotSchema,
+  ThemeAchievementsSchema,
+  THEME_DEFAULT_ACHIEVEMENTS,
+  type AchievementId,
+  type AchievementDisplaySlot,
+  type AchievementThemePresentation,
+  type AchievementThemeOverride,
+  type AchievementThemeOverrides,
+  type ThemeAchievements,
   ThemeManifestSchema,
   ThemeRelativePathSchema,
   type ResolvedTheme,
@@ -487,6 +501,9 @@ export const QuestionsPerRoundSchema = z.union([z.literal(10), z.literal(15), z.
 export const SessionConfigSchema = z
   .object({
     mode: LiveSourceSchema.default('MOCK'),
+    /** Mã sự kiện dùng để chọn presentation override trong theme; không tham gia scoring. */
+    eventId: z.string().trim().min(1).max(63).regex(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u,
+      'Mã sự kiện chỉ gồm chữ thường, số và dấu gạch ngang.').optional(),
     packId: z.string().min(1).max(64).default('demo'),
     questionsPerRound: QuestionsPerRoundSchema.default(15),
     /** RANDOM giữ nguyên mặc định; DIFFICULTY bật phân bổ mục tiêu dễ/vừa/khó. */
@@ -960,17 +977,6 @@ export type RankingSnapshotEntries = {
   awardPlayerIds?: string[];
 };
 
-export type AchievementId =
-  | 'FASTEST_CORRECT'
-  | 'STAGE_CHAMPION'
-  | 'LONGEST_STREAK'
-  | 'MOST_CORRECT'
-  | 'COMEBACK'
-  | 'PERFECT_STAGE'
-  | 'FULL_PARTICIPATION'
-  | 'FIRST_CORRECT'
-  | 'ROUND_CHAMPION';
-
 /** Bản public đã opaque playerId và lọc tên; snapshot cũ không cần trường này. */
 export type PublicAchievementSnapshot = {
   achievementId: AchievementId;
@@ -982,6 +988,8 @@ export type PublicAchievementSnapshot = {
   tiedOverflowCount: number;
   aggregateCount?: number;
   revision: number;
+  /** Trình bày đã gộp event > theme > application fallback; không ảnh hưởng metric. */
+  presentation?: AchievementThemePresentation;
 };
 
 /** Snapshot bền vững; revision tăng khi nội dung bảng thay đổi sau void/regrade. */

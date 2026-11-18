@@ -17,6 +17,58 @@ export const ThemeAssetSlotSchema = z.enum(THEME_ASSET_SLOTS);
 export const ThemeAssetSlot = ThemeAssetSlotSchema;
 export type ThemeAssetSlot = z.infer<typeof ThemeAssetSlotSchema>;
 
+export const ACHIEVEMENT_IDS = [
+  'FASTEST_CORRECT', 'STAGE_CHAMPION', 'LONGEST_STREAK', 'MOST_CORRECT', 'COMEBACK',
+  'PERFECT_STAGE', 'FULL_PARTICIPATION', 'FIRST_CORRECT', 'ROUND_CHAMPION',
+] as const;
+export const AchievementIdSchema = z.enum(ACHIEVEMENT_IDS);
+export type AchievementId = z.infer<typeof AchievementIdSchema>;
+
+/** Số dòng tối đa là cố định theo evaluator; danh hiệu cộng đồng chỉ hiện tổng số. */
+export const ACHIEVEMENT_MAX_ROWS: Readonly<Record<AchievementId, number>> = {
+  FASTEST_CORRECT: 3,
+  STAGE_CHAMPION: 3,
+  LONGEST_STREAK: 3,
+  MOST_CORRECT: 5,
+  COMEBACK: 3,
+  PERFECT_STAGE: 0,
+  FULL_PARTICIPATION: 0,
+  FIRST_CORRECT: 0,
+  ROUND_CHAMPION: 3,
+};
+
+export const ACHIEVEMENT_DISPLAY_SLOTS = ['question-reveal', 'stage-recap', 'victory', 'lobby-rotation'] as const;
+export const AchievementDisplaySlotSchema = z.enum(ACHIEVEMENT_DISPLAY_SLOTS);
+export type AchievementDisplaySlot = z.infer<typeof AchievementDisplaySlotSchema>;
+
+export type AchievementThemePresentation = {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  icon: string | null;
+  accentColor: string;
+  maxRows: number;
+  displaySlot: AchievementDisplaySlot;
+};
+
+/** Giá trị dự phòng trong ứng dụng; theme và event chỉ ghi đè các trường cần đổi. */
+export const THEME_DEFAULT_ACHIEVEMENTS: Readonly<Record<AchievementId, Omit<AchievementThemePresentation, 'icon'>>> = {
+  FASTEST_CORRECT: { enabled: true, title: 'ĐÚNG NHANH NHẤT', subtitle: 'TOP 3 NHANH NHẤT CÂU NÀY', accentColor: '#FFCC58', maxRows: 3, displaySlot: 'question-reveal' },
+  STAGE_CHAMPION: { enabled: true, title: 'QUÁN QUÂN CHẶNG', subtitle: 'BXH CHẶNG HIỆN TẠI', accentColor: '#8CC8FB', maxRows: 3, displaySlot: 'stage-recap' },
+  LONGEST_STREAK: { enabled: true, title: 'CHUỖI ĐÚNG DÀI NHẤT', subtitle: 'TOP 3 CHUỖI ĐÚNG DÀI NHẤT – TOÀN TRẬN', accentColor: '#FFCC58', maxRows: 3, displaySlot: 'victory' },
+  MOST_CORRECT: { enabled: true, title: 'NHIỀU CÂU ĐÚNG NHẤT', subtitle: 'TOP 5 SỐ CÂU ĐÚNG – TOÀN TRẬN', accentColor: '#7049F5', maxRows: 5, displaySlot: 'lobby-rotation' },
+  COMEBACK: { enabled: true, title: 'LỘI NGƯỢC DÒNG', subtitle: 'TOP 3 TĂNG HẠNG – CHẶNG HIỆN TẠI', accentColor: '#E47E5F', maxRows: 3, displaySlot: 'stage-recap' },
+  PERFECT_STAGE: { enabled: true, title: 'CHẶNG HOÀN HẢO', subtitle: 'TỔNG SỐ NGƯỜI ĐẠT', accentColor: '#71E1BA', maxRows: 0, displaySlot: 'stage-recap' },
+  FULL_PARTICIPATION: { enabled: true, title: 'THAM GIA TRỌN VẸN', subtitle: 'TỔNG SỐ NGƯỜI ĐẠT', accentColor: '#8CC8FB', maxRows: 0, displaySlot: 'victory' },
+  FIRST_CORRECT: { enabled: true, title: 'ĐÃ CÓ CÂU TRẢ LỜI ĐÚNG', subtitle: 'TỔNG SỐ NGƯỜI ĐẠT', accentColor: '#71E1BA', maxRows: 0, displaySlot: 'victory' },
+  ROUND_CHAMPION: { enabled: true, title: 'QUÁN QUÂN TOÀN TRẬN', subtitle: 'TOP 3 TOÀN TRẬN', accentColor: '#FFCC58', maxRows: 3, displaySlot: 'victory' },
+};
+
+export type AchievementThemeOverride = Partial<Omit<AchievementThemePresentation, 'icon'>> & { icon?: string | null };
+export type AchievementThemeOverrides = Partial<Record<AchievementId, AchievementThemeOverride>>;
+
+const ThemeColorSchema = z.string().regex(/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu,
+  'Màu danh hiệu phải là mã hex (#RGB, #RGBA, #RRGGBB hoặc #RRGGBBAA).');
 export const THEME_TOKEN_KEY = /^[a-z][a-z0-9-]{0,63}$/u;
 export const THEME_GEOMETRY_TOKEN = /(^|-)(position|top|right|bottom|left|inset|offset|width|height|frame|x|y)(-|$)/iu;
 export const THEME_ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.webm', '.mp4', '.mp3', '.ogg', '.wav', '.woff2'] as const;
@@ -41,6 +93,46 @@ export const ThemeRelativePathSchema = z.string().min(1).max(240).superRefine((v
   if (extension && !(THEME_ALLOWED_EXTENSIONS as readonly string[]).includes(extension))
     ctx.addIssue({ code: 'custom', message: `Đuôi tệp ${extension} không được hỗ trợ.` });
 });
+
+const AchievementOverrideFieldsSchema = z.object({
+  enabled: z.boolean().optional(),
+  title: z.string().trim().min(1).max(100).optional(),
+  subtitle: z.string().trim().max(160).optional(),
+  icon: ThemeRelativePathSchema.nullable().optional(),
+  accentColor: ThemeColorSchema.optional(),
+  maxRows: z.number().int().min(0).max(5).optional(),
+  displaySlot: AchievementDisplaySlotSchema.optional(),
+}).strict();
+
+function achievementOverrideSchema(id: AchievementId) {
+  return AchievementOverrideFieldsSchema.superRefine((override, ctx) => {
+    const maxRows = ACHIEVEMENT_MAX_ROWS[id];
+    if (override.maxRows === undefined) return;
+    if (maxRows === 0 && override.maxRows !== 0)
+      ctx.addIssue({ code: 'custom', path: ['maxRows'], message: `${id} chỉ là danh hiệu đếm tổng, maxRows phải bằng 0.` });
+    else if (maxRows > 0 && (override.maxRows < 1 || override.maxRows > maxRows))
+      ctx.addIssue({ code: 'custom', path: ['maxRows'], message: `${id} chỉ cho phép từ 1 đến ${maxRows} dòng.` });
+  });
+}
+
+const AchievementOverridesByIdSchema = z.object({
+  FASTEST_CORRECT: achievementOverrideSchema('FASTEST_CORRECT').optional(),
+  STAGE_CHAMPION: achievementOverrideSchema('STAGE_CHAMPION').optional(),
+  LONGEST_STREAK: achievementOverrideSchema('LONGEST_STREAK').optional(),
+  MOST_CORRECT: achievementOverrideSchema('MOST_CORRECT').optional(),
+  COMEBACK: achievementOverrideSchema('COMEBACK').optional(),
+  PERFECT_STAGE: achievementOverrideSchema('PERFECT_STAGE').optional(),
+  FULL_PARTICIPATION: achievementOverrideSchema('FULL_PARTICIPATION').optional(),
+  FIRST_CORRECT: achievementOverrideSchema('FIRST_CORRECT').optional(),
+  ROUND_CHAMPION: achievementOverrideSchema('ROUND_CHAMPION').optional(),
+}).strict();
+
+export const ThemeAchievementsSchema = AchievementOverridesByIdSchema.extend({
+  /** Ghi đè theo mã sự kiện; event luôn ưu tiên hơn cấu hình theme cùng ID. */
+  eventOverrides: z.record(z.string().trim().min(1).max(120).regex(/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u,
+    'Mã sự kiện chỉ gồm chữ thường, số và dấu gạch ngang.'), AchievementOverridesByIdSchema).optional(),
+}).strict();
+export type ThemeAchievements = z.infer<typeof ThemeAchievementsSchema>;
 
 const ThemeFontSchema = z.object({
   family: z.string().trim().min(1).max(100).superRefine((value, ctx) => {
@@ -91,6 +183,7 @@ export const ThemeManifestSchema = z.object({
   tokenDescriptions: z.record(z.string(), z.string().trim().max(200)).optional(),
   fonts: z.array(ThemeFontSchema).max(32).default([]),
   assets: ThemeAssetsSchema.default({}),
+  achievements: ThemeAchievementsSchema.optional(),
 }).strict();
 
 export type ThemeManifest = z.infer<typeof ThemeManifestSchema>;
@@ -102,4 +195,6 @@ export type ResolvedTheme = {
   tokens: Record<string, string>;
   fonts: ThemeFont[];
   assets: Partial<Record<ThemeAssetSlot, string>>;
+  /** Luôn có ở theme resolved mới; optional để tương thích client/theme fixture cũ. */
+  achievements?: Record<AchievementId, AchievementThemePresentation>;
 };

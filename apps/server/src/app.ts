@@ -214,9 +214,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   let ackPendingSinceMs = scheduler.now();
   let observedStateVersion = 0;
   let lastSelfTest: SelfTestResult | null = null;
-  const withHudVersion = (snapshot: PublicSnapshot): PublicSnapshot => ({
-    ...snapshot, hudVersion: hudStore.get().version, themeVersion: themeStore.version,
-  });
+  const withHudVersion = (snapshot: PublicSnapshot): PublicSnapshot => {
+    const achievementSnapshots = snapshot.achievementSnapshots;
+    return {
+      ...snapshot,
+      ...(achievementSnapshots?.length ? {
+        achievementSnapshots: themeStore.decorateAchievementSnapshots(achievementSnapshots, rt?.session.config.eventId),
+      } : {}),
+      hudVersion: hudStore.get().version,
+      themeVersion: themeStore.version,
+    };
+  };
   const withHudVersionOnMessage = (message: WsMessage): WsMessage => {
     if (message.type === 'STATE_SNAPSHOT') return { ...message, payload: withHudVersion(message.payload) };
     if (message.type === 'ADMIN_SNAPSHOT')
