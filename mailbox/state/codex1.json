@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 285,
-  "heartbeat": "2026-11-18T12:43:21+07:00",
-  "state": "waiting",
+  "heartbeat": "2026-11-18T12:44:54+07:00",
+  "state": "working",
   "task": "C-0284",
-  "note": "C-0284 đã ACK và đánh dấu đã xử lý; origin/main chưa chứa 296b3e5 (C-0276), đang chờ thư báo gộp để bắt đầu.",
+  "note": "Tiếp tục triển khai evaluator và snapshot danh hiệu trong worktree sau khi C-0276 đã vào main.",
   "done": []
 }
