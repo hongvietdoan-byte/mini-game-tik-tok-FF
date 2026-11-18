@@ -9,15 +9,15 @@ const supportsFastestMocks = Boolean(makeMockSnapshot('fastest-a')) && Boolean(m
 const seatColumns = [160, 350, 540, 730, 920];
   const seatRows = [1839, 1734.33, 1629.67, 1525, 1420.33, 1315.67, 1211];
 const reference = {
-  top10: { x: 68, y: 348, width: 317, height: 462 },
-  board: { x: 425, y: 348, width: 570, height: 465 },
-  prompt: { x: 440, y: 505, width: 543, height: 155 },
-  options: { x: 447, y: 670, width: 531, height: 125 },
+  top10: { x: 70, y: 348, width: 317, height: 462 },
+  board: { x: 410, y: 348, width: 600, height: 465 },
+  prompt: { x: 428, y: 502, width: 564, height: 124 },
+  options: { x: 428, y: 642, width: 564, height: 156 },
   mc: { x: 0, y: 815, width: 1080, height: 252 },
   figure: { x: 130, y: 815, width: 205, height: 205 },
   plate: { x: 92, y: 1018, width: 250, height: 49 },
   bubble: { x: 410, y: 860, width: 575, height: 145 },
-  timer: { x: 830, y: 368, width: 128, height: 128 },
+  timer: { x: 870, y: 364, width: 124, height: 124 },
   logoFrame: { x: 400, y: 30, width: 255, height: 210 },
   ribbon: { x: 220, y: 250, width: 635, height: 72 },
   event: { x: 82, y: 133, width: 230, height: 92 },

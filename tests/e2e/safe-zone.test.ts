@@ -51,9 +51,9 @@ async function inspectSafeZone(page: Page): Promise<{ issues: SafeZoneIssue[]; r
     const isVictoryScene = stage.querySelector('.v3v') !== null;
     const isTop10Midround = stage.dataset.scene === 'INTERIM_TOP10';
     const compactQuestionHeader = stage.matches('.v3-stage--question-user') || stage.querySelector('.v3-stage--question-user') !== null;
-    // C-0067 theo C-0219: vùng câu hỏi cho phép khung Top 10 ở x=8.15% và thẻ vòng tới x=92.6%; logo đo bằng khung đang clip ảnh.
+    // C-0279 fixes the question board at x=410 with 600px width (right edge 93.52%); allow 0.1% for its rounded frame.
     const cropLeftLimit = compactQuestionHeader ? 8 : 8.9;
-    const cropRightLimit = 93;
+    const cropRightLimit = compactQuestionHeader ? 93.6 : 93;
 
     const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const visible = (element: Element) => {
