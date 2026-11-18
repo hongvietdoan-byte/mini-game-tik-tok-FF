@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 287,
-  "heartbeat": "2026-11-19T04:22:44+07:00",
+  "heartbeat": "2026-11-19T04:23:18+07:00",
   "state": "waiting",
   "task": "C-0306",
-  "note": "Chờ người dùng chọn bố cục A/B cho C-0306; sau đó khóa bbox, kiểm thử và tiếp tục C-0307.",
+  "note": "Đã tiếp nhận và đánh dấu C-0309; chờ người dùng chọn A/B để hoàn tất C-0306 rồi mới tiếp tục C-0307.",
   "done": [
     293,
     295,
