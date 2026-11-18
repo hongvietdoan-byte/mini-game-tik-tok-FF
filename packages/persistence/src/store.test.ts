@@ -73,6 +73,7 @@ describe('Store: khởi tạo và câu hỏi', () => {
     expect(first.raw.pragma('foreign_keys', { simple: true })).toBe(1);
     expect(first.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='live_sessions'").get()).toBeTruthy();
     expect(first.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ranking_snapshots'").get()).toBeTruthy();
+    expect(first.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='achievement_awards'").get()).toBeTruthy();
     const scoreIndexes = first.raw.prepare('PRAGMA index_list(score_events)').all() as { name: string }[];
     expect(scoreIndexes.map((index) => index.name)).toContain('score_events_ledger_uq');
     expect(scoreIndexes.map((index) => index.name)).toContain('score_events_round_question_idx');
@@ -112,6 +113,45 @@ describe('Store: khởi tạo và câu hỏi', () => {
     const latest = store.latestRankingSnapshot('ranking-round', 'QUESTION', base.scopeId, 'FASTEST_CORRECT')!;
     expect(latest.entries[0]?.safeDisplayName).toBe('Người chơi');
     expect(latest.revision).toBe(2);
+  });
+
+  it('achievement awards dùng khóa người chơi idempotent; thay kết quả tăng revision và xóa người không còn đạt', () => {
+    const path = tempDbPath();
+    const store = openStore(path);
+    addSession(store);
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    addRound(store, 'session-1', 'award-round', 1, 1);
+    const playerA = store.resolvePlayer('MOCK', 'award-a', 'Safe A', 300);
+    const playerB = store.resolvePlayer('MOCK', 'award-b', 'Safe B', 301);
+    const base = {
+      roundId: 'award-round', scope: 'ROUND' as const, scopeId: 'award-round',
+      achievementId: 'MOST_CORRECT', metricKey: 'correctCount',
+      entries: [{ playerId: playerA, safeDisplayName: 'Safe A', rank: 1, metricValue: 5, metricUnit: 'questions' as const, tied: false }],
+      totalQualified: 1, tiedOverflowCount: 0, finalizedAtMs: 500,
+    };
+    expect(store.saveAchievementSnapshot(base)).toMatchObject({ revision: 1 });
+    expect(store.currentAchievementAwards('award-round', 'ROUND', 'award-round', 'MOST_CORRECT')).toMatchObject([
+      { playerId: playerA, revision: 1, metricValue: 5, rank: 1 },
+    ]);
+    expect(store.saveAchievementSnapshot({ ...base, finalizedAtMs: 900 })).toMatchObject({ revision: 1, finalizedAtMs: 500 });
+    expect(store.currentAchievementAwards('award-round', 'ROUND', 'award-round', 'MOST_CORRECT')).toHaveLength(1);
+
+    const tie = { ...base, entries: [
+      { ...base.entries[0]!, tied: true },
+      { playerId: playerB, safeDisplayName: 'Safe B', rank: 1, metricValue: 5, metricUnit: 'questions' as const, tied: true },
+    ], totalQualified: 2 };
+    expect(store.saveAchievementSnapshot(tie)).toMatchObject({ revision: 2, totalQualified: 2 });
+    expect(store.currentAchievementAwards('award-round', 'ROUND', 'award-round', 'MOST_CORRECT')).toHaveLength(2);
+
+    const voided = { ...base, entries: [], totalQualified: 0, finalizedAtMs: 1_000 };
+    expect(store.saveAchievementSnapshot(voided, [])).toMatchObject({ revision: 3, totalQualified: 0 });
+    expect(store.currentAchievementAwards('award-round', 'ROUND', 'award-round', 'MOST_CORRECT')).toEqual([]);
+    store.close();
+    openStores.pop();
+    const recovered = openStore(path);
+    expect(recovered.latestRankingSnapshot('award-round', 'ROUND', 'award-round', 'MOST_CORRECT')).toMatchObject({ revision: 3 });
+    expect(recovered.saveAchievementSnapshot({ ...voided, finalizedAtMs: 1_100 }, [])).toMatchObject({ revision: 3 });
+    expect(recovered.currentAchievementAwards('award-round', 'ROUND', 'award-round', 'MOST_CORRECT')).toEqual([]);
   });
 
   it('reviewQuestion APPROVE/REJECT cập nhật trạng thái, lưu snapshot version và trả null nếu không tồn tại', () => {

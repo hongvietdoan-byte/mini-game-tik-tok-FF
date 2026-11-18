@@ -7,6 +7,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import {
   QuestionSchema,
   type LeaderboardEntry,
+  type RankedEntry,
   type OptionId,
   type Question,
   type QuestionSnapshot,
@@ -652,6 +653,18 @@ export class Store {
     ).all(roundId) as { questionInstanceId: string; playerId: string; displayName: string }[];
   }
 
+  /** Dữ liệu hợp lệ đã nhận, kèm tên gốc nội bộ để runtime lọc trước khi snapshot/public. */
+  achievementAnswersForRound(roundId: string) {
+    return this.raw.prepare(
+      `SELECT a.id AS answerId, a.question_instance_id AS questionInstanceId, a.player_id AS playerId,
+              a.option_id AS optionId, p.display_name AS displayName
+       FROM answers a JOIN players p ON p.id = a.player_id
+       WHERE a.round_id = ? ORDER BY a.id`,
+    ).all(roundId) as {
+      answerId: number; questionInstanceId: string; playerId: string; optionId: OptionId; displayName: string;
+    }[];
+  }
+
   scoringRowsForQuestion(roundId: string, questionInstanceId: string, correctOptionId: OptionId): QuestionScoringRow[] {
     return this.stmt.questionScoringRows.all(roundId, questionInstanceId, correctOptionId) as QuestionScoringRow[];
   }
@@ -793,12 +806,16 @@ export class Store {
       entries: input.entries,
       totalQualified: input.totalQualified,
       tiedOverflowCount: input.tiedOverflowCount,
+      ...(input.aggregateCount === undefined ? {} : { aggregateCount: input.aggregateCount }),
+      ...(input.awardPlayerIds === undefined ? {} : { awardPlayerIds: [...new Set(input.awardPlayerIds)].sort() }),
     };
     if (latest && JSON.stringify({
       metricKey: latest.metricKey,
       entries: latest.entries,
       totalQualified: latest.totalQualified,
       tiedOverflowCount: latest.tiedOverflowCount,
+      ...(latest.aggregateCount === undefined ? {} : { aggregateCount: latest.aggregateCount }),
+      ...(latest.awardPlayerIds === undefined ? {} : { awardPlayerIds: latest.awardPlayerIds }),
     }) === JSON.stringify(payload)) return latest;
 
     const revision = (latest?.revision ?? 0) + 1;
@@ -811,6 +828,50 @@ export class Store {
     const saved = this.latestRankingSnapshot(input.roundId, input.scope, input.scopeId, input.achievementId);
     if (!saved) throw new Error('Không đọc lại được ranking snapshot vừa ghi.');
     return saved;
+  }
+
+  /** Lưu danh hiệu cùng bảng idempotent theo round/achievement/scope/player trong một transaction. */
+  saveAchievementSnapshot(
+    input: Omit<RankingSnapshot, 'revision'>,
+    awardEntries: readonly RankedEntry[] = input.entries,
+  ): RankingSnapshot {
+    return this.transaction(() => {
+      const uniqueAwardEntries = [...new Map(awardEntries.map((entry) => [entry.playerId, entry])).values()];
+      const playerIds = uniqueAwardEntries.map((entry) => entry.playerId).sort();
+      const saved = this.saveRankingSnapshot({ ...input, awardPlayerIds: playerIds });
+      const upsert = this.raw.prepare(
+        `INSERT INTO achievement_awards
+           (round_id, scope, scope_id, achievement_id, player_id, revision, metric_key, metric_value, rank, tied, updated_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (round_id, achievement_id, scope_id, player_id) DO UPDATE SET
+           scope = excluded.scope, revision = excluded.revision, metric_key = excluded.metric_key,
+           metric_value = excluded.metric_value, rank = excluded.rank, tied = excluded.tied,
+           updated_at_ms = excluded.updated_at_ms`,
+      );
+      for (const entry of uniqueAwardEntries) {
+        upsert.run(input.roundId, input.scope, input.scopeId, input.achievementId, entry.playerId,
+          saved.revision, input.metricKey, entry.metricValue, entry.rank, entry.tied ? 1 : 0, input.finalizedAtMs);
+      }
+      this.raw.prepare(
+        `DELETE FROM achievement_awards
+         WHERE round_id = ? AND scope = ? AND scope_id = ? AND achievement_id = ? AND revision <> ?`,
+      ).run(input.roundId, input.scope, input.scopeId, input.achievementId, saved.revision);
+      return saved;
+    });
+  }
+
+  /** Projection hiện hành; ranking_snapshots vẫn giữ lịch sử revision để kiểm tra/recovery. */
+  currentAchievementAwards(roundId: string, scope: RankingScope, scopeId: string, achievementId: string) {
+    return this.raw.prepare(
+      `SELECT player_id AS playerId, revision, metric_key AS metricKey, metric_value AS metricValue,
+              rank, tied, updated_at_ms AS updatedAtMs
+       FROM achievement_awards
+       WHERE round_id = ? AND scope = ? AND scope_id = ? AND achievement_id = ?
+       ORDER BY rank, player_id COLLATE BINARY`,
+    ).all(roundId, scope, scopeId, achievementId) as {
+      playerId: string; revision: number; metricKey: string; metricValue: number;
+      rank: number; tied: number; updatedAtMs: number;
+    }[];
   }
 
   saveRoundPlayers(roundId: string, totals: Iterable<PlayerTotals>, now: number) {

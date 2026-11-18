@@ -951,6 +951,34 @@ export type RankingSnapshotEntries = {
   entries: RankedEntry[];
   totalQualified: number;
   tiedOverflowCount: number;
+  /** Chỉ có ở danh hiệu cộng đồng; entries vẫn rỗng, không tạo Top giả. */
+  aggregateCount?: number;
+  /** ID nhận thưởng nội bộ để đồng hạng qua ngưỡng cũng idempotent; không đưa vào PublicSnapshot. */
+  awardPlayerIds?: string[];
+};
+
+export type AchievementId =
+  | 'FASTEST_CORRECT'
+  | 'STAGE_CHAMPION'
+  | 'LONGEST_STREAK'
+  | 'MOST_CORRECT'
+  | 'COMEBACK'
+  | 'PERFECT_STAGE'
+  | 'FULL_PARTICIPATION'
+  | 'FIRST_CORRECT'
+  | 'ROUND_CHAMPION';
+
+/** Bản public đã opaque playerId và lọc tên; snapshot cũ không cần trường này. */
+export type PublicAchievementSnapshot = {
+  achievementId: AchievementId;
+  scope: 'STAGE' | 'ROUND';
+  scopeId: string;
+  metricKey: string;
+  entries: RankedEntry[];
+  totalQualified: number;
+  tiedOverflowCount: number;
+  aggregateCount?: number;
+  revision: number;
 };
 
 /** Snapshot bền vững; revision tăng khi nội dung bảng thay đổi sau void/regrade. */
@@ -1039,6 +1067,8 @@ export type PublicSnapshot = {
   questionTop3: QuestionTop3View | null;
   /** Tối đa ba người dẫn đầu chặng, chỉ hiện tại INTERIM_TOP10. */
   stageTop3: StageTop3View | null;
+  /** Kết quả danh hiệu đã chốt; optional để client phiên bản cũ giữ nguyên hành vi. */
+  achievementSnapshots?: PublicAchievementSnapshot[];
   /** Cue chỉ được gắn vào snapshot WS phát một lần; snapshot phục hồi luôn trả null. */
   mcVoiceCue?: McVoiceCue | null;
   /** Bubble chữ-only của operator; âm thanh dùng mcVoiceCue cùng mốc phát. */

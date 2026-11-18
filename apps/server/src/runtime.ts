@@ -27,6 +27,7 @@ import {
   type LeaderboardEntry,
   type OptionId,
   type PublicSnapshot,
+  type PublicAchievementSnapshot,
   type RankingSnapshot,
   type StageDefinition,
   type QuestionSnapshot,
@@ -59,6 +60,9 @@ import {
   sceneFor,
   selectRound,
   questionTop3 as buildQuestionTop3,
+  ACHIEVEMENT_REGISTRY,
+  evaluateRoundAchievements,
+  evaluateStageAchievements,
   stageDefinitions,
   stageScores,
   stageTop3 as buildStageTop3,
@@ -66,6 +70,8 @@ import {
   top1Streaks,
   transition,
   type EngineEvent,
+  type AchievementEvaluationInput,
+  type AchievementSnapshotResult,
   type EngineInput,
   type EngineState,
   type LedgerEntry,
@@ -95,6 +101,12 @@ const COUNTDOWN_SECONDS = [10, 5, 4, 3, 2, 1] as const;
 const MC_CHAT_QUEUE_LIMIT = 5;
 const MC_CHAT_GENERATION_TIMEOUT_MS = 10_000;
 const MC_CHAT_TEXT_DURATION_MS = 5_000;
+const STAGE_ACHIEVEMENT_IDS = ACHIEVEMENT_REGISTRY
+  .filter((definition) => definition.scope === 'STAGE' && definition.policy !== 'REUSE_PHASE1')
+  .map((definition) => definition.id);
+const ROUND_ACHIEVEMENT_IDS = ACHIEVEMENT_REGISTRY
+  .filter((definition) => definition.scope === 'ROUND' && definition.policy !== 'REUSE_PHASE1')
+  .map((definition) => definition.id);
 
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
@@ -589,6 +601,7 @@ export class SessionRuntime {
             participantCount: this.participants,
             now,
           });
+          this.persistRoundAchievements(e.roundId, now);
           break;
         case 'SESSION_STOPPED':
           this.store.closeSession(this.id, now);
@@ -2378,6 +2391,50 @@ export class SessionRuntime {
     });
   }
 
+  private achievementEvaluationInput(roundId: string, now: number): AchievementEvaluationInput {
+    return {
+      roundId,
+      questions: this.store.roundQuestions(roundId).map((question) => ({
+        questionInstanceId: question.id,
+        questionIndex: question.position + 1,
+        status: question.status,
+      })),
+      answers: this.store.achievementAnswersForRound(roundId).map((answer) => ({
+        questionInstanceId: answer.questionInstanceId,
+        playerId: answer.playerId,
+        optionId: answer.optionId,
+        safeDisplayName: this.safeDisplayNameFor(answer.playerId, answer.displayName, now),
+      })),
+      scoreEvents: this.store.ledgerRows(roundId),
+      leaderboardSnapshots: this.store.leaderboardHistory(roundId).map((snapshot) => ({
+        questionInstanceId: snapshot.questionInstanceId,
+        entries: snapshot.entries.map((entry) => ({ playerId: entry.playerId, rank: entry.rank })),
+      })),
+    };
+  }
+
+  private persistAchievementResults(roundId: string, results: readonly AchievementSnapshotResult[], now: number) {
+    for (const result of results) {
+      this.store.saveAchievementSnapshot({
+        roundId,
+        scope: result.scope,
+        scopeId: result.scopeId,
+        achievementId: result.achievementId,
+        metricKey: result.metricKey,
+        entries: result.entries,
+        totalQualified: result.totalQualified,
+        tiedOverflowCount: result.tiedOverflowCount,
+        ...(result.aggregateCount === undefined ? {} : { aggregateCount: result.aggregateCount }),
+        finalizedAtMs: now,
+      }, result.awardEntries);
+    }
+  }
+
+  private persistRoundAchievements(roundId: string, now: number) {
+    const input = this.achievementEvaluationInput(roundId, now);
+    this.persistAchievementResults(roundId, evaluateRoundAchievements(input), now);
+  }
+
   /** Chốt chặng tại checkpoint và cập nhật lại các chặng đã chốt nếu có câu bị void/regrade. */
   private persistFinalizedStageRankings(
     roundId: string,
@@ -2402,7 +2459,12 @@ export class SessionRuntime {
           targets.set(stage.stageId, stage);
       }
     }
-    for (const stage of targets.values()) this.persistStageRanking(roundId, stage, now);
+    if (targets.size === 0) return;
+    const input = this.achievementEvaluationInput(roundId, now);
+    for (const stage of targets.values()) {
+      this.persistStageRanking(roundId, stage, now);
+      this.persistAchievementResults(roundId, evaluateStageAchievements(input, stage), now);
+    }
   }
 
   private publicRankingEntries(snapshot: RankingSnapshot, now: number) {
@@ -2450,6 +2512,30 @@ export class SessionRuntime {
       tiedOverflowCount: snapshot.tiedOverflowCount,
       revision: snapshot.revision,
     };
+  }
+
+  private achievementSnapshotsForPublic(
+    roundId: string,
+    scope: 'STAGE' | 'ROUND',
+    scopeId: string,
+    achievementIds: readonly string[],
+    now: number,
+  ): PublicAchievementSnapshot[] {
+    return achievementIds.flatMap((achievementId) => {
+      const snapshot = this.store.latestRankingSnapshot(roundId, scope, scopeId, achievementId);
+      if (!snapshot) return [];
+      return [{
+        achievementId: snapshot.achievementId as PublicAchievementSnapshot['achievementId'],
+        scope: snapshot.scope as 'STAGE' | 'ROUND',
+        scopeId: snapshot.scopeId,
+        metricKey: snapshot.metricKey,
+        entries: this.publicRankingEntries(snapshot, now),
+        totalQualified: snapshot.totalQualified,
+        tiedOverflowCount: snapshot.tiedOverflowCount,
+        ...(snapshot.aggregateCount === undefined ? {} : { aggregateCount: snapshot.aggregateCount }),
+        revision: snapshot.revision,
+      }];
+    });
   }
 
   /** Đánh giá lại tên của người chơi trong vòng hiện tại sau khi admin đổi luật. */
@@ -2584,6 +2670,11 @@ export class SessionRuntime {
         .find((candidate) => candidate.lastQuestionIndex === e.round!.questionIndex + 1)
       : undefined;
     const stageTop3 = e.round && stage ? this.stageTop3ForPublic(e.round.roundId, stage, now) : null;
+    const achievementSnapshots = e.round && bigBoard && stage
+      ? this.achievementSnapshotsForPublic(e.round.roundId, 'STAGE', stage.stageId, STAGE_ACHIEVEMENT_IDS, now)
+      : e.round && (eff === 'ROUND_END' || eff === 'VICTORY')
+        ? this.achievementSnapshotsForPublic(e.round.roundId, 'ROUND', e.round.roundId, ROUND_ACHIEVEMENT_IDS, now)
+        : [];
     return {
       contractVersion: CONTRACT_VERSION,
       sessionId: this.id,
@@ -2614,6 +2705,7 @@ export class SessionRuntime {
       fastestCorrectAnswer,
       questionTop3,
       stageTop3,
+      ...(achievementSnapshots.length ? { achievementSnapshots } : {}),
       mcVoiceCue,
       mcChatBubble: this.mcChatBubble && this.mcChatBubble.endsAtServerMs > now ? this.mcChatBubble : null,
       ...(this.pendingRoundStart && e.state === 'LOBBY' ? { lobbyMessage: 'Chuẩn bị vào trận…' } : {}),
