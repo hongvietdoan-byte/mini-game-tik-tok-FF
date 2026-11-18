@@ -38,6 +38,15 @@ export type HudImageUploadResponse = {
 export type AdminThemeItem = { id: string; name: string; valid: boolean; error?: string; active: boolean };
 export type AdminThemesResponse = { themes: AdminThemeItem[]; activeThemeId: string | null; themeVersion: number };
 export type SetActiveThemeResponse = { theme: ResolvedTheme; activeThemeId: string | null; themeVersion: number };
+export type StreamDelayMode = 'AUTO' | 'MANUAL';
+export type StreamDelaySnapshot = {
+  mode: StreamDelayMode;
+  nextQuestionDelayMs: number;
+  activeQuestionDelayMs: number | null;
+  manualDelayMs: number;
+};
+export type UpdateStreamDelaySettings = { mode: StreamDelayMode; manualDelayMs?: number };
+export type UpdateStreamDelayResponse = { ok: true; streamDelay: StreamDelaySnapshot };
 
 export interface DashboardClient {
   getHealth(): Promise<HealthResponse>;
@@ -69,6 +78,7 @@ export interface DashboardClient {
   getActiveTheme(): Promise<ResolvedTheme>;
   reloadThemes(token: string): Promise<AdminThemesResponse>;
   setActiveTheme(token: string, themeId: string): Promise<SetActiveThemeResponse>;
+  updateStreamDelaySettings(token: string, sessionId: string, update: UpdateStreamDelaySettings): Promise<UpdateStreamDelayResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
 }
 
@@ -254,6 +264,12 @@ export const apiClient: DashboardClient = {
 
   setActiveTheme(token, themeId) {
     return jsonRequest('/api/admin/themes/active', token, { method: 'PUT', body: JSON.stringify({ themeId }) });
+  },
+
+  updateStreamDelaySettings(token, sessionId, update) {
+    return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/stream-delay`, token, {
+      method: 'PATCH', body: JSON.stringify(update),
+    });
   },
 
   subscribe(token, onSnapshot, onStatus) {

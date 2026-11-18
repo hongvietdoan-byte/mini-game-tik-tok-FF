@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, lstat, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { MAX_MC_READING_MS } from '@quiz/contracts';
+import { MAX_MC_VOICE_ASSET_MS } from '@quiz/contracts';
 import { McVoiceProviderError, type McVoiceAudio } from './types';
 import type { McVoiceAudioNormalizer } from './service';
 
@@ -50,7 +50,7 @@ export class FfmpegMcVoiceAudioNormalizer implements McVoiceAudioNormalizer {
       const durationMs = Math.round(Number(durationText.trim()) * 1_000);
       if (!Number.isSafeInteger(durationMs) || durationMs <= 0)
         throw new McVoiceProviderError('INVALID_RESPONSE', 'Không xác định được thời lượng audio đã chuẩn hoá.');
-      if (durationMs > MAX_MC_READING_MS)
+      if (durationMs > MAX_MC_VOICE_ASSET_MS)
         throw new McVoiceProviderError('TOO_LONG', 'Audio MC Voice vượt trần 20 giây.');
       return { bytes: await readFile(outputPath), durationMs, format: 'mp3' };
     } catch (error) {

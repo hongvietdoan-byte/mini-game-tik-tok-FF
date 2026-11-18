@@ -1,7 +1,7 @@
 import type { CachedMcVoiceAudio, McVoiceAudio, McVoiceCacheDescriptor, McVoiceProvider, McVoiceSynthesisRequest, McVoiceCredentialStore } from './types';
 import { McVoiceProviderError } from './types';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
-import { MAX_MC_READING_MS, MC_VOICE_POLICY_VERSION, McVoiceEventSchema, type McVoiceEvent } from '@quiz/contracts';
+import { MC_VOICE_POLICY_VERSION, McVoiceEventSchema, type McVoiceEvent } from '@quiz/contracts';
 import { applyMcPronunciationDictionary, type McPronunciationRule } from './pronunciation';
 
 export interface McVoiceAudioNormalizer {
@@ -59,7 +59,7 @@ export class McVoiceService {
     return { asset: await this.cache.put(assetId, normalized), cacheHit: false };
   }
 
-  /** Chuẩn bị prompt + bốn đáp án tuần tự; không lưu audio mới nếu tổng thời lượng vượt trần. */
+  /** Chuẩn bị prompt + bốn đáp án tuần tự; bundle dài vẫn được lưu để runtime kéo dài READING. */
   async prepareQuestionReading(lines: readonly McVoiceReadingLine[], signal?: AbortSignal): Promise<McVoiceReadingBundle> {
     if (lines.length !== 5 || new Set(lines.map((line) => line.lineId)).size !== 5)
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Gói đọc MC cần một prompt và bốn đáp án duy nhất.');
@@ -102,7 +102,6 @@ export class McVoiceService {
       prepared.push({ lineId: line.lineId, assetId, cached: null, audio });
     }
 
-    if (totalDurationMs > MAX_MC_READING_MS) return { ok: false, reason: 'TOO_LONG', totalDurationMs };
     const output: Array<{ lineId: string; asset: Omit<CachedMcVoiceAudio, 'bytes'>; cacheHit: boolean }> = [];
     for (const line of prepared) {
       const asset = line.cached ?? await this.cache.put(line.assetId, line.audio!);
@@ -115,7 +114,18 @@ export class McVoiceService {
   private async generate(request: McVoiceSynthesisRequest, signal?: AbortSignal, knownToken?: string): Promise<McVoiceAudio> {
     const token = knownToken ?? await this.credentials.get();
     if (!token) throw new McVoiceProviderError('AUTH', 'Chưa cấu hình thông tin xác thực MC Voice.');
-    const generated = await this.provider.synthesize(request, token, signal);
-    return this.normalizer.normalize(generated, signal);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const generated = await this.provider.synthesize(request, token, signal);
+        return await this.normalizer.normalize(generated, signal);
+      } catch (error) {
+        lastError = error;
+        const code = error instanceof McVoiceProviderError ? error.code : null;
+        if (signal?.aborted || attempt === 2 || code === 'AUTH' || code === 'NO_CREDIT' || code === 'INVALID_RESPONSE' || code === 'TOO_LONG')
+          throw error;
+      }
+    }
+    throw lastError;
   }
 }

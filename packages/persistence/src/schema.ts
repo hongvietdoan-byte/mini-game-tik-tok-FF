@@ -167,6 +167,8 @@ export const roundQuestions = sqliteTable(
     correctOptionId: text('correct_option_id').notNull(),
     status: text('status').notNull().default('PENDING'), // PENDING | OPEN | CLOSED | VOIDED
     openedAtMs: integer('opened_at_ms'),
+    /** Bù trễ đã chốt lúc mở câu; NULL đánh dấu dữ liệu trước chính sách này. */
+    streamDelayMs: integer('stream_delay_ms'),
     closedAtMs: integer('closed_at_ms'),
     voidedAtMs: integer('voided_at_ms'),
     voidedAfterReveal: integer('voided_after_reveal', { mode: 'boolean' }).notNull().default(false),

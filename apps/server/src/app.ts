@@ -25,6 +25,7 @@ import {
   questionLengthWarnings,
   QUESTION_DISPLAY_LIMITS,
   SimulatorRequestSchema,
+  UpdateStreamDelaySettingsSchema,
   type OverlayAudioState,
   type PublicSnapshot,
   type WsMessage,
@@ -960,6 +961,17 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
       return { ...snapshot, public: withHudVersion(snapshot.public) };
     }
     return withHudVersion(s.publicSnapshot());
+  });
+
+  app.patch<{ Params: { id: string } }>('/api/sessions/:id/stream-delay', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const s = sessionOr404(req.params.id, reply);
+    if (!s) return reply;
+    const parsed = UpdateStreamDelaySettingsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    if (!s.updateStreamDelaySettings(parsed.data))
+      return reply.code(409).send({ ok: false, code: 'SESSION_CLOSED', message: 'Phiên đã đóng.' });
+    return { ok: true, streamDelay: s.streamDelayAdminView() };
   });
 
   app.post<{ Params: { id: string } }>('/api/sessions/:id/commands', async (req, reply) => {

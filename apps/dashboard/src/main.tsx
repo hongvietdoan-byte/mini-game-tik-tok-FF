@@ -16,6 +16,8 @@ import { SetupWizard } from './SetupWizard';
 import { QuestionReviewPage } from './QuestionReviewPage';
 import { NameModerationPage } from './NameModerationPage';
 import { McChatPanel } from './McChatPanel';
+import { StreamDelayCard } from './StreamDelayCard';
+import type { StreamDelaySnapshot } from './api/client';
 import { createApiNameModerationDataSource, createApiNameModerationPolicyDataSource } from './nameModerationData';
 import { HudSettingsPage } from './HudSettingsPage';
 import { ThemePage } from './ThemePage';
@@ -48,6 +50,7 @@ const client: DashboardClient = isMock ? mockClient : apiClient;
 
 type RecoveryDecision = 'RESUME' | 'VOID' | 'STOP';
 type PendingDanger = { action: DashboardAction; decision?: RecoveryDecision };
+type AdminSnapshotWithStreamDelay = AdminSnapshot & { streamDelay?: StreamDelaySnapshot };
 
 function App() {
   const desktopBridge = window.stormArena;
@@ -583,6 +586,7 @@ function App() {
         <div className="session-meta"><span>ID <b>{sessionId}</b></span><span>Phiên bản <b>{snapshot.public.stateVersion}</b></span><span>Round <b>{snapshot.public.round?.roundNumber ?? '—'}</b></span><span>Điểm tối đa/vòng <b>{maxRoundScore(snapshot.config.questionsPerRound, snapshot.config.speedBonusMax, snapshot.config.scoringMode).toLocaleString('vi-VN')}</b></span></div>
       </section>
       {error && <div className="alert alert-error" role="alert">{error}<button type="button" onClick={() => setError('')} aria-label="Đóng">×</button></div>}
+      {snapshot.error?.code === 'MC_VOICE_QUESTION_SKIPPED' && <div className="alert alert-error" data-testid="mc-voice-question-warning" role="alert">{snapshot.error.message}</div>}
       {notice && <div className="alert alert-success" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Đóng">×</button></div>}
       {pendingEnvelope && <button className="retry-button" type="button" disabled={busy} onClick={() => void submitEnvelope(pendingEnvelope)}>Gửi lại lệnh cùng commandId</button>}
 
@@ -637,6 +641,16 @@ function App() {
                 <div><small>THỜI GIAN MẤT KẾT NỐI · VÒNG NÀY</small><b>{formatDuration(snapshot.live.downtimeMsThisRound)}</b></div>
               </>}
             </div>
+            {snapshot.config.mode === 'TIKTOK' && <StreamDelayCard
+              client={client}
+              token={token.trim()}
+              sessionId={sessionId}
+              streamDelay={(snapshot as AdminSnapshotWithStreamDelay).streamDelay}
+              disabled={busy || snapshot.sessionStatus !== 'OPEN'}
+              onSaved={(streamDelay) => setSnapshot((current) => current
+                ? { ...current, streamDelay } as AdminSnapshot
+                : current)}
+            />}
             {snapshot.config.mode === 'TIKTOK' && <div className={`tiktok-live-state ${snapshot.live.status === 'CONNECTED' ? 'is-live' : ''}`} role="status"><b>{snapshot.live.status === 'CONNECTED' ? 'Đang LIVE' : 'Chưa LIVE'}</b><span>{snapshot.live.status === 'CONNECTED' ? 'Đang nhận bình luận từ TikTok LIVE.' : snapshot.live.detail ?? 'Nguồn TikTok chưa kết nối. Bấm Kết nối để kiểm tra trạng thái LIVE.'}</span></div>}
             {retryWait && <div className="source-detail" role="status" data-testid="tiktok-retry-wait">{retryWait} · Không tự kết nối lại trong thời gian này.</div>}
             {snapshot.live.detail && snapshot.config.mode !== 'TIKTOK' && <div className="source-detail" role="status">{snapshot.live.detail}</div>}

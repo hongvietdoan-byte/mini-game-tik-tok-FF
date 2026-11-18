@@ -87,7 +87,7 @@ Mã HTTP của `/commands`:
 | `victoryMs` — vinh danh | 18 s | 10 s | Không |
 | `intermissionMs` — nghỉ giữa vòng | 25 s | 30 s | Có |
 
-Pha MC đọc câu dùng `MAX_MC_READING_MS = 20 s` nhưng overlay hiện trạng thái đọc, không hiện bộ đếm; giá trị này giữ nguyên. Session đã lưu với thời lượng tường minh tiếp tục giữ cấu hình cũ; giá trị mới chỉ điền cho cấu hình thiếu trường hoặc tạo session mới.
+Pha MC đọc câu dùng `MAX_MC_READING_MS = 120 s`; bundle dài hơn 20 s vẫn được phát với khoảng nghỉ rút gọn trước. Mỗi audio asset/cue riêng lẻ vẫn giới hạn 20 s. Overlay hiện trạng thái đọc, không hiện bộ đếm.
 8. **ACK của overlay (V3.1):** sau mỗi lần render xong một snapshot, overlay gửi `{ type: 'ACK', stateVersion, seq? }` (`ClientAckSchema`). Server dùng để chấm bước 9 "Overlay cập nhật đúng". Kênh admin gửi ACK bị bỏ qua.
 9. `AdminSnapshot.live` (`LiveSourceHealth`): `status`, `connectedSinceMs`, `lastCommentAtMs`, `commentsReceived`, `reconnects`, `detail`; `AdminSnapshot.overlay`: `{ clients, lastAckStateVersion, lastAckAtMs }` — số overlay đang kết nối, KHÔNG khẳng định OBS/LIVE Studio đang phát.
 10. Kênh overlay **không bao giờ** nhận `correctOptionId` trước khi `state = REVEAL` (server bảo đảm; overlay không được tự suy).
