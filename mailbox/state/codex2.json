@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 278,
-  "heartbeat": "2026-11-18T10:40:31+07:00",
-  "state": "waiting",
-  "task": "C-0271",
-  "note": "Inbox không đổi; C-0271 chờ phản hồi Y-0479 về nghiệm thu viewport Edge trên desktop",
+  "heartbeat": "2026-11-18T10:40:40+07:00",
+  "state": "working",
+  "task": "C-0279",
+  "note": "Đã áp dụng C-0281: lỗi lệch tâm do hoạt ảnh thở làm MC dịch so với bong bóng; đã cố định ảnh MC riêng ở cảnh Top 10 giữa vòng, kiểm thử đạt; đang cập nhật các kiểm tra E2E cũ theo bố cục được duyệt C-0279",
   "done": [
     281,
     282
