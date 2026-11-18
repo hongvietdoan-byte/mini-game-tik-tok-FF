@@ -2239,11 +2239,6 @@
 .v3-stage .v3-top10 li { height: 32px; }
 .v3-stage .v3-seat-name { border-radius: 999px; border-color: var(--theme-violet-soft, rgba(170, 180, 255, .75)); background: linear-gradient(180deg, var(--theme-deep, #2b2490), var(--theme-ink, #15125a)); color: var(--theme-text-primary, #fff); }
 
-/* C-0295: shorten upper-row sprites from their head anchor so the lower row's nameplate clears their feet. */
-.v3-seat[data-row-index]:not([data-row-index="0"]) .v3-chibi-img {
-    transform: translateX(-50%) scale(calc(var(--s) / 0.72)) scaleY(0.85);
-  transform-origin: 50% 0%;
-}
 
 /* Give intermission and connection-loss copy a dark, bordered reading surface. */
 .v3-stage .v3-intermission,

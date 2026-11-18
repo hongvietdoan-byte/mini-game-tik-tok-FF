@@ -27,28 +27,21 @@ test('C-0295 — 7 and 15 early arrivals fill the top audience rows in lobby and
         counts[row] = (counts[row] ?? 0) + 1;
         return counts;
       }, {});
-      const labels = names.map((element) => ({ row: element.dataset.rowIndex, rect: element.getBoundingClientRect().toJSON() }));
-      const characters = [...document.querySelectorAll<HTMLElement>('.v3-seat[data-row-index] .v3-chibi-img')]
-        .map((element) => ({ row: element.closest<HTMLElement>('.v3-seat')?.dataset.rowIndex, rect: element.getBoundingClientRect().toJSON() }));
-      const overlaps: Array<{ nameRow: string | undefined; characterRow: string | undefined; nameRect: unknown; characterRect: unknown }> = [];
-      for (const label of labels) for (const character of characters) {
-        if (label.row === character.row) continue;
-        const a = label.rect;
-        const b = character.rect;
-        if (a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y)
-          overlaps.push({
-            nameRow: label.row,
-            characterRow: character.row,
-            nameRect: { x: a.x, y: a.y, width: a.width, height: a.height },
-            characterRect: { x: b.x, y: b.y, width: b.width, height: b.height },
-          });
-      }
+      // Mỗi chibi phải ngồi trên đệm ghế của chính ô đó như mẫu 14/11: chân chạm/đè lên mép trên đệm,
+      // không lơ lửng phía trên (lỗi C-0305) và không tụt sâu xuống dưới đệm.
+      const seating = seats.flatMap((seat) => {
+        const back = seat.querySelector<HTMLElement>('.v3-seat-back')?.getBoundingClientRect();
+        const chibi = seat.querySelector<HTMLElement>('.v3-chibi-img')?.getBoundingClientRect();
+        if (!back || !chibi || chibi.width === 0) return [];
+        return [{ row: seat.dataset.rowIndex, overlap: Math.round(chibi.bottom - back.top), centerDx: Math.round(Math.abs((chibi.left + chibi.right) / 2 - (back.left + back.right) / 2)) }];
+      });
+      const misplaced = seating.filter((entry) => entry.overlap < 5 || entry.overlap > 40 || entry.centerDx > 6);
       return {
         occupied: seats.filter((element) => !element.classList.contains('is-empty')).length,
         names: names.length,
-        characters: characters.length,
+        characters: document.querySelectorAll('.v3-seat[data-row-index] .v3-chibi-img').length,
         countsByRow,
-        overlaps,
+        misplaced,
       };
     });
 
@@ -62,7 +55,7 @@ test('C-0295 — 7 and 15 early arrivals fill the top audience rows in lobby and
       path: join(reviewDirectory, `${scenario.mock}-1080x1920.png`),
       animations: 'disabled',
     });
-    expect(layout.overlaps).toEqual([]);
+    expect(layout.misplaced).toEqual([]);
   }
 });
 
