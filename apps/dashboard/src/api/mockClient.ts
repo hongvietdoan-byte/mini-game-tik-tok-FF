@@ -29,7 +29,7 @@ import {
   type SimulatorRequest,
   type SystemCheck,
 } from '@quiz/contracts';
-import { ApiError, type AdminThemeItem, type AdminThemesResponse, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SelfTestResponse, type SetActiveThemeResponse, type SocketStatus, type SourceControlAction, type SystemChecksResponse } from './client';
+import { ApiError, type AdminThemeItem, type AdminThemesResponse, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SelfTestResponse, type SetActiveThemeResponse, type SocketStatus, type SourceControlAction, type StreamDelayMode, type StreamDelaySnapshot, type SystemChecksResponse, type UpdateStreamDelaySettings } from './client';
 
 const mockThemeImage = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g"><stop stop-color="#161b4e"/><stop offset="1" stop-color="#7049f5"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><circle cx="500" cy="80" r="42" fill="#ffcc58"/></svg>')}`;
 const mockThemeDefinitions: Array<{ item: Omit<AdminThemeItem, 'active'>; tokens: Record<string, string>; assets: ResolvedTheme['assets'] }> = [
@@ -141,6 +141,9 @@ class MockDashboardClient implements DashboardClient {
   private commandResults = new Map<string, CommandResponse>();
   private activeThemeId: string | null = 'neon-arena';
   private themeVersion = 1;
+  private streamDelayMode: StreamDelayMode = 'AUTO';
+  private streamDelayManualMs = 2_000;
+  private activeQuestionDelayMs: number | null = null;
   private mcChatQueue: McChatQueueItem[] = [];
   private mcChatPresets: McChatPreset[] = [];
   private mcChatBubble: NonNullable<PublicSnapshot['mcChatBubble']> | null = null;
@@ -207,6 +210,9 @@ class MockDashboardClient implements DashboardClient {
       this.questionIndex = 0;
       this.voidedCurrent = false;
       this.roundNumber = 1;
+      this.streamDelayMode = 'AUTO';
+      this.streamDelayManualMs = 2_000;
+      this.activeQuestionDelayMs = null;
       this.autoStartWhenAudienceFull = false;
       this.resetLobby();
       this.connectedSinceMs = Date.now();
@@ -229,6 +235,20 @@ class MockDashboardClient implements DashboardClient {
   async getState(_token: string, sessionId: string) {
     this.assertSession(sessionId);
     return this.snapshot();
+  }
+
+  async updateStreamDelaySettings(_token: string, sessionId: string, update: UpdateStreamDelaySettings) {
+    this.assertSession(sessionId);
+    if (this.snapshot().sessionStatus !== 'OPEN') throw new ApiError('Phiên đã đóng.', 409, 'SESSION_CLOSED');
+    if (update.mode === 'MANUAL' && update.manualDelayMs === undefined)
+      throw new ApiError('Chế độ thủ công cần nhập mức bù trễ.', 400, 'VALIDATION_FAILED');
+    if (update.manualDelayMs !== undefined && (!Number.isInteger(update.manualDelayMs) || update.manualDelayMs < 0 || update.manualDelayMs > 6_000))
+      throw new ApiError('Mức bù trễ phải từ 0 đến 6 giây.', 400, 'VALIDATION_FAILED');
+    this.streamDelayMode = update.mode;
+    if (update.manualDelayMs !== undefined) this.streamDelayManualMs = update.manualDelayMs;
+    this.stateVersion += 1;
+    this.emit();
+    return { ok: true as const, streamDelay: this.streamDelayView() };
   }
 
   async sendCommand(_token: string, sessionId: string, envelope: CommandEnvelope): Promise<CommandResponse> {
@@ -535,12 +555,12 @@ class MockDashboardClient implements DashboardClient {
 
   private applyCommand(command: CommandBody) {
     switch (command.type) {
-      case 'OPEN_LOBBY': this.resetLobby(); this.state = 'LOBBY'; break;
-      case 'START_ROUND': this.clearLobbyCountdown(); this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
+      case 'OPEN_LOBBY': this.resetLobby(); this.activeQuestionDelayMs = null; this.state = 'LOBBY'; break;
+      case 'START_ROUND': this.clearLobbyCountdown(); this.questionIndex = 0; this.voidedCurrent = false; this.activeQuestionDelayMs = this.streamDelayView().nextQuestionDelayMs; this.state = 'PREPARE'; break;
       case 'PAUSE': this.suspendedFrom = this.state; this.state = 'PAUSED'; break;
       case 'RESUME': this.state = this.suspendedFrom ?? 'PREPARE'; this.suspendedFrom = null; break;
       case 'MANUAL_NEXT': this.advance(); break;
-      case 'NEXT_ROUND': this.roundNumber += 1; this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
+      case 'NEXT_ROUND': this.roundNumber += 1; this.questionIndex = 0; this.voidedCurrent = false; this.activeQuestionDelayMs = this.streamDelayView().nextQuestionDelayMs; this.state = 'PREPARE'; break;
       case 'SET_AUTO_MODE': this.autoMode = command.enabled; break;
       case 'SET_LOBBY_AUTO_START':
         this.autoStartWhenAudienceFull = command.enabled;
@@ -548,8 +568,8 @@ class MockDashboardClient implements DashboardClient {
         break;
       case 'SKIP_QUESTION': this.advanceQuestion(); break;
       case 'VOID_QUESTION': this.voidedCurrent = true; this.state = 'LEADERBOARD'; break;
-      case 'RESTART_ROUND': this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
-      case 'STOP': this.clearLobbyCountdown(); this.state = 'IDLE'; this.suspendedFrom = null; this.simulator = null; break;
+      case 'RESTART_ROUND': this.questionIndex = 0; this.voidedCurrent = false; this.activeQuestionDelayMs = this.streamDelayView().nextQuestionDelayMs; this.state = 'PREPARE'; break;
+      case 'STOP': this.clearLobbyCountdown(); this.state = 'IDLE'; this.suspendedFrom = null; this.simulator = null; this.activeQuestionDelayMs = null; break;
       case 'RESOLVE_RECOVERY': this.applyRecovery(command.decision); break;
     }
   }
@@ -632,7 +652,7 @@ class MockDashboardClient implements DashboardClient {
   private applyRecovery(decision: 'RESUME' | 'VOID' | 'STOP') {
     if (decision === 'RESUME') this.state = this.suspendedFrom ?? 'PREPARE';
     else if (decision === 'VOID') { this.voidedCurrent = true; this.state = 'LEADERBOARD'; }
-    else this.state = 'IDLE';
+    else { this.state = 'IDLE'; this.activeQuestionDelayMs = null; }
     this.suspendedFrom = null;
   }
 
@@ -644,11 +664,13 @@ class MockDashboardClient implements DashboardClient {
 
   private advanceQuestion() {
     if (this.questionIndex + 1 >= this.config.questionsPerRound) {
+      this.activeQuestionDelayMs = null;
       this.state = 'ROUND_END';
       return;
     }
     this.questionIndex += 1;
     this.voidedCurrent = false;
+    this.activeQuestionDelayMs = this.streamDelayView().nextQuestionDelayMs;
     this.answerCount = 0;
     this.optionCounts = { A: 0, B: 0, C: 0, D: 0 };
     this.state = 'PREPARE';
@@ -759,6 +781,16 @@ class MockDashboardClient implements DashboardClient {
       pool: { eligible: 36, unusedInSession: 36, requiredNextRound: this.config.questionsPerRound, lowPoolWarning: false },
       simulator: this.simulator,
       error: null,
+      streamDelay: this.streamDelayView(),
+    } as AdminSnapshot;
+  }
+
+  private streamDelayView(): StreamDelaySnapshot {
+    return {
+      mode: this.streamDelayMode,
+      nextQuestionDelayMs: this.streamDelayMode === 'MANUAL' ? this.streamDelayManualMs : 2_000,
+      activeQuestionDelayMs: this.activeQuestionDelayMs,
+      manualDelayMs: this.streamDelayManualMs,
     };
   }
 
