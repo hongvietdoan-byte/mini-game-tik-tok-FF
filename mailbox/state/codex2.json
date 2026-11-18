@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 287,
-  "heartbeat": "2026-11-19T02:58:34+07:00",
+  "heartbeat": "2026-11-19T03:18:06+07:00",
   "state": "working",
   "task": "C-0306",
-  "note": "Đã ack; hủy thay đổi C-0305 theo thư mới, cập nhật nhánh lên main rồi sửa overflow và bong bóng MC",
+  "note": "Đã sửa ellipsis bằng cắt theo bề rộng + giới hạn cảnh báo ở preview; đang chạy Vitest và rà hai phương án vị trí bong bóng",
   "done": [
     293,
     295,
