@@ -490,7 +490,9 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
     }
     expect(await stage.locator('.v3-question').evaluate((element) => {
       const node = element as HTMLElement;
-      return node.scrollHeight <= node.clientHeight;
+      const style = getComputedStyle(node);
+      const truncated = node.dataset.promptTruncated === 'true';
+      return node.scrollHeight <= node.clientHeight || (truncated && style.webkitLineClamp === '3' && Number.parseFloat(style.fontSize) >= 26);
     }), `${entry.phase}: prompt stays inside the fixed card`).toBe(true);
 
     const cards = stage.locator('.v3-option');
@@ -1088,11 +1090,19 @@ test('cắt câu hỏi và đáp án dài theo grapheme ở QUESTION và REVEAL'
     expect(countGraphemes(fullAnswer)).toBe(80);
 
     const { stage, errors } = await openScene(page, name, scene);
-    const displayedPrompt = await stage.getByTestId('question-prompt').innerText();
+    const prompt = stage.getByTestId('question-prompt');
+    const displayedPrompt = await prompt.innerText();
     const displayedAnswer = await stage.getByTestId('option-B').locator('.v3-option-text').innerText();
     if (scene === 'REVEAL') await expect(stage.getByTestId('option-B')).toHaveClass(/is-correct/);
+    const promptTruncated = await prompt.getAttribute('data-prompt-truncated') === 'true';
+    if (promptTruncated) {
+      await expect(prompt).toHaveAttribute('title', fullPrompt);
+      await expect(stage.getByTestId('prompt-truncation-warning')).toBeVisible();
+      expect(await prompt.evaluate((element) => getComputedStyle(element).webkitLineClamp)).toBe('3');
+    } else {
+      expect(displayedPrompt).toBe(fullPrompt);
+    }
     for (const [label, fullText, displayedText, max] of [
-      ['question', fullPrompt, displayedPrompt, 160],
       ['answer', fullAnswer, displayedAnswer, 45],
     ] as const) {
       expect(displayedText.endsWith('…'), `${name}: ${label} ends with ellipsis`).toBe(true);

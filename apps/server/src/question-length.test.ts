@@ -132,7 +132,7 @@ describe('Question length warnings API', () => {
     const lengthCheck = response.json().checks.find((check: { id: string }) => check.id === 'questionLength');
     expect(lengthCheck).toMatchObject({
       status: 'PASS',
-      reason: 'Đã loại 2 câu dài khỏi lượt chọn.',
+      reason: 'Đã loại 2 câu dài khỏi lượt chọn. Mã cần rút gọn: preflight-long-option, preflight-long-prompt.',
     });
     expect(questionsCheck.reason).toContain('10 câu chưa dùng / cần 10');
   });
@@ -163,7 +163,7 @@ describe('Question length warnings API', () => {
     expect(questionsCheck.reason).toContain('8 câu hợp lệ (đã loại 2 câu dài khỏi lượt chọn)');
     expect(questionsCheck.reason).toContain('8 câu chưa dùng / cần 10');
     expect(response.json().checks.find((check: { id: string }) => check.id === 'questionLength')).toMatchObject({
-      status: 'PASS', reason: 'Đã loại 2 câu dài khỏi lượt chọn.',
+      status: 'PASS', reason: 'Đã loại 2 câu dài khỏi lượt chọn. Mã cần rút gọn: shortage-long-option, shortage-long-prompt.',
     });
   });
 
@@ -175,7 +175,7 @@ describe('Question length warnings API', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().checks.find((check: { id: string }) => check.id === 'questionLength')).toMatchObject({
       status: 'PASS',
-      reason: expect.stringMatching(/^Đã loại \d+ câu dài khỏi lượt chọn\.$/),
+      reason: expect.stringMatching(/^Đã loại \d+ câu dài khỏi lượt chọn\. Mã cần rút gọn: /),
     });
     expect(response.json().canStartTikTok).toBe(true);
   });
