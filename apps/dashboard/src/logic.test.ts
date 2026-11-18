@@ -25,6 +25,7 @@ function snapshot(state: AdminSnapshot['public']['state'] = 'LOBBY'): AdminSnaps
     flaggedPlayers: [],
     sessionStatus: 'OPEN',
     autoMode: false,
+    autoStartWhenAudienceFull: false,
     recoveryPending: false,
     suspendedFrom: null,
     config: { questionsPerRound: 20 } as AdminSnapshot['config'],

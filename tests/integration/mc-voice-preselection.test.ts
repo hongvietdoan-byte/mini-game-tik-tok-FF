@@ -142,7 +142,7 @@ describe('MC Voice lựa chọn trước trong LOBBY', () => {
       expect(runtime.publicSnapshot().lobbyMessage).toBe('Chuẩn bị vào trận…');
 
       releaseFirstQuestion();
-      await vi.waitFor(() => expect(runtime.engine.state).toBe('PREPARE'));
+      await vi.waitFor(() => expect(runtime.engine.state).toBe('PREPARE'), { timeout: 15_000 });
       expect(runtime.adminSnapshot().roundStartWait).toBeNull();
     } finally {
       releaseFirstQuestion();

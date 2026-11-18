@@ -516,6 +516,8 @@ export const SessionConfigSchema = z
     /** Ngưỡng cảnh báo comment đáp án bị từ chối trong cửa sổ trượt; chỉ cảnh báo, không xử phạt. */
     spamWarningThreshold: z.number().int().min(1).max(10_000).default(5),
     spamWarningWindowMs: z.number().int().min(1_000).max(600_000).default(30_000),
+    /** Cụm comment để giành ghế trong LOBBY; chỉ dùng để hiển thị, không tạo đáp án. */
+    lobbySeatKeyword: z.string().trim().min(1).max(80).default('free fire'),
     /** @username tài khoản TikTok đang phát LIVE — bắt buộc khi mode = TIKTOK. */
     /** Bộ mã nhân vật chibi để gán cho khán giả (Theme Pack sẽ cung cấp; mặc định chibi-01..12). */
     characterPool: z.array(z.string().min(1).max(64)).min(1).max(200).optional(),
@@ -550,12 +552,12 @@ type SessionConfigOutput = z.infer<typeof SessionConfigSchema>;
 export type SessionConfig =
   Omit<
     SessionConfigOutput,
-    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs'
+    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword'
   > &
   Partial<
     Pick<
       SessionConfigOutput,
-      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs'
+      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword'
     >
   >;
 
@@ -617,6 +619,7 @@ export const CommandBodySchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('MANUAL_NEXT'), reason: optReason }),
   z.object({ type: z.literal('NEXT_ROUND'), reason: optReason }),
   z.object({ type: z.literal('SET_AUTO_MODE'), enabled: z.boolean(), reason: optReason }),
+  z.object({ type: z.literal('SET_LOBBY_AUTO_START'), enabled: z.boolean(), reason: optReason }),
   // --- Hành động nguy hiểm: bắt buộc lý do ---
   z.object({ type: z.literal('SKIP_QUESTION'), reason }),
   z.object({ type: z.literal('VOID_QUESTION'), reason }),
@@ -1045,6 +1048,8 @@ export type PublicSnapshot = {
   mcChatBubble?: { chatId: string; text: string; startsAtServerMs: number; endsAtServerMs: number } | null;
   /** Thông báo sảnh khi runtime đang chờ chuẩn bị audio câu đầu tiên. */
   lobbyMessage?: string;
+  /** Đếm ngược tự bắt đầu LOBBY; null khi chưa đủ điều kiện hoặc đã huỷ. */
+  lobbyCountdown?: { durationMs: number; remainingMs: number } | null;
   /** Lịch countdown bền theo câu; snapshot reconnect chỉ tự phát các mốc còn ở tương lai. */
   mcVoiceCountdownSchedule?: McVoiceCountdownSchedule | null;
   reveal: RevealView | null;
@@ -1075,6 +1080,8 @@ export type AdminSnapshot = {
   }[];
   sessionStatus: 'OPEN' | 'CLOSED';
   autoMode: boolean;
+  /** Operator bật tự bắt đầu khi đủ ghế; mặc định tắt độc lập với autoMode cũ. */
+  autoStartWhenAudienceFull: boolean;
   recoveryPending: boolean;
   suspendedFrom: GameState | null;
   config: SessionConfig;

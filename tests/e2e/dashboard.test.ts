@@ -348,6 +348,42 @@ test('MC chat hoạt động trong MOCK và câu mẫu gửi lại được', as
   await expect(page.getByTestId('mc-chat-mock-note')).toContainText('không gọi dịch vụ sinh giọng');
 });
 
+test('C-0283: MOCK bình luận giành ghế, huỷ đếm ngược rồi tự vào vòng sau 10 giây', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.clock.install({ time: new Date('2026-11-18T10:00:00.000Z') });
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  await page.getByRole('button', { name: 'Mở sảnh' }).click();
+
+  const autoStart = page.getByRole('checkbox', { name: 'Tự bắt đầu khi đủ ghế' });
+  await expect(autoStart).not.toBeChecked();
+  await expect(page.getByTestId('lobby-seat-status')).toHaveText('Đã ngồi 0/35');
+  const commentForm = page.locator('.comment-form');
+  for (let index = 1; index <= 35; index += 1) {
+    await commentForm.locator('input[name="userId"]').fill(`c0283-viewer-${index}`);
+    await commentForm.locator('input[name="displayName"]').fill(`Người xem ${index}`);
+    await commentForm.locator('input[name="text"]').fill('FF FREE FIRE!!!');
+    await commentForm.getByRole('button', { name: 'Gửi bình luận' }).click();
+    await expect(page.getByTestId('lobby-seat-status')).toHaveText(index === 35 ? 'Đã đủ ghế' : `Đã ngồi ${index}/35`);
+  }
+  await expect(page.getByTestId('lobby-auto-start-countdown')).toHaveCount(0);
+
+  await autoStart.check();
+  const countdown = page.getByTestId('lobby-auto-start-countdown');
+  await expect(countdown).toContainText('Vào trận sau 10…');
+  await autoStart.uncheck();
+  await expect(autoStart).not.toBeChecked();
+  await expect(countdown).toHaveCount(0);
+  await page.clock.fastForward(10_000);
+  await expect(page.getByTestId('lobby-seat-status')).toHaveText('Đã đủ ghế');
+
+  await autoStart.check();
+  await expect(countdown).toContainText('Vào trận sau 10…');
+  await page.clock.fastForward(10_000);
+  await expect(page.getByTestId('lobby-auto-start-control')).toHaveCount(0);
+  await expect(page.getByTestId('mc-bubble')).toContainText('Sẵn sàng nhé!');
+});
+
 test('C-0270: tự gửi lại PAUSE một lần với stateVersion mới và khoá nút khi đang chờ', async ({ page }) => {
   test.setTimeout(30_000);
   const previousSessionId = await mockClient.currentSession();

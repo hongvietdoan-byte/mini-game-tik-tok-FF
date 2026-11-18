@@ -199,6 +199,8 @@ export function commandForAction(
       return { type: action.type, reason: reason ?? '' } as CommandBody;
     case 'SET_AUTO_MODE':
       return { type: action.type, enabled: enabled ?? !snapshot.autoMode };
+    case 'SET_LOBBY_AUTO_START':
+      return { type: action.type, enabled: enabled ?? !snapshot.autoStartWhenAudienceFull };
     case 'RESOLVE_RECOVERY':
       return { type: action.type, decision: 'STOP', reason: reason ?? '' };
     case 'OPEN_LOBBY':

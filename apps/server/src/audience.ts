@@ -25,6 +25,7 @@ export class AudienceManager {
   private chars = new Map<string, string>();
   private names = new Map<string, string>();
   private joined = 0;
+  private lobbyReservation = false;
   /** Người đã vào vòng (ngồi hoặc chờ) — tránh dò tuyến tính hàng chờ ở mỗi đáp án. */
   private known = new Set<string>();
   private dirty = false;
@@ -40,8 +41,41 @@ export class AudienceManager {
     return this.state !== null;
   }
 
+  get occupiedSeats() {
+    return this.state ? Object.values(this.state.seats).filter((occupant) => occupant !== null).length : 0;
+  }
+
+  /** Temporary seats are kept in memory until the preselected round actually starts. */
+  openLobby() {
+    this.roundId = null;
+    this.state = createAudienceState(this.slots);
+    this.chars.clear();
+    this.names.clear();
+    this.known.clear();
+    this.joined = 0;
+    this.answersCache = null;
+    this.dirty = false;
+    this.lobbyReservation = true;
+  }
+
+  onLobbyKeyword(playerId: string, displayName: string, now: number): boolean {
+    if (!this.state || !this.lobbyReservation) return false;
+    return this.join(playerId, displayName, now, false);
+  }
+
   /** Vòng mới: 35 ghế trống. Gọi TRONG transaction của ROUND_STARTED. */
   startRound(roundId: string, now: number) {
+    if (this.state && this.lobbyReservation) {
+      this.roundId = roundId;
+      this.lobbyReservation = false;
+      for (const playerId of this.known) {
+        const proposed = assignCharacter(playerId, roundId, this.pool, this.seed);
+        this.chars.set(playerId, this.store.assignCharacter(roundId, playerId, proposed, now));
+      }
+      this.store.saveAudienceState(roundId, 0, this.state, now);
+      this.dirty = false;
+      return;
+    }
     this.roundId = roundId;
     this.state = createAudienceState(this.slots);
     this.chars.clear();
@@ -51,10 +85,12 @@ export class AudienceManager {
     this.answersCache = null;
     this.store.saveAudienceState(roundId, 0, this.state, now);
     this.dirty = false;
+    this.lobbyReservation = false;
   }
 
   /** Khôi phục sau khởi động lại / reload: ghế và nhân vật lấy đúng từ DB. */
   load(roundId: string) {
+    this.lobbyReservation = false;
     this.roundId = roundId;
     this.state = this.store.loadAudienceState<AudienceState>(roundId) ?? createAudienceState(this.slots);
     this.chars = this.store.characterAssignments(roundId);
@@ -92,6 +128,7 @@ export class AudienceManager {
   endRound() {
     this.state = null;
     this.roundId = null;
+    this.lobbyReservation = false;
   }
 
   /**
@@ -100,32 +137,40 @@ export class AudienceManager {
    */
   onAccepted(playerId: string, displayName: string, now: number): boolean {
     if (!this.state || !this.roundId) return false;
+    return this.join(playerId, displayName, now, true);
+  }
+
+  private join(playerId: string, displayName: string, now: number, persistCharacter: boolean): boolean {
+    const state = this.state;
+    if (!state) return false;
     if (this.known.has(playerId)) {
       // Đường nóng: chỉ cập nhật mốc hoạt động (trạng thái do manager sở hữu riêng, không chia sẻ).
-      this.state.lastActiveAt[playerId] = now;
+      state.lastActiveAt[playerId] = now;
       if (this.names.has(playerId)) this.names.set(playerId, displayName);
       return false;
     }
-    const hasVacantSeat = Object.values(this.state.seats).some((occupant) => occupant === null);
-    let layoutChanged = false;
+    const hasVacantSeat = Object.values(state.seats).some((occupant) => occupant === null);
     if (hasVacantSeat) {
-      const t = onPlayerJoined(this.state, playerId, now);
+      const t = onPlayerJoined(state, playerId, now);
       this.state = t.state;
-      layoutChanged = t.events.length > 0;
     } else {
       // The audience-engine reducer copies the full serializable state for pure callers.
       // Once every seat is occupied, the server-owned queue can append in place: this
       // state is private to AudienceManager and is persisted later by flush().
-      this.state.queue.push(playerId);
-      this.state.lastActiveAt[playerId] = now;
+      state.queue.push(playerId);
+      state.lastActiveAt[playerId] = now;
     }
     this.known.add(playerId);
     this.joined += 1;
     this.names.set(playerId, displayName);
-    const proposed = assignCharacter(playerId, this.roundId, this.pool, this.seed);
-    this.chars.set(playerId, this.store.assignCharacter(this.roundId, playerId, proposed, now));
+    if (persistCharacter && this.roundId) {
+      const proposed = assignCharacter(playerId, this.roundId, this.pool, this.seed);
+      this.chars.set(playerId, this.store.assignCharacter(this.roundId, playerId, proposed, now));
+    }
     this.dirty = true;
-    return layoutChanged;
+    // LOBBY also displays the waiting count, so every new participant changes
+    // the public audience view even when all 35 seats are already occupied.
+    return true;
   }
 
   /** Xoay ghế giữa hai câu: ghim Top N đang ngồi, thay tối đa 5 ghế. @returns true nếu có ghế đổi người. */

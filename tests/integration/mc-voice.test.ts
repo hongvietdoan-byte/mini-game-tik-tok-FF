@@ -162,7 +162,7 @@ describe('MC Voice server API', () => {
     for (let spent = 0; runtime.engine.state !== 'READING' && spent < 5_000; spent += 50) h.scheduler.advance(50);
     expect(runtime.engine.state).toBe('READING');
     const roundQuestionCount = h.store.roundQuestions(runtime.engine.round!.roundId).length;
-    const expectedSyntheses = 11 + roundQuestionCount * 6;
+    const expectedSyntheses = 17 + roundQuestionCount * 6;
     const questionReadingPromises = () => prepareQuestionReading.mock.results
       .filter((result) => result.type === 'return').map((result) => result.value as Promise<unknown>);
     const answerRevealCalls = () => getOrCreate.mock.calls
@@ -183,7 +183,7 @@ describe('MC Voice server API', () => {
     expect(runtime.engine.timer?.durationMs).toBeGreaterThanOrEqual(6_000);
     expect(runtime.engine.timer?.durationMs).toBeLessThanOrEqual(20_000);
     // Lời dẫn chung xếp sau reveal trong hàng đợi (C-0227) nên chờ tới khi đủ lượt thay vì đọc ngay.
-    await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalledTimes(expectedSyntheses), { timeout: 5_000 }); // 11 câu chung/đếm ngược/nhắc luật + 5 dòng READING + 1 lời công bố mỗi câu.
+    await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalledTimes(expectedSyntheses), { timeout: 5_000 }); // 11 câu chung, 6 câu lobby mới + 5 dòng READING + 1 lời công bố mỗi câu.
 
     h.scheduler.advance(1_500);
     const cueMessage = publicMessages.find((message) => message.type === 'STATE_SNAPSHOT' && message.payload.mcVoiceCue &&

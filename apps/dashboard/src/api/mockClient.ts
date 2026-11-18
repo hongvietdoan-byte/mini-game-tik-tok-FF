@@ -119,6 +119,11 @@ class MockDashboardClient implements DashboardClient {
   private voidedCurrent = false;
   private roundNumber = 1;
   private autoMode = false;
+  private autoStartWhenAudienceFull = false;
+  private lobbyDisplayNames = new Map<string, string>();
+  private lobbyCountdownEndsAtMs: number | null = null;
+  private lobbyCountdownTimeoutId: number | null = null;
+  private lobbyCountdownIntervalId: number | null = null;
   private simulator: { running: boolean; players: number } | null = null;
   private connection: AdminSnapshot['public']['connection'] = 'CONNECTED';
   private connectedSinceMs: number | null = Date.now();
@@ -202,6 +207,8 @@ class MockDashboardClient implements DashboardClient {
       this.questionIndex = 0;
       this.voidedCurrent = false;
       this.roundNumber = 1;
+      this.autoStartWhenAudienceFull = false;
+      this.resetLobby();
       this.connectedSinceMs = Date.now();
       this.lastCommentAtMs = null;
       this.commentsReceived = 0;
@@ -243,6 +250,7 @@ class MockDashboardClient implements DashboardClient {
 
     this.applyCommand(envelope.command);
     this.stateVersion += 1;
+    if (envelope.command.type === 'SET_LOBBY_AUTO_START' && envelope.command.enabled) this.maybeStartLobbyCountdown();
     const result: CommandResult = { ok: true, stateVersion: this.stateVersion, state: this.state, duplicate: false };
     const response = { status: 200, result };
     this.commandResults.set(envelope.commandId, response);
@@ -451,7 +459,12 @@ class MockDashboardClient implements DashboardClient {
       this.commentsReceived += 1;
       this.lastCommentAtMs = Date.now();
     }
-    if (this.connection === 'CONNECTED' && this.state === 'ACCEPTING' && comment.text.trim().toUpperCase() in this.optionCounts) {
+    if (this.connection === 'CONNECTED' && this.state === 'LOBBY' && this.matchesLobbyKeyword(comment.text)) {
+      if (!this.lobbyDisplayNames.has(comment.userId)) {
+        this.lobbyDisplayNames.set(comment.userId, `Khán giả ${this.lobbyDisplayNames.size + 1}`);
+      }
+      this.maybeStartLobbyCountdown();
+    } else if (this.connection === 'CONNECTED' && this.state === 'ACCEPTING' && comment.text.trim().toUpperCase() in this.optionCounts) {
       const answer = comment.text.trim().toUpperCase() as keyof typeof this.optionCounts;
       this.optionCounts[answer] += 1;
       this.answerCount += 1;
@@ -522,19 +535,98 @@ class MockDashboardClient implements DashboardClient {
 
   private applyCommand(command: CommandBody) {
     switch (command.type) {
-      case 'OPEN_LOBBY': this.state = 'LOBBY'; break;
-      case 'START_ROUND': this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
+      case 'OPEN_LOBBY': this.resetLobby(); this.state = 'LOBBY'; break;
+      case 'START_ROUND': this.clearLobbyCountdown(); this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
       case 'PAUSE': this.suspendedFrom = this.state; this.state = 'PAUSED'; break;
       case 'RESUME': this.state = this.suspendedFrom ?? 'PREPARE'; this.suspendedFrom = null; break;
       case 'MANUAL_NEXT': this.advance(); break;
       case 'NEXT_ROUND': this.roundNumber += 1; this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
       case 'SET_AUTO_MODE': this.autoMode = command.enabled; break;
+      case 'SET_LOBBY_AUTO_START':
+        this.autoStartWhenAudienceFull = command.enabled;
+        if (!command.enabled) this.clearLobbyCountdown();
+        break;
       case 'SKIP_QUESTION': this.advanceQuestion(); break;
       case 'VOID_QUESTION': this.voidedCurrent = true; this.state = 'LEADERBOARD'; break;
       case 'RESTART_ROUND': this.questionIndex = 0; this.voidedCurrent = false; this.state = 'PREPARE'; break;
-      case 'STOP': this.state = 'IDLE'; this.suspendedFrom = null; this.simulator = null; break;
+      case 'STOP': this.clearLobbyCountdown(); this.state = 'IDLE'; this.suspendedFrom = null; this.simulator = null; break;
       case 'RESOLVE_RECOVERY': this.applyRecovery(command.decision); break;
     }
+  }
+
+  private lobbyAudience(): NonNullable<PublicSnapshot['audience']> {
+    const slots = Array.from({ length: 35 }, (_, index) => {
+      const rowIndex = Math.floor(index / 5);
+      const seatIndex = index % 5;
+      return {
+        slotId: `row-${rowIndex}-seat-${seatIndex}`,
+        rowIndex,
+        seatIndex,
+        x: 160 + seatIndex * 190,
+        y: 1_825 - rowIndex * (695 / 6),
+        scale: 1 - rowIndex * 0.04,
+        depth: 7 - rowIndex,
+      };
+    });
+    const ids = [...this.lobbyDisplayNames.keys()];
+    const centerOutSeatIndexes = [2, 1, 3, 0, 4];
+    return {
+      rotationId: 0,
+      queued: Math.max(0, this.lobbyDisplayNames.size - slots.length),
+      total: this.lobbyDisplayNames.size,
+      seats: slots.map((slot, index) => {
+        const rowIndex = Math.floor(index / 5);
+        const seatIndex = index % 5;
+        const joinOrder = rowIndex * 5 + centerOutSeatIndexes.indexOf(seatIndex);
+        const playerId = ids[joinOrder];
+        return {
+          ...slot,
+          occupant: playerId ? {
+            safeDisplayName: this.lobbyDisplayNames.get(playerId) ?? 'Khán giả',
+            characterId: 'chibi-002-a124',
+            pinned: false,
+            result: null,
+          } : null,
+        };
+      }),
+    };
+  }
+
+  private matchesLobbyKeyword(text: string): boolean {
+    const normalize = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const keyword = normalize(this.config.lobbySeatKeyword ?? 'free fire');
+    return keyword.length > 0 && normalize(text).includes(keyword);
+  }
+
+  private maybeStartLobbyCountdown() {
+    const occupied = Math.min(this.lobbyDisplayNames.size, 35);
+    if (this.state !== 'LOBBY' || !this.autoStartWhenAudienceFull || occupied !== 35 || this.lobbyCountdownEndsAtMs !== null) return;
+    this.lobbyCountdownEndsAtMs = Date.now() + 10_000;
+    this.lobbyCountdownIntervalId = window.setInterval(() => this.emit(), 1_000);
+    this.lobbyCountdownTimeoutId = window.setTimeout(() => {
+      this.lobbyCountdownTimeoutId = null;
+      const stillEligible = this.state === 'LOBBY' && this.autoStartWhenAudienceFull
+        && this.lobbyDisplayNames.size >= 35;
+      if (stillEligible) {
+        this.applyCommand({ type: 'START_ROUND' });
+        this.stateVersion += 1;
+      }
+      this.clearLobbyCountdown();
+      this.emit();
+    }, 10_000);
+  }
+
+  private clearLobbyCountdown() {
+    if (this.lobbyCountdownTimeoutId !== null) window.clearTimeout(this.lobbyCountdownTimeoutId);
+    if (this.lobbyCountdownIntervalId !== null) window.clearInterval(this.lobbyCountdownIntervalId);
+    this.lobbyCountdownTimeoutId = null;
+    this.lobbyCountdownIntervalId = null;
+    this.lobbyCountdownEndsAtMs = null;
+  }
+
+  private resetLobby() {
+    this.clearLobbyCountdown();
+    this.lobbyDisplayNames = new Map();
   }
 
   private applyRecovery(decision: 'RESUME' | 'VOID' | 'STOP') {
@@ -633,7 +725,11 @@ class MockDashboardClient implements DashboardClient {
       },
       mcChatBubble: this.mcChatBubble && this.mcChatBubble.endsAtServerMs > Date.now() ? this.mcChatBubble : null,
       connection: this.connection,
-      audience: null,
+      audience: this.state === 'LOBBY' ? this.lobbyAudience() : null,
+      lobbyCountdown: this.lobbyCountdownEndsAtMs === null ? null : {
+        durationMs: 10_000,
+        remainingMs: Math.max(0, this.lobbyCountdownEndsAtMs - Date.now()),
+      },
       safeZone: INITIAL_TEST_SAFE_ZONE,
     };
     return {
@@ -641,6 +737,7 @@ class MockDashboardClient implements DashboardClient {
       flaggedPlayers: [],
       sessionStatus: this.state === 'IDLE' && this.stateVersion > 0 ? 'CLOSED' : 'OPEN',
       autoMode: this.autoMode,
+      autoStartWhenAudienceFull: this.autoStartWhenAudienceFull,
       recoveryPending: false,
       suspendedFrom: this.suspendedFrom,
       live: this.liveHealth(),

@@ -148,9 +148,16 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
       <div className="v3-board-tab" data-testid="question-tab">{isLobby ? 'CHÀO MỪNG' : `CÂU HỎI ${(snapshot.round?.questionIndex ?? 0) + 1}`}</div>
       {snapshot.timer && !isLobby && !isReading && <Timer ms={remainingMs} totalMs={snapshot.timer.durationMs} running={snapshot.timer.running} />}
       {isReading && <div className="v3-reading-status" data-testid="reading-status">MC ĐANG ĐỌC</div>}
-      <div className={`v3-question ${promptClass}`} data-testid="question-prompt">
+      <div className={`v3-question ${promptClass} ${isLobby ? 'is-lobby' : ''}`} data-testid="question-prompt">
         {isLobby ? (
-          <>SẮP BẮT ĐẦU</>
+          <>
+            <div className="v3-lobby-copy">
+              <strong>SẮP BẮT ĐẦU</strong>
+              <span data-testid="lobby-seat-count">Đã ngồi {snapshot.audience?.seats.filter((seat) => seat.occupant !== null).length ?? 0}/35</span>
+              <small>Comment <b>Free Fire</b> để giành ghế!</small>
+            </div>
+            {snapshot.lobbyCountdown && <span className="v3-lobby-countdown" data-testid="lobby-countdown">Vào trận sau {Math.ceil(snapshot.lobbyCountdown.remainingMs / 1_000)}…</span>}
+          </>
         ) : (
           promptText
         )}
