@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 287,
-  "heartbeat": "2026-11-19T03:41:17+07:00",
+  "heartbeat": "2026-11-19T03:53:16+07:00",
   "state": "waiting",
   "task": "C-0306",
-  "note": "Đã sửa prompt dài và lời MC; full Vitest/typecheck/privacy cùng E2E mục tiêu đạt; đang chờ bạn chọn bố cục A/B cho hai cảnh trước khi khóa bbox, chạy full E2E và push nhánh.",
+  "note": "Bố cục A/B đã dựng lại, kèm ảnh phóng to và đo bbox; chờ người dùng chọn để khóa kiểm thử và tiếp tục C-0307 sau đó.",
   "done": [
     293,
     295,
