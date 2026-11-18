@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 285,
-  "heartbeat": "2026-11-18T15:56:08+07:00",
+  "heartbeat": "2026-11-18T16:16:09+07:00",
   "state": "waiting",
   "task": "none",
-  "note": "Không có thư mới; BOARD xác nhận DP1/DP2 đã hoàn tất, không có việc dự phòng mới cho codex1; chờ task",
+  "note": "Hộp thư trống; BOARD không có việc dự phòng mới cho codex1; DP1/DP2 đã xong, chờ task",
   "done": []
 }
