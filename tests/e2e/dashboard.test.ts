@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { DEFAULT_HUD_CONFIG, type HudConfig } from '@quiz/contracts';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
@@ -924,4 +925,96 @@ test('Theme mock có theme demo, preview token/ảnh và vô hiệu hóa theme l
   await themePage.getByRole('radio', { name: /Gói theme lỗi/ }).click();
   await expect(themePage.getByRole('button', { name: 'Áp dụng', exact: true })).toBeDisabled();
   await expect(themePage).toContainText('tokens.width');
+});
+
+test('C-0301 thẻ bù trễ LIVE đổi AUTO/MANUAL, báo lỗi API và khoá khi phiên đóng', async ({ page }) => {
+  test.setTimeout(30_000);
+  const previousSessionId = await mockClient.currentSession();
+  if (previousSessionId) {
+    const previous = await mockClient.getState('', previousSessionId);
+    await mockClient.sendCommand('', previousSessionId, {
+      commandId: 'c0301-cleanup-existing-session', expectedStateVersion: previous.public.stateVersion,
+      operatorId: 'e2e', requestedAtMs: Date.now(), command: { type: 'STOP', reason: 'Dọn phiên trước C-0301' },
+    });
+  }
+  const created = await mockClient.createSession('', {
+    name: 'C-0301 bù trễ LIVE',
+    config: SessionConfigSchema.parse({ mode: 'TIKTOK', tiktokUsername: '@stream_delay_demo' }),
+  });
+  let sessionOpen = false;
+  let streamDelay: { mode: 'AUTO' | 'MANUAL'; nextQuestionDelayMs: number; activeQuestionDelayMs: number | null; manualDelayMs: number } = {
+    mode: 'AUTO', nextQuestionDelayMs: 2_000, activeQuestionDelayMs: null, manualDelayMs: 2_000,
+  };
+  let failNextDelayUpdate = false;
+  type SnapshotWithStreamDelay = AdminSnapshot & { streamDelay: typeof streamDelay };
+  let snapshot: SnapshotWithStreamDelay = { ...created.snapshot, streamDelay };
+  await page.routeWebSocket('**/ws**', (socket) => socket.onMessage(() => {}));
+  await page.route('**/api/questions', (route) => route.fulfill({ json: makeQuestions(20, 20) }));
+  await page.route('**/api/preflight', (route) => route.fulfill({ json: { checks: [] } }));
+  await page.route('**/api/sessions/current', (route) => route.fulfill({ json: { sessionId: sessionOpen ? created.sessionId : null } }));
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() !== 'POST') return route.fulfill({ status: 404, json: { message: 'Không có phiên.' } });
+    sessionOpen = true;
+    return route.fulfill({ json: { sessionId: created.sessionId, snapshot } });
+  });
+  await page.route('**/api/sessions/*/state', (route) => route.fulfill({ json: snapshot }));
+  await page.route('**/api/sessions/*/stream-delay', async (route) => {
+    if (failNextDelayUpdate) {
+      failNextDelayUpdate = false;
+      return route.fulfill({ status: 503, json: { message: 'Máy chủ đang bận, hãy thử lại.' } });
+    }
+    const update = route.request().postDataJSON() as { mode: 'AUTO' | 'MANUAL'; manualDelayMs?: number };
+    const nextQuestionDelayMs = update.mode === 'MANUAL' ? update.manualDelayMs ?? streamDelay.manualDelayMs : 2_000;
+    streamDelay = { ...streamDelay, mode: update.mode, nextQuestionDelayMs, manualDelayMs: update.manualDelayMs ?? streamDelay.manualDelayMs };
+    snapshot = { ...snapshot, streamDelay };
+    return route.fulfill({ json: { ok: true, streamDelay } });
+  });
+  await page.route('**/api/sessions/*/commands', async (route) => {
+    const envelope = route.request().postDataJSON() as CommandEnvelope;
+    const response = await mockClient.sendCommand('', created.sessionId, envelope);
+    snapshot = { ...await mockClient.getState('', created.sessionId), streamDelay };
+    if (envelope.command.type === 'STOP') sessionOpen = false;
+    return route.fulfill({ status: response.status, json: response.result });
+  });
+  await launchDashboard(page, { mock: false });
+  await page.getByLabel('Mã quản trị').fill(adminToken);
+  await page.getByRole('button', { name: 'Kết nối', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tạo phiên MOCK' })).toBeVisible();
+  await page.getByRole('button', { name: 'TikTok LIVE', exact: true }).click();
+  await page.getByLabel('Số câu mỗi vòng').selectOption('10');
+  await page.getByLabel('TikTok username').fill('@stream_delay_demo');
+  const createButton = page.getByRole('button', { name: 'Tạo phiên và mở Live Control' });
+  await expect(createButton).toBeEnabled();
+  await createButton.click();
+
+  const card = page.getByTestId('stream-delay-card');
+  const modeSwitch = card.getByRole('switch', { name: 'Chế độ bù độ trễ LIVE' });
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId('stream-delay-mode')).toHaveText('Tự động');
+  await expect(card.getByTestId('stream-delay-active')).toHaveText('—');
+  await expect(card.getByTestId('stream-delay-next')).toHaveText('2,0 s');
+  const reviewDirectory = join(process.cwd(), '.claude', 'review', 'C0301');
+  await mkdir(reviewDirectory, { recursive: true });
+  await card.screenshot({ path: join(reviewDirectory, 'stream-delay-auto.png'), animations: 'disabled' });
+
+  await modeSwitch.click();
+  await expect(card.getByTestId('stream-delay-mode')).toHaveText('Thủ công');
+  const manualInput = card.getByLabel('Mức bù trễ thủ công (giây)');
+  await expect(manualInput).toHaveAttribute('min', '0');
+  await expect(manualInput).toHaveAttribute('max', '6');
+  await expect(manualInput).toHaveAttribute('step', '0.5');
+  await manualInput.fill('3.5');
+  await card.getByRole('button', { name: 'Áp dụng' }).click();
+  await expect(card.getByTestId('stream-delay-next')).toHaveText('3,5 s');
+  await expect(card.getByRole('status')).toContainText('Đã áp dụng từ câu kế tiếp.');
+  await card.screenshot({ path: join(reviewDirectory, 'stream-delay-manual.png'), animations: 'disabled' });
+
+  failNextDelayUpdate = true;
+  await modeSwitch.click();
+  await expect(card.getByRole('alert')).toHaveText('Máy chủ đang bận, hãy thử lại.');
+  await expect(modeSwitch).toBeEnabled();
+
+  await stopDashboardSession(page);
+  await expect(page.getByTestId('closed-session')).toBeVisible();
+  await expect(page.getByTestId('stream-delay-card')).toHaveCount(0);
 });
