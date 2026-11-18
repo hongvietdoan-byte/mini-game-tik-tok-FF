@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 288,
-  "heartbeat": "2026-11-18T20:53:06+07:00",
+  "heartbeat": "2026-11-18T23:10:44+07:00",
   "state": "working",
-  "task": "C-0289",
-  "note": "Đã nhận C-0289; chuẩn bị worktree mới để triển khai benchmark, cờ achievement, analytics và retention.",
+  "task": "C-0292",
+  "note": "Ưu tiên C-0292/C-0294; đã ack, tạo worktree từ origin/main và bắt đầu sửa MC sau câu 15 + chặn tên cố định",
   "done": []
 }
