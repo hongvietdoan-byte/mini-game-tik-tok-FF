@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+import io
 from pathlib import Path
+import subprocess
 try:
     from test_support import repo_temp_directory
 except ImportError:
@@ -81,6 +84,74 @@ class WebBuildHashTests(unittest.TestCase):
             self.assertFalse(fresh)
             self.assertEqual(len(stale), 2)
             self.assertTrue(all("apps/packages/pnpm-lock.yaml đã đổi" in item for item in stale))
+
+
+class WebBuildEnsureTests(unittest.TestCase):
+    def test_fresh_dist_skips_build_and_verify(self) -> None:
+        with repo_temp_directory(prefix="quiz-web-ensure-fresh-") as temp:
+            root = Path(temp)
+            with (
+                redirect_stdout(io.StringIO()) as output,
+                patch.object(web_build, "build_state", return_value=(True, [])),
+                patch.object(web_build.subprocess, "run") as run,
+            ):
+                self.assertEqual(web_build.ensure_build(root), 0)
+
+            run.assert_not_called()
+            self.assertIn("bỏ qua build", output.getvalue())
+
+    def test_stale_dist_builds_then_verifies(self) -> None:
+        with repo_temp_directory(prefix="quiz-web-ensure-stale-") as temp:
+            root = Path(temp)
+            with (
+                redirect_stdout(io.StringIO()) as output,
+                patch.object(web_build, "build_state", return_value=(False, ["overlay dist cũ"])),
+                patch.object(
+                    web_build.subprocess,
+                    "run",
+                    side_effect=[subprocess.CompletedProcess("build", 0), subprocess.CompletedProcess("verify", 0)],
+                ) as run,
+            ):
+                self.assertEqual(web_build.ensure_build(root), 0)
+
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args_list[0].args[0], "corepack pnpm build:web")
+            self.assertTrue(run.call_args_list[0].kwargs["shell"])
+            verify_command = run.call_args_list[1].args[0]
+            self.assertEqual(verify_command[1], str(Path(web_build.__file__).resolve()))
+            self.assertEqual(verify_command[2], "verify")
+            self.assertEqual(verify_command[4], str(root))
+            self.assertIn("Đang cập nhật giao diện…", output.getvalue())
+
+    def test_build_failure_stops_before_verify(self) -> None:
+        with repo_temp_directory(prefix="quiz-web-ensure-build-fail-") as temp:
+            with (
+                redirect_stdout(io.StringIO()),
+                patch.object(web_build, "build_state", return_value=(False, ["dashboard dist thiếu"])),
+                patch.object(
+                    web_build.subprocess,
+                    "run",
+                    return_value=subprocess.CompletedProcess("build", 1),
+                ) as run,
+            ):
+                self.assertEqual(web_build.ensure_build(Path(temp)), 1)
+
+            run.assert_called_once()
+
+    def test_verify_failure_is_returned_to_launcher(self) -> None:
+        with repo_temp_directory(prefix="quiz-web-ensure-verify-fail-") as temp:
+            with (
+                redirect_stdout(io.StringIO()),
+                patch.object(web_build, "build_state", return_value=(False, ["overlay dist thiếu"])),
+                patch.object(
+                    web_build.subprocess,
+                    "run",
+                    side_effect=[subprocess.CompletedProcess("build", 0), subprocess.CompletedProcess("verify", 1)],
+                ) as run,
+            ):
+                self.assertEqual(web_build.ensure_build(Path(temp)), 1)
+
+            self.assertEqual(run.call_count, 2)
 
 
 if __name__ == "__main__":

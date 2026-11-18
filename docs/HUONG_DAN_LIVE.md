@@ -4,7 +4,7 @@
 
 Trong các buổi chạy thử 12–14/11, chỉ dùng source-run bằng `CHAY_GAME.cmd` ở checkout repo. Bộ cài Electron/NSIS đang **DEFERRED**, không dùng cho các buổi này.
 
-`CHAY_GAME.cmd` cố định cơ sở dữ liệu tại `<checkout>/data/quiz.db`, in commit và đường dẫn DB, build lại Dashboard/Overlay nếu `dist/` thiếu hoặc cũ hơn commit `HEAD`, rồi tạo backup trước khi mở server. Dữ liệu ứng dụng Electron trong thư mục người dùng/AppData là một kho riêng; không dùng hoặc trộn kho đó trong các buổi này.
+`CHAY_GAME.cmd` cố định cơ sở dữ liệu tại `<checkout>/data/quiz.db` và in commit cùng đường dẫn DB. Trước khi backup, mở server hoặc cửa sổ game, launcher đối chiếu `apps/dashboard/dist` và `apps/overlay/dist` với `HEAD` theo cùng quy tắc preflight. Nếu thiếu hoặc source web liên quan đã đổi, launcher tự chạy `corepack pnpm build:web`, sau đó xác minh lại hai bản build; trong lúc đó console hiện `Đang cập nhật giao diện…`. Nếu build hoặc xác minh lỗi, launcher dừng và không mở game với dist cũ. Khi dist còn khớp, bước build được bỏ qua để khởi động nhanh. Sau đó launcher tạo backup trước khi mở server. Dữ liệu ứng dụng Electron trong thư mục người dùng/AppData là một kho riêng; không dùng hoặc trộn kho đó trong các buổi này.
 
 Backup mặc định nằm ở `backups/<yyyymmdd-hhmmss>/` và không được commit. Có thể xác minh hoặc khôi phục thủ công từ thư mục repo:
 

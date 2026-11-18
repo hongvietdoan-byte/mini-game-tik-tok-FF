@@ -36,17 +36,8 @@ echo [quiz] Database source-run: %QUIZ_DB%
 echo [quiz] Du lieu Electron trong AppData khong duoc dung cho buoi LIVE 12-14/11.
 echo.
 
-py -3 tools\web_build.py check
-if errorlevel 2 goto build_check_error
-if errorlevel 1 goto build
-goto backup
-
-:build
-echo [1/3] Dist thieu hoac cu hon HEAD; dang build lai Dashboard va Overlay...
-call corepack pnpm build:web
+py -3 tools\web_build.py ensure
 if errorlevel 1 goto build_error
-py -3 tools\web_build.py verify
-if errorlevel 1 goto verify_build_error
 
 :backup
 echo [2/3] Dang sao luu DB va assets-local truoc khi mo server...
@@ -68,18 +59,8 @@ call "%~dp0node_modules\.bin\tsx.cmd" "%~dp0apps\server\src\main.ts"
 pause
 exit /b 0
 
-:build_check_error
-echo LOI: khong doc duoc commit HEAD de kiem tra dist.
-pause
-exit /b 1
-
 :build_error
-echo LOI: build Dashboard/Overlay that bai.
-pause
-exit /b 1
-
-:verify_build_error
-echo LOI: build xong nhung dist van thieu hoac cu hon HEAD.
+echo LOI: khong the dam bao Dashboard/Overlay dist khop voi source; game chua duoc mo.
 pause
 exit /b 1
 
