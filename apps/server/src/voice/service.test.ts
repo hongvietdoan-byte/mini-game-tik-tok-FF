@@ -67,14 +67,24 @@ describe('McVoiceService', () => {
     expect(provider.synthesize).not.toHaveBeenCalled();
   });
 
-  it('tạo bundle câu hỏi tuần tự và không ghi bất kỳ line mới nào nếu tổng quá 20 giây', async () => {
+  it('lưu đủ bundle câu hỏi dù tổng audio dài hơn 20 giây', async () => {
     const provider = { synthesize: vi.fn(async () => audio(4_100)) };
     const { service, cache } = await makeService(provider);
     const lines = Array.from({ length: 5 }, (_, index) => line(index));
     const prepared = await service.prepareQuestionReading(lines);
-    expect(prepared).toEqual({ ok: false, reason: 'TOO_LONG', totalDurationMs: 20_500 });
+    expect(prepared).toMatchObject({ ok: true, totalDurationMs: 20_500, lines: expect.any(Array) });
     expect(provider.synthesize).toHaveBeenCalledTimes(5);
-    for (const item of lines) await expect(cache.get(mcVoiceCacheKey(item.descriptor))).resolves.toBeNull();
+    for (const item of lines) await expect(cache.get(mcVoiceCacheKey(item.descriptor))).resolves.toMatchObject({ durationMs: 4_100 });
+  });
+
+  it('thử lại lỗi provider một lần rồi lưu audio thành công', async () => {
+    const provider = { synthesize: vi.fn().mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValue(audio(1_000)) };
+    const { service } = await makeService(provider);
+    const input = line(1);
+    await expect(service.getOrCreate(input.descriptor, input.request)).resolves.toMatchObject({
+      cacheHit: false, asset: { durationMs: 1_000 },
+    });
+    expect(provider.synthesize).toHaveBeenCalledTimes(2);
   });
 
   it('cho phép bundle đúng 20 giây và trả asset id, không trả audio bytes từ service', async () => {

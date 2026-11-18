@@ -583,6 +583,7 @@ function App() {
         <div className="session-meta"><span>ID <b>{sessionId}</b></span><span>Phiên bản <b>{snapshot.public.stateVersion}</b></span><span>Round <b>{snapshot.public.round?.roundNumber ?? '—'}</b></span><span>Điểm tối đa/vòng <b>{maxRoundScore(snapshot.config.questionsPerRound, snapshot.config.speedBonusMax, snapshot.config.scoringMode).toLocaleString('vi-VN')}</b></span></div>
       </section>
       {error && <div className="alert alert-error" role="alert">{error}<button type="button" onClick={() => setError('')} aria-label="Đóng">×</button></div>}
+      {snapshot.error?.code === 'MC_VOICE_QUESTION_SKIPPED' && <div className="alert alert-error" data-testid="mc-voice-question-warning" role="alert">{snapshot.error.message}</div>}
       {notice && <div className="alert alert-success" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Đóng">×</button></div>}
       {pendingEnvelope && <button className="retry-button" type="button" disabled={busy} onClick={() => void submitEnvelope(pendingEnvelope)}>Gửi lại lệnh cùng commandId</button>}
 

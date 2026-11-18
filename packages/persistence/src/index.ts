@@ -53,6 +53,7 @@ export type RoundQuestionRow = {
   voidedAfterReveal: boolean;
   openedAtMs: number | null;
   closedAtMs: number | null;
+  streamDelayMs: number | null;
 };
 
 export type StoredAnswer = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs: number };
@@ -373,6 +374,10 @@ export class Store {
     this.raw.prepare("UPDATE live_sessions SET status = 'CLOSED', closed_at_ms = ? WHERE id = ?").run(now, id);
   }
 
+  updateSessionConfig(id: string, config: SessionConfig) {
+    this.raw.prepare('UPDATE live_sessions SET config_json = ? WHERE id = ?').run(JSON.stringify(config), id);
+  }
+
   heartbeat(id: string, now: number) {
     this.stmt.heartbeat.run(now, id);
   }
@@ -440,13 +445,15 @@ export class Store {
       status: r.status,
       voidedAfterReveal: !!r.voided_after_reveal,
       openedAtMs: r.opened_at_ms ?? null,
+      streamDelayMs: r.stream_delay_ms ?? null,
       closedAtMs: r.closed_at_ms ?? null,
     }));
   }
 
-  markQuestion(id: string, status: 'OPEN' | 'CLOSED' | 'VOIDED', now: number, afterReveal = false) {
+  markQuestion(id: string, status: 'OPEN' | 'CLOSED' | 'VOIDED', now: number, afterReveal = false, streamDelayMs: number | null = null) {
     if (status === 'OPEN')
-      this.raw.prepare("UPDATE round_questions SET status = 'OPEN', opened_at_ms = ? WHERE id = ?").run(now, id);
+      this.raw.prepare("UPDATE round_questions SET status = 'OPEN', opened_at_ms = ?, stream_delay_ms = ? WHERE id = ?")
+        .run(now, streamDelayMs, id);
     else if (status === 'CLOSED')
       this.raw.prepare("UPDATE round_questions SET status = 'CLOSED', closed_at_ms = ? WHERE id = ?").run(now, id);
     else
@@ -628,6 +635,47 @@ export class Store {
         'SELECT question_instance_id AS questionInstanceId, player_id AS playerId, option_id AS option, received_at_ms AS receivedAtMs FROM answers WHERE round_id = ? ORDER BY id',
       )
       .all(roundId) as StoredAnswer[];
+  }
+
+  /** Mẫu độ trễ theo câu, newest-first, một thời điểm trả lời đúng đầu tiên cho mỗi câu đã đóng. */
+  recentCorrectAnswerElapsedMs(sessionId: string, limit = 5): number[] {
+    const rows = this.raw.prepare(
+      `WITH recent_questions AS (
+         SELECT rq.id, rq.opened_at_ms AS openedAtMs, rq.correct_option_id AS correctOptionId,
+                r.round_number AS roundNumber, rq.position
+         FROM round_questions rq
+         JOIN rounds r ON r.id = rq.round_id
+         WHERE r.session_id = ? AND rq.status = 'CLOSED' AND rq.voided_at_ms IS NULL
+           AND rq.opened_at_ms IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM answers a
+             WHERE a.question_instance_id = rq.id AND a.option_id = rq.correct_option_id
+           )
+         ORDER BY r.round_number DESC, rq.position DESC
+         LIMIT ?
+       )
+       SELECT openedAtMs,
+              (SELECT MIN(a.received_at_ms) FROM answers a
+               WHERE a.question_instance_id = recent_questions.id
+                 AND a.option_id = recent_questions.correctOptionId) AS firstCorrectAtMs
+       FROM recent_questions
+       ORDER BY roundNumber DESC, position DESC`,
+    ).all(sessionId, Math.max(1, Math.floor(limit))) as { openedAtMs: number; firstCorrectAtMs: number }[];
+    return rows.map((row) => Math.max(0, row.firstCorrectAtMs - row.openedAtMs));
+  }
+
+  /** Mẫu vừa chốt của một câu; dùng để cập nhật cache mà không quét lại toàn phiên. */
+  correctAnswerElapsedMsForQuestion(questionInstanceId: string): number | null {
+    const row = this.raw.prepare(
+      `SELECT rq.opened_at_ms AS openedAtMs, MIN(a.received_at_ms) AS firstCorrectAtMs
+       FROM round_questions rq
+       LEFT JOIN answers a ON a.question_instance_id = rq.id AND a.option_id = rq.correct_option_id
+       WHERE rq.id = ? AND rq.status = 'CLOSED' AND rq.voided_at_ms IS NULL AND rq.opened_at_ms IS NOT NULL
+       GROUP BY rq.id`,
+    ).get(questionInstanceId) as { openedAtMs: number; firstCorrectAtMs: number | null } | undefined;
+    return row?.firstCorrectAtMs == null
+      ? null
+      : Math.max(0, row.firstCorrectAtMs - row.openedAtMs);
   }
 
   /** Đáp án có thứ tự ID chấp nhận, chỉ dùng trong server để lập bảng đúng nhanh nhất. */

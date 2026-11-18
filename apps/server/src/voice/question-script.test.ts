@@ -21,4 +21,11 @@ describe('kịch bản và lịch đọc MC cho câu hỏi', () => {
     expect(noPause).toMatchObject({ promptPauseMs: 0, optionPauseMs: 0, totalDurationMs: 19_000 });
     expect(planQuestionCueSchedule([4_000, 4_000, 4_000, 4_000, 4_000], 19_000)).toBeNull();
   });
+
+  it('xếp bundle dài hơn 20 giây bằng lịch không khoảng nghỉ', () => {
+    const durations = [4_100, 4_100, 4_100, 4_100, 4_100];
+    expect(planQuestionCueSchedule(durations, durations.reduce((sum, value) => sum + value, 0))).toMatchObject({
+      totalDurationMs: 20_500, promptPauseMs: 0, optionPauseMs: 0,
+    });
+  });
 });

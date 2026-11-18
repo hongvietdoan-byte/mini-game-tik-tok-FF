@@ -90,7 +90,10 @@ describe('kết quả người trả lời đúng nhanh nhất', () => {
     runtime.ingest({ source: 'TIKTOK', userId: 'raw-user-too-early', displayName: 'Too Early', text: wrongOptionId, eventId: 'fastest-wrong' });
     h.scheduler.advance(1_234);
     expect(runtime.ingest({ source: 'TIKTOK', userId: 'raw-user-fast', displayName: 'Fast Player', text: correctOptionId, eventId: 'fastest-first' })).toEqual({ accepted: true });
+    h.scheduler.advance(366);
     expect(runtime.ingest({ source: 'TIKTOK', userId: 'raw-user-tie', displayName: 'Tie Player', text: correctOptionId, eventId: 'fastest-tie' })).toEqual({ accepted: true });
+    h.scheduler.advance(600);
+    expect(runtime.ingest({ source: 'TIKTOK', userId: 'raw-user-slow', displayName: 'Slow Player', text: correctOptionId, eventId: 'fastest-slow' })).toEqual({ accepted: true });
     expect(runtime.publicSnapshot().fastestCorrectAnswer).toBeNull();
 
     const internalPlayerId = h.store.findPlayerId('TIKTOK', 'raw-user-fast')!;
@@ -110,15 +113,16 @@ describe('kết quả người trả lời đúng nhanh nhất', () => {
       publicPlayerId: expect.any(String),
       seatId: expect.any(String),
       safeDisplayName: 'Người chơi 1',
-      responseMs: 1_234,
+      responseMs: 500,
     });
     expect(atReveal.questionTop3).toMatchObject({
       questionInstanceId: question.id,
-      totalQualified: 2,
+      totalQualified: 3,
       tiedOverflowCount: 0,
       entries: [
-        { rank: 1, metricValue: 1_234, metricUnit: 'ms', tied: true },
-        { rank: 1, metricValue: 1_234, metricUnit: 'ms', tied: true },
+        { rank: 1, metricValue: 500, metricUnit: 'ms', tied: false },
+        { rank: 2, metricValue: 500, metricUnit: 'ms', tied: false },
+        { rank: 3, metricValue: 500, metricUnit: 'ms', tied: false },
       ],
     });
     expect(atReveal.questionTop3?.entries.map((entry) => entry.safeDisplayName)).toContain('Người chơi 1');
@@ -331,7 +335,7 @@ describe('Nhận đáp án', () => {
     runUntil(h, () => r.engine.state === 'REVEAL');
 
     const fastest = r.publicSnapshot().fastestCorrectAnswer!;
-    expect(fastest).toMatchObject({ questionInstanceId: questionId, responseMs: 4_000 });
+    expect(fastest).toMatchObject({ questionInstanceId: questionId, responseMs: 2_000 });
     const closedQuestion = h.store.roundQuestions(rid).find((question) => question.id === questionId)!;
     expect(closedQuestion.openedAtMs).toBe(openAtMs);
     expect(closedQuestion.closedAtMs).toBeGreaterThan(openAtMs + 20_000);
