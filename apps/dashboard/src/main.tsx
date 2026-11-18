@@ -79,6 +79,7 @@ function App() {
   const [speedBonusMax, setSpeedBonusMax] = useState(50);
   const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
   const [mcVoiceStartWaitSeconds, setMcVoiceStartWaitSeconds] = useState(30);
+  const [lobbySeatKeyword, setLobbySeatKeyword] = useState('free fire');
   const [mcVoicePreflight, setMcVoicePreflight] = useState<PreflightResponse['checks'][number] | null>(null);
   const [mcVoicePreflightState, setMcVoicePreflightState] = useState<'loading' | 'ready' | 'unavailable'>('ready');
   const mcVoicePreflightRequest = useRef(0);
@@ -311,6 +312,7 @@ function App() {
       speedMultiplier: createMode === 'MOCK' ? Number(data.get('speedMultiplier')) : 1,
       mcVoiceEnabled,
       mcVoiceStartWaitMs: mcVoiceStartWaitSeconds * 1_000,
+      lobbySeatKeyword,
       ...(createMode === 'TIKTOK' ? { tiktokUsername: tiktokUsername.trim() } : {}),
       ...(String(data.get('seed')).trim() ? { seed: Number(data.get('seed')) } : {}),
     });
@@ -427,6 +429,13 @@ function App() {
     void submitEnvelope(buildCommandEnvelope(snapshot, command, operatorId));
   }
 
+  function setLobbyAutoStart(enabled: boolean) {
+    if (!snapshot || snapshot.public.state !== 'LOBBY') return;
+    const action: DashboardAction = { type: 'SET_LOBBY_AUTO_START', label: 'Tự bắt đầu khi đủ ghế' };
+    const command = commandForAction(action, snapshot, undefined, enabled);
+    void submitEnvelope(buildCommandEnvelope(snapshot, command, operatorId));
+  }
+
   function startRoundImmediately() {
     if (!snapshot) return;
     const action: DashboardAction = { type: 'START_ROUND', label: 'Bắt đầu vòng' };
@@ -513,6 +522,7 @@ function App() {
   }
 
   const actions = useMemo(() => snapshot ? actionsFor(snapshot) : [], [snapshot]);
+  const lobbyOccupiedSeats = snapshot?.public.audience?.seats.filter((seat) => seat.occupant !== null).length ?? 0;
   const recoveryPending = snapshot?.recoveryPending ?? false;
   const timerRemainingMs = snapshot?.public.timer
     ? Math.max(0, snapshot.public.timer.remainingMs - Math.max(0, now + timerAnchor.offsetMs - timerAnchor.serverTimeMs))
@@ -650,6 +660,11 @@ function App() {
               {snapshot.public.state === 'CONNECTION_INTERRUPTED' && <button className="primary-button" type="button" disabled={busy || snapshot.sessionStatus !== 'OPEN'} onClick={() => beginAction({ type: 'RESUME', label: 'Tiếp tục' })}>Tiếp tục</button>}
               {snapshot.public.state === 'ERROR' && <button className="primary-button" type="button" onClick={() => beginAction({ type: 'STOP', label: 'Dừng phiên', danger: true })}>Dừng phiên</button>}
             </div>
+            {snapshot.public.state === 'LOBBY' && <div className="lobby-auto-start" data-testid="lobby-auto-start-control">
+              <label><input type="checkbox" aria-label="Tự bắt đầu khi đủ ghế" checked={snapshot.autoStartWhenAudienceFull} disabled={busy || snapshot.sessionStatus !== 'OPEN'} onChange={(event) => setLobbyAutoStart(event.currentTarget.checked)} /> Tự bắt đầu khi đủ ghế</label>
+              <span role="status" data-testid="lobby-seat-status">{lobbyOccupiedSeats === 35 ? 'Đã đủ ghế' : `Đã ngồi ${lobbyOccupiedSeats}/35`}</span>
+              {snapshot.public.lobbyCountdown && <div className="lobby-auto-start-countdown" role="status" data-testid="lobby-auto-start-countdown">Vào trận sau {Math.ceil(snapshot.public.lobbyCountdown.remainingMs / 1_000)}… <button type="button" className="secondary-button" disabled={busy} onClick={() => setLobbyAutoStart(false)}>Huỷ đếm ngược</button></div>}
+            </div>}
             {snapshot.roundStartWait && roundStartWaitRemainingMs !== null && <div className="round-start-wait" role="status" data-testid="round-start-voice-wait">
               <div><b>Đang chuẩn bị giọng đọc câu 1</b><span>Vòng tự bắt đầu sau tối đa {Math.ceil(roundStartWaitRemainingMs / 1_000)} giây.</span></div>
               <progress aria-label="Tiến độ chờ giọng đọc câu 1" max={snapshot.roundStartWait.durationMs} value={snapshot.roundStartWait.durationMs - roundStartWaitRemainingMs} />
@@ -718,6 +733,7 @@ function App() {
             <button className={createMode === 'TIKTOK' ? 'is-selected' : ''} type="button" aria-pressed={createMode === 'TIKTOK'} onClick={() => setCreateMode('TIKTOK')}>TikTok LIVE</button>
           </div>
           <label>Tên phiên<input name="name" maxLength={100} defaultValue="Phiên DEMO" /></label>
+          <label>Từ khóa giành ghế<input aria-label="Từ khóa giành ghế" maxLength={80} value={lobbySeatKeyword} onChange={(event) => setLobbySeatKeyword(event.target.value)} /><small>Người xem bình luận cụm này trong sảnh để vào ghế; mặc định “free fire”.</small></label>
           <div className={`form-row ${createMode === 'TIKTOK' ? 'single-column' : ''}`}><label>Số câu mỗi vòng<select name="questionCount" value={questionsPerRound} onChange={(event) => setQuestionsPerRound(Number(event.target.value))}><option value="10">10 câu</option><option value="15">15 câu</option><option value="20">20 câu</option></select></label>{createMode === 'MOCK' && <label>Tốc độ MOCK<select name="speedMultiplier" defaultValue="1">{Array.from({ length: 20 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}×</option>)}</select></label>}</div>
           <label>Thưởng tốc độ tối đa<input name="speedBonusMax" type="number" min="0" max="500" step="1" value={speedBonusMax} onChange={(event) => setSpeedBonusMax(Number(event.target.value))} /></label>
           <p className="speed-bonus-note">Giảm dần từ lúc mở câu tới hết giờ; người xem mạng chậm có thể bị thiệt — đặt 0 để tắt.</p>

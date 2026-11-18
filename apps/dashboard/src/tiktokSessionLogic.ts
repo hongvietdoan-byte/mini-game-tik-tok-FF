@@ -13,6 +13,7 @@ export type CreateSessionConfigInput = {
   seed?: number;
   mcVoiceEnabled?: boolean;
   mcVoiceStartWaitMs?: number;
+  lobbySeatKeyword?: string;
 };
 
 export function buildSessionConfig(input: CreateSessionConfigInput) {
@@ -21,6 +22,7 @@ export function buildSessionConfig(input: CreateSessionConfigInput) {
     questionsPerRound: input.questionsPerRound,
     speedBonusMax: input.speedBonusMax,
     mcVoiceEnabled: input.mcVoiceEnabled ?? true,
+    lobbySeatKeyword: input.lobbySeatKeyword ?? 'free fire',
     ...(input.mcVoiceStartWaitMs === undefined ? {} : { mcVoiceStartWaitMs: input.mcVoiceStartWaitMs }),
     allowDemoQuestions: input.mode === 'MOCK',
     speedMultiplier: input.mode === 'MOCK' ? input.speedMultiplier : 1,

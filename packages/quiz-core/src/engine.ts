@@ -45,6 +45,7 @@ export type EngineState = {
   speedMultiplier: number;
   mcVoiceEnabled: boolean;
   autoMode: boolean;
+  autoStartWhenAudienceFull: boolean;
   timer: EngineTimer | null;
   round: EngineRound | null;
   acceptOpenAtMs: number | null;
@@ -85,6 +86,7 @@ export type EngineEvent =
   | { type: 'ROUND_ENDED'; roundId: string }
   | { type: 'VICTORY_STARTED'; roundId: string }
   | { type: 'AUTO_START_REQUESTED' }
+  | { type: 'LOBBY_AUTO_START_SET'; enabled: boolean }
   | { type: 'SESSION_STOPPED' }
   | { type: 'RECOVERY_REQUIRED'; interruptedState: GameState }
   | { type: 'ERROR_RAISED'; code: string; message: string };
@@ -112,6 +114,7 @@ export function createInitialState(init: {
     speedMultiplier: init.mode === 'MOCK' ? init.speedMultiplier : 1,
     mcVoiceEnabled: init.mcVoiceEnabled ?? false,
     autoMode: false,
+    autoStartWhenAudienceFull: false,
     timer: null,
     round: null,
     acceptOpenAtMs: null,
@@ -648,6 +651,12 @@ function handleCommand(
         if (cmd.enabled) setTimer(d, d.s.timings.lobbyMs, now);
         else d.s.timer = null;
       }
+      return done(d);
+
+    case 'SET_LOBBY_AUTO_START':
+      if (st !== 'LOBBY') return illegal();
+      d.s.autoStartWhenAudienceFull = cmd.enabled;
+      d.events.push({ type: 'LOBBY_AUTO_START_SET', enabled: cmd.enabled });
       return done(d);
 
     case 'SKIP_QUESTION':

@@ -87,6 +87,7 @@ import { McVoiceService, type McVoiceReadingBundle, type McVoiceReadingLine } fr
 import { mcVoiceSettingsForEvent, type McVoiceProfile } from './voice/types';
 import { planQuestionCueSchedule, questionVoiceScripts } from './voice/question-script';
 import { containsPlayerIdentity } from './voice/safety';
+import { lobbyKeywordMatcher } from './lobby-keyword';
 
 const COUNTDOWN_SCRIPT: Readonly<Record<number, string>> = {
   10: 'Còn 10 giây!',
@@ -107,6 +108,16 @@ const STAGE_ACHIEVEMENT_IDS = ACHIEVEMENT_REGISTRY
 const ROUND_ACHIEVEMENT_IDS = ACHIEVEMENT_REGISTRY
   .filter((definition) => definition.scope === 'ROUND' && definition.policy !== 'REUSE_PHASE1')
   .map((definition) => definition.id);
+const LOBBY_REMINDER_INTERVAL_MS = 20_000;
+const LOBBY_AUTO_START_AFTER_MS = 30_000;
+const LOBBY_AUTO_START_COUNTDOWN_MS = 10_000;
+const LOBBY_VOICE_LINES = [
+  'Comment Free Fire để giành ghế ngồi nhé!',
+  'Ghế đang lấp đầy nhanh lắm!',
+  'Còn chờ gì nữa, comment Free Fire ngay!',
+  'Mọi người sẵn sàng chưa? Hãy cùng tham gia nào!',
+  'Comment Free Fire và vào chỗ thôi!',
+] as const;
 
 /**
  * SessionRuntime — vỏ có hiệu ứng phụ quanh reducer thuần.
@@ -255,6 +266,12 @@ export class SessionRuntime {
   private mcChatBubble: NonNullable<PublicSnapshot['mcChatBubble']> | null = null;
   private mcChatPumpHandle: unknown = null;
   private welcomeCueRequested = false;
+  private lobbyOpenedAtMs: number | null = null;
+  private lobbyCountdownEndsAtMs: number | null = null;
+  private lobbyNextReminderAtMs: number | null = null;
+  private lobbyReminderIndex = 0;
+  private lobbyClaimedKeys = new Set<string>();
+  private readonly lobbyKeywordMatches: (text: string) => boolean;
   private snapshots = new Map<string, QuestionSnapshot>();
   private snapshotsRoundId: string | null = null;
   private counts = ZERO_COUNTS();
@@ -301,6 +318,7 @@ export class SessionRuntime {
     engine: EngineState,
   ) {
     this.engine = engine;
+    this.lobbyKeywordMatches = lobbyKeywordMatcher(session.config.lobbySeatKeyword ?? 'free fire');
     this.metrics = {
       received: 0,
       accepted: 0,
@@ -379,7 +397,7 @@ export class SessionRuntime {
     const stored = deps.store.latestGameSnapshot(row.id);
     if (!stored) throw new Error(`Phiên ${row.id} không có snapshot trạng thái`);
     // Trạng thái kết nối là sự thật của tiến trình cũ — tiến trình mới chưa kết nối gì.
-    const engine: EngineState = { ...stored, connectionOk: false };
+    const engine: EngineState = { ...stored, autoStartWhenAudienceFull: stored.autoStartWhenAudienceFull ?? false, connectionOk: false };
     const rt = new SessionRuntime(deps, row, engine);
     // Outbox chưa phát của tiến trình cũ: client sẽ tự lấy snapshot mới qua HELLO, không phát lại hiệu ứng cũ.
     const stale = deps.store.takeUnpublished(row.id);
@@ -590,6 +608,8 @@ export class SessionRuntime {
           this.store.setRoundStatus(e.roundId, 'ABORTED', now);
           this.finalizeRoundTelemetry(now, e.roundId);
           break;
+        case 'LOBBY_AUTO_START_SET':
+          break;
         case 'ROUND_ENDED':
           this.store.setRoundStatus(e.roundId, 'COMPLETED', now);
           this.finalizeRoundTelemetry(now, e.roundId);
@@ -607,6 +627,16 @@ export class SessionRuntime {
           this.store.closeSession(this.id, now);
           break;
         case 'STATE_CHANGED': {
+          if (e.to === 'LOBBY') {
+            this.audience.openLobby();
+            this.lobbyOpenedAtMs = now;
+            this.lobbyCountdownEndsAtMs = null;
+            this.lobbyNextReminderAtMs = now + LOBBY_REMINDER_INTERVAL_MS;
+            this.lobbyReminderIndex = 0;
+            this.lobbyClaimedKeys.clear();
+            this.welcomeCueRequested = false;
+            this.audienceChanged = true;
+          }
           const every = this.config.audienceRotateEvery ?? 2;
           const qi = this.engine.round?.questionIndex ?? 0;
           if (e.to === 'PREPARE' && (e.from === 'REVEAL' || e.from === 'LEADERBOARD') && every > 0 && qi > 0 && qi % every === 0) {
@@ -789,6 +819,18 @@ export class SessionRuntime {
       else if (e.type === 'STATE_CHANGED' && e.to === 'LOBBY') {
         void this.trackSystemVoice(() => this.announceWelcome());
         this.preselectLobbyRoundVoice();
+      } else if (e.type === 'STATE_CHANGED' && e.from === 'LOBBY' && e.to !== 'LOBBY') {
+        this.cancelLobbyCountdown();
+        this.lobbyOpenedAtMs = null;
+        this.lobbyNextReminderAtMs = null;
+        this.lobbyClaimedKeys.clear();
+      } else if (e.type === 'ROUND_STARTED') {
+        this.cancelLobbyCountdown();
+        this.lobbyOpenedAtMs = null;
+        this.lobbyNextReminderAtMs = null;
+        this.lobbyClaimedKeys.clear();
+      } else if (e.type === 'LOBBY_AUTO_START_SET') {
+        if (!e.enabled) this.cancelLobbyCountdown();
       }
       else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round)
         void this.trackSystemVoice(() => this.speakGeneric({ type: 'LEADERBOARD_GENERIC', roundId: this.engine.round!.roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!'));
@@ -1210,6 +1252,9 @@ export class SessionRuntime {
   private preGenerateGenericVoice() {
     if (!this.voiceEnabled()) return;
     void this.voiceAsset({ type: 'WELCOME', scriptId: 'lobby-v1' }, 'Chào mừng cả nhà đến với phiên đố vui! Hãy cùng sẵn sàng nhé.');
+    for (const [index, text] of LOBBY_VOICE_LINES.entries())
+      void this.voiceAsset({ type: 'WELCOME', scriptId: `lobby-reminder-v${index + 1}` }, text);
+    void this.voiceAsset({ type: 'WELCOME', scriptId: 'lobby-full-countdown-v1' }, 'Đủ người rồi, vào trận sau 10 giây!');
     for (const secondsRemaining of COUNTDOWN_SECONDS)
       void this.voiceAsset({ type: 'COUNTDOWN', secondsRemaining }, COUNTDOWN_SCRIPT[secondsRemaining]!);
     void this.voiceAsset({ type: 'TIMEOUT' }, 'Hết giờ!');
@@ -1218,7 +1263,6 @@ export class SessionRuntime {
 
   private preselectLobbyRoundVoice() {
     this.preparedLobbyRound = null;
-    if (!this.voiceEnabled()) return;
     const questionCount = this.config.questionsPerRound;
     const allowReuse = false;
     const now = this.scheduler.now();
@@ -1231,7 +1275,7 @@ export class SessionRuntime {
       allowReuse,
       signature: this.lobbyRoundSignature(questionCount, allowReuse, now),
     };
-    this.preGenerateRoundVoice(selection.round.roundId, selection.snapshots);
+    if (this.voiceEnabled()) this.preGenerateRoundVoice(selection.round.roundId, selection.snapshots);
   }
 
   /** Chữ ký RAM để chỉ dùng lại lựa chọn nếu cả config, pool, câu đã dùng và count còn nguyên. */
@@ -1547,9 +1591,69 @@ export class SessionRuntime {
     const now = this.scheduler.now();
     this.store.heartbeat(this.id, now);
     this.audience.flush(now);
+    this.checkLobbyAutomation(now);
+    this.speakLobbyReminder(now);
     // Admin-only telemetry must advance even when no comments or game commands arrive.
     this.emitAdmin();
     this.heartbeatHandle = this.scheduler.setTimeout(() => this.beat(), HEARTBEAT_MS);
+  }
+
+  private cancelLobbyCountdown() {
+    this.lobbyCountdownEndsAtMs = null;
+  }
+
+  private lobbyAutoStartGatesPass(now: number) {
+    if (this.engine.state !== 'LOBBY' || !this.engine.autoStartWhenAudienceFull) return false;
+    if (this.audience.occupiedSeats !== 35) return false;
+    if (this.lobbyOpenedAtMs === null || now - this.lobbyOpenedAtMs < LOBBY_AUTO_START_AFTER_MS) return false;
+    const first = this.preparedLobbyRound?.selection.snapshots[0];
+    if (!first || !this.readyQuestionVoiceKeys.has(this.questionVoiceKey(first))) return false;
+    try {
+      const preflight = this.deps.preflight?.(this);
+      if (!preflight || preflight.checks.some((check) => check.status === 'FAIL')) return false;
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
+  private checkLobbyAutomation(now: number) {
+    if (!this.lobbyAutoStartGatesPass(now)) {
+      if (this.lobbyCountdownEndsAtMs !== null) {
+        this.cancelLobbyCountdown();
+        this.emit([{ audience: 'public', message: this.wrap('STATE_SNAPSHOT', this.publicSnapshot(now)) }]);
+      }
+      return;
+    }
+    if (this.lobbyCountdownEndsAtMs === null) {
+      this.lobbyCountdownEndsAtMs = now + LOBBY_AUTO_START_COUNTDOWN_MS;
+      void this.trackSystemVoice(() => this.speakGeneric(
+        { type: 'WELCOME', scriptId: 'lobby-full-countdown-v1' },
+        'Đủ người rồi, vào trận sau 10 giây!',
+      ));
+      this.emit([{ audience: 'public', message: this.wrap('STATE_SNAPSHOT', this.publicSnapshot(now)) }]);
+      return;
+    }
+    if (now < this.lobbyCountdownEndsAtMs) {
+      this.emit([{ audience: 'public', message: this.wrap('STATE_SNAPSHOT', this.publicSnapshot(now)) }]);
+      return;
+    }
+    this.cancelLobbyCountdown();
+    const out = this.systemCommand({ type: 'START_ROUND' });
+    if (!out.result.ok) {
+      this.notice = { code: 'LOBBY_AUTO_START_FAILED', message: out.result.message };
+      this.systemCommand({ type: 'SET_LOBBY_AUTO_START', enabled: false, reason: 'Tự bắt đầu sảnh chờ thất bại' });
+    }
+  }
+
+  private speakLobbyReminder(now: number) {
+    if (this.engine.state !== 'LOBBY' || this.lobbyNextReminderAtMs === null || now < this.lobbyNextReminderAtMs) return;
+    this.lobbyNextReminderAtMs = now + LOBBY_REMINDER_INTERVAL_MS;
+    const index = this.lobbyReminderIndex++ % LOBBY_VOICE_LINES.length;
+    const text = LOBBY_VOICE_LINES[index]!;
+    void this.trackSystemVoice(() => this.speakGeneric(
+      { type: 'WELCOME', scriptId: `lobby-reminder-v${index + 1}` }, text,
+    ));
   }
 
   private safe(fn: () => void) {
@@ -1590,6 +1694,10 @@ export class SessionRuntime {
 
     const now = this.scheduler.now();
     const cmd = env.command;
+    if (env.expectedStateVersion === this.engine.stateVersion &&
+      ((cmd.type === 'SET_LOBBY_AUTO_START' && !cmd.enabled) || (cmd.type === 'START_ROUND' && this.engine.state === 'LOBBY')))
+      this.cancelLobbyCountdown();
+
     if (this.config.mode === 'TIKTOK' && (cmd.type === 'START_ROUND' || cmd.type === 'RESTART_ROUND')) {
       let failures: { id: string; reason: string }[];
       try {
@@ -1641,7 +1749,7 @@ export class SessionRuntime {
         if (!prepared) {
           const candidate = this.preparedLobbyRound;
           this.preparedLobbyRound = null;
-          if (this.voiceEnabled() && candidate && candidate.questionCount === count && candidate.allowReuse === allowReuse &&
+          if (candidate && candidate.questionCount === count && candidate.allowReuse === allowReuse &&
             candidate.signature === this.lobbyRoundSignature(count, allowReuse, now)) {
             prepared = candidate.selection;
           }
@@ -1794,6 +1902,47 @@ export class SessionRuntime {
     if (!parsed.success || !parsed.data.userId.trim()) return this.reject('INVALID_EVENT', now);
     const ev = parsed.data;
     if (ev.sourceTimestampMs !== undefined) this.recordSourceLatency(now - ev.sourceTimestampMs);
+
+    if (this.engine.state === 'LOBBY') {
+      if (!this.lobbyKeywordMatches(ev.text)) return { accepted: false, reason: 'NOT_AN_ANSWER' };
+      const claimKey = `${ev.source}\u0000${ev.userId}`;
+      if (this.lobbyClaimedKeys.has(claimKey)) return { accepted: true };
+      this.lobbyClaimedKeys.add(claimKey);
+      const sourceName = String(ev.displayName ?? '').trim();
+      const originalName = sourceName ? sanitizeDisplayName(sourceName) : '';
+      const joined = this.store.transaction(() => {
+        const existingId = this.store.findPlayerId(ev.source, ev.userId);
+        const firstPass = this.deps.nameFilter?.evaluate(originalName, existingId) ?? {
+          safeDisplayName: originalName,
+          displayName: originalName,
+          flagged: false,
+          risk: 'NONE' as const,
+          displayAction: 'ALLOW' as const,
+          matchedRuleIds: [],
+          matchedRuleGroups: [],
+          requiresReview: false,
+          policyVersion: 1,
+          checkedAt: now,
+          reasonCategory: null,
+        };
+        const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.safeDisplayName, now);
+        const filtered = this.deps.nameFilter?.evaluate(originalName, playerId) ?? firstPass;
+        if (filtered.flagged && existingId && this.playerNames.get(existingId)?.originalName !== originalName)
+          this.store.scrubPlayerNameHistory(playerId, [originalName], filtered.safeDisplayName);
+        this.store.touchPlayer(playerId, filtered.safeDisplayName, now);
+        return { playerId, filtered };
+      });
+      if (joined.filtered.flagged) {
+        this.playerNames.set(joined.playerId, { originalName, result: joined.filtered });
+        this.deps.nameFilter?.rememberFlaggedName(joined.playerId, originalName);
+      } else {
+        this.playerNames.delete(joined.playerId);
+        this.deps.nameFilter?.forgetFlaggedName(joined.playerId);
+      }
+      this.audienceChanged = this.audience.onLobbyKeyword(joined.playerId, joined.filtered.safeDisplayName, now) || this.audienceChanged;
+      this.scheduleAudienceUpdate();
+      return { accepted: true };
+    }
 
     const win = acceptWindow(this.engine);
     const decision = decideComment(ev, win ? { accepting: true, ...win } : null, {
@@ -2132,6 +2281,17 @@ export class SessionRuntime {
           : []),
         { audience: 'admin', message: this.wrap('ADMIN_SNAPSHOT', this.adminSnapshot()) },
       ]);
+      this.audienceChanged = false;
+    }, COUNTS_THROTTLE_MS);
+  }
+
+  private scheduleAudienceUpdate() {
+    if (this.countsHandle !== null || this.disposed) return;
+    this.countsHandle = this.scheduler.setTimeout(() => {
+      this.countsHandle = null;
+      const audience = this.publicSnapshot().audience;
+      if (audience) this.emit([{ audience: 'public', message: this.wrap('AUDIENCE_UPDATED', audience) }]);
+      this.emitAdmin();
       this.audienceChanged = false;
     }, COUNTS_THROTTLE_MS);
   }
@@ -2709,6 +2869,9 @@ export class SessionRuntime {
       mcVoiceCue,
       mcChatBubble: this.mcChatBubble && this.mcChatBubble.endsAtServerMs > now ? this.mcChatBubble : null,
       ...(this.pendingRoundStart && e.state === 'LOBBY' ? { lobbyMessage: 'Chuẩn bị vào trận…' } : {}),
+      lobbyCountdown: this.lobbyCountdownEndsAtMs !== null && e.state === 'LOBBY'
+        ? { durationMs: LOBBY_AUTO_START_COUNTDOWN_MS, remainingMs: Math.max(0, this.lobbyCountdownEndsAtMs - now) }
+        : null,
       mcVoiceCountdownSchedule: e.state === 'ACCEPTING' && qid &&
         this.countdownSchedule?.questionInstanceId === qid ? this.countdownSchedule : null,
       reveal: revealView,
@@ -2721,7 +2884,7 @@ export class SessionRuntime {
             })()
           : null,
       mc: mcFor(e, revealView),
-      audience: e.round && this.audience.active
+      audience: this.audience.active
         ? this.audience.view(revealView ? { qid: revealView.questionInstanceId, correctOptionId: revealView.correctOptionId } : null)
         : null,
       connection: this.adapter.status(),
@@ -2755,6 +2918,7 @@ export class SessionRuntime {
       ),
       sessionStatus: e.sessionStatus,
       autoMode: e.autoMode,
+      autoStartWhenAudienceFull: e.autoStartWhenAudienceFull,
       recoveryPending: e.suspended?.kind === 'RECOVERY',
       suspendedFrom: e.suspended?.from ?? null,
       config: this.config,

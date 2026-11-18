@@ -104,6 +104,11 @@ h1, h2, p { margin: 0; }
 .answer-distribution i { color: var(--blue); font-style: normal; font-weight: 900; }
 .answer-distribution strong { color: #fff; font-size: 12px; }
 .actions-panel { padding-bottom: 14px; }
+.lobby-auto-start { margin-top: 12px; padding: 10px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 9px 14px; border: 1px solid rgba(108, 198, 255, .22); border-radius: 8px; background: rgba(108, 198, 255, .05); color: var(--paper); font-size: 12px; }
+.lobby-auto-start label { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; }
+.lobby-auto-start input { width: 17px; height: 17px; accent-color: var(--violet); }
+.lobby-auto-start [role="status"] { color: var(--gold); font-weight: 800; }
+.lobby-auto-start-countdown { flex-basis: 100%; display: flex; align-items: center; gap: 10px; color: var(--gold); }
 .round-start-wait { margin-top: 12px; padding: 11px 12px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, .8fr) auto; align-items: center; gap: 12px; border: 1px solid rgba(255,204,88,.3); border-radius: 8px; color: var(--gold); background: rgba(255,204,88,.07); }
 .round-start-wait > div { display: grid; gap: 3px; }
 .round-start-wait b { font-size: 11px; }

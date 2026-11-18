@@ -253,7 +253,8 @@ describe('TikTok comment replay qua runtime', () => {
     await command(h, sessionId, { type: 'OPEN_LOBBY' });
     await waitForOverlayAck(h);
     emitComment(connection, h, replay.beforeOpen);
-    expect(runtime.metrics.rejected.NOT_ACCEPTING).toBe(1);
+    // Bình luận A đơn lẻ trong lobby bị bỏ qua; chỉ cụm từ giành ghế mới tạo trạng thái audience.
+    expect(runtime.metrics.rejected.NOT_ACCEPTING).toBe(0);
     await command(h, sessionId, { type: 'START_ROUND' });
     runUntilAccepting(h);
     const roundId = runtime.engine.round!.roundId;
@@ -312,7 +313,7 @@ describe('TikTok comment replay qua runtime', () => {
       h.scheduler.advance(3_000);
       if (index === 0) {
         emitComment(connection, h, replay.afterClose);
-        expect(runtime.metrics.rejected.NOT_ACCEPTING).toBe(2);
+        expect(runtime.metrics.rejected.NOT_ACCEPTING).toBe(1);
       }
       if (index < replay.roundComments.length - 1) runUntilAccepting(h);
     }
@@ -350,7 +351,7 @@ describe('TikTok comment replay qua runtime', () => {
     expect(runtime.metrics.rejected.DUPLICATE_ANSWER).toBe(2);
     expect(runtime.metrics.rejected.NOT_AN_ANSWER).toBe(replay.invalidTexts.length);
     expect(runtime.metrics.rejected.STALE_SOURCE_TIMESTAMP).toBe(1);
-    expect(runtime.metrics.rejected.NOT_ACCEPTING).toBe(2);
+    expect(runtime.metrics.rejected.NOT_ACCEPTING).toBe(1);
   });
 
   it('mất mạng giữa câu: chờ backoff, resume thủ công, giữ đáp án cũ và nhận comment mới đúng một lần', async () => {

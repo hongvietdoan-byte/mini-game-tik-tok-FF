@@ -558,6 +558,15 @@ describe('auto mode và chuyển vòng', () => {
     }
   });
 
+  it('tự bắt đầu khi đủ ghế mặc định tắt và chỉ đổi bằng lệnh trong LOBBY', () => {
+    const idle = createInitialState({ sessionId: 'lobby-auto', mode: 'MOCK', timings: TIMINGS, leaderboardInterval: 5, speedMultiplier: 1 });
+    expect(idle.autoStartWhenAudienceFull).toBe(false);
+    const lobby = ok(cmd(idle, { type: 'OPEN_LOBBY' }, 0));
+    const enabled = cmd(lobby, { type: 'SET_LOBBY_AUTO_START', enabled: true }, 1);
+    expect(enabled).toMatchObject({ ok: true, state: { autoStartWhenAudienceFull: true }, events: [{ type: 'LOBBY_AUTO_START_SET', enabled: true }] });
+    expect(cmd(idle, { type: 'SET_LOBBY_AUTO_START', enabled: true }, 1)).toMatchObject({ ok: false, code: 'ILLEGAL_TRANSITION' });
+  });
+
   it('VICTORY hết giờ về LOBBY; NEXT_ROUND vẫn tương thích với VICTORY và INTERMISSION cũ', () => {
     const victory = reachVictory();
     expect(cmd(victory, { type: 'NEXT_ROUND' }, 100)).toMatchObject({ ok: true, state: { state: 'LOBBY', round: null, completedRounds: 1 } });

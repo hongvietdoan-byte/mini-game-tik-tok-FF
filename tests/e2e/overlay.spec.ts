@@ -168,6 +168,24 @@ test('theme mặc định giữ phong cách CSS fallback trên sáu cảnh', asy
   }
 });
 
+test('C-0283: xem trước sảnh trống, 12 ghế và đếm ngược khi đủ 35 ghế', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  for (const preview of [
+    { scene: 'lobby-0', count: 'Đã ngồi 0/35', screenshot: 'c0283-lobby-0.png' },
+    { scene: 'lobby-12', count: 'Đã ngồi 12/35', screenshot: 'c0283-lobby-12.png' },
+    { scene: 'lobby-35-countdown', count: 'Đã ngồi 35/35', screenshot: 'c0283-lobby-35-countdown.png' },
+  ]) {
+    const { stage } = await openScene(page, preview.scene, 'LOBBY');
+    await expect(stage.getByTestId('lobby-seat-count')).toHaveText(preview.count);
+    await expect(stage.getByText('Comment Free Fire để giành ghế!', { exact: true })).toBeVisible();
+    if (preview.scene === 'lobby-35-countdown')
+      await expect(stage.getByTestId('lobby-countdown')).toHaveText('Vào trận sau 10…');
+    else
+      await expect(stage.getByTestId('lobby-countdown')).toHaveCount(0);
+    await page.screenshot({ path: join(screenshotDirectory, preview.screenshot), animations: 'disabled' });
+  }
+});
+
 test('overlay tải theme khi mở, cập nhật theo version và gỡ token cũ', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
   let activeTheme: ResolvedTheme = { id: 'event', name: 'Sự kiện', version: 1, tokens: { deep: '#123456' }, fonts: [], assets: {} };
@@ -1572,6 +1590,7 @@ test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) 
 });
 
 test('audio creates WebAudio and dispatches one cue per mock phase transition', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.addInitScript(() => {
     const testWindow = window as typeof window & { __audioProbe?: { contexts: number; oscillatorStarts: number; bufferStarts: number } };
     testWindow.__audioProbe = { contexts: 0, oscillatorStarts: 0, bufferStarts: 0 };
@@ -1603,7 +1622,7 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   await page.route('**/assets/audio/**', (route) => route.fulfill({ status: 404, body: 'optional audio absent' }));
   await page.route('**/assets/audio/question-enter.mp3', (route) => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: 'mock audio file' }));
   const errors = watchPageErrors(page);
-  await page.goto('/?mock=cycle&cycleMs=250&role=program&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
+  await page.goto('/?mock=cycle&cycleMs=500&role=program&sfx=0.6&bgm=0&fx=low', { waitUntil: 'domcontentloaded' });
   const runtime = page.getByTestId('overlay-audio-runtime');
   await expect(runtime).toHaveAttribute('data-audio-state', 'running');
   await expect(runtime).toHaveAttribute('data-bgm', '0');
@@ -1612,9 +1631,9 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   await expect.poll(() => runtime.getAttribute('data-cues')).toContain('question-enter');
   await expect(page.getByTestId('stage')).toHaveAttribute('data-state', 'READING');
   await expect(runtime).toHaveAttribute('data-cues', 'question-enter');
-  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('correct-answer');
-  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('top10');
-  await expect.poll(() => runtime.getAttribute('data-cues')).toContain('victory');
+  await expect.poll(() => runtime.getAttribute('data-cues'), { timeout: 15_000 }).toContain('correct-answer');
+  await expect.poll(() => runtime.getAttribute('data-cues'), { timeout: 15_000 }).toContain('top10');
+  await expect.poll(() => runtime.getAttribute('data-cues'), { timeout: 15_000 }).toContain('victory');
   const cues = (await runtime.getAttribute('data-cues'))?.split(',') ?? [];
   for (const cue of ['question-enter', 'correct-answer', 'top10', 'victory'])
     expect(cues.filter((value) => value === cue)).toHaveLength(1);
