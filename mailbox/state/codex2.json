@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 287,
-  "heartbeat": "2026-11-19T05:02:43+07:00",
-  "state": "waiting",
+  "heartbeat": "2026-11-19T05:23:07+07:00",
+  "state": "blocked",
   "task": "C-0306",
-  "note": "Chờ lựa chọn A/B cho bố cục bong bóng MC; C-0307 tiếp tục sau C-0306.",
+  "note": "mb.py read báo pull lỗi: không có ref phù hợp để rebase trong các ref vừa fetch; local main đang khớp origin/main. Chưa thể xác nhận thư mới; C-0306 cũng chờ chọn A/B.",
   "done": [
     293,
     295,
