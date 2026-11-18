@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 287,
-  "heartbeat": "2026-11-19T03:53:16+07:00",
+  "heartbeat": "2026-11-19T04:02:44+07:00",
   "state": "waiting",
   "task": "C-0306",
-  "note": "Bố cục A/B đã dựng lại, kèm ảnh phóng to và đo bbox; chờ người dùng chọn để khóa kiểm thử và tiếp tục C-0307 sau đó.",
+  "note": "Chờ người dùng chọn bố cục A/B cho C-0306; sau đó khóa bbox, kiểm thử và tiếp tục C-0307.",
   "done": [
     293,
     295,
