@@ -100,6 +100,10 @@ describe('ghế giành được ở LOBBY', () => {
     expect(started.total).toBe(36);
     expect(started.queued).toBe(1);
     expect(started.seats[0]?.occupant?.safeDisplayName).toBe(lobby.seats[0]?.occupant?.safeDisplayName);
+    // Mỗi người có nhân vật riêng ngay ở sảnh (không cùng một hình), và giữ nguyên khi vào vòng.
+    const lobbyChars = lobby.seats.map((seat) => seat.occupant?.characterId);
+    expect(new Set(lobbyChars).size).toBeGreaterThan(5);
+    expect(started.seats.map((seat) => seat.occupant?.characterId)).toEqual(lobbyChars);
     expect(runtime.engine.round?.roundId).toBe(roundId);
     expect(runtime.publicSnapshot().participantCount).toBe(0);
     expect(store.answersForRound(roundId)).toEqual([]);

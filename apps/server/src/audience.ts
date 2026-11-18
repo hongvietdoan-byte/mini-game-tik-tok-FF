@@ -26,6 +26,8 @@ export class AudienceManager {
   private names = new Map<string, string>();
   private joined = 0;
   private lobbyReservation = false;
+  /** Khoá gán nhân vật tạm ở sảnh (chưa có roundId); nhân vật này được giữ khi vào vòng. */
+  private lobbyKey: string | null = null;
   /** Người đã vào vòng (ngồi hoặc chờ) — tránh dò tuyến tính hàng chờ ở mỗi đáp án. */
   private known = new Set<string>();
   private dirty = false;
@@ -56,6 +58,7 @@ export class AudienceManager {
     this.answersCache = null;
     this.dirty = false;
     this.lobbyReservation = true;
+    this.lobbyKey = null;
   }
 
   onLobbyKeyword(playerId: string, displayName: string, now: number): boolean {
@@ -69,7 +72,8 @@ export class AudienceManager {
       this.roundId = roundId;
       this.lobbyReservation = false;
       for (const playerId of this.known) {
-        const proposed = assignCharacter(playerId, roundId, this.pool, this.seed);
+        // Giữ nhân vật người xem đã thấy ở sảnh để không bị đổi hình khi vào vòng.
+        const proposed = this.chars.get(playerId) ?? assignCharacter(playerId, roundId, this.pool, this.seed);
         this.chars.set(playerId, this.store.assignCharacter(roundId, playerId, proposed, now));
       }
       this.store.saveAudienceState(roundId, 0, this.state, now);
@@ -166,6 +170,10 @@ export class AudienceManager {
     if (persistCharacter && this.roundId) {
       const proposed = assignCharacter(playerId, this.roundId, this.pool, this.seed);
       this.chars.set(playerId, this.store.assignCharacter(this.roundId, playerId, proposed, now));
+    } else if (this.lobbyReservation && !this.chars.has(playerId)) {
+      // Sảnh chưa có roundId: gán tạm trong RAM (không ghi DB) để mỗi người có nhân vật riêng.
+      this.lobbyKey ??= `lobby-${Math.floor(now)}`;
+      this.chars.set(playerId, assignCharacter(playerId, this.lobbyKey, this.pool, this.seed));
     }
     this.dirty = true;
     // LOBBY also displays the waiting count, so every new participant changes
