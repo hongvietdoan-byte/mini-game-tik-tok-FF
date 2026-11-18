@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 284,
-  "heartbeat": "2026-11-18T12:23:42+07:00",
+  "heartbeat": "2026-11-18T12:24:03+07:00",
   "state": "waiting",
   "task": "C-0284",
-  "note": "Đã ACK; origin/main hiện 29df78d8, chưa chứa commit C-0276 296b3e5; chờ thư báo gộp trước khi tạo nhánh Phase 2.",
+  "note": "C-0284 đã ACK và đánh dấu đã xử lý; origin/main chưa chứa 296b3e5 (C-0276), đang chờ thư báo gộp để bắt đầu.",
   "done": []
 }
