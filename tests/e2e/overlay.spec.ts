@@ -168,20 +168,104 @@ test('theme mặc định giữ phong cách CSS fallback trên sáu cảnh', asy
   }
 });
 
-test('C-0283: xem trước sảnh trống, 12 ghế và đếm ngược khi đủ 35 ghế', async ({ page }) => {
+test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái ghế', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
+  let frameGeometry: { board: number[]; question: number[] } | undefined;
   for (const preview of [
-    { scene: 'lobby-0', count: 'Đã ngồi 0/35', screenshot: 'c0283-lobby-0.png' },
-    { scene: 'lobby-12', count: 'Đã ngồi 12/35', screenshot: 'c0283-lobby-12.png' },
-    { scene: 'lobby-35-countdown', count: 'Đã ngồi 35/35', screenshot: 'c0283-lobby-35-countdown.png' },
+    { scene: 'lobby-0', count: '0/35', status: 'reminder', screenshot: 'c0287-lobby-0.png' },
+    { scene: 'lobby-12', count: '12/35', status: 'reminder', screenshot: 'c0287-lobby-12.png' },
+    { scene: 'lobby-35', count: '35/35', status: 'full', screenshot: 'c0287-lobby-35-full.png' },
+    { scene: 'lobby-35-countdown', count: '35/35', status: '10', screenshot: 'c0287-lobby-35-countdown-10.png' },
+    { scene: 'lobby-35-countdown-3', count: '35/35', status: '3', screenshot: 'c0287-lobby-35-countdown-3.png' },
   ]) {
     const { stage } = await openScene(page, preview.scene, 'LOBBY');
+    const question = stage.getByTestId('question-prompt');
+    await expect(question).toContainText('SẮP BẮT ĐẦU');
     await expect(stage.getByTestId('lobby-seat-count')).toHaveText(preview.count);
-    await expect(stage.getByText('Comment Free Fire để giành ghế!', { exact: true })).toBeVisible();
-    if (preview.scene === 'lobby-35-countdown')
-      await expect(stage.getByTestId('lobby-countdown')).toHaveText('Vào trận sau 10…');
-    else
+    await expect(stage.getByText('GHẾ ĐÃ CÓ CHỦ', { exact: true })).toBeVisible();
+    if (preview.status === 'reminder') {
+      await expect(stage.getByTestId('lobby-reminder')).toHaveText('Comment FREE FIRE để giành ghế!');
       await expect(stage.getByTestId('lobby-countdown')).toHaveCount(0);
+    } else if (preview.status === 'full') {
+      await expect(stage.getByTestId('lobby-full')).toHaveText('ĐÃ ĐỦ GHẾ!');
+      await expect(stage.getByTestId('lobby-countdown')).toHaveCount(0);
+    } else {
+      await expect(stage.getByTestId('lobby-countdown-label')).toHaveText('VÀO TRẬN SAU');
+      await expect(stage.getByTestId('lobby-countdown')).toHaveText(preview.status);
+    }
+
+    const layout = await stage.evaluate((root) => {
+      const read = (element: Element | null) => {
+        if (!(element instanceof HTMLElement)) throw new Error('Missing lobby layout element');
+        return { offset: [element.offsetLeft, element.offsetTop, element.offsetWidth, element.offsetHeight], scroll: [element.scrollWidth, element.scrollHeight, element.clientWidth, element.clientHeight], fits: element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight };
+      };
+      const fontSize = (selector: string) => {
+        const element = root.querySelector(selector);
+        if (!(element instanceof HTMLElement)) throw new Error(`Missing ${selector}`);
+        return Number.parseFloat(getComputedStyle(element).fontSize);
+      };
+      const copy = root.querySelector('.v3-lobby-copy');
+      const seatSummary = root.querySelector('.v3-lobby-seat-summary');
+      const status = root.querySelector('[data-testid="lobby-status"]');
+      const question = root.querySelector('[data-testid="question-prompt"]');
+      const board = root.querySelector('.v3-board');
+      if (!(copy instanceof HTMLElement) || !(seatSummary instanceof HTMLElement) || !(status instanceof HTMLElement) || !(question instanceof HTMLElement) || !(board instanceof HTMLElement)) throw new Error('Missing lobby copy, seat summary, question, board or status');
+      const boardRect = board.getBoundingClientRect();
+      const statusRect = status.getBoundingClientRect();
+      const boardBorderBottom = Number.parseFloat(getComputedStyle(board).borderBottomWidth);
+      const statusChildrenWithinStatus = Array.from(status.children).every((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top >= statusRect.top && rect.bottom <= statusRect.bottom;
+      });
+      const seatLabel = root.querySelector('.v3-lobby-seat-label');
+      const reminder = root.querySelector('.v3-lobby-reminder');
+      const full = root.querySelector('.v3-lobby-full');
+      const countdown = root.querySelector('.v3-lobby-countdown');
+      return {
+        board: read(board),
+        boardWithinViewport: boardRect.left >= 0 && boardRect.top >= 0 && boardRect.right <= innerWidth && boardRect.bottom <= innerHeight,
+        statusWithinBoard: statusRect.top >= boardRect.top && statusRect.bottom <= boardRect.bottom - boardBorderBottom + 1,
+        statusChildrenWithinStatus,
+        question: read(root.querySelector('[data-testid="question-prompt"]')),
+        status: read(status),
+        statusChildren: Array.from(status.children).map((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return { tag: element.tagName, rect: [rect.top, rect.bottom, rect.height], lineHeight: style.lineHeight, margin: [style.marginTop, style.marginBottom], shadow: style.textShadow };
+        }),
+        questionStatusGap: status.offsetTop - question.offsetTop - question.offsetHeight,
+        titleFont: fontSize('.v3-lobby-copy > strong'),
+        seatFont: fontSize('.v3-lobby-seat-count'),
+        labelFont: seatLabel ? Number.parseFloat(getComputedStyle(seatLabel).fontSize) : 0,
+        statusFont: reminder || full || countdown ? Number.parseFloat(getComputedStyle(reminder ?? full ?? countdown!).fontSize) : 0,
+        countdownLabelFont: (() => {
+          const label = root.querySelector('.v3-lobby-countdown-label');
+          return label instanceof HTMLElement ? Number.parseFloat(getComputedStyle(label).fontSize) : 0;
+        })(),
+        copyGap: Number.parseFloat(getComputedStyle(copy).rowGap),
+        seatSummaryGap: Number.parseFloat(getComputedStyle(seatSummary).rowGap),
+        statusGap: Number.parseFloat(getComputedStyle(status).gap),
+      };
+    });
+    expect(layout.board.offset).toEqual([416, 345, 567, 470]);
+    expect(layout.question.offset).toEqual([18, 145, 527, 160]);
+    expect(layout.boardWithinViewport && layout.statusWithinBoard && layout.statusChildrenWithinStatus && layout.question.fits, JSON.stringify(layout)).toBe(true);
+    expect(layout.questionStatusGap).toBeGreaterThanOrEqual(12);
+    expect(layout.titleFont).toBeGreaterThanOrEqual(24);
+    expect(layout.seatFont).toBeGreaterThanOrEqual(64);
+    expect(layout.labelFont).toBeGreaterThanOrEqual(22);
+    expect(layout.copyGap).toBeGreaterThanOrEqual(12);
+    expect(layout.seatSummaryGap).toBeGreaterThanOrEqual(12);
+    expect(layout.statusGap).toBeGreaterThanOrEqual(12);
+    if (preview.status === 'reminder') expect(layout.statusFont).toBeGreaterThanOrEqual(28);
+    if (preview.status === 'full') expect(layout.statusFont).toBeGreaterThanOrEqual(32);
+    if (preview.status === '10' || preview.status === '3') {
+      expect(layout.countdownLabelFont).toBeGreaterThanOrEqual(22);
+      expect(layout.statusFont).toBeGreaterThanOrEqual(96);
+    }
+    const geometry = { board: layout.board.offset, question: layout.question.offset };
+    if (frameGeometry) expect(geometry).toEqual(frameGeometry);
+    else frameGeometry = geometry;
     await page.screenshot({ path: join(screenshotDirectory, preview.screenshot), animations: 'disabled' });
   }
 });

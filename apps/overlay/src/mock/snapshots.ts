@@ -89,7 +89,9 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   lobby: { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-0': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-12': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-35': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-35-countdown': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-35-countdown-3': { scene: 'LOBBY', state: 'LOBBY' },
   prepare: { scene: 'QUESTION', state: 'PREPARE' },
   reading: { scene: 'QUESTION', state: 'READING' },
   'reading-longest': { scene: 'QUESTION', state: 'READING' },
@@ -195,7 +197,7 @@ function firstGraphemes(text: string, count: number): string {
 export function makeMockSnapshot(name: string, mcStateOverride?: McState): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
-  const lobbySeatCount = name === 'lobby-12' ? 12 : name === 'lobby-35-countdown' ? 35 : 0;
+  const lobbySeatCount = name === 'lobby-12' ? 12 : name.startsWith('lobby-35') ? 35 : 0;
   const short = name === 'top10-short';
   const isFastestMock = name === 'fastest-a' || name === 'fastest-a-long' || name === 'fastest-b' || name === 'fastest-score-width';
   const isZeroScoreMock = name.includes('zero-score');
@@ -274,7 +276,9 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
                     : 16_000,
       running: name !== 'paused',
     },
-    lobbyCountdown: name === 'lobby-35-countdown' ? { durationMs: 10_000, remainingMs: 10_000 } : null,
+    lobbyCountdown: name === 'lobby-35-countdown'
+      ? { durationMs: 10_000, remainingMs: 10_000 }
+      : name === 'lobby-35-countdown-3' ? { durationMs: 10_000, remainingMs: 3_000 } : null,
     round: { roundNumber: 1, questionIndex: 4, questionCount: 15 },
     question: question ? {
       questionInstanceId: 'demo-question-5',
@@ -341,4 +345,4 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
   } as PublicSnapshot;
 }
 
-export const MOCK_SCENES = Object.keys(sceneMap);
+export const MOCK_SCENES = Object.keys(sceneMap).filter((name) => name !== 'lobby-35' && name !== 'lobby-35-countdown-3');

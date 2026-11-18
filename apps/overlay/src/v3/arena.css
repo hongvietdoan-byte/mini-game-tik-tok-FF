@@ -2242,3 +2242,86 @@
 
 /* C-0281: keep the mid-round portrait fixed so its speech-bubble center stays aligned. */
 .v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-mc-figure { animation: none; }
+
+/* C-0287: make lobby information readable without changing the approved frame geometry. */
+.v3-stage.v3-stage--question-user .v3-question.is-lobby {
+  display: grid;
+  place-items: center;
+  padding: 4px 16px;
+  overflow: hidden;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-copy {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: 100%;
+  line-height: 1;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-copy > strong {
+  color: var(--theme-gold, #ffd86a);
+  font-size: 24px;
+  line-height: 1;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-seat-summary {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  line-height: 1;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-seat-count {
+  color: var(--theme-gold, #ffd86a);
+  font-size: 68px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-seat-label {
+  color: var(--theme-paper, #fff);
+  font-size: 22px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-status {
+  position: absolute;
+  z-index: 1;
+  top: 317px;
+  right: 20px;
+  bottom: 0;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-reminder {
+  color: var(--theme-paper, #fff);
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-reminder b,
+.v3-stage.v3-stage--question-user .v3-lobby-full {
+  color: var(--theme-gold, #ffd86a);
+}
+.v3-stage.v3-stage--question-user .v3-lobby-full {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-countdown-label {
+  color: var(--theme-paper, #fff);
+  font-size: 24px;
+  font-weight: 900;
+  line-height: .9;
+}
+.v3-stage.v3-stage--question-user .v3-lobby-countdown {
+  color: var(--theme-gold, #ffd86a);
+  font-size: 96px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: .9;
+}
