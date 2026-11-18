@@ -17,22 +17,30 @@ const MOCK_NAMES = [
   'LMHxr76', 'Muốn học giỏi', 'Lananh', 'nguyenhuyen', 'Mai Trí Đức',
   'Hoài Thương', 'Choco Mutt', 'bó dài về phố', 'LNH 👨‍👩‍👧', 'Misu',
 ];
-function mockAudience(withResults: boolean): AudienceView {
+function mockAudience(withResults: boolean, seated = 35): AudienceView {
   const slots = createSlots();
+  let state = createAudienceState(slots);
+  for (let index = 0; index < seated; index += 1)
+    state = onPlayerJoined(state, `audience-demo-${index}`, index).state;
+  const playerIndex = new Map(Array.from({ length: seated }, (_, index) => [`audience-demo-${index}`, index]));
+  const names = new Map(Array.from({ length: seated }, (_, index) => [`audience-demo-${index}`, MOCK_NAMES[index]!]));
   return {
     rotationId: 3,
-    queued: 1213,
-    total: 1248,
-    seats: slots.map((slot, i) => ({
-      ...slot,
-      occupant: {
-        // createSlots() trả hàng 0 ở bục dưới; đảo chỉ thứ tự hàng để mock khớp ảnh mẫu trên→dưới.
-        safeDisplayName: MOCK_NAMES[(6 - slot.rowIndex) * 5 + (i % 5)]!,
-        characterId: MOCK_CHIBI[(i * 7) % MOCK_CHIBI.length]!,
-        pinned: i < 3,
-        result: withResults ? (i % 3 === 0 ? 'wrong' : i % 5 === 0 ? 'none' : 'correct') : null,
-      },
-    })),
+    queued: state.queue.length + (seated === 35 ? 1213 : 0),
+    total: seated + state.queue.length + (seated === 35 ? 1213 : 0),
+    seats: slots.map((slot) => {
+      const occupant = state.seats[slot.slotId];
+      const index = occupant ? playerIndex.get(occupant.playerId) ?? 0 : 0;
+      return {
+        ...slot,
+        occupant: occupant ? {
+          safeDisplayName: names.get(occupant.playerId) ?? 'Khán giả',
+          characterId: MOCK_CHIBI[(index * 7) % MOCK_CHIBI.length]!,
+          pinned: index < 3,
+          result: withResults ? (index % 3 === 0 ? 'wrong' : index % 5 === 0 ? 'none' : 'correct') : null,
+        } : null,
+      };
+    }),
   };
 }
 
@@ -88,7 +96,9 @@ const options = [
 const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   lobby: { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-0': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-7': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-12': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-15': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-35': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-35-countdown': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-35-countdown-3': { scene: 'LOBBY', state: 'LOBBY' },
@@ -102,11 +112,15 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'question-long-answer': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-grid-balance': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-clamp-text': { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-live-long': { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-audience-7': { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-audience-15': { scene: 'QUESTION', state: 'ACCEPTING' },
   // Hợp đồng V3: LEADERBOARD ngắn giữ scene REVEAL để vẫn hiện đáp án + Top 10 gọn.
   reveal: { scene: 'REVEAL', state: 'LEADERBOARD' },
   'reveal-grid-balance': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'reveal-zero-score': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'reveal-clamp-text': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'reveal-live-long': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-a': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-a-long': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-b': { scene: 'REVEAL', state: 'LEADERBOARD' },
@@ -197,7 +211,12 @@ function firstGraphemes(text: string, count: number): string {
 export function makeMockSnapshot(name: string, mcStateOverride?: McState): PublicSnapshot | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
-  const lobbySeatCount = name === 'lobby-12' ? 12 : name.startsWith('lobby-35') ? 35 : 0;
+  const lobbySeatCount = /^lobby-(\d+)/u.exec(name)?.[1]
+    ? Number(/^lobby-(\d+)/u.exec(name)![1])
+    : 0;
+  const audienceSeatCount = /^(?:question|reveal)-audience-(\d+)/u.exec(name)?.[1]
+    ? Number(/^(?:question|reveal)-audience-(\d+)/u.exec(name)![1])
+    : 35;
   const short = name === 'top10-short';
   const isFastestMock = name === 'fastest-a' || name === 'fastest-a-long' || name === 'fastest-b' || name === 'fastest-score-width';
   const isZeroScoreMock = name.includes('zero-score');
@@ -206,7 +225,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
   const mockLeaderboard = isZeroScoreMock
     ? leaderboard.map((entry, index) => ({ ...entry, score: emptyZeroScoreMock || index >= 6 ? 0 : entry.score }))
     : isScoreWidthMock ? scoreWidthLeaderboard : leaderboard;
-  const question = ['prepare', 'reading', 'reading-longest', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name);
+  const question = ['prepare', 'reading', 'reading-longest', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name);
   const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
   const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
@@ -237,7 +256,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     { id: 'D' as const, text: 'Bỏ qua vùng an toàn để tiếp tục nhặt thêm trang bị.' },
   ];
   const optionsVisible = name !== 'prepare';
-  const isReveal = name === 'reveal' || name === 'reveal-grid-balance' || name === 'reveal-zero-score' || name === 'reveal-clamp-text' || isFastestMock;
+  const isReveal = name === 'reveal' || name === 'reveal-grid-balance' || name === 'reveal-zero-score' || name === 'reveal-clamp-text' || name === 'reveal-live-long' || isFastestMock;
   const visibleLeaderboard = name === 'question-long-name' || name === 'top10-long-name'
     ? mockLeaderboard.map((entry, index) => index === 0
       ? { ...entry, safeDisplayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
@@ -283,7 +302,9 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     question: question ? {
       questionInstanceId: 'demo-question-5',
       index: 4,
-      prompt: name === 'question-clamp-text' || name === 'reveal-clamp-text'
+      prompt: name === 'question-live-long' || name === 'reveal-live-long'
+        ? 'Trong Free Fire, từ nào thường xuất hiện trên kết quả khi người chơi hoặc đội giành chiến thắng Battle Royale?'
+        : name === 'question-clamp-text' || name === 'reveal-clamp-text'
         ? clampPrompt
         : name === 'question-longest' || name === 'reading-longest'
         ? longestPrompt
@@ -295,7 +316,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
       isDemo: true,
     } : null,
     answerCount: name === 'prepare' || name === 'reading' ? 0 : 42,
-    participantCount: short ? 3 : 57,
+    participantCount: short ? 3 : name.startsWith('question-audience-') ? audienceSeatCount : 57,
     fastestCorrectAnswer: isFastestMock ? {
       questionInstanceId: 'demo-question-5',
       publicPlayerId: leaderboard[1]!.playerId,
@@ -340,7 +361,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     },
     audience: name.startsWith('lobby')
       ? mockLobbyAudience(lobbySeatCount)
-      : ['prepare', 'reading', 'reading-longest', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name) ? mockAudience(isReveal) : null,
+      : ['prepare', 'reading', 'reading-longest', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name) ? mockAudience(isReveal, audienceSeatCount) : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   } as PublicSnapshot;
 }

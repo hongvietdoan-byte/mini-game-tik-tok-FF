@@ -627,6 +627,10 @@ export class SessionRuntime {
           this.store.closeSession(this.id, now);
           break;
         case 'STATE_CHANGED': {
+          if (e.to === 'REVEAL' && this.engine.round) {
+            const scores = new Map(this.ranked.map((entry) => [entry.playerId, entry.score]));
+            this.audienceChanged = this.audience.reorderByRank(scores) || this.audienceChanged;
+          }
           if (e.to === 'LOBBY') {
             this.audience.openLobby();
             this.lobbyOpenedAtMs = now;

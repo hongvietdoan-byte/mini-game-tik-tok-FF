@@ -612,11 +612,12 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     const approvedTooLong = store.listQuestions(warningPackId)
       .filter((question) => isEligible(question, { allowDemo, nowMs: checkedAtMs })
         && questionLengthWarnings(question, QUESTION_DISPLAY_LIMITS).length > 0);
+    const tooLongQuestionIds = approvedTooLong.map((question) => question.id).sort((left, right) => left.localeCompare(right));
     check(
       'questionLength',
       'Câu dài đã loại khỏi lượt chọn',
       'PASS',
-      `Đã loại ${approvedTooLong.length} câu dài khỏi lượt chọn.`,
+      `Đã loại ${approvedTooLong.length} câu dài khỏi lượt chọn.${tooLongQuestionIds.length ? ` Mã cần rút gọn: ${tooLongQuestionIds.join(', ')}.` : ''}`,
     );
 
     return {
