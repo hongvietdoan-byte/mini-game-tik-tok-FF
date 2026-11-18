@@ -15,7 +15,9 @@ const TOKEN = 'v5-benchmark-admin-token-0123456789';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
 const ANSWER_MS = 20_000;
 const SIZES = [100, 1_000, 5_000, 10_000];
-const TICK_MS = 25;
+// Chỉ là nhịp thăm dò bên ngoài: ManualScheduler vẫn chạy mọi callback đúng timestamp
+// ở giữa mỗi bước, nên có thể nhảy 1 s mà không làm tròn thời điểm comment/timer.
+const TICK_MS = 1_000;
 
 function percentile(values: number[], p: number) {
   if (!values.length) return null;
