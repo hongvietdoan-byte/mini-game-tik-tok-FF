@@ -476,7 +476,7 @@ export const TimingsSchema = z.object({
   /** BXH lớn ở mốc (mỗi leaderboardInterval câu + câu cuối) — V3: 5–8 s. Thiếu → 6 s. */
   bigLeaderboardMs: z.number().int().min(500).max(60_000).optional(),
   roundEndMs: z.number().int().min(0).max(60_000).default(2_000),
-  victoryMs: z.number().int().min(1_000).max(120_000).default(18_000),
+  victoryMs: z.number().int().min(1_000).max(120_000).default(10_000),
   intermissionMs: z.number().int().min(1_000).max(600_000).default(30_000),
 });
 export type Timings = z.infer<typeof TimingsSchema>;

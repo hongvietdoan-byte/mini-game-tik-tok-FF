@@ -13,9 +13,10 @@ export const AUDIO_CUES = [
 export type AudioCue = typeof AUDIO_CUES[number];
 export type BgmTrack = 'bgm-lobby' | 'bgm-game';
 export type BgmFileSlot = BgmTrack | 'bgm';
+export type VictoryMusicSlot = `victory-music-${number}`;
 export type BgmFileExtension = 'mp3' | 'ogg';
 export type BgmFileCandidate = { slot: BgmFileSlot; extension: BgmFileExtension };
-export type AudioSlot = AudioCue | BgmFileSlot;
+export type AudioSlot = AudioCue | BgmFileSlot | VictoryMusicSlot;
 export type VisualCue = 'question' | 'reveal' | 'top10' | 'victory' | 'transition';
 export type AudioMix = { volume: number; sfx: number; bgm: number };
 export type CountdownPulse = { offsetMs: number; frequency: number; duration: number };
@@ -39,7 +40,7 @@ export function bgmFallbackCandidates(track: BgmTrack): readonly BgmFileCandidat
       ];
 }
 
-/** Resolves a phase to its loop; VICTORY deliberately leaves room for its jingle. */
+/** Resolves a phase to its loop; VICTORY music is managed separately as a one-shot. */
 export function selectBgmTrack(snapshot: Pick<PublicSnapshot, 'state' | 'scene' | 'round'>): BgmTrack | null {
   if (snapshot.state === 'VICTORY' || snapshot.scene === 'VICTORY') return null;
   if (snapshot.state === 'IDLE' || snapshot.state === 'LOBBY' || !snapshot.round) return 'bgm-lobby';

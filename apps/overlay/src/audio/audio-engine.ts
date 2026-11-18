@@ -1,4 +1,4 @@
-import { countdownTickPattern, loadBgmWithFallback, selectBgmTrack, type AudioCue, type AudioMix, type AudioSlot, type BgmFileExtension, type BgmTrack } from './audio-cues';
+import { countdownTickPattern, loadBgmWithFallback, selectBgmTrack, type AudioCue, type AudioMix, type AudioSlot, type BgmFileExtension, type BgmTrack, type VictoryMusicSlot } from './audio-cues';
 import { MC_VOICE_DUCKING_GAIN } from './audio-cues';
 import { MC_COUNTDOWN_LATE_GRACE_MS } from './mc-voice';
 import type { McVoiceCue, ThemeAssetSlot } from '@quiz/contracts';
@@ -10,6 +10,9 @@ type StateListener = (state: AudioEngineState) => void;
 const AUDIO_FILE_EXTENSIONS = ['mp3', 'ogg'] as const;
 const BGM_CROSSFADE_SECONDS = 1;
 const BGM_STOP_GRACE_SECONDS = 0.025;
+const VICTORY_MUSIC_STOP_SECONDS = 0.5;
+const VICTORY_MUSIC_MAX_TRACKS = 16;
+const SYNTH_VICTORY_CUE_SECONDS = 1.6;
 
 type ActiveBgm = {
   source: AudioBufferSourceNode;
@@ -18,6 +21,8 @@ type ActiveBgm = {
   slot: string;
   targetGain: 0 | 1;
 };
+
+type ActiveVictoryMusic = { source: AudioBufferSourceNode; gain: GainNode };
 
 /** WebAudio playback with generated cues as the always-available fallback. */
 export class OverlayAudioEngine {
@@ -30,10 +35,13 @@ export class OverlayAudioEngine {
   private readonly voiceBuffers = new Map<string, Promise<AudioBuffer | null>>();
   private readonly activeSources = new Set<AudioScheduledSourceNode>();
   private readonly activeBgmSources = new Set<ActiveBgm>();
+  private activeVictoryMusic: ActiveVictoryMusic | null = null;
   private readonly activeVoiceSources = new Set<AudioBufferSourceNode>();
   private readonly voiceStopAt = new WeakMap<AudioBufferSourceNode, number>();
   private requestedBgmTrack: BgmTrack | null | undefined;
   private bgmGeneration = 0;
+  private victoryGeneration = 0;
+  private requestedVictoryKey: string | null = null;
   private voiceSource: AudioBufferSourceNode | null = null;
   private voiceGeneration = 0;
   private countdownVoiceGeneration = 0;
@@ -124,6 +132,109 @@ export class OverlayAudioEngine {
     this.requestedBgmTrack = track;
     const generation = ++this.bgmGeneration;
     void this.transitionBgm(track, generation);
+  }
+
+  /** Plays the event jingle followed by one optional, round-rotated victory track. */
+  syncVictoryMusic(snapshot: Pick<PublicSnapshot, 'sessionId' | 'state' | 'scene' | 'round'>, playJingle = false) {
+    const isVictory = snapshot.state === 'VICTORY' || snapshot.scene === 'VICTORY';
+    if (!isVictory) {
+      if (this.requestedVictoryKey !== null) {
+        this.requestedVictoryKey = null;
+        this.victoryGeneration += 1;
+        this.fadeOutVictoryMusic();
+      }
+      return;
+    }
+
+    const roundNumber = Math.max(1, snapshot.round?.roundNumber ?? 1);
+    const key = `${snapshot.sessionId}:${roundNumber}`;
+    if (key === this.requestedVictoryKey) return;
+    if (this.requestedVictoryKey !== null) this.fadeOutVictoryMusic();
+    this.requestedVictoryKey = key;
+    const generation = ++this.victoryGeneration;
+    void this.startVictoryMusic(roundNumber, playJingle, generation);
+  }
+
+  private async startVictoryMusic(roundNumber: number, playJingle: boolean, generation: number) {
+    const context = this.context;
+    const bgm = this.bgm;
+    if (!context || !bgm || this.destroyed || this.mix.volume <= 0) return;
+    if (context.state !== 'running') await this.unlock();
+    if (generation !== this.victoryGeneration || this.destroyed || context.state !== 'running') return;
+
+    let musicStartsAt = context.currentTime + 0.012;
+    if (playJingle && this.sfx && this.mix.sfx > 0) {
+      const jingle = await this.loadFile('victory');
+      if (generation !== this.victoryGeneration || this.destroyed || context.state !== 'running') return;
+      if (jingle) {
+        const source = context.createBufferSource();
+        source.buffer = jingle;
+        source.connect(this.sfx);
+        this.track(source);
+        try {
+          source.start(musicStartsAt);
+        } catch {
+          this.activeSources.delete(source);
+        }
+        musicStartsAt += jingle.duration;
+      } else {
+        this.synthesize('victory', 0);
+        musicStartsAt += SYNTH_VICTORY_CUE_SECONDS;
+      }
+    }
+
+    const tracks = await this.loadVictoryMusicTracks();
+    if (generation !== this.victoryGeneration || this.destroyed || context.state !== 'running' || tracks.length === 0) return;
+    const selected = tracks[(roundNumber - 1) % tracks.length]!;
+    const startsAt = Math.max(musicStartsAt, context.currentTime + 0.012);
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = selected.buffer;
+    source.loop = false;
+    gain.gain.setValueAtTime(1, context.currentTime);
+    source.connect(gain);
+    gain.connect(bgm);
+    const active = { source, gain };
+    source.onended = () => {
+      this.activeSources.delete(source);
+      if (this.activeVictoryMusic === active) this.activeVictoryMusic = null;
+    };
+    this.activeSources.add(source);
+    this.activeVictoryMusic = active;
+    try {
+      source.start(startsAt);
+    } catch {
+      this.activeSources.delete(source);
+      if (this.activeVictoryMusic === active) this.activeVictoryMusic = null;
+    }
+  }
+
+  private async loadVictoryMusicTracks() {
+    const tracks: { buffer: AudioBuffer; slot: VictoryMusicSlot }[] = [];
+    for (let index = 1; index <= VICTORY_MUSIC_MAX_TRACKS; index += 1) {
+      const slot = `victory-music-${index}` as VictoryMusicSlot;
+      const buffer = await this.loadFile(slot);
+      if (!buffer) break;
+      tracks.push({ buffer, slot });
+    }
+    return tracks;
+  }
+
+  private fadeOutVictoryMusic() {
+    const active = this.activeVictoryMusic;
+    const context = this.context;
+    if (!active || !context) return;
+    this.activeVictoryMusic = null;
+    const now = context.currentTime;
+    const parameter = active.gain.gain;
+    parameter.cancelScheduledValues(now);
+    parameter.setValueAtTime(parameter.value, now);
+    parameter.linearRampToValueAtTime(0, now + VICTORY_MUSIC_STOP_SECONDS);
+    try {
+      active.source.stop(now + VICTORY_MUSIC_STOP_SECONDS + BGM_STOP_GRACE_SECONDS);
+    } catch {
+      // The one-shot may have ended while the fade was being scheduled.
+    }
   }
 
   private ensureBgm() {
@@ -612,6 +723,7 @@ export class OverlayAudioEngine {
   destroy() {
     this.destroyed = true;
     this.bgmGeneration += 1;
+    this.victoryGeneration += 1;
     this.stopMcVoice();
     for (const source of this.activeSources) {
       source.onended = null;

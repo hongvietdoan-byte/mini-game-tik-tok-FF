@@ -9,6 +9,7 @@ export const THEME_ASSET_SLOTS = [
   'victory.background', 'victory.userCover', 'victory.trophyStage',
   'audio.question-enter', 'audio.countdown-tick', 'audio.timeout',
   'audio.correct-answer', 'audio.top10', 'audio.victory', 'audio.transition',
+  'audio.victory-music-1', 'audio.victory-music-2',
   'audio.bgm-lobby', 'audio.bgm-game', 'audio.bgm',
 ] as const;
 
@@ -69,6 +70,7 @@ const ThemeAssetsSchema = z.object({
   'audio.question-enter': ThemeRelativePathSchema.optional(), 'audio.countdown-tick': ThemeRelativePathSchema.optional(),
   'audio.timeout': ThemeRelativePathSchema.optional(), 'audio.correct-answer': ThemeRelativePathSchema.optional(),
   'audio.top10': ThemeRelativePathSchema.optional(), 'audio.victory': ThemeRelativePathSchema.optional(),
+  'audio.victory-music-1': ThemeRelativePathSchema.optional(), 'audio.victory-music-2': ThemeRelativePathSchema.optional(),
   'audio.transition': ThemeRelativePathSchema.optional(), 'audio.bgm-lobby': ThemeRelativePathSchema.optional(),
   'audio.bgm-game': ThemeRelativePathSchema.optional(), 'audio.bgm': ThemeRelativePathSchema.optional(),
 }).strict();

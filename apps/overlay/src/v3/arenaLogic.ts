@@ -1,5 +1,28 @@
 /** Logic thuần cho bố cục V3 (test được không cần DOM). */
 
+export const ANSWER_OPTION_IDS = ['A', 'B', 'C', 'D'] as const;
+export type AnswerOptionId = typeof ANSWER_OPTION_IDS[number];
+
+/** Làm tròn phân bố đáp án theo phần dư lớn nhất; hòa điểm theo A → D. */
+export function answerPercentages(counts: Record<AnswerOptionId, number>): Record<AnswerOptionId, number> {
+  const normalized = ANSWER_OPTION_IDS.map((id) => Math.max(0, Number.isFinite(counts[id]) ? counts[id] : 0));
+  const total = normalized.reduce((sum, count) => sum + count, 0);
+  const percentages = { A: 0, B: 0, C: 0, D: 0 };
+  if (total <= 0) return percentages;
+
+  const exact = normalized.map((count) => count ? (count / total) * 100 : 0);
+  const whole = exact.map(Math.floor);
+  for (let index = 0; index < ANSWER_OPTION_IDS.length; index += 1)
+    percentages[ANSWER_OPTION_IDS[index]!] = whole[index]!;
+
+  const remainder = 100 - whole.reduce((sum, value) => sum + value, 0);
+  const tieOrder = ANSWER_OPTION_IDS.map((id, index) => ({ id, index, fraction: exact[index]! - whole[index]! }))
+    .filter(({ index }) => normalized[index]! > 0)
+    .sort((left, right) => right.fraction - left.fraction || left.index - right.index);
+  for (const { id } of tieOrder.slice(0, remainder)) percentages[id] += 1;
+  return percentages;
+}
+
 /** Màu tóc giữ chỗ ổn định theo characterId (cùng id → cùng màu). */
 export function characterHue(characterId: string): number {
   let h = 2166136261;

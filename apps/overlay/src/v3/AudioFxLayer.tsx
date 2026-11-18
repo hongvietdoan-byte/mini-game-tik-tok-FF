@@ -102,13 +102,16 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
       snapshot.round?.roundNumber ?? '',
     ].join(':');
     audio?.syncBgm(snapshot);
+    const decision = tracker.current.consume(snapshot, second * 1_000);
+    audio?.syncVictoryMusic(snapshot, decision.cues.includes('victory'));
     if (phase !== lastResumePhase.current) {
       lastResumePhase.current = phase;
       void audio?.unlock();
     }
-    const decision = tracker.current.consume(snapshot, second * 1_000);
     if (decision.cues.length) {
-      for (const cue of decision.cues) void audio?.play(cue, second);
+      for (const cue of decision.cues) {
+        if (cue !== 'victory') void audio?.play(cue, second);
+      }
       setCues((previous) => [...previous, ...decision.cues].slice(-32));
     }
     if (decision.visualCue) {

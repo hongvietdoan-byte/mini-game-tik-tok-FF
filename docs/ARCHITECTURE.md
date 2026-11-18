@@ -37,7 +37,7 @@
 
 ```
 IDLE → LOBBY → PREPARE → ACCEPTING → REVEAL ─┬─(mốc 5/10/15)→ LEADERBOARD ─┬→ PREPARE
-                ▲                            └─(không mốc)───→ PREPARE      └─(câu cuối)→ ROUND_END → VICTORY → INTERMISSION → LOBBY
+                ▲                            └─(không mốc)───→ PREPARE      └─(câu cuối)→ ROUND_END → VICTORY → LOBBY
                 │
  PAUSED (PAUSE / RECOVERY) ◄── trạng thái hoạt động; CONNECTION_INTERRUPTED ◄── ACCEPTING; ERROR ◄── bất kỳ (FATAL)
 ```

@@ -1,7 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { characterHue, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
+import { answerPercentages, characterHue, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
 
 describe('V3 arena logic', () => {
+  it('phân bố phần trăm đáp án tổng đúng 100%, hòa theo A→D và không cộng cho ô 0', () => {
+    expect(answerPercentages({ A: 1, B: 1, C: 1, D: 0 })).toEqual({ A: 34, B: 33, C: 33, D: 0 });
+    expect(answerPercentages({ A: 1, B: 2, C: 0, D: 2 })).toEqual({ A: 20, B: 40, C: 0, D: 40 });
+    expect(answerPercentages({ A: 2, B: 1, C: 0, D: 0 })).toEqual({ A: 67, B: 33, C: 0, D: 0 });
+    expect(answerPercentages({ A: 0, B: 0, C: 0, D: 0 })).toEqual({ A: 0, B: 0, C: 0, D: 0 });
+  });
+
+  it('giữ tổng 100% với 1.000 phân bố tất định và luôn giữ ô không đáp án ở 0%', () => {
+    let seed = 0x26_04_2026;
+    const randomCount = () => {
+      seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+      return seed % 100_000;
+    };
+    for (let sample = 0; sample < 1_000; sample += 1) {
+      const counts = { A: randomCount(), B: randomCount(), C: randomCount(), D: randomCount() };
+      const percentages = answerPercentages(counts);
+      expect(Object.values(percentages).reduce((sum, value) => sum + value, 0), `sample ${sample}`).toBe(100);
+      for (const id of ['A', 'B', 'C', 'D'] as const) {
+        if (counts[id] === 0) expect(percentages[id], `sample ${sample}/${id}`).toBe(0);
+      }
+    }
+  });
+
   it('màu nhân vật giữ chỗ ổn định theo characterId', () => {
     expect(characterHue('chibi-01')).toBe(characterHue('chibi-01'));
     const hues = new Set(Array.from({ length: 12 }, (_, i) => characterHue(`chibi-${i + 1}`)));

@@ -137,9 +137,8 @@ describe('đường đi trọn vòng theo interval 5', () => {
     timerStep();
     expect(state.state).toBe('VICTORY');
     timerStep();
-    expect(state.state).toBe('INTERMISSION');
-    timerStep();
     expect(state.state).toBe('LOBBY');
+    expect(state.round).toBeNull();
     expect(state.completedRounds).toBe(1);
     expect(leaderboardQuestions).toEqual(Array.from({ length: count / 5 }, (_, index) => (index + 1) * 5));
     expect(events.filter((event) => event === 'QUESTION_OPENED')).toHaveLength(count);
@@ -559,12 +558,13 @@ describe('auto mode và chuyển vòng', () => {
     }
   });
 
-  it('NEXT_ROUND từ VICTORY hoặc INTERMISSION trở về LOBBY; MANUAL_NEXT ở ACCEPTING trái phép', () => {
+  it('VICTORY hết giờ về LOBBY; NEXT_ROUND vẫn tương thích với VICTORY và INTERMISSION cũ', () => {
     const victory = reachVictory();
     expect(cmd(victory, { type: 'NEXT_ROUND' }, 100)).toMatchObject({ ok: true, state: { state: 'LOBBY', round: null, completedRounds: 1 } });
-    const intermission = ok(elapse(victory));
-    expect(intermission.state).toBe('INTERMISSION');
-    expect(cmd(intermission, { type: 'NEXT_ROUND' }, 200)).toMatchObject({ ok: true, state: { state: 'LOBBY', round: null, completedRounds: 1 } });
+    expect(ok(elapse(victory))).toMatchObject({ state: 'LOBBY', round: null, completedRounds: 1 });
+    const legacyIntermission = { ...victory, state: 'INTERMISSION' as const };
+    expect(cmd(legacyIntermission, { type: 'NEXT_ROUND' }, 200)).toMatchObject({ ok: true, state: { state: 'LOBBY', round: null, completedRounds: 1 } });
+    expect(ok(elapse(legacyIntermission))).toMatchObject({ state: 'LOBBY', round: null, completedRounds: 1 });
     expect(cmd(reachAccepting(2), { type: 'MANUAL_NEXT' }, 300)).toMatchObject({ ok: false, code: 'ILLEGAL_TRANSITION' });
   });
 

@@ -743,7 +743,7 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   const optionalManifest404s = response404s.filter((url) => url === missingKellyManifestUrl);
   const optionalAudio404s = response404s.filter((url) => {
     const pathname = new URL(url).pathname;
-    return /^\/assets\/audio\/(question-enter|countdown-tick|timeout|correct-answer|top10|victory|transition|bgm|bgm-lobby|bgm-game)\.(mp3|ogg)$/.test(pathname);
+    return /^\/assets\/audio\/(question-enter|countdown-tick|timeout|correct-answer|top10|victory|victory-music-\d+|transition|bgm|bgm-lobby|bgm-game)\.(mp3|ogg)$/.test(pathname);
   });
   const optionalVideo404s = response404s.filter((url) => /^\/assets\/arena\/bg-loop\.(webm|mp4)$/.test(new URL(url).pathname));
   const unexpected404s = response404s.filter((url) => url !== missingKellyManifestUrl && !optionalAudio404s.includes(url) && !optionalVideo404s.includes(url));

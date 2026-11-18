@@ -10,7 +10,7 @@ describe('timing defaults', () => {
       revealMs: 9_000,
       leaderboardMs: 9_000,
       roundEndMs: 2_000,
-      victoryMs: 18_000,
+      victoryMs: 10_000,
       intermissionMs: 30_000,
     });
     expect(DEFAULT_TIMINGS.bigLeaderboardMs).toBeUndefined();
@@ -35,6 +35,7 @@ describe('timing defaults', () => {
       answerMs: 15_000,
       revealMs: 9_000,
       leaderboardMs: 9_000,
+      victoryMs: 10_000,
       intermissionMs: 30_000,
     });
   });
