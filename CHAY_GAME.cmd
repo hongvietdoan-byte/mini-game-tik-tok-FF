@@ -1,5 +1,6 @@
 @echo off
 setlocal
+chcp 65001 >nul
 title Ba Vuong Dai Chien - May chu game
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
@@ -17,6 +18,10 @@ if errorlevel 1 goto node_missing
 
 set "QUIZ_DATA_DIR=%ROOT%\data"
 set "QUIZ_DB=%QUIZ_DATA_DIR%\quiz.db"
+if not "%~1"=="" set "QUIZ_PROGRAM_WIDTH=%~1"
+if not "%~2"=="" set "QUIZ_PROGRAM_HEIGHT=%~2"
+if not defined QUIZ_PROGRAM_WIDTH set "QUIZ_PROGRAM_WIDTH=1080"
+if not defined QUIZ_PROGRAM_HEIGHT set "QUIZ_PROGRAM_HEIGHT=1920"
 set "QUIZ_COMMIT="
 where git >nul 2>nul
 if errorlevel 1 goto git_missing
@@ -49,12 +54,12 @@ if errorlevel 1 goto backup_error
 echo [3/3] Dang chay may chu tai http://127.0.0.1:8787 ...
 echo.
 echo  - Dashboard (dieu khien): http://127.0.0.1:8787/dashboard/
-echo  - Cua so game program (co tieng) se mo tu dong; dung Window Capture cua cua so nay trong LIVE Studio.
+echo  - Khung game program yeu cau: %QUIZ_PROGRAM_WIDTH%x%QUIZ_PROGRAM_HEIGHT% CSS px; dung Window Capture cua cua so nay trong LIVE Studio.
 echo  - Neu Edge khong tu mo cua so game: http://127.0.0.1:8787/overlay/?role=program
 echo  - Ma quan tri da duoc CHEP SAN vao clipboard: bam Ctrl+V o o dang nhap Dashboard.
 echo  - DUNG TAT cua so nay trong luc LIVE. Tat cua so = tat game.
 echo.
-start "" /min powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%ROOT%\tools\open-game-windows.ps1" -Root "%ROOT%"
+start "" /b powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\open-game-windows.ps1" -Root "%ROOT%"
 call "%~dp0node_modules\.bin\tsx.cmd" "%~dp0apps\server\src\main.ts"
 pause
 exit /b 0

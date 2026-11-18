@@ -19,15 +19,16 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
 
 1. Nhấp đúp `CHAY_GAME.cmd` ở thư mục dự án.
 2. Không tắt cửa sổ đen khi server đang dùng; tắt cửa sổ sẽ dừng game.
-3. Sau khi server sẵn sàng, `CHAY_GAME.cmd` tự mở đúng hai cửa sổ app Edge: cửa sổ game overlay `role=program` (có âm thanh, 540×960) và Dashboard. Mỗi cửa sổ có profile riêng dưới `data/` (`edge-program-profile` và `edge-dashboard-profile`); cửa sổ game có cờ cho phép tự phát âm thanh. Hai cửa sổ không dùng profile Edge cá nhân. Nếu không tìm thấy Edge, mở URL Dashboard và overlay program được in trong cửa sổ chạy game.
-4. Ở ô “Mã quản trị”, bấm **Ctrl+V** rồi đăng nhập. Mã được chép vào clipboard; file gốc nằm ở `data/admin-token.txt`.
-5. Trình hướng dẫn kiểm tra Backend, Database và Mock. TikTok cần username của kênh đang LIVE.
+3. Sau khi server sẵn sàng, `CHAY_GAME.cmd` tự mở hai cửa sổ app Edge: cửa sổ game overlay `role=program` (có âm thanh) và Dashboard. Game mặc định có viewport trang **1080×1920 CSS px**. Launcher dùng DevTools cục bộ để đo `window.innerWidth/innerHeight`, điều chỉnh cửa sổ sau khi Edge mở và chỉ in `Khung game: 1080×1920 ✓` khi số đo thực tế khớp. Nếu Edge/Windows giới hạn cửa sổ, console in kích thước đo được cùng cảnh báo thay vì báo thành công. Cửa sổ game có cờ cho phép tự phát âm thanh; hai cửa sổ dùng profile riêng dưới `data/` và không dùng profile Edge cá nhân.
+4. Nếu máy yếu hoặc cần viewport nhỏ hơn, truyền chiều rộng rồi chiều cao khi chạy launcher, ví dụ `CHAY_GAME.cmd 720 1280`, hoặc đặt `QUIZ_PROGRAM_WIDTH=720` và `QUIZ_PROGRAM_HEIGHT=1280` trong môi trường trước khi chạy. Tham số dòng lệnh được ưu tiên hơn biến môi trường; mặc định lần lượt là `1080` và `1920`. Kích thước được giới hạn trong khoảng 320–7680 CSS px.
+5. Ở ô “Mã quản trị”, bấm **Ctrl+V** rồi đăng nhập. Mã được chép vào clipboard; file gốc nằm ở `data/admin-token.txt`.
+6. Trình hướng dẫn kiểm tra Backend, Database và Mock. TikTok cần username của kênh đang LIVE.
 
 ## 2. Đưa overlay vào TikTok LIVE Studio
 
 1. Chọn bố cục dọc (Portrait 9:16).
 2. Thêm nguồn **Window Capture** và chọn cửa sổ Edge **Bá Vương Đại Chiến · Overlay** do `CHAY_GAME.cmd` mở. Đây đã là overlay `role=program` có âm thanh; không thêm một nguồn Link / Web `role=program` thứ hai.
-3. Đặt nguồn phủ kín khung hình dọc 9:16 và ở lớp trên cùng. Cửa sổ app được mở ở 540×960; LIVE Studio có thể scale nguồn theo canvas 1080×1920.
+3. Đặt nguồn ở lớp trên cùng và căn phủ khung hình dọc 9:16. Giữ viewport nguồn tại 1080×1920 để capture theo kích thước canvas, không phóng nguồn 540×960 như cấu hình cũ. Dòng xác minh trong console của `CHAY_GAME.cmd` đo vùng trang (không tính viền/thanh tiêu đề); nếu LIVE Studio đưa cả thanh tiêu đề vào nguồn, crop phần khung ngoài trong LIVE Studio rồi căn lại vùng trang vào canvas.
 4. Tạo phiên rồi kiểm tra preflight: `overlayAck` và `overlayAudio` phải PASS. Cửa sổ program dùng profile riêng và cờ autoplay để gửi ACK âm thanh đang chạy; không mở cửa sổ overlay `role=preview`.
 5. Nếu preflight báo `overlayAudio` WARN hoặc không nghe tiếng, kiểm tra cửa sổ program không bị mute, trạng thái audio là `running`, và tùy chọn thu âm thanh ứng dụng của nguồn Window Capture trong LIVE Studio.
 6. Nếu không thể dùng Window Capture, đóng cửa sổ game do `CHAY_GAME.cmd` mở rồi mới dùng URL `http://127.0.0.1:8787/overlay/?role=program` làm nguồn Link / Web. Không để cả cửa sổ Edge và nguồn Link cùng mở `role=program`.
