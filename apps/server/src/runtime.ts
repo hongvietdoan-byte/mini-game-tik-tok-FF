@@ -85,7 +85,7 @@ import {
 } from '@quiz/quiz-core';
 import { MockAdapter, MockSimulator, type LiveAdapter, type Scheduler, type SimPlayer } from '@quiz/live-adapters';
 import type { FilteredPlayerName } from '@quiz/name-filter';
-import type { SessionRow, Store } from '@quiz/persistence';
+import type { RoundQuestionRow, SessionRow, Store } from '@quiz/persistence';
 import { AudienceManager, DEFAULT_CHARACTER_POOL } from './audience';
 import type { NameFilterStore } from './name-filter-store';
 import { McVoiceService, type McVoiceReadingBundle, type McVoiceReadingLine } from './voice/service';
@@ -204,6 +204,7 @@ const COMMENT_RATE_WINDOW_SECONDS = 5;
 const SOURCE_LATENCY_SAMPLE_LIMIT = 512;
 const HEARTBEAT_MS = 1_000;
 const DEFAULT_START_ROUND_VOICE_WAIT_MS = 30_000;
+const QUESTION_AUDIO_MAX_WAIT_MS = 10_000;
 const COUNTS_THROTTLE_MS = 250;
 const SPAM_CLEANUP_MS = 1_000;
 const MC_VOICE_TELEMETRY_REASONS = new Set([
@@ -279,6 +280,9 @@ export class SessionRuntime {
   private readonly lobbyKeywordMatches: (text: string) => boolean;
   private snapshots = new Map<string, QuestionSnapshot>();
   private snapshotsRoundId: string | null = null;
+  private questionRows = new Map<string, RoundQuestionRow>();
+  private streamDelaySamples: number[] = [];
+  private cachedNextQuestionDelayMs = DEFAULT_STREAM_DELAY_MS;
   private counts = ZERO_COUNTS();
   private countsQid: string | null = null;
   private participants = 0;
@@ -353,6 +357,7 @@ export class SessionRuntime {
       cfg.characterPool ?? (deps.characterPool?.length ? deps.characterPool : DEFAULT_CHARACTER_POOL),
       cfg.seed !== undefined ? cfg.seed >>> 0 : hashSeed(session.id),
     );
+    this.reloadStreamDelaySamples();
   }
 
   get id() {
@@ -372,6 +377,7 @@ export class SessionRuntime {
     };
     this.session.config = config;
     this.store.updateSessionConfig(this.id, config);
+    this.recomputeNextQuestionDelay();
     this.emitAdmin();
     return true;
   }
@@ -380,21 +386,39 @@ export class SessionRuntime {
     const roundId = this.engine.round?.roundId;
     const questionInstanceId = currentQuestionInstanceId(this.engine);
     const activeQuestion = roundId && questionInstanceId
-      ? this.store.roundQuestions(roundId).find((question) => question.id === questionInstanceId)
+      ? this.questionFor(roundId, questionInstanceId)
       : undefined;
     return {
       mode: this.config.streamDelayMode ?? 'AUTO',
-      nextQuestionDelayMs: this.nextQuestionStreamDelayMs(),
+      nextQuestionDelayMs: this.cachedNextQuestionDelayMs,
       activeQuestionDelayMs: activeQuestion?.streamDelayMs ?? null,
       manualDelayMs: clampStreamDelayMs(this.config.streamDelayManualMs ?? DEFAULT_STREAM_DELAY_MS),
     };
   }
 
   private nextQuestionStreamDelayMs(): number {
-    if ((this.config.streamDelayMode ?? 'AUTO') === 'MANUAL')
-      return clampStreamDelayMs(this.config.streamDelayManualMs ?? DEFAULT_STREAM_DELAY_MS);
-    const samples = this.store.recentCorrectAnswerElapsedMs(this.id);
-    return estimateStreamDelayMs(samples) ?? DEFAULT_STREAM_DELAY_MS;
+    return this.cachedNextQuestionDelayMs;
+  }
+
+  private recomputeNextQuestionDelay() {
+    if ((this.config.streamDelayMode ?? 'AUTO') === 'MANUAL') {
+      this.cachedNextQuestionDelayMs = clampStreamDelayMs(
+        this.config.streamDelayManualMs ?? DEFAULT_STREAM_DELAY_MS,
+      );
+      return;
+    }
+    this.cachedNextQuestionDelayMs = estimateStreamDelayMs(this.streamDelaySamples) ?? DEFAULT_STREAM_DELAY_MS;
+  }
+
+  private reloadStreamDelaySamples() {
+    this.streamDelaySamples = this.store.recentCorrectAnswerElapsedMs(this.id);
+    this.recomputeNextQuestionDelay();
+  }
+
+  private rememberClosedQuestionDelaySample(questionInstanceId: string) {
+    const sample = this.store.correctAnswerElapsedMsForQuestion(questionInstanceId);
+    if (sample !== null) this.streamDelaySamples = [sample, ...this.streamDelaySamples].slice(0, 5);
+    this.recomputeNextQuestionDelay();
   }
   private get store() {
     return this.deps.store;
@@ -495,8 +519,25 @@ export class SessionRuntime {
 
   private loadRound(roundId: string) {
     if (this.snapshotsRoundId === roundId) return;
-    this.snapshots = new Map(this.store.roundQuestions(roundId).map((q) => [q.id, q.snapshot]));
+    const questions = this.store.roundQuestions(roundId);
+    this.questionRows = new Map(questions.map((question) => [question.id, question]));
+    this.snapshots = new Map(questions.map((question) => [question.id, question.snapshot]));
     this.snapshotsRoundId = roundId;
+  }
+
+  private questionFor(roundId: string, questionInstanceId: string) {
+    this.loadRound(roundId);
+    return this.questionRows.get(questionInstanceId);
+  }
+
+  private questionsFor(roundId: string) {
+    this.loadRound(roundId);
+    return [...this.questionRows.values()];
+  }
+
+  private updateCachedQuestion(questionInstanceId: string, patch: Partial<RoundQuestionRow>) {
+    const question = this.questionRows.get(questionInstanceId);
+    if (question) this.questionRows.set(questionInstanceId, { ...question, ...patch });
   }
 
   dispose() {
@@ -628,17 +669,30 @@ export class SessionRuntime {
           this.health.rejectedThisRound = Object.fromEntries(REJECT_REASONS.map((reason) => [reason, 0])) as Record<RejectReason, number>;
           break;
         case 'QUESTION_OPENED':
-          this.store.markQuestion(e.questionInstanceId, 'OPEN', now, false, this.nextQuestionStreamDelayMs());
+          {
+            const streamDelayMs = this.nextQuestionStreamDelayMs();
+            this.store.markQuestion(e.questionInstanceId, 'OPEN', now, false, streamDelayMs);
+            this.updateCachedQuestion(e.questionInstanceId, {
+              status: 'OPEN', openedAtMs: now, closedAtMs: null, streamDelayMs,
+            });
+          }
           this.countsQid = e.questionInstanceId;
           this.counts = ZERO_COUNTS();
           break;
         case 'QUESTION_CLOSED':
           this.store.markQuestion(e.questionInstanceId, 'CLOSED', now);
+          this.updateCachedQuestion(e.questionInstanceId, { status: 'CLOSED', closedAtMs: now });
           this.counts = this.store.optionCounts(e.questionInstanceId);
           integrity = this.scoreRound(now, 'AFTER_QUESTION', e.questionInstanceId) ?? integrity;
+          this.rememberClosedQuestionDelaySample(e.questionInstanceId);
           break;
         case 'QUESTION_VOIDED':
           this.store.markQuestion(e.questionInstanceId, 'VOIDED', now, e.afterReveal);
+          this.updateCachedQuestion(e.questionInstanceId, {
+            status: 'VOIDED', voidedAfterReveal: e.afterReveal,
+          });
+          this.fastestCorrectByQuestion.delete(e.questionInstanceId);
+          this.reloadStreamDelaySamples();
           if (e.afterReveal) {
             this.store.insertVoidReversals(this.engine.round!.roundId, e.questionInstanceId, now);
             integrity = this.scoreRound(now, 'AFTER_VOID', e.questionInstanceId) ?? integrity;
@@ -767,7 +821,7 @@ export class SessionRuntime {
   /** Câu hỏi của vòng cho bộ chấm điểm: kèm thời điểm mở + độ dài cửa sổ (thưởng tốc độ). */
   private scoringQuestions(r: NonNullable<EngineState['round']>) {
     this.loadRound(r.roundId);
-    const persisted = new Map(this.store.roundQuestions(r.roundId).map((q) => [q.id, q]));
+    const persisted = this.questionRows;
     const fallbackWindowMs = Math.max(0, Math.round(this.config.timings.answerMs / this.engine.speedMultiplier));
     return [...this.snapshots.values()].map((s) => {
       const question = persisted.get(s.questionInstanceId);
@@ -973,6 +1027,13 @@ export class SessionRuntime {
       ? ` timer_lateness_ms=${Math.max(0, Math.round(timerLateness!))}`
       : '';
     this.deps.warn?.(`[mc-voice] cue skipped event=${eventType} reason=${safeReason}${lateness}`);
+    if (eventType === 'QUESTION' && ['AUTH', 'NO_CREDIT', 'NOT_CONFIGURED', 'RATE_LIMITED', 'FAILED', 'TIMEOUT', 'DOWNLOAD_FAILED', 'INVALID_RESPONSE', 'LATE_AUDIO'].includes(safeReason)) {
+      this.notice = {
+        code: 'MC_VOICE_QUESTION_SKIPPED',
+        message: 'Không phát được audio cho câu hỏi đã duyệt sau khi thử lại/chờ tối đa 10 giây. Câu hỏi vẫn được mở bằng nội dung hiển thị.',
+      };
+      this.emitAdmin();
+    }
   }
 
   voiceIdentityValues() {
@@ -1465,42 +1526,71 @@ export class SessionRuntime {
     const qid = currentQuestionInstanceId(this.engine);
     const snap = qid ? this.snapshots.get(qid) : undefined;
     if (!qid || !snap) return;
+    this.cancelNonQuestionVoiceForReading();
     const startedAt = this.scheduler.now();
     this.readingStartedAtMs = startedAt;
     this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
-      questionInstanceId: qid, durationMs: DEFAULT_MC_READING_MS, elapsedMs: 0 });
+      questionInstanceId: qid,
+      durationMs: DEFAULT_MC_READING_MS + (this.voiceEnabled() ? QUESTION_AUDIO_MAX_WAIT_MS : 0), elapsedMs: 0 });
     if (!this.voiceEnabled()) {
       this.telemetry('NOT_CONFIGURED', 'QUESTION');
       return;
     }
     const prepared = await this.prepareQuestionVoice(snap);
-    if (!prepared?.ok) return;
+    if (!prepared?.ok) {
+      this.setQuestionReadingDuration(qid, startedAt,
+        Math.max(DEFAULT_MC_READING_MS, this.scheduler.now() - startedAt + 80));
+      return;
+    }
     if (this.disposed || this.engine.state !== 'READING' || currentQuestionInstanceId(this.engine) !== qid) {
       this.telemetry('LATE_AUDIO', 'QUESTION');
       return;
     }
     const elapsedMs = Math.max(0, Math.floor(this.scheduler.now() - startedAt));
-    const queueDelayMs = Math.max(0, this.voiceTailAtMs - this.scheduler.now());
-    const schedule = planQuestionCueSchedule(
-      prepared.lines.map((line) => line.asset.durationMs),
-      MAX_MC_READING_MS - elapsedMs - queueDelayMs - 80,
-    );
-    if (elapsedMs >= DEFAULT_MC_READING_MS) {
-      this.telemetry('LATE_AUDIO', 'QUESTION');
-      return;
-    }
+    const durations = prepared.lines.map((line) => line.asset.durationMs);
+    const audioDurationMs = durations.reduce((total, duration) => total + duration, 0);
+    const availableBudgetMs = Math.max(0, MAX_MC_READING_MS - elapsedMs - 80);
+    // Ưu tiên rút ngắn khoảng nghỉ để vừa 20 giây; nếu riêng audio đã dài hơn thì dùng lịch 0 gap.
+    const schedule = planQuestionCueSchedule(durations, availableBudgetMs) ??
+      planQuestionCueSchedule(durations, audioDurationMs);
     if (!schedule) {
-      this.telemetry('TOO_LONG', 'QUESTION');
+      this.telemetry('FAILED', 'QUESTION');
+      this.setQuestionReadingDuration(qid, startedAt,
+        Math.max(DEFAULT_MC_READING_MS, this.scheduler.now() - startedAt + 80));
       return;
     }
-    const durationMs = elapsedMs + queueDelayMs + schedule.totalDurationMs + 80;
-    const setDuration = this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
-      questionInstanceId: qid, durationMs, elapsedMs });
-    if (!setDuration.ok) return;
+    const durationMs = Math.min(MAX_MC_READING_MS, Math.max(DEFAULT_MC_READING_MS, elapsedMs + schedule.totalDurationMs + 80));
+    if (!this.setQuestionReadingDuration(qid, startedAt, durationMs)) return;
+    if (this.notice?.code === 'MC_VOICE_QUESTION_SKIPPED') {
+      this.notice = null;
+      this.emitAdmin();
+    }
     for (const [index, line] of prepared.lines.entries()) {
       this.scheduleVoiceCue('QUESTION', line.asset.assetId, line.asset.durationMs,
         () => this.engine.state === 'READING' && currentQuestionInstanceId(this.engine) === qid, schedule.offsetsMs[index]!);
     }
+  }
+
+  private setQuestionReadingDuration(questionInstanceId: string, startedAtMs: number, durationMs: number) {
+    if (this.disposed || this.engine.state !== 'READING' || currentQuestionInstanceId(this.engine) !== questionInstanceId) return false;
+    const elapsedMs = Math.max(0, Math.floor(this.scheduler.now() - startedAtMs));
+    if (elapsedMs >= durationMs) return false;
+    return this.apply({ kind: 'MC_READING_DURATION_SET', expectedStateVersion: this.engine.stateVersion,
+      questionInstanceId, durationMs, elapsedMs }).ok;
+  }
+
+  private cancelNonQuestionVoiceForReading() {
+    for (const handle of this.voiceHandles) this.scheduler.clearTimeout(handle);
+    this.voiceHandles.clear();
+    for (const item of this.mcChatQueue) {
+      if (item.startTimeout === null) continue;
+      item.scheduled = false;
+      item.startTimeout = null;
+      item.previousVoiceTailAtMs = item.scheduledVoiceTailAtMs = null;
+    }
+    this.cancelCountdownSchedule();
+    this.countdownVoiceTailAtMs = this.scheduler.now();
+    this.voiceTailAtMs = this.scheduler.now();
   }
 
   private answerRevealVoice(snap: QuestionSnapshot) {
@@ -1531,6 +1621,7 @@ export class SessionRuntime {
     if (!asset) return;
     this.scheduleVoiceCue(event.type, asset.assetId, asset.durationMs, () => {
       if (event.type === 'WELCOME') return this.engine.sessionStatus === 'OPEN' && effectiveState(this.engine) === 'LOBBY';
+      if (event.type === 'TIMEOUT') return ['REVEAL', 'LEADERBOARD'].includes(effectiveState(this.engine));
       if (event.type === 'LEADERBOARD_GENERIC') return effectiveState(this.engine) === 'LEADERBOARD';
       if (event.type === 'ROUND_COMPLETE_GENERIC') {
         const round = this.engine.round;
@@ -2491,7 +2582,7 @@ export class SessionRuntime {
     correctOptionId: OptionId,
     now: number,
   ): FastestCorrectAnswer | null {
-    const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
+    const question = this.questionFor(roundId, questionInstanceId);
     let winner = this.fastestCorrectByQuestion.get(questionInstanceId);
     if (!this.fastestCorrectByQuestion.has(questionInstanceId)) {
       if (!question || question.status !== 'CLOSED' || question.openedAtMs === null) {
@@ -2528,7 +2619,7 @@ export class SessionRuntime {
 
   /** Chốt ranking câu khi câu đóng; void sau reveal tạo revision rỗng để không phát kết quả lỗi thời. */
   private persistQuestionRanking(roundId: string, questionInstanceId: string, now: number): RankingSnapshot | null {
-    const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
+    const question = this.questionFor(roundId, questionInstanceId);
     if (!question) return null;
     const previous = this.store.latestRankingSnapshot(roundId, 'QUESTION', questionInstanceId, 'FASTEST_CORRECT');
     if (question.status === 'VOIDED') {
@@ -2574,7 +2665,7 @@ export class SessionRuntime {
   }
 
   private persistStageRanking(roundId: string, stage: StageDefinition, now: number): RankingSnapshot {
-    const questions = this.store.roundQuestions(roundId);
+    const questions = this.questionsFor(roundId);
     const byQuestionId = questions.map((question) => ({
       questionInstanceId: question.id,
       questionIndex: question.position + 1,
@@ -2605,7 +2696,7 @@ export class SessionRuntime {
   private achievementEvaluationInput(roundId: string, now: number): AchievementEvaluationInput {
     return {
       roundId,
-      questions: this.store.roundQuestions(roundId).map((question) => ({
+      questions: this.questionsFor(roundId).map((question) => ({
         questionInstanceId: question.id,
         questionIndex: question.position + 1,
         status: question.status,
@@ -2653,7 +2744,7 @@ export class SessionRuntime {
     now: number,
     kind: 'AFTER_QUESTION' | 'AFTER_VOID',
   ) {
-    const questions = this.store.roundQuestions(roundId);
+    const questions = this.questionsFor(roundId);
     const question = questions.find((row) => row.id === questionInstanceId);
     if (!question) return;
     const stages = stageDefinitions(questions.length, this.engine.leaderboardInterval);
@@ -2680,7 +2771,7 @@ export class SessionRuntime {
 
   private publicRankingEntries(snapshot: RankingSnapshot, now: number) {
     const question = snapshot.scope === 'QUESTION' && snapshot.metricKey === 'responseMs'
-      ? this.store.roundQuestions(snapshot.roundId).find((row) => row.id === snapshot.scopeId)
+      ? this.questionFor(snapshot.roundId, snapshot.scopeId)
       : undefined;
     return snapshot.entries.map((entry) => {
       const standings = this.ranked.find((player) => player.playerId === entry.playerId);
@@ -2700,7 +2791,7 @@ export class SessionRuntime {
   }
 
   private questionTop3ForPublic(roundId: string, questionInstanceId: string, now: number) {
-    const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
+    const question = this.questionFor(roundId, questionInstanceId);
     if (!question || question.status !== 'CLOSED') return null;
     const snapshot = this.store.latestRankingSnapshot(roundId, 'QUESTION', questionInstanceId, 'FASTEST_CORRECT')
       ?? this.persistQuestionRanking(roundId, questionInstanceId, now);
@@ -2715,7 +2806,7 @@ export class SessionRuntime {
   }
 
   private stageTop3ForPublic(roundId: string, stage: StageDefinition, now: number) {
-    const questions = this.store.roundQuestions(roundId);
+    const questions = this.questionsFor(roundId);
     const completed = questions
       .filter((question) => question.position + 1 >= stage.firstQuestionIndex && question.position + 1 <= stage.lastQuestionIndex)
       .every((question) => question.status === 'CLOSED' || question.status === 'VOIDED');

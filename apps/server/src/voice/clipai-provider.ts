@@ -1,4 +1,4 @@
-import { MAX_MC_READING_MS } from '@quiz/contracts';
+import { MAX_MC_VOICE_ASSET_MS } from '@quiz/contracts';
 import { McVoiceProviderError, type McVoiceAudio, type McVoiceProvider, type McVoiceSynthesisRequest } from './types';
 
 export type ClipAiTransportErrorCode = 'AUTH' | 'NO_CREDIT' | 'RATE_LIMITED' | 'FAILED' | 'DOWNLOAD_FAILED';
@@ -128,7 +128,7 @@ export class ClipAiMcVoiceProvider implements McVoiceProvider {
     const audioItem = items.find((item) => typeof item.assetRef === 'string' && item.assetRef.length > 0);
     if (!audioItem || !Number.isSafeInteger(audioItem.durationMs) || audioItem.durationMs <= 0)
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Không có audio hợp lệ cho tác vụ MC Voice.');
-    if (audioItem.durationMs > MAX_MC_READING_MS)
+    if (audioItem.durationMs > MAX_MC_VOICE_ASSET_MS)
       throw new McVoiceProviderError('TOO_LONG', 'Audio MC Voice vượt trần 20 giây.');
 
     let bytes: Uint8Array;

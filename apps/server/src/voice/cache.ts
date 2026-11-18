@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { MAX_MC_READING_MS, MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
+import { MAX_MC_VOICE_ASSET_MS, MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
 import type { CachedMcVoiceAudio, McVoiceAudio, McVoiceCacheDescriptor } from './types';
 
 const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
@@ -78,7 +78,7 @@ export class McVoiceCache {
       const [bytes, rawMetadata] = await Promise.all([readFile(audioPath), readFile(metaPath, 'utf8')]);
       const metadata = JSON.parse(rawMetadata) as CacheMetadata;
       if (metadata.assetId !== assetId || metadata.voicePolicyVersion !== MC_VOICE_POLICY_VERSION || metadata.format !== 'mp3' || metadata.sizeBytes !== bytes.byteLength ||
-        !Number.isSafeInteger(metadata.durationMs) || metadata.durationMs <= 0 || metadata.durationMs > MAX_MC_READING_MS ||
+        !Number.isSafeInteger(metadata.durationMs) || metadata.durationMs <= 0 || metadata.durationMs > MAX_MC_VOICE_ASSET_MS ||
         !HASH_RE.test(metadata.checksum) || checksum(bytes) !== metadata.checksum) return null;
       return { ...metadata, bytes };
     } catch (error) {
@@ -92,7 +92,7 @@ export class McVoiceCache {
     if (!HASH_RE.test(assetId)) throw new Error('Cache key MC Voice không hợp lệ.');
     if (!(audio.bytes instanceof Uint8Array) || audio.bytes.byteLength === 0 || audio.bytes.byteLength > MAX_AUDIO_BYTES)
       throw new Error('Kích thước audio MC Voice không hợp lệ.');
-    if (audio.format !== 'mp3' || !Number.isSafeInteger(audio.durationMs) || audio.durationMs <= 0 || audio.durationMs > MAX_MC_READING_MS)
+    if (audio.format !== 'mp3' || !Number.isSafeInteger(audio.durationMs) || audio.durationMs <= 0 || audio.durationMs > MAX_MC_VOICE_ASSET_MS)
       throw new Error('Audio vượt giới hạn thời lượng hoặc định dạng MC Voice.');
 
     const pending = this.pendingWrites.get(assetId);

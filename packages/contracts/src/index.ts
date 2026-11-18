@@ -214,8 +214,10 @@ export const McVoicePreGenerateProgressSchema = z.object({
 });
 export type McVoicePreGenerateProgress = z.infer<typeof McVoicePreGenerateProgressSchema>;
 
-/** Trần đọc câu hỏi và bốn đáp án trong một lần phát MC. */
-export const MAX_MC_READING_MS = 20_000;
+/** Trần một asset/cue; tổng bundle đọc câu hỏi có trần riêng dài hơn. */
+export const MAX_MC_VOICE_ASSET_MS = 20_000;
+/** Một câu hỏi đã duyệt luôn đọc đủ đề và bốn đáp án, kể cả bundle dài hơn 20 giây. */
+export const MAX_MC_READING_MS = 120_000;
 /** Thời lượng dự phòng khi không có bundle audio MC hợp lệ. */
 export const DEFAULT_MC_READING_MS = 5_000;
 
@@ -229,7 +231,7 @@ export const McVoiceCueSchema = z.object({
   cueId: z.string().uuid(),
   eventType: McVoiceCueEventTypeSchema,
   assetUrl: z.string().regex(/^\/api\/mc-voice\/assets\/[a-f0-9]{64}$/),
-  durationMs: z.number().int().min(1).max(MAX_MC_READING_MS),
+  durationMs: z.number().int().min(1).max(MAX_MC_VOICE_ASSET_MS),
   startsAtServerMs: z.number().finite().nonnegative(),
   bubbleText: z.string().trim().min(1).max(300).optional(),
 }).strict();
@@ -257,7 +259,7 @@ export const McVoiceCountdownCueSchema = z.object({
   cueId: z.string().uuid(),
   secondsRemaining: z.union([z.literal(10), z.literal(5), z.literal(4), z.literal(3), z.literal(2), z.literal(1)]),
   assetId: z.string().regex(/^[a-f0-9]{64}$/),
-  durationMs: z.number().int().min(1).max(MAX_MC_READING_MS),
+  durationMs: z.number().int().min(1).max(MAX_MC_VOICE_ASSET_MS),
   startsAtServerMs: z.number().finite().nonnegative(),
 }).strict();
 export type McVoiceCountdownCue = z.infer<typeof McVoiceCountdownCueSchema>;

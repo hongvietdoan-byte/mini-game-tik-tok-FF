@@ -79,6 +79,11 @@ export const AudioFxLayer = memo(function AudioFxLayer({ snapshot, remainingMs, 
   }, [clockOffsetMs, role, snapshot.mcVoiceCountdownSchedule, snapshot.state]);
 
   useEffect(() => {
+    // READING giành ưu tiên âm thanh: cắt cue phụ đang phát trước khi xử lý cue QUESTION.
+    if (role === 'program' && snapshot.state === 'READING') engine.current?.stopMcVoice();
+  }, [role, snapshot.state]);
+
+  useEffect(() => {
     if (role !== 'program') return;
     const plan = voiceScheduler.current.consume(snapshot.mcVoiceCue, Date.now() + clockOffsetMs);
     if (!plan) return;

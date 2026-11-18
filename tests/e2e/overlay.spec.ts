@@ -1678,7 +1678,7 @@ test('audio creates WebAudio and dispatches one cue per mock phase transition', 
   await page.addInitScript(() => {
     const testWindow = window as typeof window & { __audioProbe?: { contexts: number; oscillatorStarts: number; bufferStarts: number } };
     testWindow.__audioProbe = { contexts: 0, oscillatorStarts: 0, bufferStarts: 0 };
-    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
+    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, cancelScheduledValues() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
     class FakeAudioContext {
       state: AudioContextState = 'suspended';
       currentTime = 0;
@@ -1733,7 +1733,7 @@ test('program audio retries silently at phase changes without an unlock hint', a
   await page.addInitScript(() => {
     const testWindow = window as typeof window & { __audioProbe?: { resumePhases: string[]; oscillatorStarts: number } };
     testWindow.__audioProbe = { resumePhases: [], oscillatorStarts: 0 };
-    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
+    const param = () => ({ value: 0, setTargetAtTime() {}, setValueAtTime() {}, cancelScheduledValues() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
     class SuspendedAudioContext {
       state: AudioContextState = 'suspended';
       currentTime = 0;

@@ -297,7 +297,10 @@ describe('Store: phiên và vòng', () => {
     const recent = store.recentCorrectAnswerElapsedMs('session-1');
     expect(recent).toEqual([10_000, 8_000, 6_000, 3_000, 2_000]);
     expect(estimateStreamDelayMs(recent)).toBe(2_000);
+    expect(store.correctAnswerElapsedMsForQuestion(questions[5]!.id)).toBe(10_000);
+    expect(store.correctAnswerElapsedMsForQuestion(questions[6]!.id)).toBeNull();
   });
+
 });
 
 describe('Store: người chơi và đáp án', () => {

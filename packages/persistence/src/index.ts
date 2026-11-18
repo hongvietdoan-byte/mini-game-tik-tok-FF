@@ -640,16 +640,42 @@ export class Store {
   /** Mẫu độ trễ theo câu, newest-first, một thời điểm trả lời đúng đầu tiên cho mỗi câu đã đóng. */
   recentCorrectAnswerElapsedMs(sessionId: string, limit = 5): number[] {
     const rows = this.raw.prepare(
-      `SELECT rq.opened_at_ms AS openedAtMs, MIN(a.received_at_ms) AS firstCorrectAtMs
-       FROM round_questions rq
-       JOIN rounds r ON r.id = rq.round_id
-       JOIN answers a ON a.question_instance_id = rq.id AND a.option_id = rq.correct_option_id
-       WHERE r.session_id = ? AND rq.status = 'CLOSED' AND rq.voided_at_ms IS NULL AND rq.opened_at_ms IS NOT NULL
-       GROUP BY rq.id
-       ORDER BY r.round_number DESC, rq.position DESC
-       LIMIT ?`,
+      `WITH recent_questions AS (
+         SELECT rq.id, rq.opened_at_ms AS openedAtMs, rq.correct_option_id AS correctOptionId,
+                r.round_number AS roundNumber, rq.position
+         FROM round_questions rq
+         JOIN rounds r ON r.id = rq.round_id
+         WHERE r.session_id = ? AND rq.status = 'CLOSED' AND rq.voided_at_ms IS NULL
+           AND rq.opened_at_ms IS NOT NULL
+           AND EXISTS (
+             SELECT 1 FROM answers a
+             WHERE a.question_instance_id = rq.id AND a.option_id = rq.correct_option_id
+           )
+         ORDER BY r.round_number DESC, rq.position DESC
+         LIMIT ?
+       )
+       SELECT openedAtMs,
+              (SELECT MIN(a.received_at_ms) FROM answers a
+               WHERE a.question_instance_id = recent_questions.id
+                 AND a.option_id = recent_questions.correctOptionId) AS firstCorrectAtMs
+       FROM recent_questions
+       ORDER BY roundNumber DESC, position DESC`,
     ).all(sessionId, Math.max(1, Math.floor(limit))) as { openedAtMs: number; firstCorrectAtMs: number }[];
     return rows.map((row) => Math.max(0, row.firstCorrectAtMs - row.openedAtMs));
+  }
+
+  /** Mẫu vừa chốt của một câu; dùng để cập nhật cache mà không quét lại toàn phiên. */
+  correctAnswerElapsedMsForQuestion(questionInstanceId: string): number | null {
+    const row = this.raw.prepare(
+      `SELECT rq.opened_at_ms AS openedAtMs, MIN(a.received_at_ms) AS firstCorrectAtMs
+       FROM round_questions rq
+       LEFT JOIN answers a ON a.question_instance_id = rq.id AND a.option_id = rq.correct_option_id
+       WHERE rq.id = ? AND rq.status = 'CLOSED' AND rq.voided_at_ms IS NULL AND rq.opened_at_ms IS NOT NULL
+       GROUP BY rq.id`,
+    ).get(questionInstanceId) as { openedAtMs: number; firstCorrectAtMs: number | null } | undefined;
+    return row?.firstCorrectAtMs == null
+      ? null
+      : Math.max(0, row.firstCorrectAtMs - row.openedAtMs);
   }
 
   /** Đáp án có thứ tự ID chấp nhận, chỉ dùng trong server để lập bảng đúng nhanh nhất. */
