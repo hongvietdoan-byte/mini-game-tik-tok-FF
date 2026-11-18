@@ -31,4 +31,36 @@ describe('ThemeManifestSchema', () => {
     for (const path of ['../outside.png', 'assets/../../secret.png', '/etc/passwd', 'C:/secret.png'])
       expect(ThemeManifestSchema.safeParse({ ...valid, assets: { 'arena.background': path } }).success).toBe(false);
   });
+
+  it('giữ theme cũ hợp lệ và nhận override danh hiệu một phần theo theme hoặc sự kiện', () => {
+    expect(ThemeManifestSchema.safeParse(valid).success).toBe(true);
+    const parsed = ThemeManifestSchema.parse({ ...valid, achievements: {
+      LONGEST_STREAK: { title: 'Chuỗi Bão Tố', icon: 'assets/achievements/streak.png' },
+      MOST_CORRECT: { enabled: false, maxRows: 5 },
+      eventOverrides: { 'ba-vuong-dai-chien-2026': { LONGEST_STREAK: { accentColor: '#FFCC58' } } },
+    } });
+    expect(parsed.achievements).toMatchObject({
+      LONGEST_STREAK: { title: 'Chuỗi Bão Tố', icon: 'assets/achievements/streak.png' },
+      MOST_CORRECT: { enabled: false, maxRows: 5 },
+      eventOverrides: { 'ba-vuong-dai-chien-2026': { LONGEST_STREAK: { accentColor: '#FFCC58' } } },
+    });
+  });
+
+  it('từ chối ID, màu, icon, slot và số dòng danh hiệu ngoài registry/spec với lỗi rõ', () => {
+    const invalid = [
+      { achievements: { UNKNOWN: { title: 'Không hợp lệ' } } },
+      { achievements: { LONGEST_STREAK: { accentColor: 'gold' } } },
+      { achievements: { LONGEST_STREAK: { icon: '../secret.png' } } },
+      { achievements: { LONGEST_STREAK: { displaySlot: 'unknown' } } },
+      { achievements: { LONGEST_STREAK: { maxRows: 5 } } },
+      { achievements: { MOST_CORRECT: { maxRows: 0 } } },
+      { achievements: { PERFECT_STAGE: { maxRows: 1 } } },
+      { achievements: { eventOverrides: { 'Bad Event': { LONGEST_STREAK: { enabled: false } } } } },
+    ];
+    for (const extra of invalid) {
+      const result = ThemeManifestSchema.safeParse({ ...valid, ...extra });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.issues[0]?.message).toBeTruthy();
+    }
+  });
 });

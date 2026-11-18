@@ -2,7 +2,13 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSyn
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { THEME_DEFAULT_TOKENS, THEME_DEFAULT_TOKEN_DESCRIPTIONS, type ThemeAssetSlot } from '@quiz/contracts';
+import {
+  ACHIEVEMENT_IDS,
+  THEME_DEFAULT_ACHIEVEMENTS,
+  THEME_DEFAULT_TOKENS,
+  THEME_DEFAULT_TOKEN_DESCRIPTIONS,
+  type ThemeAssetSlot,
+} from '@quiz/contracts';
 import { ThemeStore } from '../apps/server/src/theme-store';
 
 type SlotSource = { slot: ThemeAssetSlot; source: string; destination: string; directory?: boolean };
@@ -153,6 +159,7 @@ export function exportDefaultTheme(options: { out: string; assets: string; force
       tokenDescriptions: THEME_DEFAULT_TOKEN_DESCRIPTIONS,
       fonts: [],
       assets: manifestAssets,
+      achievements: Object.fromEntries(ACHIEVEMENT_IDS.map((id) => [id, THEME_DEFAULT_ACHIEVEMENTS[id]])),
     };
     writeFileSync(join(staging, 'theme.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8' });
 

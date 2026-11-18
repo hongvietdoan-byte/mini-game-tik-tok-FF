@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '@quiz/persistence';
 import { ManualScheduler } from '@quiz/live-adapters';
+import { THEME_DEFAULT_ACHIEVEMENTS } from '@quiz/contracts';
 import WebSocket from 'ws';
 import { buildApp } from './app';
 import { ThemeStore } from './theme-store';
@@ -36,6 +38,10 @@ describe('ThemeStore', () => {
     const assets = join(process.cwd(), 'fixtures', 'assets-placeholder');
     const exported = exportDefaultTheme({ out, assets });
     expect(exported.manifest.id).toBe('default');
+    expect(exported.manifest.achievements).toMatchObject({
+      LONGEST_STREAK: THEME_DEFAULT_ACHIEVEMENTS.LONGEST_STREAK,
+      MOST_CORRECT: THEME_DEFAULT_ACHIEVEMENTS.MOST_CORRECT,
+    });
     expect(exported.manifest.tokens).toMatchObject({ deep: '#2D387F', 'font-body': '"Segoe UI", "Be Vietnam Pro", Roboto, Arial, sans-serif' });
     expect(exported.manifest.assets).toHaveProperty('brand.logo');
     expect(exported.warnings).toEqual(expect.arrayContaining([expect.stringContaining('arena.flag.0')]));
@@ -132,6 +138,123 @@ describe('ThemeStore', () => {
     expect(store.reload()).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'halloween', active: true, valid: true })]));
     expect(store.version).toBe(3);
     expect(new ThemeStore(themes, root).resolveActive()).toMatchObject({ id: 'halloween', version: 3 });
+  });
+
+  it('gộp fallback ứng dụng < theme < event và phân giải icon thành URL asset an toàn', () => {
+    const root = temp();
+    const themes = join(root, 'themes');
+    const directory = writeTheme(themes, 'halloween', { achievements: {
+      LONGEST_STREAK: { title: 'Chuỗi Halloween', icon: 'assets/streak.png', accentColor: '#123456' },
+      MOST_CORRECT: { enabled: false },
+      eventOverrides: { 'ba-vuong-dai-chien-2026': {
+        LONGEST_STREAK: { title: 'Chuỗi Bão Tố', icon: 'assets/event-streak.png' },
+        MOST_CORRECT: { enabled: true },
+      } },
+    } });
+    writeFileSync(join(directory, 'assets', 'streak.png'), Buffer.from([137, 80, 78, 71]));
+    writeFileSync(join(directory, 'assets', 'event-streak.png'), Buffer.from([137, 80, 78, 71]));
+    const store = new ThemeStore(themes, root);
+
+    expect(store.resolveActive().achievements?.LONGEST_STREAK).toMatchObject(THEME_DEFAULT_ACHIEVEMENTS.LONGEST_STREAK);
+    expect(store.setActive('halloween')).toBe(true);
+    expect(store.resolveActive().achievements).toMatchObject({
+      LONGEST_STREAK: {
+        title: 'Chuỗi Halloween', accentColor: '#123456', icon: '/themes/halloween/assets/streak.png?v=2',
+        subtitle: THEME_DEFAULT_ACHIEVEMENTS.LONGEST_STREAK.subtitle,
+      },
+      MOST_CORRECT: { enabled: false, title: THEME_DEFAULT_ACHIEVEMENTS.MOST_CORRECT.title },
+    });
+    expect(store.resolveActive('ba-vuong-dai-chien-2026').achievements).toMatchObject({
+      LONGEST_STREAK: {
+        title: 'Chuỗi Bão Tố', accentColor: '#123456', icon: '/themes/halloween/assets/event-streak.png?v=2',
+        subtitle: THEME_DEFAULT_ACHIEVEMENTS.LONGEST_STREAK.subtitle,
+      },
+      MOST_CORRECT: { enabled: true, title: THEME_DEFAULT_ACHIEVEMENTS.MOST_CORRECT.title },
+    });
+    expect(store.resolveAchievementPresentations('ba-vuong-dai-chien-2026').LONGEST_STREAK.title).toBe('Chuỗi Bão Tố');
+    expect(store.decorateAchievementSnapshots([{
+      achievementId: 'LONGEST_STREAK', scope: 'ROUND', scopeId: 'round-1', metricKey: 'longestStreak',
+      entries: [], totalQualified: 1, tiedOverflowCount: 0, revision: 1,
+    }], 'ba-vuong-dai-chien-2026')[0]).toMatchObject({
+      achievementId: 'LONGEST_STREAK', revision: 1,
+      presentation: { title: 'Chuỗi Bão Tố', icon: '/themes/halloween/assets/event-streak.png?v=2' },
+    });
+  });
+
+  it('từ chối theme khi icon danh hiệu thiếu hoặc sai loại và trả lỗi kèm đường dẫn trường', () => {
+    const root = temp();
+    const themes = join(root, 'themes');
+    writeTheme(themes, 'missing-icon', { achievements: { LONGEST_STREAK: { icon: 'assets/no-icon.png' } } });
+    writeTheme(themes, 'wrong-icon', { achievements: { LONGEST_STREAK: { icon: 'assets/logo.woff2' } } });
+    const store = new ThemeStore(themes, root);
+    expect(store.list()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'missing-icon', valid: false, error: expect.stringContaining('achievements.LONGEST_STREAK.icon') }),
+      expect.objectContaining({ id: 'wrong-icon', valid: false, error: expect.stringContaining('achievements.LONGEST_STREAK.icon') }),
+    ]));
+  });
+
+  it('đưa presentation đã gộp theo event vào achievement snapshot công khai mà không đổi kết quả', async () => {
+    const root = temp();
+    const themesDir = join(root, 'themes');
+    const themeDirectory = writeTheme(themesDir, 'storm-arena', { achievements: {
+      LONGEST_STREAK: { title: 'Chuỗi mặc định theme', icon: 'assets/streak.png', accentColor: '#123456' },
+      eventOverrides: { 'ba-vuong-dai-chien-2026': { LONGEST_STREAK: { title: 'Chuỗi Bão Tố' } } },
+    } });
+    writeFileSync(join(themeDirectory, 'assets', 'streak.png'), Buffer.from([137, 80, 78, 71]));
+    const db = new Store(join(root, 'quiz.db'));
+    const scheduler = new ManualScheduler();
+    db.seedQuestions({ id: 'demo', name: 'Demo' }, Array.from({ length: 40 }, (_, index) => ({
+      id: `theme-achievement-q-${index}`, packId: 'demo', subtopicId: 'demo-chung', prompt: `Câu hỏi theme ${index}?`,
+      options: [1, 2, 3, 4].map((number) => ({ id: `o${number}`, text: `Đáp án ${number}` })),
+      correctOptionId: 'o1', explanation: '', difficulty: (['EASY', 'MEDIUM', 'HARD'] as const)[index % 3]!,
+      verificationStatus: 'DEMO' as const, approvalStatus: 'APPROVED' as const,
+    })), scheduler.now());
+    const quiz = await buildApp({ store: db, scheduler, adminToken: 'test-admin-token-0123456789abcdef', themesDir });
+    const auth = { authorization: 'Bearer test-admin-token-0123456789abcdef' };
+    try {
+      expect((await quiz.app.inject({ method: 'PUT', url: '/api/admin/themes/active', headers: auth, payload: { themeId: 'storm-arena' } })).statusCode).toBe(200);
+      const created = await quiz.app.inject({ method: 'POST', url: '/api/sessions', headers: auth, payload: {
+        name: 'Theme achievement snapshot', config: {
+          mode: 'MOCK', packId: 'demo', questionsPerRound: 10, allowDemoQuestions: true, seed: 28_800,
+          eventId: 'ba-vuong-dai-chien-2026',
+          timings: { lobbyMs: 0, prepareMs: 500, answerMs: 3_000, revealMs: 500, leaderboardMs: 500, roundEndMs: 0, victoryMs: 1_000, intermissionMs: 1_000 },
+        },
+      } });
+      expect(created.statusCode).toBe(201);
+      const runtime = quiz.runtime()!;
+      runtime.simulatorControl({ action: 'START', players: 10, accuracy: 1, participation: 1, spamRate: 0, noiseRate: 0, seed: 28_800 });
+      await Promise.resolve();
+      const send = (command: { type: 'OPEN_LOBBY' } | { type: 'START_ROUND'; questionCount: 10 }) => {
+        const result = runtime.dispatch({
+          commandId: randomUUID(), expectedStateVersion: runtime.engine.stateVersion, operatorId: 'theme-test',
+          requestedAtMs: scheduler.now(), command,
+        });
+        if (!result.result.ok) throw new Error(`${command.type}: ${result.result.code} ${result.result.message}`);
+      };
+      send({ type: 'OPEN_LOBBY' });
+      send({ type: 'START_ROUND', questionCount: 10 });
+      let steps = 0;
+      while (runtime.engine.state !== 'VICTORY' && steps < 20_000) {
+        scheduler.advance(250);
+        steps += 1;
+      }
+      expect(runtime.engine.state).toBe('VICTORY');
+
+      const sourceAchievement = runtime.publicSnapshot().achievementSnapshots?.find((item) => item.achievementId === 'LONGEST_STREAK');
+      expect(sourceAchievement).toBeDefined();
+      const publicState = (await quiz.app.inject(`/api/sessions/${runtime.id}/state`)).json();
+      const publicAchievement = publicState.achievementSnapshots?.find((item: { achievementId: string }) => item.achievementId === 'LONGEST_STREAK');
+      expect(publicAchievement).toMatchObject({
+        achievementId: 'LONGEST_STREAK', entries: sourceAchievement!.entries, revision: sourceAchievement!.revision,
+        presentation: {
+          enabled: true, title: 'Chuỗi Bão Tố', subtitle: THEME_DEFAULT_ACHIEVEMENTS.LONGEST_STREAK.subtitle,
+          icon: expect.stringMatching(/^\/themes\/storm-arena\/assets\/streak\.png\?v=/u), accentColor: '#123456', maxRows: 3,
+        },
+      });
+    } finally {
+      await quiz.close();
+      db.close();
+    }
   });
 
   it('không áp dụng theme bị sửa thành hỏng và từ chối symlink/path traversal khi phục vụ file', () => {
