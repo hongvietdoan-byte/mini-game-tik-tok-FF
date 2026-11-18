@@ -255,6 +255,7 @@ export const scoreEvents = sqliteTable(
   (t) => [
     // Sổ cái chỉ-ghi-thêm; khoá duy nhất làm việc chấm lại trở nên idempotent.
     uniqueIndex('score_events_ledger_uq').on(t.roundId, t.questionInstanceId, t.playerId, t.scoreReason),
+    index('score_events_round_question_idx').on(t.roundId, t.questionInstanceId),
   ],
 );
 
@@ -272,6 +273,28 @@ export const leaderboardSnapshots = sqliteTable(
     createdAtMs: integer('created_at_ms').notNull(),
   },
   (t) => [index('leaderboard_snapshots_round_idx').on(t.roundId)],
+);
+
+/** Snapshot Top N theo từng câu/chặng; nguồn điểm vẫn là answers + score_events. */
+export const rankingSnapshots = sqliteTable(
+  'ranking_snapshots',
+  {
+    roundId: text('round_id')
+      .notNull()
+      .references(() => rounds.id),
+    scope: text('scope').notNull(), // QUESTION | STAGE | ROUND
+    scopeId: text('scope_id').notNull(),
+    achievementId: text('achievement_id').notNull(),
+    revision: integer('revision').notNull(),
+    entriesJson: text('entries_json').notNull(),
+    finalizedAtMs: integer('finalized_at_ms').notNull(),
+  },
+  (t) => [
+    uniqueIndex('ranking_snapshots_revision_uq')
+      .on(t.roundId, t.achievementId, t.scopeId, t.revision),
+    index('ranking_snapshots_lookup_idx')
+      .on(t.roundId, t.scope, t.achievementId, t.scopeId, t.revision),
+  ],
 );
 
 // --- Trạng thái / kiểm toán -------------------------------------------------

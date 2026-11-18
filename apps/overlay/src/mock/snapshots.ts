@@ -238,6 +238,8 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
       safeDisplayName: name === 'fastest-a-long' ? 'StormKingChampion123456' : 'StormKing',
       responseMs: name === 'fastest-a-long' ? 12_300 : 1_240,
     } : null,
+    questionTop3: null,
+    stageTop3: null,
     reveal: isReveal ? {
       questionInstanceId: 'demo-question-5',
       correctOptionId: 'B',

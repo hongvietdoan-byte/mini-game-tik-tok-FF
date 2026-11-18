@@ -72,10 +72,46 @@ describe('Store: khởi tạo và câu hỏi', () => {
     expect(first.raw.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(first.raw.pragma('foreign_keys', { simple: true })).toBe(1);
     expect(first.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='live_sessions'").get()).toBeTruthy();
+    expect(first.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ranking_snapshots'").get()).toBeTruthy();
+    const scoreIndexes = first.raw.prepare('PRAGMA index_list(score_events)').all() as { name: string }[];
+    expect(scoreIndexes.map((index) => index.name)).toContain('score_events_ledger_uq');
+    expect(scoreIndexes.map((index) => index.name)).toContain('score_events_round_question_idx');
     first.close();
     const second = openStore(path);
     expect(second.raw.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(second.raw.pragma('foreign_keys', { simple: true })).toBe(1);
+  });
+
+  it('ranking snapshots are idempotent on recovery, append revisions on changed results, and scrub safe names', () => {
+    const store = openStore();
+    addSession(store);
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    addRound(store, 'session-1', 'ranking-round', 1, 1);
+    const base = {
+      roundId: 'ranking-round',
+      scope: 'QUESTION' as const,
+      scopeId: store.roundQuestions('ranking-round')[0]!.id,
+      achievementId: 'FASTEST_CORRECT',
+      metricKey: 'responseMs',
+      entries: [{
+        playerId: 'opaque-player', safeDisplayName: 'Safe Name', rank: 1,
+        metricValue: 250, metricUnit: 'ms' as const, tied: false,
+      }],
+      totalQualified: 1,
+      tiedOverflowCount: 0,
+      finalizedAtMs: 500,
+    };
+    expect(store.saveRankingSnapshot(base)).toMatchObject({ revision: 1, finalizedAtMs: 500 });
+    expect(store.saveRankingSnapshot({ ...base, finalizedAtMs: 900 })).toMatchObject({ revision: 1, finalizedAtMs: 500 });
+    const changed = { ...base, entries: [{ ...base.entries[0]!, metricValue: 200 }], finalizedAtMs: 1_000 };
+    expect(store.saveRankingSnapshot(changed)).toMatchObject({ revision: 2, finalizedAtMs: 1_000 });
+    expect(store.rankingSnapshotsForRound('ranking-round', 'QUESTION', 'FASTEST_CORRECT')).toHaveLength(1);
+    expect(store.raw.prepare('SELECT COUNT(*) AS n FROM ranking_snapshots').get()).toMatchObject({ n: 2 });
+
+    store.scrubPlayerNameHistory('opaque-player', ['Safe Name'], 'Người chơi');
+    const latest = store.latestRankingSnapshot('ranking-round', 'QUESTION', base.scopeId, 'FASTEST_CORRECT')!;
+    expect(latest.entries[0]?.safeDisplayName).toBe('Người chơi');
+    expect(latest.revision).toBe(2);
   });
 
   it('reviewQuestion APPROVE/REJECT cập nhật trạng thái, lưu snapshot version và trả null nếu không tồn tại', () => {

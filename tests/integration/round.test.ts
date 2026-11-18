@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { ManualScheduler } from '@quiz/live-adapters';
-import { currentQuestionInstanceId, effectiveState } from '@quiz/quiz-core';
+import { currentQuestionInstanceId, effectiveState, stageDefinitions, stageScores } from '@quiz/quiz-core';
 import {
   AUTH,
   TOKEN,
@@ -112,6 +112,16 @@ describe('kết quả người trả lời đúng nhanh nhất', () => {
       safeDisplayName: 'Người chơi 1',
       responseMs: 1_234,
     });
+    expect(atReveal.questionTop3).toMatchObject({
+      questionInstanceId: question.id,
+      totalQualified: 2,
+      tiedOverflowCount: 0,
+      entries: [
+        { rank: 1, metricValue: 1_234, metricUnit: 'ms', tied: true },
+        { rank: 1, metricValue: 1_234, metricUnit: 'ms', tied: true },
+      ],
+    });
+    expect(atReveal.questionTop3?.entries.map((entry) => entry.safeDisplayName)).toContain('Người chơi 1');
     expect(atReveal.leaderboard!.entries.find((entry) => entry.playerId === fastest.publicPlayerId)?.safeDisplayName)
       .toBe(fastest.safeDisplayName);
     expect(atReveal.audience!.seats.find((seat) => seat.slotId === fastest.seatId)?.occupant?.safeDisplayName)
@@ -120,9 +130,19 @@ describe('kết quả người trả lời đúng nhanh nhất', () => {
     expect(publicJson).not.toContain('TIKTOK:');
     expect(publicJson).not.toContain('raw-user-');
     expect(publicJson).not.toContain('Fast Player');
+    expect(publicJson).not.toContain('TIKTOK:raw-user-fast');
+
+    const rankingSnapshotCount = (h.store.raw.prepare(
+      "SELECT COUNT(*) AS n FROM ranking_snapshots WHERE round_id = ? AND scope = 'QUESTION' AND scope_id = ?",
+    ).get(roundId(h), question.id) as { n: number }).n;
+    expect(runtime.publicSnapshot().questionTop3).toEqual(atReveal.questionTop3);
+    expect((h.store.raw.prepare(
+      "SELECT COUNT(*) AS n FROM ranking_snapshots WHERE round_id = ? AND scope = 'QUESTION' AND scope_id = ?",
+    ).get(roundId(h), question.id) as { n: number }).n).toBe(rankingSnapshotCount);
 
     runUntil(h, () => runtime.engine.state === 'LEADERBOARD');
     expect(runtime.publicSnapshot().fastestCorrectAnswer).toEqual(fastest);
+    expect(runtime.publicSnapshot().questionTop3).toEqual(atReveal.questionTop3);
   });
 
   it('returns null when nobody answers correctly', async () => {
@@ -136,6 +156,7 @@ describe('kết quả người trả lời đúng nhanh nhất', () => {
     runUntil(h, () => runtime.engine.state === 'REVEAL');
 
     expect(runtime.publicSnapshot().fastestCorrectAnswer).toBeNull();
+    expect(runtime.publicSnapshot().questionTop3).toMatchObject({ entries: [], totalQualified: 0, tiedOverflowCount: 0 });
   });
 });
 
@@ -159,6 +180,27 @@ describe('Vòng MOCK 15 câu × 100 người chơi mô phỏng', () => {
     expect(ref.size).toBeGreaterThan(80);
     expect(ref.size).toBeLessThanOrEqual(100);
     noDuplicates(h);
+
+    const roundQuestions = h.store.roundQuestions(rid);
+    const stages = stageDefinitions(roundQuestions.length, r.engine.leaderboardInterval);
+    expect(h.store.rankingSnapshotsForRound(rid, 'STAGE', 'STAGE_CHAMPION')).toHaveLength(3);
+    const stagePoints = new Map<string, number>();
+    const stageAnswers = h.store.rankingAnswersForRound(rid).map((answer) => ({
+      questionInstanceId: answer.questionInstanceId,
+      playerId: answer.playerId,
+      safeDisplayName: answer.displayName,
+    }));
+    const stageQuestions = roundQuestions.map((question) => ({
+      questionInstanceId: question.id,
+      questionIndex: question.position + 1,
+    }));
+    const scoreEvents = h.store.ledgerRows(rid);
+    for (const stage of stages)
+      for (const entry of stageScores(stage, stageQuestions, stageAnswers, scoreEvents))
+        stagePoints.set(entry.playerId, (stagePoints.get(entry.playerId) ?? 0) + entry.stageScore);
+    const roundPoints = ledgerSums(h.store, rid);
+    for (const [playerId, points] of roundPoints) expect(stagePoints.get(playerId) ?? 0).toBe(points);
+    for (const [playerId, points] of stagePoints) expect(roundPoints.get(playerId) ?? 0).toBe(points);
 
     // Mô phỏng có spam, trễ, nhiễu → bộ đếm từ chối phải ghi nhận.
     expect(r.metrics.accepted).toBeGreaterThan(1000);
@@ -473,12 +515,25 @@ describe('Khởi động lại tiến trình (crash)', () => {
     await startRound(h);
     const rid = roundId(h);
     runUntil(h, () => rt(h).engine.state === 'REVEAL' && rt(h).engine.round!.questionIndex === 3);
+    const questionTop3BeforeRecovery = rt(h).publicSnapshot().questionTop3;
+    const rankingSnapshotCount = (h.store.raw.prepare(
+      "SELECT COUNT(*) AS n FROM ranking_snapshots WHERE round_id = ? AND scope = 'QUESTION'",
+    ).get(rid) as { n: number }).n;
     const ledgerBefore = h.store.ledgerRows(rid);
 
     const { h: h2 } = await crashAndRecover(h, dbPath, 30_000);
     const r = rt(h2);
     expect(r.engine.suspended).toEqual({ from: 'REVEAL', kind: 'RECOVERY' });
     expect(h2.store.ledgerRows(rid)).toEqual(ledgerBefore);
+    const questionTop3AfterRecovery = r.publicSnapshot().questionTop3;
+    const rankingWithoutOpaqueIds = (ranking: typeof questionTop3BeforeRecovery) => ranking && ({
+      ...ranking,
+      entries: ranking.entries.map(({ playerId: _playerId, ...entry }) => entry),
+    });
+    expect(rankingWithoutOpaqueIds(questionTop3AfterRecovery)).toEqual(rankingWithoutOpaqueIds(questionTop3BeforeRecovery));
+    expect((h2.store.raw.prepare(
+      "SELECT COUNT(*) AS n FROM ranking_snapshots WHERE round_id = ? AND scope = 'QUESTION'",
+    ).get(rid) as { n: number }).n).toBe(rankingSnapshotCount);
     const voidTry = await command(h2, { type: 'RESOLVE_RECOVERY', decision: 'VOID', reason: 'thử huỷ' });
     expect(voidTry.status).toBe(422);
     expect((await command(h2, { type: 'RESOLVE_RECOVERY', decision: 'RESUME', reason: 'tiếp tục' })).status).toBe(200);

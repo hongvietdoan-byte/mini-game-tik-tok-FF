@@ -27,6 +27,8 @@ import {
   type LeaderboardEntry,
   type OptionId,
   type PublicSnapshot,
+  type RankingSnapshot,
+  type StageDefinition,
   type QuestionSnapshot,
   type RawComment,
   type RejectReason,
@@ -56,6 +58,10 @@ import {
   sanitizeDisplayName,
   sceneFor,
   selectRound,
+  questionTop3 as buildQuestionTop3,
+  stageDefinitions,
+  stageScores,
+  stageTop3 as buildStageTop3,
   topN,
   top1Streaks,
   transition,
@@ -670,6 +676,8 @@ export class SessionRuntime {
       now,
     });
     this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
+    this.persistQuestionRanking(r.roundId, qid, now);
+    this.persistFinalizedStageRankings(r.roundId, qid, now, kind);
     return integrity;
   }
 
@@ -2294,6 +2302,156 @@ export class SessionRuntime {
     };
   }
 
+  /** Chốt ranking câu khi câu đóng; void sau reveal tạo revision rỗng để không phát kết quả lỗi thời. */
+  private persistQuestionRanking(roundId: string, questionInstanceId: string, now: number): RankingSnapshot | null {
+    const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
+    if (!question) return null;
+    const previous = this.store.latestRankingSnapshot(roundId, 'QUESTION', questionInstanceId, 'FASTEST_CORRECT');
+    if (question.status === 'VOIDED') {
+      if (!previous) return null;
+      return this.store.saveRankingSnapshot({
+        roundId,
+        scope: 'QUESTION',
+        scopeId: questionInstanceId,
+        achievementId: 'FASTEST_CORRECT',
+        metricKey: 'responseMs',
+        entries: [],
+        totalQualified: 0,
+        tiedOverflowCount: 0,
+        finalizedAtMs: now,
+      });
+    }
+    if (question.status !== 'CLOSED' || question.openedAtMs === null) return previous;
+    const snapshot = this.snapshots.get(questionInstanceId) ?? question.snapshot;
+    const answers = this.store.rankingAnswersForQuestion(roundId, questionInstanceId).map((answer) => ({
+      answerId: answer.answerId,
+      questionInstanceId: answer.questionInstanceId,
+      playerId: answer.playerId,
+      optionId: answer.option,
+      receivedAtMs: answer.receivedAtMs,
+      safeDisplayName: this.safeDisplayNameFor(answer.playerId, answer.displayName, now),
+    }));
+    const ranking = buildQuestionTop3({
+      questionInstanceId,
+      correctOptionId: snapshot.correctOptionId,
+      openedAtMs: question.openedAtMs,
+      answers,
+    });
+    if (!ranking) return previous;
+    return this.store.saveRankingSnapshot({
+      roundId,
+      scope: 'QUESTION',
+      scopeId: questionInstanceId,
+      achievementId: 'FASTEST_CORRECT',
+      metricKey: 'responseMs',
+      ...ranking,
+      finalizedAtMs: now,
+    });
+  }
+
+  private persistStageRanking(roundId: string, stage: StageDefinition, now: number): RankingSnapshot {
+    const questions = this.store.roundQuestions(roundId);
+    const byQuestionId = questions.map((question) => ({
+      questionInstanceId: question.id,
+      questionIndex: question.position + 1,
+    }));
+    const answers = this.store.rankingAnswersForRound(roundId).map((answer) => ({
+      questionInstanceId: answer.questionInstanceId,
+      playerId: answer.playerId,
+      safeDisplayName: this.safeDisplayNameFor(answer.playerId, answer.displayName, now),
+    }));
+    const events = this.store.ledgerRows(roundId).map((event) => ({
+      questionInstanceId: event.questionInstanceId,
+      playerId: event.playerId,
+      reason: event.reason,
+      points: event.points,
+    }));
+    const ranking = buildStageTop3(stageScores(stage, byQuestionId, answers, events));
+    return this.store.saveRankingSnapshot({
+      roundId,
+      scope: 'STAGE',
+      scopeId: stage.stageId,
+      achievementId: 'STAGE_CHAMPION',
+      metricKey: 'stageScore',
+      ...ranking,
+      finalizedAtMs: now,
+    });
+  }
+
+  /** Chốt chặng tại checkpoint và cập nhật lại các chặng đã chốt nếu có câu bị void/regrade. */
+  private persistFinalizedStageRankings(
+    roundId: string,
+    questionInstanceId: string,
+    now: number,
+    kind: 'AFTER_QUESTION' | 'AFTER_VOID',
+  ) {
+    const questions = this.store.roundQuestions(roundId);
+    const question = questions.find((row) => row.id === questionInstanceId);
+    if (!question) return;
+    const stages = stageDefinitions(questions.length, this.engine.leaderboardInterval);
+    const currentQuestionIndex = question.position + 1;
+    const targets = new Map<string, StageDefinition>();
+    if (kind === 'AFTER_QUESTION') {
+      const checkpoint = stages.find((stage) => stage.lastQuestionIndex === currentQuestionIndex);
+      if (checkpoint) targets.set(checkpoint.stageId, checkpoint);
+    } else {
+      const finalized = this.store.rankingSnapshotsForRound(roundId, 'STAGE', 'STAGE_CHAMPION');
+      for (const snapshot of finalized) {
+        const stage = stages.find((candidate) => candidate.stageId === snapshot.scopeId);
+        if (stage && currentQuestionIndex >= stage.firstQuestionIndex && currentQuestionIndex <= stage.lastQuestionIndex)
+          targets.set(stage.stageId, stage);
+      }
+    }
+    for (const stage of targets.values()) this.persistStageRanking(roundId, stage, now);
+  }
+
+  private publicRankingEntries(snapshot: RankingSnapshot, now: number) {
+    return snapshot.entries.map((entry) => {
+      const standings = this.ranked.find((player) => player.playerId === entry.playerId);
+      return {
+        ...entry,
+        playerId: this.publicPlayerIdFor(entry.playerId),
+        safeDisplayName: this.safeDisplayNameFor(
+          entry.playerId,
+          standings?.displayName ?? entry.safeDisplayName ?? 'Người chơi',
+          now,
+        ),
+      };
+    });
+  }
+
+  private questionTop3ForPublic(roundId: string, questionInstanceId: string, now: number) {
+    const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
+    if (!question || question.status !== 'CLOSED') return null;
+    const snapshot = this.store.latestRankingSnapshot(roundId, 'QUESTION', questionInstanceId, 'FASTEST_CORRECT')
+      ?? this.persistQuestionRanking(roundId, questionInstanceId, now);
+    if (!snapshot) return null;
+    return {
+      questionInstanceId,
+      entries: this.publicRankingEntries(snapshot, now),
+      totalQualified: snapshot.totalQualified,
+      tiedOverflowCount: snapshot.tiedOverflowCount,
+      revision: snapshot.revision,
+    };
+  }
+
+  private stageTop3ForPublic(roundId: string, stage: StageDefinition, now: number) {
+    const questions = this.store.roundQuestions(roundId);
+    const completed = questions
+      .filter((question) => question.position + 1 >= stage.firstQuestionIndex && question.position + 1 <= stage.lastQuestionIndex)
+      .every((question) => question.status === 'CLOSED' || question.status === 'VOIDED');
+    if (!completed) return null;
+    const snapshot = this.store.latestRankingSnapshot(roundId, 'STAGE', stage.stageId, 'STAGE_CHAMPION')
+      ?? this.persistStageRanking(roundId, stage, now);
+    return {
+      stage,
+      entries: this.publicRankingEntries(snapshot, now),
+      totalQualified: snapshot.totalQualified,
+      tiedOverflowCount: snapshot.tiedOverflowCount,
+      revision: snapshot.revision,
+    };
+  }
+
   /** Đánh giá lại tên của người chơi trong vòng hiện tại sau khi admin đổi luật. */
   refreshNameFilter(emit = true) {
     if (!this.engine.round || !this.deps.nameFilter) return;
@@ -2418,6 +2576,14 @@ export class SessionRuntime {
     const fastestCorrectAnswer = showFastestCorrect
       ? this.fastestCorrectAnswerFor(e.round!.roundId, snap!.questionInstanceId, snap!.correctOptionId, now)
       : null;
+    const questionTop3 = e.round && snap && (eff === 'REVEAL' || eff === 'LEADERBOARD')
+      ? this.questionTop3ForPublic(e.round.roundId, snap.questionInstanceId, now)
+      : null;
+    const stage = e.round && bigBoard
+      ? stageDefinitions(e.round.questionInstanceIds.length, e.leaderboardInterval)
+        .find((candidate) => candidate.lastQuestionIndex === e.round!.questionIndex + 1)
+      : undefined;
+    const stageTop3 = e.round && stage ? this.stageTop3ForPublic(e.round.roundId, stage, now) : null;
     return {
       contractVersion: CONTRACT_VERSION,
       sessionId: this.id,
@@ -2446,6 +2612,8 @@ export class SessionRuntime {
       answerCount: showOptions ? this.answerCount() : 0,
       participantCount: e.round ? this.participants : 0,
       fastestCorrectAnswer,
+      questionTop3,
+      stageTop3,
       mcVoiceCue,
       mcChatBubble: this.mcChatBubble && this.mcChatBubble.endsAtServerMs > now ? this.mcChatBubble : null,
       ...(this.pendingRoundStart && e.state === 'LOBBY' ? { lobbyMessage: 'Chuẩn bị vào trận…' } : {}),
