@@ -2,7 +2,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { QuestionSchema, SessionConfigSchema, type LeaderboardEntry, type QuestionSnapshot } from '@quiz/contracts';
-import { createInitialState, createPrng, snapshotQuestion } from '@quiz/quiz-core';
+import { computeRoundScores, createInitialState, createPrng, estimateStreamDelayMs, snapshotQuestion } from '@quiz/quiz-core';
 import { DEMO_PACK, DEMO_QUESTIONS, makeSimPlayers } from '../../../fixtures';
 import { Store } from './index';
 import { testTempRoot } from '../../../tests/support/tempRoot';
@@ -233,6 +233,70 @@ describe('Store: phiên và vòng', () => {
     expect(store.nextRoundNumber('session-1')).toBe(2);
     store.createRound({ id: 'round-2', sessionId: 'session-1', roundNumber: 2, seed: 11, selectionMode: 'RANDOM', snapshots: snapshots('round-2', 1), now: 300 });
     expect(store.nextRoundNumber('session-1')).toBe(3);
+  });
+
+  it('giữ stream delay đã chốt của câu qua khôi phục DB và regrade cho cùng điểm', () => {
+    const path = tempDbPath();
+    const store = openStore(path);
+    addSession(store);
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    addRound(store, 'session-1', 'delay-round', 1, 1);
+    const question = store.roundQuestions('delay-round')[0]!;
+    const playerId = store.resolvePlayer('MOCK', 'delay-player', 'Người chơi', 1_000);
+    store.markQuestion(question.id, 'OPEN', 1_000, false, 2_000);
+    expect(store.insertAnswer({
+      questionInstanceId: question.id, roundId: 'delay-round', playerId,
+      option: question.snapshot.correctOptionId, receivedAtMs: 1_500, sourceEventId: 'delay-answer',
+    })).toBe(true);
+    store.markQuestion(question.id, 'CLOSED', 2_000);
+
+    const score = (source: Store) => {
+      const row = source.roundQuestions('delay-round')[0]!;
+      const questions = [{
+        questionInstanceId: row.id, index: row.position + 1, correctOptionId: row.snapshot.correctOptionId,
+        closed: row.status === 'CLOSED', voided: row.status === 'VOIDED', openedAtMs: row.openedAtMs,
+        windowMs: 10_000, streamDelayMs: row.streamDelayMs,
+      }];
+      const answers = source.answersForRound('delay-round').map((answer) => ({
+        questionInstanceId: answer.questionInstanceId, playerId: answer.playerId,
+        option: answer.option, receivedAtMs: answer.receivedAtMs,
+      }));
+      return computeRoundScores(questions, answers, { mode: 'KAHOOT' });
+    };
+    const before = score(store);
+    expect(before.ledger.find((entry) => entry.reason === 'SPEED')?.points).toBe(500);
+
+    const index = openStores.indexOf(store);
+    if (index >= 0) openStores.splice(index, 1);
+    store.close();
+    const restored = openStore(path);
+    expect(restored.roundQuestions('delay-round')[0]?.streamDelayMs).toBe(2_000);
+    expect(score(restored)).toEqual(before);
+  });
+
+  it('lấy tối đa năm câu đúng gần nhất, bỏ câu không có đáp án đúng', () => {
+    const store = openStore();
+    addSession(store);
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    addRound(store, 'session-1', 'delay-samples', 1, 7);
+    const questions = store.roundQuestions('delay-samples');
+    const playerId = store.resolvePlayer('MOCK', 'delay-sampler', 'Người chơi', 1_000);
+    const rawElapsed = [1_000, 2_000, 3_000, 6_000, 8_000, 10_000];
+    questions.forEach((question, index) => {
+      const openedAtMs = 10_000 + index * 20_000;
+      store.markQuestion(question.id, 'OPEN', openedAtMs, false, 2_000);
+      if (index < rawElapsed.length) {
+        expect(store.insertAnswer({
+          questionInstanceId: question.id, roundId: 'delay-samples', playerId,
+          option: question.snapshot.correctOptionId, receivedAtMs: openedAtMs + rawElapsed[index]!,
+          sourceEventId: `delay-sample-${index}`,
+        })).toBe(true);
+      }
+      store.markQuestion(question.id, 'CLOSED', openedAtMs + 15_000);
+    });
+    const recent = store.recentCorrectAnswerElapsedMs('session-1');
+    expect(recent).toEqual([10_000, 8_000, 6_000, 3_000, 2_000]);
+    expect(estimateStreamDelayMs(recent)).toBe(2_000);
   });
 });
 

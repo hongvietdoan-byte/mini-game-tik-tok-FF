@@ -35,6 +35,7 @@ import {
   type RejectReason,
   type SpamWarningReason,
   type SessionConfig,
+  type UpdateStreamDelaySettings,
   type SimulatorRequest,
   type WsMessage,
   type WsMessageType,
@@ -68,6 +69,10 @@ import {
   stageTop3 as buildStageTop3,
   topN,
   top1Streaks,
+  clampStreamDelayMs,
+  DEFAULT_STREAM_DELAY_MS,
+  effectiveElapsedMs,
+  estimateStreamDelayMs,
   transition,
   type EngineEvent,
   type AchievementEvaluationInput,
@@ -356,6 +361,41 @@ export class SessionRuntime {
   get config(): SessionConfig {
     return this.session.config;
   }
+
+  /** Chỉ câu kế tiếp đổi cấu hình; câu đang mở dùng stream_delay_ms đã chốt khi mở. */
+  updateStreamDelaySettings(settings: UpdateStreamDelaySettings): boolean {
+    if (this.engine.sessionStatus !== 'OPEN') return false;
+    const config: SessionConfig = {
+      ...this.config,
+      streamDelayMode: settings.mode,
+      streamDelayManualMs: clampStreamDelayMs(settings.manualDelayMs ?? this.config.streamDelayManualMs ?? DEFAULT_STREAM_DELAY_MS),
+    };
+    this.session.config = config;
+    this.store.updateSessionConfig(this.id, config);
+    this.emitAdmin();
+    return true;
+  }
+
+  streamDelayAdminView(): AdminSnapshot['streamDelay'] {
+    const roundId = this.engine.round?.roundId;
+    const questionInstanceId = currentQuestionInstanceId(this.engine);
+    const activeQuestion = roundId && questionInstanceId
+      ? this.store.roundQuestions(roundId).find((question) => question.id === questionInstanceId)
+      : undefined;
+    return {
+      mode: this.config.streamDelayMode ?? 'AUTO',
+      nextQuestionDelayMs: this.nextQuestionStreamDelayMs(),
+      activeQuestionDelayMs: activeQuestion?.streamDelayMs ?? null,
+      manualDelayMs: clampStreamDelayMs(this.config.streamDelayManualMs ?? DEFAULT_STREAM_DELAY_MS),
+    };
+  }
+
+  private nextQuestionStreamDelayMs(): number {
+    if ((this.config.streamDelayMode ?? 'AUTO') === 'MANUAL')
+      return clampStreamDelayMs(this.config.streamDelayManualMs ?? DEFAULT_STREAM_DELAY_MS);
+    const samples = this.store.recentCorrectAnswerElapsedMs(this.id);
+    return estimateStreamDelayMs(samples) ?? DEFAULT_STREAM_DELAY_MS;
+  }
   private get store() {
     return this.deps.store;
   }
@@ -588,7 +628,7 @@ export class SessionRuntime {
           this.health.rejectedThisRound = Object.fromEntries(REJECT_REASONS.map((reason) => [reason, 0])) as Record<RejectReason, number>;
           break;
         case 'QUESTION_OPENED':
-          this.store.markQuestion(e.questionInstanceId, 'OPEN', now);
+          this.store.markQuestion(e.questionInstanceId, 'OPEN', now, false, this.nextQuestionStreamDelayMs());
           this.countsQid = e.questionInstanceId;
           this.counts = ZERO_COUNTS();
           break;
@@ -743,6 +783,7 @@ export class SessionRuntime {
         voided: r.voided.includes(s.questionInstanceId),
         openedAtMs,
         windowMs,
+        streamDelayMs: question?.streamDelayMs ?? null,
       };
     });
   }
@@ -832,8 +873,21 @@ export class SessionRuntime {
       } else if (e.type === 'LOBBY_AUTO_START_SET') {
         if (!e.enabled) this.cancelLobbyCountdown();
       }
-      else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round)
-        void this.trackSystemVoice(() => this.speakGeneric({ type: 'LEADERBOARD_GENERIC', roundId: this.engine.round!.roundId }, 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!'));
+      else if (e.type === 'STATE_CHANGED' && e.to === 'LEADERBOARD' && this.engine.round) {
+        const round = this.engine.round;
+        const isLastQuestion = round.questionIndex >= round.questionInstanceIds.length - 1;
+        if (isLastQuestion) {
+          void this.trackSystemVoice(() => this.speakGeneric(
+            { type: 'ROUND_COMPLETE_GENERIC', roundId: round.roundId, scriptId: 'round-complete-v1' },
+            'Đã xong tất cả các câu hỏi! Cùng xem ai là nhà vô địch nhé!',
+          ));
+        } else {
+          void this.trackSystemVoice(() => this.speakGeneric(
+            { type: 'LEADERBOARD_GENERIC', roundId: round.roundId },
+            'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!',
+          ));
+        }
+      }
       if (e.type === 'QUESTION_OPENED') {
         const snap = this.snapshots.get(e.questionInstanceId);
         if (snap && this.simulator) {
@@ -944,8 +998,10 @@ export class SessionRuntime {
 
   private mcChatSafetyFailure(text: string): { code: string; message: string } | null {
     const spoken = this.deps.mcVoice?.service.prepareSynthesisText(text) ?? text;
-    if (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(spoken))
+    if (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(spoken)) {
+      this.telemetry('UNSAFE_PLAYER_IDENTITY', 'OPERATOR_CHAT');
       return { code: 'MC_CHAT_UNSAFE_PLAYER_IDENTITY', message: 'Câu MC chứa tên hoặc ID người chơi nên đã bị từ chối.' };
+    }
     const filter = this.deps.nameFilter;
     if (filter) {
       const matches = [text, spoken].flatMap((value) => filter.findTextMatches(value));
@@ -1229,13 +1285,7 @@ export class SessionRuntime {
     const existing = this.questionVoiceBundles.get(key);
     if (existing) return existing;
     const lines = this.questionVoiceLines(snap);
-    if (lines.some((line) => this.speechContainsPlayerIdentity(line.request.text) ||
-      this.speechContainsPlayerIdentity(this.deps.mcVoice!.service.prepareSynthesisText(line.request.text)))) {
-      this.telemetry('UNSAFE_PLAYER_IDENTITY', 'QUESTION');
-      const skipped = Promise.resolve(null);
-      this.questionVoiceBundles.set(key, skipped);
-      return skipped;
-    }
+    // Câu đã duyệt là nội dung cố định, không chèn danh tính người chơi; chỉ kiểm tra text động của MC chat.
     const service = this.deps.mcVoice!.service;
     const pending = service.prepareQuestionReading(lines).then((bundle) => {
       if (!bundle.ok) this.telemetry('TOO_LONG', 'QUESTION');
@@ -1319,11 +1369,12 @@ export class SessionRuntime {
 
     const jobs: Array<
       | { kind: 'question' | 'reveal'; snapshot: QuestionSnapshot }
-      | { kind: 'generic'; type: 'LEADERBOARD_GENERIC' | 'VICTORY_GENERIC'; text: string }
+      | { kind: 'generic'; type: 'LEADERBOARD_GENERIC' | 'ROUND_COMPLETE_GENERIC' | 'VICTORY_GENERIC'; text: string }
     > = [
       ...selected.slice(1).map((snapshot) => ({ kind: 'question' as const, snapshot })),
       ...selected.map((snapshot) => ({ kind: 'reveal' as const, snapshot })),
       { kind: 'generic', type: 'LEADERBOARD_GENERIC', text: 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!' },
+      { kind: 'generic', type: 'ROUND_COMPLETE_GENERIC', text: 'Đã xong tất cả các câu hỏi! Cùng xem ai là nhà vô địch nhé!' },
       { kind: 'generic', type: 'VICTORY_GENERIC', text: 'Xin chúc mừng những người chiến thắng! Cảm ơn mọi người đã tham gia.' },
     ];
     let next = 0;
@@ -1331,7 +1382,10 @@ export class SessionRuntime {
       while (!this.disposed && this.roundVoicePreparation === run && next < jobs.length) {
         const job = jobs[next++]!;
         if (job.kind === 'generic') {
-          await this.voiceAsset({ type: job.type, roundId }, job.text);
+          const event: McVoiceEvent = job.type === 'ROUND_COMPLETE_GENERIC'
+            ? { type: job.type, roundId, scriptId: 'round-complete-v1' } as const
+            : { type: job.type, roundId } as const;
+          await this.voiceAsset(event, job.text);
           continue;
         }
         if (job.kind === 'reveal') {
@@ -1349,10 +1403,6 @@ export class SessionRuntime {
     const parsed = McVoiceEventSchema.safeParse(event);
     if (!this.voiceEnabled() || !parsed.success) return Promise.resolve(null);
     const speechText = this.deps.mcVoice!.service.prepareSynthesisText(text);
-    if (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(speechText)) {
-      this.telemetry('UNSAFE_PLAYER_IDENTITY', event.type);
-      return Promise.resolve(null);
-    }
     const { service, profile } = this.deps.mcVoice!;
     const voiceSettings = mcVoiceSettingsForEvent(profile, event.type);
     const key = `${event.type}\u0000${speechText.normalize('NFC').trim().replace(/\s+/gu, ' ')}\u0000${JSON.stringify(Object.fromEntries(Object.entries(voiceSettings).sort(([a], [b]) => a.localeCompare(b))))}`;
@@ -1429,11 +1479,6 @@ export class SessionRuntime {
       this.telemetry('LATE_AUDIO', 'QUESTION');
       return;
     }
-    if (this.questionVoiceLines(snap).some((line) => this.speechContainsPlayerIdentity(line.request.text) ||
-      this.speechContainsPlayerIdentity(this.deps.mcVoice!.service.prepareSynthesisText(line.request.text)))) {
-      this.telemetry('UNSAFE_PLAYER_IDENTITY', 'QUESTION');
-      return;
-    }
     const elapsedMs = Math.max(0, Math.floor(this.scheduler.now() - startedAt));
     const queueDelayMs = Math.max(0, this.voiceTailAtMs - this.scheduler.now());
     const schedule = planQuestionCueSchedule(
@@ -1478,16 +1523,20 @@ export class SessionRuntime {
     if (!line) return;
     const asset = await this.voiceAsset(line.event, line.text);
     if (asset) this.scheduleVoiceCue(line.event.type, asset.assetId, asset.durationMs,
-      () => ['REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY'].includes(effectiveState(this.engine)) && !this.speechContainsPlayerIdentity(line.text));
+      () => ['REVEAL', 'LEADERBOARD', 'ROUND_END', 'VICTORY'].includes(effectiveState(this.engine)));
   }
 
   private async speakGeneric(event: McVoiceEvent, text: string) {
     const asset = await this.voiceAsset(event, text);
     if (!asset) return;
     this.scheduleVoiceCue(event.type, asset.assetId, asset.durationMs, () => {
-      if (this.speechContainsPlayerIdentity(text)) return false;
       if (event.type === 'WELCOME') return this.engine.sessionStatus === 'OPEN' && effectiveState(this.engine) === 'LOBBY';
       if (event.type === 'LEADERBOARD_GENERIC') return effectiveState(this.engine) === 'LEADERBOARD';
+      if (event.type === 'ROUND_COMPLETE_GENERIC') {
+        const round = this.engine.round;
+        return effectiveState(this.engine) === 'LEADERBOARD' &&
+          round !== null && round.questionIndex === round.questionInstanceIds.length - 1;
+      }
       if (event.type === 'VICTORY_GENERIC') return ['VICTORY', 'ROUND_END'].includes(effectiveState(this.engine));
       return this.engine.sessionStatus === 'OPEN';
     });
@@ -2442,9 +2491,9 @@ export class SessionRuntime {
     correctOptionId: OptionId,
     now: number,
   ): FastestCorrectAnswer | null {
+    const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
     let winner = this.fastestCorrectByQuestion.get(questionInstanceId);
     if (!this.fastestCorrectByQuestion.has(questionInstanceId)) {
-      const question = this.store.roundQuestions(roundId).find((row) => row.id === questionInstanceId);
       if (!question || question.status !== 'CLOSED' || question.openedAtMs === null) {
         this.fastestCorrectByQuestion.set(questionInstanceId, null);
         return null;
@@ -2471,7 +2520,9 @@ export class SessionRuntime {
       publicPlayerId: this.publicPlayerIdFor(winner.playerId),
       seatId: this.audience.seatForPlayer(winner.playerId)?.slotId ?? null,
       safeDisplayName: this.safeDisplayNameFor(winner.playerId, ranked.displayName, now),
-      responseMs: winner.responseMs,
+      responseMs: question?.streamDelayMs == null
+        ? winner.responseMs
+        : effectiveElapsedMs(winner.responseMs, question.streamDelayMs),
     };
   }
 
@@ -2628,10 +2679,16 @@ export class SessionRuntime {
   }
 
   private publicRankingEntries(snapshot: RankingSnapshot, now: number) {
+    const question = snapshot.scope === 'QUESTION' && snapshot.metricKey === 'responseMs'
+      ? this.store.roundQuestions(snapshot.roundId).find((row) => row.id === snapshot.scopeId)
+      : undefined;
     return snapshot.entries.map((entry) => {
       const standings = this.ranked.find((player) => player.playerId === entry.playerId);
       return {
         ...entry,
+        metricValue: question?.streamDelayMs == null
+          ? entry.metricValue
+          : effectiveElapsedMs(entry.metricValue, question.streamDelayMs),
         playerId: this.publicPlayerIdFor(entry.playerId),
         safeDisplayName: this.safeDisplayNameFor(
           entry.playerId,
@@ -2922,6 +2979,7 @@ export class SessionRuntime {
       recoveryPending: e.suspended?.kind === 'RECOVERY',
       suspendedFrom: e.suspended?.from ?? null,
       config: this.config,
+      streamDelay: this.streamDelayAdminView(),
       current: snap
         ? {
             questionInstanceId: snap.questionInstanceId,

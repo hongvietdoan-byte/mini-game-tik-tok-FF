@@ -1,4 +1,5 @@
 import type { LeaderboardEntry, OptionId, Podium, PodiumSlot } from '@quiz/contracts';
+import { effectiveElapsedMs, MIN_DISPLAY_MS } from './stream-delay';
 
 export const SCORE_RULES = {
   correct: 100,
@@ -53,6 +54,8 @@ export type RoundQuestionInput = {
   openedAtMs?: number | null;
   /** Độ dài cửa sổ nhận đáp án (ms). */
   windowMs?: number;
+  /** Độ trễ đã chốt lúc mở câu; null/undefined giữ nguyên luật cũ cho dữ liệu lịch sử. */
+  streamDelayMs?: number | null;
 };
 
 export type AnswerInput = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs?: number };
@@ -195,9 +198,13 @@ function appendQuestionScore(
   total.correctCount += 1;
   if (opts.mode === 'KAHOOT') {
     const elapsed = question.openedAtMs != null && receivedAtMs !== undefined
-      ? receivedAtMs - question.openedAtMs
+      ? question.streamDelayMs == null
+        ? receivedAtMs - question.openedAtMs
+        : effectiveElapsedMs(receivedAtMs - question.openedAtMs, question.streamDelayMs)
       : null;
-    const points = kahootPoints(elapsed, question.windowMs ?? 0);
+    const points = question.streamDelayMs != null && elapsed !== null && elapsed <= MIN_DISPLAY_MS
+      ? KAHOOT_RULES.maxPoints
+      : kahootPoints(elapsed, question.windowMs ?? 0);
     const base = KAHOOT_RULES.maxPoints / 2;
     total.score += points;
     ledger.push({ questionInstanceId: question.questionInstanceId, playerId: total.playerId, reason: 'CORRECT', points: base });
@@ -219,7 +226,12 @@ function appendQuestionScore(
     points: SCORE_RULES.correct,
   });
   if ((opts.speedBonusMax ?? 0) > 0 && question.openedAtMs != null && question.windowMs && receivedAtMs !== undefined) {
-    const bonus = speedBonus(receivedAtMs - question.openedAtMs, question.windowMs, opts.speedBonusMax!);
+    const elapsed = question.streamDelayMs == null
+      ? receivedAtMs - question.openedAtMs
+      : effectiveElapsedMs(receivedAtMs - question.openedAtMs, question.streamDelayMs);
+    const bonus = question.streamDelayMs != null && elapsed <= MIN_DISPLAY_MS
+      ? opts.speedBonusMax!
+      : speedBonus(elapsed, question.windowMs, opts.speedBonusMax!);
     if (bonus > 0) {
       total.score += bonus;
       ledger.push({ questionInstanceId: question.questionInstanceId, playerId: total.playerId, reason: 'SPEED', points: bonus });

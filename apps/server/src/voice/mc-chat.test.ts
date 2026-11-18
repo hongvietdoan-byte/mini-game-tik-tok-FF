@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CreateSessionRequestSchema } from '@quiz/contracts';
+import { CreateSessionRequestSchema, type QuestionSnapshot } from '@quiz/contracts';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { NameFilterStore } from '../name-filter-store';
@@ -43,6 +43,62 @@ async function makeRuntime(provider?: McVoiceProvider) {
 }
 
 describe('MC chat', () => {
+  it('câu đã duyệt có từ trùng tên người chơi vẫn được chuẩn bị; MC chat động vẫn bị chặn', async () => {
+    const synthesize = vi.fn(async (_request: Parameters<McVoiceProvider['synthesize']>[0]) => ({ bytes: Buffer.from('approved-question-audio'), durationMs: 1_200, format: 'mp3' as const }));
+    const { runtime } = await makeRuntime({ synthesize });
+    Object.defineProperty(runtime, 'voiceIdentityValues', { value: () => ['Trang'] });
+    const snapshot: QuestionSnapshot = {
+      questionInstanceId: 'round-1:q12', questionId: 'demo-018', questionVersion: 1, index: 11,
+      prompt: 'Vật phẩm nào giúp người chơi mang theo nhiều đồ hơn trong hành trang?',
+      options: [
+        { id: 'A', text: 'Túi lớn', originalOptionId: 'o1' },
+        { id: 'B', text: 'Giày nhanh', originalOptionId: 'o2' },
+        { id: 'C', text: 'Khiên', originalOptionId: 'o3' },
+        { id: 'D', text: 'Bản đồ', originalOptionId: 'o4' },
+      ],
+      correctOptionId: 'A', explanation: '', difficulty: 'EASY', subtopicId: 'demo-chung', isDemo: false,
+    };
+    const prepareQuestionVoice = (runtime as unknown as {
+      prepareQuestionVoice(value: QuestionSnapshot): Promise<{ ok: boolean } | null>;
+    }).prepareQuestionVoice.bind(runtime);
+
+    await expect(prepareQuestionVoice(snapshot)).resolves.toMatchObject({ ok: true });
+    expect(synthesize.mock.calls.some(([request]) => request.text.includes('hành trang'))).toBe(true);
+    expect(runtime.sendMcChat({ text: 'Chào Trang, chúc bạn may mắn!', speak: false })).toMatchObject({
+      status: 422, result: { code: 'MC_CHAT_UNSAFE_PLAYER_IDENTITY' },
+    });
+    expect(synthesize.mock.calls.some(([request]) => request.text.includes('Chào Trang'))).toBe(false);
+  });
+
+  it('giữa vòng giữ câu BXH cũ; sau câu 15 phát câu kết riêng thay vì hẹn câu tiếp theo', async () => {
+    const synthesize = vi.fn(async (_request: Parameters<McVoiceProvider['synthesize']>[0]) => ({ bytes: Buffer.from('round-end-audio'), durationMs: 1_200, format: 'mp3' as const }));
+    const { runtime } = await makeRuntime({ synthesize });
+    const cueTypes: string[] = [];
+    Object.defineProperty(runtime, 'scheduleVoiceCue', {
+      value: (eventType: string) => { cueTypes.push(eventType); },
+    });
+    const questionInstanceIds = Array.from({ length: 15 }, (_, index) => `round-15:q${index + 1}`);
+    Object.assign(runtime.engine, {
+      state: 'LEADERBOARD', sessionStatus: 'OPEN',
+      round: { roundId: 'round-15', questionIndex: 13, questionInstanceIds },
+    });
+    const afterCommit = (runtime as unknown as { afterCommit(events: never[], input: never): void }).afterCommit.bind(runtime);
+    const enteredLeaderboard = [{ type: 'STATE_CHANGED', from: 'REVEAL', to: 'LEADERBOARD' }] as never[];
+
+    afterCommit(enteredLeaderboard, null as never);
+    await vi.waitFor(() => expect(synthesize.mock.calls.some(([request]) =>
+      request.text === 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!')).toBe(true));
+    await vi.waitFor(() => expect(cueTypes).toEqual(['LEADERBOARD_GENERIC']));
+    expect(cueTypes).toEqual(['LEADERBOARD_GENERIC']);
+
+    runtime.engine.round!.questionIndex = 14;
+    afterCommit(enteredLeaderboard, null as never);
+    await vi.waitFor(() => expect(synthesize.mock.calls.some(([request]) =>
+      request.text === 'Đã xong tất cả các câu hỏi! Cùng xem ai là nhà vô địch nhé!')).toBe(true));
+    await vi.waitFor(() => expect(cueTypes).toEqual(['LEADERBOARD_GENERIC', 'ROUND_COMPLETE_GENERIC']));
+    expect(cueTypes).toEqual(['LEADERBOARD_GENERIC', 'ROUND_COMPLETE_GENERIC']);
+  });
+
   it('đợi giọng tạo xong, xếp hàng lúc MC bận và đồng bộ bubble với cue khi MC rảnh', async () => {
     const synthesize = vi.fn(async () => ({ bytes: Buffer.from('cached-mock-audio'), durationMs: 1_200, format: 'mp3' as const }));
     const { runtime, scheduler } = await makeRuntime({ synthesize });

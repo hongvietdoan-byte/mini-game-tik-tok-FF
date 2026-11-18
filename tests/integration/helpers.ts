@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { CommandBody, SessionConfig } from '@quiz/contracts';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
+import { MIN_DISPLAY_MS } from '@quiz/quiz-core';
 import { buildApp, type QuizApp } from '@quiz/server';
 import { testTempRoot } from '../support/repoTemp';
 
@@ -130,8 +131,11 @@ export function referenceScores(
   // Mặc định khớp cấu hình phiên mặc định: thưởng tốc độ tối đa 50, cửa sổ 20 s, tốc độ ×1.
   const speedMax = opts.speedBonusMax ?? 50;
   const qs = store.raw
-    .prepare('SELECT id, position, correct_option_id AS c, status, opened_at_ms AS openedAt, closed_at_ms AS closedAt FROM round_questions WHERE round_id = ? ORDER BY position')
-    .all(roundId) as { id: string; position: number; c: string; status: string; openedAt: number | null; closedAt: number | null }[];
+    .prepare('SELECT id, position, correct_option_id AS c, status, opened_at_ms AS openedAt, closed_at_ms AS closedAt, stream_delay_ms AS streamDelayMs FROM round_questions WHERE round_id = ? ORDER BY position')
+    .all(roundId) as {
+      id: string; position: number; c: string; status: string;
+      openedAt: number | null; closedAt: number | null; streamDelayMs: number | null;
+    }[];
   const ans = store.raw
     .prepare('SELECT question_instance_id AS q, player_id AS p, option_id AS o, received_at_ms AS at FROM answers WHERE round_id = ? ORDER BY id')
     .all(roundId) as { q: string; p: string; o: string; at: number }[];
@@ -169,16 +173,26 @@ export function referenceScores(
         let speed = 0;
         const at = answeredAt.get(`${q.id}|${p}`);
         if (speedMax > 0 && q.openedAt !== null && at !== undefined) {
-          const left = Math.min(questionWindowMs, Math.max(0, questionWindowMs - (at - q.openedAt)));
-          speed = questionWindowMs > 0 ? Math.floor((speedMax * left) / questionWindowMs) : 0;
+          const rawElapsed = at - q.openedAt;
+          const elapsed = q.streamDelayMs == null ? rawElapsed : Math.max(MIN_DISPLAY_MS, rawElapsed - q.streamDelayMs);
+          const left = Math.min(questionWindowMs, Math.max(0, questionWindowMs - elapsed));
+          speed = questionWindowMs > 0
+            ? q.streamDelayMs != null && elapsed <= MIN_DISPLAY_MS
+              ? speedMax
+              : Math.floor((speedMax * left) / questionWindowMs)
+            : 0;
         }
         if (mode === 'KAHOOT') {
           // Kahoot (viết độc lập): round(1000 × (1 − (t/T)/2)); không biết t → 500; chuỗi +100×(n−1) ≤ 500
           let pts = 500;
           if (q.openedAt !== null && at !== undefined) {
-            const el = Math.min(questionWindowMs, Math.max(0, at - q.openedAt));
+            const rawElapsed = at - q.openedAt;
+            const elapsed = q.streamDelayMs == null ? rawElapsed : Math.max(MIN_DISPLAY_MS, rawElapsed - q.streamDelayMs);
+            const el = Math.min(questionWindowMs, Math.max(0, elapsed));
             if (questionWindowMs > 0)
-              pts = Math.round((1000 * (2 * questionWindowMs - el)) / (2 * questionWindowMs));
+              pts = q.streamDelayMs != null && elapsed <= MIN_DISPLAY_MS
+                ? 1000
+                : Math.round((1000 * (2 * questionWindowMs - el)) / (2 * questionWindowMs));
           }
           t.score += pts + Math.min(500, 100 * (s - 1));
         } else t.score += 100 + speed + (bonus[s] ?? 0);

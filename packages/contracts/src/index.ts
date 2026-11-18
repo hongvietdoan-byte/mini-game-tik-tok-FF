@@ -168,6 +168,11 @@ export const McVoiceEventSchema = z.discriminatedUnion('type', [
     approvedQuestionVersion: z.string().trim().min(1).max(128),
   }).strict(),
   z.object({ type: z.literal('LEADERBOARD_GENERIC'), roundId: z.string().trim().min(1).max(128) }).strict(),
+  z.object({
+    type: z.literal('ROUND_COMPLETE_GENERIC'),
+    roundId: z.string().trim().min(1).max(128),
+    scriptId: z.literal('round-complete-v1'),
+  }).strict(),
   z.object({ type: z.literal('VICTORY_GENERIC'), roundId: z.string().trim().min(1).max(128) }).strict(),
   z.object({ type: z.literal('OPERATOR_CHAT'), chatId: z.string().uuid() }).strict(),
 ]);
@@ -215,7 +220,7 @@ export const MAX_MC_READING_MS = 20_000;
 export const DEFAULT_MC_READING_MS = 5_000;
 
 export const McVoiceCueEventTypeSchema = z.enum([
-  'WELCOME', 'QUESTION', 'COUNTDOWN', 'TIMEOUT', 'SPAM_REMINDER', 'ANSWER_REVEAL', 'LEADERBOARD_GENERIC', 'VICTORY_GENERIC', 'OPERATOR_CHAT',
+  'WELCOME', 'QUESTION', 'COUNTDOWN', 'TIMEOUT', 'SPAM_REMINDER', 'ANSWER_REVEAL', 'LEADERBOARD_GENERIC', 'ROUND_COMPLETE_GENERIC', 'VICTORY_GENERIC', 'OPERATOR_CHAT',
 ]);
 export type McVoiceCueEventType = z.infer<typeof McVoiceCueEventTypeSchema>;
 
@@ -497,6 +502,17 @@ export type Timings = z.infer<typeof TimingsSchema>;
 export const DEFAULT_TIMINGS: Timings = TimingsSchema.parse({});
 
 export const QuestionsPerRoundSchema = z.union([z.literal(10), z.literal(15), z.literal(20)]);
+export const StreamDelayModeSchema = z.enum(['AUTO', 'MANUAL']);
+export type StreamDelayMode = z.infer<typeof StreamDelayModeSchema>;
+
+export const UpdateStreamDelaySettingsSchema = z.object({
+  mode: StreamDelayModeSchema,
+  manualDelayMs: z.number().int().min(0).max(6_000).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (value.mode === 'MANUAL' && value.manualDelayMs === undefined)
+    ctx.addIssue({ code: 'custom', path: ['manualDelayMs'], message: 'Chế độ MANUAL cần manualDelayMs.' });
+});
+export type UpdateStreamDelaySettings = z.infer<typeof UpdateStreamDelaySettingsSchema>;
 
 export const SessionConfigSchema = z
   .object({
@@ -518,6 +534,10 @@ export const SessionConfigSchema = z
     speedBonusMax: z.number().int().min(0).max(500).default(50),
     /** KAHOOT (mặc định, người dùng chốt 11/11): 500–1000/câu đúng theo tốc độ + chuỗi tới +500. CLASSIC: 100 + speedBonusMax + mốc 3/5/10. */
     scoringMode: z.enum(['KAHOOT', 'CLASSIC']).default('KAHOOT'),
+    /** Bù trễ LIVE tự học giữa các câu; câu đầu mặc định 2 giây. */
+    streamDelayMode: StreamDelayModeSchema.default('AUTO'),
+    /** Mức cố định khi MANUAL; luôn kẹp 0–6 giây. */
+    streamDelayManualMs: z.number().int().min(0).max(6_000).default(2_000),
     timings: TimingsSchema.default({}),
     /** Bật luồng MC Voice cho phiên; mặc định tắt để phiên cũ tiếp tục PREPARE → ACCEPTING. */
     mcVoiceEnabled: z.boolean().optional(),
@@ -569,12 +589,12 @@ type SessionConfigOutput = z.infer<typeof SessionConfigSchema>;
 export type SessionConfig =
   Omit<
     SessionConfigOutput,
-    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword'
+    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword' | 'streamDelayMode' | 'streamDelayManualMs'
   > &
   Partial<
     Pick<
       SessionConfigOutput,
-      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword'
+      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword' | 'streamDelayMode' | 'streamDelayManualMs'
     >
   >;
 
@@ -1123,6 +1143,14 @@ export type AdminSnapshot = {
   recoveryPending: boolean;
   suspendedFrom: GameState | null;
   config: SessionConfig;
+  /** Chỉ trong ADMIN_SNAPSHOT; delay kế tiếp và delay đang đóng băng cho câu mở. */
+  /** Có ở snapshot do server mới; optional để fixture/client cũ vẫn tương thích. */
+  streamDelay?: {
+    mode: StreamDelayMode;
+    nextQuestionDelayMs: number;
+    activeQuestionDelayMs: number | null;
+    manualDelayMs: number;
+  };
   current: {
     questionInstanceId: string;
     correctOptionId: OptionId;

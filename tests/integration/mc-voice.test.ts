@@ -25,10 +25,10 @@ function fakeAudio(): McVoiceAudio {
   return { bytes: Buffer.from('fake-mp3-audio'), durationMs: 1_200, format: 'mp3' };
 }
 
-async function harness(opts: { voice?: boolean; voiceFailure?: boolean } = {}) {
+async function harness(opts: { voice?: boolean; voiceFailure?: boolean; questionCount?: number } = {}) {
   const scheduler = new ManualScheduler();
   const store = new Store(tempDbPath());
-  store.seedQuestions({ id: 'demo', name: 'Demo' }, makeQuestions(10), scheduler.now());
+  store.seedQuestions({ id: 'demo', name: 'Demo' }, makeQuestions(opts.questionCount ?? 10), scheduler.now());
   const adapter = new MockAdapter();
   const voiceCacheDirectory = await testTempRootAsync('mc-voice-api-cache-');
   const secret: { value: string | null } = { value: 'test-only-secret-9876' };
@@ -61,6 +61,39 @@ async function harness(opts: { voice?: boolean; voiceFailure?: boolean } = {}) {
 }
 
 describe('MC Voice server API', () => {
+  it('cấu hình độ trễ AUTO/MANUAL qua admin API và ghi lại config an toàn', async () => {
+    const h = await harness({ questionCount: 15 });
+    const created = await h.quiz.app.inject({
+      method: 'POST', url: '/api/sessions', headers: AUTH,
+      payload: { name: 'Stream delay test', config: { mode: 'MOCK', allowDemoQuestions: true, questionsPerRound: 15 } },
+    });
+    expect(created.statusCode).toBe(201);
+    const sessionId = created.json().sessionId as string;
+    expect(created.json().snapshot.streamDelay).toMatchObject({ mode: 'AUTO', nextQuestionDelayMs: 2_000, activeQuestionDelayMs: null });
+
+    const unauthorized = await h.quiz.app.inject({
+      method: 'PATCH', url: `/api/sessions/${sessionId}/stream-delay`, payload: { mode: 'MANUAL', manualDelayMs: 4_500 },
+    });
+    expect(unauthorized.statusCode).toBe(401);
+    const invalid = await h.quiz.app.inject({
+      method: 'PATCH', url: `/api/sessions/${sessionId}/stream-delay`, headers: AUTH,
+      payload: { mode: 'MANUAL', manualDelayMs: 6_001 },
+    });
+    expect(invalid.statusCode).toBe(422);
+
+    const manual = await h.quiz.app.inject({
+      method: 'PATCH', url: `/api/sessions/${sessionId}/stream-delay`, headers: AUTH,
+      payload: { mode: 'MANUAL', manualDelayMs: 4_500 },
+    });
+    expect(manual.statusCode).toBe(200);
+    expect(manual.json().streamDelay).toMatchObject({ mode: 'MANUAL', nextQuestionDelayMs: 4_500, manualDelayMs: 4_500 });
+    expect(h.store.getSession(sessionId)?.config).toMatchObject({ streamDelayMode: 'MANUAL', streamDelayManualMs: 4_500 });
+    const state = await h.quiz.app.inject({
+      method: 'GET', url: `/api/sessions/${sessionId}/state`, headers: AUTH,
+    });
+    expect(state.json().streamDelay).toMatchObject({ mode: 'MANUAL', nextQuestionDelayMs: 4_500 });
+  });
+
   it('GET settings chỉ trả cờ có token; route yêu cầu admin và chỉ đổi primary overlay sau xác nhận', async () => {
     const h = await harness();
     const unauthorized = await h.quiz.app.inject({ method: 'GET', url: '/api/mc-voice/settings' });
@@ -135,12 +168,12 @@ describe('MC Voice server API', () => {
   });
 
   it('tự pre-generate vòng, phát cue công khai không replay và không đọc fastestCorrectAnswer', async () => {
-    const h = await harness({ voice: true });
+    const h = await harness({ voice: true, questionCount: 15 });
     const getOrCreate = vi.spyOn(h.service, 'getOrCreate');
     const prepareQuestionReading = vi.spyOn(h.service, 'prepareQuestionReading');
     const created = await h.quiz.app.inject({
       method: 'POST', url: '/api/sessions', headers: AUTH,
-      payload: { name: 'Phiên MC test', config: { mode: 'MOCK', allowDemoQuestions: true, seed: 42, questionsPerRound: 10,
+      payload: { name: 'Phiên MC test', config: { mode: 'MOCK', allowDemoQuestions: true, seed: 42, questionsPerRound: 15,
         mcVoiceEnabled: true, timings: { ...DEFAULT_TIMINGS, prepareMs: 500, answerMs: 3_000 } } },
     });
     expect(created.statusCode).toBe(201);
@@ -162,7 +195,7 @@ describe('MC Voice server API', () => {
     for (let spent = 0; runtime.engine.state !== 'READING' && spent < 5_000; spent += 50) h.scheduler.advance(50);
     expect(runtime.engine.state).toBe('READING');
     const roundQuestionCount = h.store.roundQuestions(runtime.engine.round!.roundId).length;
-    const expectedSyntheses = 17 + roundQuestionCount * 6;
+    const expectedSyntheses = 18 + roundQuestionCount * 6;
     const questionReadingPromises = () => prepareQuestionReading.mock.results
       .filter((result) => result.type === 'return').map((result) => result.value as Promise<unknown>);
     const answerRevealCalls = () => getOrCreate.mock.calls
@@ -183,7 +216,9 @@ describe('MC Voice server API', () => {
     expect(runtime.engine.timer?.durationMs).toBeGreaterThanOrEqual(6_000);
     expect(runtime.engine.timer?.durationMs).toBeLessThanOrEqual(20_000);
     // Lời dẫn chung xếp sau reveal trong hàng đợi (C-0227) nên chờ tới khi đủ lượt thay vì đọc ngay.
-    await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalledTimes(expectedSyntheses), { timeout: 5_000 }); // 11 câu chung, 6 câu lobby mới + 5 dòng READING + 1 lời công bố mỗi câu.
+    await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalledTimes(expectedSyntheses), { timeout: 5_000 });
+    expect(vi.mocked(h.provider.synthesize).mock.calls.some(([request]) =>
+      request.text === 'Đã xong tất cả các câu hỏi! Cùng xem ai là nhà vô địch nhé!')).toBe(true);
 
     h.scheduler.advance(1_500);
     const cueMessage = publicMessages.find((message) => message.type === 'STATE_SNAPSHOT' && message.payload.mcVoiceCue &&
