@@ -395,13 +395,13 @@ export function NameModerationPage({ isMock, dataSource = isMock ? demoNameModer
 
   return <section className="name-moderation-page" data-testid="name-moderation-page">
     <section className="name-moderation-heading">
-      <div><span className="eyebrow">AN TOÀN DANH TÍNH · ĐIỀU PHỐI LIVE</span><h1>Kiểm duyệt tên</h1><p>Người vận hành quyết định tên nào được ẩn hoặc xuất hiện trên các phần Storm Arena tự hiển thị.</p></div>
+      <div><span className="eyebrow">AN TOÀN DANH TÍNH · ĐIỀU PHỐI LIVE</span><h1>Kiểm duyệt tên</h1><p>Người vận hành quyết định tên nào được ẩn hoặc xuất hiện trên các phần Nhà Thông Thái Free Fire tự hiển thị.</p></div>
       <span className={`moderation-mode ${isMock ? 'is-demo' : ''}`}>{isMock ? 'MOCK · DỮ LIỆU DEMO' : 'LIVE · API QUẢN TRỊ'}</span>
     </section>
 
     <section className="name-voice-notice" role="note" data-testid="name-voice-notice">
       <span aria-hidden="true">◌</span><b>Đọc tên người chơi: Chưa hỗ trợ trong phiên bản này</b>
-      <small>Không có tuỳ chọn bật đọc tên. Bộ kiểm duyệt chỉ tác động lên tên hiển thị trong giao diện Storm Arena.</small>
+      <small>Không có tuỳ chọn bật đọc tên. Bộ kiểm duyệt chỉ tác động lên tên hiển thị trong giao diện Nhà Thông Thái Free Fire.</small>
     </section>
     {!isMock && <div className="moderation-api-notice" role="status">Roster quản trị dùng API riêng, tách khỏi snapshot công khai. Thay đổi tên sẽ được đồng bộ ngay tới overlay sau khi server xác nhận.</div>}
     {apiError && <div className="alert alert-error moderation-notice" role="alert">Không đồng bộ được API moderation: {apiError}</div>}

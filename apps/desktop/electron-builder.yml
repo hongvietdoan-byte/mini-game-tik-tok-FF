@@ -1,7 +1,7 @@
 # Bộ cài Windows (V3.1 mục A). Chạy: corepack pnpm --filter @quiz/desktop dist
 appId: vn.stormarena.livequiz
-productName: Storm Arena LIVE Quiz
-copyright: "Storm Arena LIVE Quiz"
+productName: Nhà Thông Thái Free Fire
+copyright: "Nhà Thông Thái Free Fire"
 electronVersion: 42.11.18
 directories:
   app: build/app          # do scripts/bundle.mjs dựng sẵn
@@ -28,7 +28,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Storm Arena LIVE Quiz
+  shortcutName: Nhà Thông Thái Free Fire
   # Gỡ cài đặt KHÔNG xoá dữ liệu người dùng (%APPDATA%\Storm Arena LIVE Quiz: DB, kết quả, token)
   deleteAppDataOnUninstall: false
   artifactName: "StormArena-LiveQuiz-Setup-${version}.${ext}"

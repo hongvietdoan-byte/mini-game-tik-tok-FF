@@ -55,6 +55,7 @@ async function openThemePage(page: Page) {
     sessionStorage.setItem('quiz.adminToken', token);
   }, { token: adminToken });
   await page.goto(dashboardUrl);
+  await expect(page).toHaveTitle('Nhà Thông Thái Free Fire · Dashboard LIVE');
   await page.getByRole('button', { name: 'Kết nối', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Tạo phiên MOCK' })).toBeVisible();
   await page.getByRole('button', { name: 'Giao diện / Theme', exact: true }).click();
@@ -118,6 +119,7 @@ test.afterAll(async () => {
 
 test('tab Theme đọc API thật, quét lại theme tạm, chặn gói lỗi và áp dụng theme hợp lệ', async ({ page }) => {
   await openThemePage(page);
+  await expect(page.locator('.brand')).toContainText('NHÀ THÔNG THÁI');
   const themePage = page.getByTestId('theme-page');
   const spring = themePage.getByRole('radio', { name: /Mùa xuân/ });
   await expect(spring).toContainText('Đang dùng');
@@ -129,7 +131,7 @@ test('tab Theme đọc API thật, quét lại theme tạm, chặn gói lỗi v�
   await themePage.getByRole('button', { name: 'Quét lại thư mục' }).click();
   const summer = themePage.getByRole('radio', { name: /Mùa hè/ });
   await expect(summer).toBeVisible();
-  await expect(themePage.getByRole('status')).toContainText('Đã quét lại thư mục theme.');
+  await expect(themePage.locator('.alert-success')).toContainText('Đã quét lại thư mục theme.');
   await summer.click();
   await expect(themePage.getByText('--theme-sky')).toBeVisible();
   await expect(themePage.locator('[data-slot="brand.logo"] img')).toBeVisible();
@@ -147,4 +149,30 @@ test('tab Theme đọc API thật, quét lại theme tạm, chặn gói lỗi v�
   await expect(themePage.locator('[data-slot="brand.logo"] img')).toBeVisible();
   await expect(themePage.getByRole('radio', { name: /Mùa hè/ })).toContainText('Đang dùng');
   expect(page.url()).not.toContain(adminToken);
+});
+
+test('C-0290 trang danh hiệu theo chủ đề preview, validate và lưu qua endpoint có backup', async ({ page }) => {
+  await openThemePage(page);
+  const editor = page.getByTestId('achievement-editor');
+  await expect(editor.getByRole('heading', { name: 'Danh hiệu theo chủ đề' })).toBeVisible();
+  const fastest = editor.locator('[data-achievement="FASTEST_CORRECT"]');
+  await fastest.getByLabel('FASTEST_CORRECT · tên').fill('Tốc độ Mùa Xuân');
+  await fastest.getByLabel('FASTEST_CORRECT · subtitle').fill('Ba người trả lời nhanh nhất');
+  await editor.getByRole('button', { name: 'Validate' }).click();
+  await expect(page.locator('.alert-success')).toContainText('hợp lệ theo schema C-0288');
+  await expect(editor.getByTestId('achievement-preview')).toContainText('Tốc độ Mùa Xuân');
+
+  await fastest.getByLabel('FASTEST_CORRECT · vị trí').selectOption('question-reveal');
+  await editor.getByRole('button', { name: 'Lưu danh hiệu' }).click();
+  await expect(page.locator('.alert-success')).toContainText('máy chủ đã tạo bản sao lưu theme.json.bak-');
+  await expect(editor).toContainText('Tốc độ Mùa Xuân');
+
+  const reviewDirectory = resolve(process.cwd(), '.claude/review/C0290');
+  mkdirSync(reviewDirectory, { recursive: true });
+  await editor.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(reviewDirectory, 'dashboard-achievements.png'), fullPage: true, animations: 'disabled' });
+
+  await editor.getByRole('button', { name: 'Reset về mặc định' }).click();
+  await expect(page.locator('.alert-success')).toContainText('đặt danh hiệu');
+  await expect(editor.getByTestId('achievement-preview')).toContainText('ĐÚNG NHANH NHẤT');
 });

@@ -2,7 +2,7 @@
   "name": "@quiz/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Storm Arena LIVE Quiz \u2014 \u1ee9ng d\u1ee5ng Windows (Electron)",
+  "description": "Nhà Thông Thái Free Fire — ứng dụng Windows (Electron)",
   "main": "build/app/main.mjs",
   "scripts": {
     "bundle": "node scripts/bundle.mjs",

@@ -1,10 +1,13 @@
 import {
   DEFAULT_HUD_CONFIG,
+  ACHIEVEMENT_IDS,
   HudConfigSchema,
   INITIAL_TEST_SAFE_ZONE,
   McChatRequestSchema,
   SessionConfigSchema,
   SYSTEM_CHECK_IDS,
+  THEME_DEFAULT_ACHIEVEMENTS,
+  ThemeAchievementsSchema,
   type AdminSnapshot,
   type CheckStatus,
   type CommandBody,
@@ -28,8 +31,9 @@ import {
   type RejectReason,
   type SimulatorRequest,
   type SystemCheck,
+  type ThemeAchievements,
 } from '@quiz/contracts';
-import { ApiError, type AdminThemeItem, type AdminThemesResponse, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SelfTestResponse, type SetActiveThemeResponse, type SocketStatus, type SourceControlAction, type StreamDelayMode, type StreamDelaySnapshot, type SystemChecksResponse, type UpdateStreamDelaySettings } from './client';
+import { ApiError, type AdminThemeItem, type AdminThemesResponse, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SaveThemeAchievementsResponse, type SelfTestResponse, type SetActiveThemeResponse, type SocketStatus, type SourceControlAction, type StreamDelayMode, type StreamDelaySnapshot, type SystemChecksResponse, type ThemeAchievementsResponse, type UpdateStreamDelaySettings } from './client';
 
 const mockThemeImage = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g"><stop stop-color="#161b4e"/><stop offset="1" stop-color="#7049f5"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><circle cx="500" cy="80" r="42" fill="#ffcc58"/></svg>')}`;
 const mockThemeDefinitions: Array<{ item: Omit<AdminThemeItem, 'active'>; tokens: Record<string, string>; assets: ResolvedTheme['assets'] }> = [
@@ -144,6 +148,7 @@ class MockDashboardClient implements DashboardClient {
   private streamDelayMode: StreamDelayMode = 'AUTO';
   private streamDelayManualMs = 2_000;
   private activeQuestionDelayMs: number | null = null;
+  private themeAchievements = new Map<string, ThemeAchievements>();
   private mcChatQueue: McChatQueueItem[] = [];
   private mcChatPresets: McChatPreset[] = [];
   private mcChatBubble: NonNullable<PublicSnapshot['mcChatBubble']> | null = null;
@@ -158,6 +163,10 @@ class MockDashboardClient implements DashboardClient {
       tokens: { ...definition.tokens },
       fonts: [],
       assets: { ...definition.assets },
+      achievements: Object.fromEntries(ACHIEVEMENT_IDS.map((id) => [id, {
+        ...THEME_DEFAULT_ACHIEVEMENTS[id], icon: null,
+        ...this.themeAchievements.get(definition.item.id)?.[id],
+      }])) as NonNullable<ResolvedTheme['achievements']>,
     };
   }
 
@@ -190,6 +199,23 @@ class MockDashboardClient implements DashboardClient {
     this.activeThemeId = themeId;
     this.themeVersion += 1;
     return { theme: this.resolvedTheme(themeId), activeThemeId: this.activeThemeId, themeVersion: this.themeVersion };
+  }
+
+  async getThemeAchievements(_token: string, themeId: string): Promise<ThemeAchievementsResponse> {
+    const theme = mockThemeDefinitions.find((item) => item.item.id === themeId && item.item.valid);
+    if (!theme) throw new ApiError('Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.', 422, 'THEME_INVALID');
+    return { themeId, achievements: structuredClone(this.themeAchievements.get(themeId) ?? {}), themeVersion: this.themeVersion };
+  }
+
+  async saveThemeAchievements(_token: string, themeId: string, achievements: ThemeAchievements): Promise<SaveThemeAchievementsResponse> {
+    const theme = mockThemeDefinitions.find((item) => item.item.id === themeId && item.item.valid);
+    if (!theme) throw new ApiError('Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.', 422, 'THEME_INVALID');
+    const parsed = ThemeAchievementsSchema.safeParse(achievements);
+    if (!parsed.success) throw new ApiError('Dữ liệu danh hiệu không hợp lệ.', 422, 'VALIDATION_FAILED', parsed.error.issues);
+    this.themeAchievements.set(themeId, parsed.data);
+    this.themeVersion += 1;
+    return { themeId, achievements: structuredClone(parsed.data), themeVersion: this.themeVersion,
+      theme: this.resolvedTheme(themeId), backup: 'theme.json.bak-demo' };
   }
 
   async getHealth() {

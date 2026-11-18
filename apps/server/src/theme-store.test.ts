@@ -376,4 +376,50 @@ describe('ThemeStore', () => {
     try { expect((await restarted.app.inject('/api/theme')).json()).toMatchObject({ id: 'halloween', version: 4 }); }
     finally { await restarted.close(); restartedDb.close(); }
   });
+
+  it('lưu achievements có xác thực, backup manifest cũ và từ chối dữ liệu sai hoặc theme default', async () => {
+    const root = temp();
+    const themesDir = join(root, 'themes');
+    const themeDirectory = writeTheme(themesDir, 'spring-event');
+    writeTheme(themesDir, 'default');
+    const original = readFileSync(join(themeDirectory, 'theme.json'));
+    const db = new Store(join(root, 'quiz.db'));
+    const quiz = await buildApp({ store: db, scheduler: new ManualScheduler(), adminToken: 'test-admin-token-0123456789abcdef', themesDir });
+    const auth = { authorization: 'Bearer test-admin-token-0123456789abcdef' };
+    const url = '/api/admin/themes/spring-event/achievements';
+    try {
+      expect((await quiz.app.inject({ method: 'PUT', url, payload: { achievements: { LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân', maxRows: 3 } } } })).statusCode).toBe(401);
+
+      const saved = await quiz.app.inject({
+        method: 'PUT', url, headers: auth,
+        payload: { achievements: { LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân', maxRows: 3, displaySlot: 'victory' } } },
+      });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json()).toMatchObject({ themeVersion: 2, theme: { id: 'spring-event', version: 2 } });
+      expect(saved.json().achievements).toMatchObject({ LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân', maxRows: 3 } });
+      expect(JSON.parse(readFileSync(join(themeDirectory, 'theme.json'), 'utf8'))).toMatchObject({
+        achievements: { LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân', displaySlot: 'victory' } },
+      });
+      const backups = readdirSync(themeDirectory).filter((name) => /^theme\.json\.bak-/u.test(name));
+      expect(backups).toHaveLength(1);
+      expect(readFileSync(join(themeDirectory, backups[0]!))).toEqual(original);
+      expect((await quiz.app.inject({ url, headers: auth })).json()).toMatchObject({ themeVersion: 2, achievements: { LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân' } } });
+
+      const savedBytes = readFileSync(join(themeDirectory, 'theme.json'));
+      const rejected = await quiz.app.inject({ method: 'PUT', url, headers: auth, payload: { achievements: { LONGEST_STREAK: { maxRows: 5 } } } });
+      expect(rejected.statusCode).toBe(422);
+      expect(rejected.json()).toMatchObject({ code: 'VALIDATION_FAILED', message: expect.stringContaining('LONGEST_STREAK') });
+      expect(readFileSync(join(themeDirectory, 'theme.json'))).toEqual(savedBytes);
+      expect(readdirSync(themeDirectory).filter((name) => /^theme\.json\.bak-/u.test(name))).toHaveLength(1);
+
+      const defaultBytes = readFileSync(join(themesDir, 'default', 'theme.json'));
+      const defaultSave = await quiz.app.inject({ method: 'PUT', url: '/api/admin/themes/default/achievements', headers: auth, payload: { achievements: {} } });
+      expect(defaultSave.statusCode).toBe(422);
+      expect(defaultSave.json()).toMatchObject({ code: 'THEME_READ_ONLY', message: expect.stringContaining('nhân bản') });
+      expect(readFileSync(join(themesDir, 'default', 'theme.json'))).toEqual(defaultBytes);
+    } finally {
+      await quiz.close();
+      db.close();
+    }
+  });
 });

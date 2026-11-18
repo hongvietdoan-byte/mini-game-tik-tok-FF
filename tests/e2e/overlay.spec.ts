@@ -72,6 +72,7 @@ async function openScene(page: Page, sceneName: string, expectedScene: string) {
   const errors = watchPageErrors(page);
   const query = new URLSearchParams({ mock: sceneName });
   await page.goto(`/?${query.toString()}`, { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveTitle('Nhà Thông Thái Free Fire · Overlay');
   const stage = page.locator(`[data-testid="stage"][data-scene="${expectedScene}"]`);
   await expect(stage).toBeVisible();
   await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));

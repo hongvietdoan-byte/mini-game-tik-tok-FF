@@ -548,7 +548,7 @@ function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <div className="brand"><span className="brand-mark">BV</span><div><b>BÁ VƯƠNG</b><span>ĐẠI CHIẾN · LIVE CONTROL</span></div></div>
+      <div className="brand"><span className="brand-mark">NT</span><div><b className="brand-product-name">NHÀ THÔNG THÁI</b><span className="brand-product-tagline">FREE FIRE · LIVE CONTROL</span></div></div>
       <div className="topbar-right">
         {!wizardOpen && ((snapshot && sessionId) || needsSession) && <nav className="page-nav" aria-label="Các trang điều hành">
           <button className={page === 'live' ? 'is-active' : ''} type="button" aria-current={page === 'live' ? 'page' : undefined} onClick={() => setPage('live')}>Live Control</button>

@@ -108,9 +108,9 @@ writeFileSync(
   JSON.stringify(
     {
       name: 'storm-arena-live-quiz',
-      productName: 'Storm Arena LIVE Quiz',
+      productName: 'Nhà Thông Thái Free Fire',
       version: JSON.parse(readFileSync(join(DESKTOP, 'package.json'), 'utf8')).version,
-      description: 'Storm Arena LIVE Quiz',
+      description: 'Nhà Thông Thái Free Fire',
       main: 'main.mjs',
       type: 'module',
       dependencies: { 'better-sqlite3': sqlitePkg.version },

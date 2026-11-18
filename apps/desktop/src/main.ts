@@ -1,5 +1,5 @@
 /**
- * Storm Arena LIVE Quiz — tiến trình chính Electron (V3.1 mục A).
+ * Nhà Thông Thái Free Fire — tiến trình chính Electron (V3.1 mục A).
  * Server Fastify chạy NGAY TRONG tiến trình này (không cần Node/terminal), phục vụ dashboard + overlay
  * trên một cổng loopback cố định để OBS / TikTok LIVE Studio dùng một Overlay URL ổn định.
  */
@@ -10,6 +10,10 @@ import { RealScheduler } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { buildApp, loadOrCreateAdminToken, SafeStorageMcVoiceCredentialStore, type QuizApp } from '@quiz/server';
 import { DEMO_PACK, DEMO_QUESTIONS } from '../../../fixtures/index';
+import { pinLegacyUserDataPath, QUIZ_PRODUCT_NAME } from './user-data-path';
+
+// app.setName đổi nhãn sản phẩm; userData vẫn trỏ về thư mục đã chứa DB, token và kết quả cũ.
+pinLegacyUserDataPath(app);
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.QUIZ_PORT ?? 8787);
@@ -84,7 +88,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1366,
     height: 860,
-    title: 'Storm Arena LIVE Quiz',
+    title: QUIZ_PRODUCT_NAME,
     backgroundColor: '#11142b',
     webPreferences: {
       preload: join(APP_DIR, 'preload.cjs'),
@@ -113,7 +117,7 @@ function createWindow() {
         buttons: ['Thoát', 'Huỷ'],
         defaultId: 1,
         cancelId: 1,
-        title: 'Thoát Storm Arena',
+        title: `Thoát ${QUIZ_PRODUCT_NAME}`,
         message: 'Thoát ứng dụng?',
         detail: 'Overlay trên OBS sẽ mất kết nối. Phiên đang chạy được lưu và sẽ chờ bạn chọn Tiếp tục / Huỷ câu / Dừng ở lần mở sau.',
       })
@@ -174,7 +178,7 @@ app.whenReady().then(async () => {
     const msg = err instanceof Error ? err.message : String(err);
     log(`không khởi động được: ${err instanceof Error ? err.stack : msg}`);
     dialog.showErrorBox(
-      'Không khởi động được Storm Arena',
+      `Không khởi động được ${QUIZ_PRODUCT_NAME}`,
       msg.includes('EADDRINUSE')
         ? `Cổng ${PORT} đang bị chương trình khác dùng (có thể app đã mở ở cửa sổ khác). Đóng chương trình đó rồi mở lại.`
         : msg,
