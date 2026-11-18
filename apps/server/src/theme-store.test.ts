@@ -201,7 +201,8 @@ describe('ThemeStore', () => {
       eventOverrides: { 'ba-vuong-dai-chien-2026': { LONGEST_STREAK: { title: 'Chuỗi Bão Tố' } } },
     } });
     writeFileSync(join(themeDirectory, 'assets', 'streak.png'), Buffer.from([137, 80, 78, 71]));
-    const db = new Store(join(root, 'quiz.db'));
+    const dbPath = join(root, 'quiz.db');
+    const db = new Store(dbPath);
     const scheduler = new ManualScheduler();
     db.seedQuestions({ id: 'demo', name: 'Demo' }, Array.from({ length: 40 }, (_, index) => ({
       id: `theme-achievement-q-${index}`, packId: 'demo', subtopicId: 'demo-chung', prompt: `Câu hỏi theme ${index}?`,
@@ -242,6 +243,17 @@ describe('ThemeStore', () => {
 
       const sourceAchievement = runtime.publicSnapshot().achievementSnapshots?.find((item) => item.achievementId === 'LONGEST_STREAK');
       expect(sourceAchievement).toBeDefined();
+      const displaySettingsUrl = '/api/admin/achievements/display';
+      expect((await quiz.app.inject({ url: displaySettingsUrl })).statusCode).toBe(401);
+      expect((await quiz.app.inject({ url: displaySettingsUrl, headers: auth })).json()).toEqual({ enabled: true });
+      expect((await quiz.app.inject({ method: 'PUT', url: displaySettingsUrl, headers: auth, payload: { enabled: false } })).json())
+        .toEqual({ enabled: false });
+      expect((await quiz.app.inject(`/api/sessions/${runtime.id}/state`)).json()).not.toHaveProperty('achievementSnapshots');
+      expect((db.raw.prepare('SELECT COUNT(*) AS n FROM achievement_awards WHERE round_id = ?').get(runtime.engine.round?.roundId) as { n: number }).n)
+        .toBeGreaterThan(0);
+      expect(runtime.publicSnapshot().achievementSnapshots?.length).toBeGreaterThan(0);
+      expect((await quiz.app.inject({ method: 'PUT', url: displaySettingsUrl, headers: auth, payload: { enabled: true } })).json())
+        .toEqual({ enabled: true });
       const publicState = (await quiz.app.inject(`/api/sessions/${runtime.id}/state`)).json();
       const publicAchievement = publicState.achievementSnapshots?.find((item: { achievementId: string }) => item.achievementId === 'LONGEST_STREAK');
       expect(publicAchievement).toMatchObject({
@@ -251,10 +263,16 @@ describe('ThemeStore', () => {
           icon: expect.stringMatching(/^\/themes\/storm-arena\/assets\/streak\.png\?v=/u), accentColor: '#123456', maxRows: 3,
         },
       });
+      await quiz.app.inject({ method: 'PUT', url: displaySettingsUrl, headers: auth, payload: { enabled: false } });
     } finally {
       await quiz.close();
       db.close();
     }
+    const restartedDb = new Store(dbPath);
+    const restarted = await buildApp({ store: restartedDb, scheduler: new ManualScheduler(), adminToken: 'test-admin-token-0123456789abcdef', themesDir });
+    try {
+      expect((await restarted.app.inject({ url: '/api/admin/achievements/display', headers: auth })).json()).toEqual({ enabled: false });
+    } finally { await restarted.close(); restartedDb.close(); }
   });
 
   it('không áp dụng theme bị sửa thành hỏng và từ chối symlink/path traversal khi phục vụ file', () => {

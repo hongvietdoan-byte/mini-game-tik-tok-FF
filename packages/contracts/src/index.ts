@@ -3,6 +3,11 @@
  * Mọi package khác chỉ phụ thuộc vào đây; không package nào được định nghĩa lại các kiểu này.
  */
 import { z } from 'zod';
+
+/** Runtime toggle for public achievement presentation; scoring and persistence remain enabled. */
+export const AchievementDisplaySettingsSchema = z.object({ enabled: z.boolean() }).strict();
+export type AchievementDisplaySettings = z.infer<typeof AchievementDisplaySettingsSchema>;
+export const AchievementDisplayUpdateSchema = AchievementDisplaySettingsSchema;
 import type { AchievementId, AchievementThemePresentation } from './theme';
 
 export {
