@@ -13,6 +13,7 @@ import {
   CreateSessionRequestSchema,
   HudConfigUpdateSchema,
   HudImageSlotSchema,
+  AchievementDisplayUpdateSchema,
   McVoicePreGenerateRequestSchema,
   McChatPresetRequestSchema,
   McVoiceEventSchema,
@@ -56,6 +57,7 @@ import { containsPlayerIdentity } from './voice/safety';
 import { preflightAssets } from './preflight-assets';
 import { commentSourcePreflight, overlayAckPreflight, overlayAudioPreflight } from './preflight-health';
 import { HudConfigError, HudConfigStore, MAX_HUD_IMAGE_BYTES } from './hud-config';
+import { AchievementDisplayStore } from './achievement-display';
 import {
   recordOverlayAck,
   registerOverlaySession,
@@ -138,6 +140,7 @@ const MockCommentSchema = z.object({
 export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   const { store, scheduler } = opts;
   const hudStore = new HudConfigStore(opts.hudDataDir ?? dirname(store.path));
+  const achievementDisplayStore = new AchievementDisplayStore(dirname(store.path));
   const mcChatPresetStore = new McChatPresetStore(join(dirname(store.path), 'mc-chat-presets.json'));
   const themeStore = new ThemeStore(opts.themesDir ?? join(dirname(store.path), 'themes'), dirname(store.path));
   const allowed = new Set(opts.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
@@ -216,15 +219,18 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   let observedStateVersion = 0;
   let lastSelfTest: SelfTestResult | null = null;
   const withHudVersion = (snapshot: PublicSnapshot): PublicSnapshot => {
+    const displayAchievements = achievementDisplayStore.get().enabled;
     const achievementSnapshots = snapshot.achievementSnapshots;
-    return {
+    const result: PublicSnapshot = {
       ...snapshot,
-      ...(achievementSnapshots?.length ? {
+      ...(displayAchievements && achievementSnapshots?.length ? {
         achievementSnapshots: themeStore.decorateAchievementSnapshots(achievementSnapshots, rt?.session.config.eventId),
       } : {}),
       hudVersion: hudStore.get().version,
       themeVersion: themeStore.version,
     };
+    if (!displayAchievements) delete result.achievementSnapshots;
+    return result;
   };
   const withHudVersionOnMessage = (message: WsMessage): WsMessage => {
     if (message.type === 'STATE_SNAPSHOT') return { ...message, payload: withHudVersion(message.payload) };
@@ -676,6 +682,20 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   }));
 
   app.get('/api/hud', async () => hudStore.get());
+
+  app.get('/api/admin/achievements/display', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return achievementDisplayStore.get();
+  });
+
+  app.put('/api/admin/achievements/display', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = AchievementDisplayUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const settings = achievementDisplayStore.save(parsed.data);
+    pushHudSnapshots();
+    return settings;
+  });
 
   app.get('/api/theme', async () => themeStore.resolveActive());
 

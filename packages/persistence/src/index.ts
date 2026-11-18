@@ -26,6 +26,8 @@ const BATCH_VALUES = (width: number, count: number) =>
   Array.from({ length: count }, () => `(${Array.from({ length: width }, () => '?').join(', ')})`).join(', ');
 
 export { schema };
+export * from './session-analytics';
+export * from './data-prune';
 
 /** Bản đóng gói (Electron) đặt QUIZ_MIGRATIONS_DIR vì không còn đường dẫn source. Đọc lúc mở Store, không lúc nạp module. */
 const migrationsDir = () =>
