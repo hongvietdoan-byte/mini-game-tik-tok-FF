@@ -2204,7 +2204,8 @@
 }
 .v3-stage .v3-mc .v3-mc-plate {
   border-radius: 12px;
-  background: var(--theme-violet, #6a3cff) padding-box, var(--theme-overlay-gold-gradient) border-box;
+  /* Màu trơn chỉ được ở lớp nền cuối; đặt ở lớp đầu làm cả khai báo vô hiệu → khung tên mất nền. */
+  background: linear-gradient(90deg, var(--theme-violet, #6a3cff), var(--theme-neon, #9b4dff)) padding-box, var(--theme-overlay-gold-gradient) border-box;
 }
 .v3-stage .v3-round-card .v3-round-count { color: var(--theme-gold, #ffd34d); text-shadow: 0 0 12px var(--theme-gold-soft, rgba(255, 190, 60, .6)), 0 2px 0 var(--theme-ink, #2a1458); }
 .v3-stage .v3-full-row {
