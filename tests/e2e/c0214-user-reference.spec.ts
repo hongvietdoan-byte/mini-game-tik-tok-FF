@@ -8,12 +8,12 @@ const targetBoxes = {
   'Storm Arena': { x: 82, y: 133, width: 230, height: 92 },
   'Round card': { x: 770, y: 133, width: 230, height: 95 },
   'Title ribbon + arrow tips': { x: 220, y: 250, width: 635, height: 72 },
-  'Top 10': { x: 88, y: 348, width: 317, height: 462 },
-  'Question board': { x: 425, y: 348, width: 570, height: 465 },
-  Timer: { x: 830, y: 368, width: 128, height: 128 },
-  'Question tab': { x: 455, y: 370, width: 225, height: 55 },
-  'Prompt frame': { x: 450, y: 510, width: 525, height: 145 },
-  'Answer grid': { x: 447, y: 670, width: 531, height: 125 },
+  'Top 10': { x: 70, y: 348, width: 317, height: 462 },
+  'Question board': { x: 410, y: 348, width: 600, height: 465 },
+  Timer: { x: 870, y: 364, width: 124, height: 124 },
+  'Question tab': { x: 440, y: 370, width: 225, height: 55 },
+  'Prompt frame': { x: 428, y: 502, width: 564, height: 124 },
+  'Answer grid': { x: 428, y: 642, width: 564, height: 156 },
   'Kelly portrait': { x: 130, y: 815, width: 205, height: 205 },
   'Kelly nameplate': { x: 92, y: 1018, width: 250, height: 49 },
   'MC bubble': { x: 410, y: 860, width: 575, height: 145 },
@@ -26,7 +26,7 @@ const box = (root: Element, selector: string) => {
   return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
 };
 
-test('C-0214 capture the five user-reference screenshots and check C-0216 geometry', async ({ page }) => {
+test('C-0214 capture the five user-reference screenshots and check C-0279 geometry', async ({ page }) => {
   await mkdir(reviewRoot, { recursive: true });
   const captures = [
     { mock: 'question-ref', scene: 'QUESTION', output: 'question.png' },
@@ -109,10 +109,11 @@ test('C-0214 capture the five user-reference screenshots and check C-0216 geomet
       const fastestBox = await stage.getByTestId('mc-bubble').evaluate((element) => {
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        return { rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, background: style.backgroundImage, border: style.border, display: style.display };
+        return { rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, background: style.backgroundImage, border: style.border, borderRadius: style.borderRadius, display: style.display };
       });
       expect(fastestBox.background).toContain('linear-gradient');
-      expect(fastestBox.border).toContain('3px');
+      expect(fastestBox.border).toContain('2px');
+      expect(fastestBox.borderRadius).toBe('16px');
     }
 
     for (const [name, target] of Object.entries(targetBoxes)) {
@@ -141,7 +142,7 @@ test('C-0214 capture the five user-reference screenshots and check C-0216 geomet
         if (capture.mock === 'question-ref') measurements.push({ name, phase: 'question + fastest', target, actual });
         expect(actual, `${name} must be measurable`).not.toBeNull();
         for (const dimension of ['x', 'y', 'width', 'height'] as const) {
-          expect(Math.abs(actual![dimension] - target[dimension]), `${name}.${dimension} must stay within 12px of C-0216`).toBeLessThanOrEqual(12);
+          expect(Math.abs(actual![dimension] - target[dimension]), `${name}.${dimension} must stay within 1px of the approved layout`).toBeLessThanOrEqual(1);
         }
       }
     }

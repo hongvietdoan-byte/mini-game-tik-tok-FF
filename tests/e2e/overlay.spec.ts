@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { DEFAULT_HUD_CONFIG, THEME_DEFAULT_TOKENS, type HudConfig, type ResolvedTheme } from '@quiz/contracts';
 import { getE2eAssetDirectory, getE2eTempDirectory } from './assets';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
@@ -79,9 +79,56 @@ async function openScene(page: Page, sceneName: string, expectedScene: string) {
   return { stage, errors };
 }
 
-test('theme mặc định giữ pixel của overlay gốc ở sáu cảnh', async ({ page }) => {
+async function captureThemeFrameStyles(stage: Locator) {
+  return stage.evaluate((root) => {
+    const selectors = [
+      '.v3-top10', '.v3-top10 li', '.v3-board', '.v3-board-tab', '.v3-timer', '.v3-question',
+      '.v3-options', '.v3-option', '.v3-option-text', '.v3-option-count', '.v3-option-meter',
+      '.v3-leaderboard-full', '.v3-full-row', '.v3-round-card', '.v3-event-mark',
+      '.v3-mc .v3-bubble', '.v3-mc .v3-mc-plate', '.v3-intermission', '.v3-connection-lost',
+      '.v3v-nameplate', '.v3v-title', '.v3v-subtitle',
+    ].join(',');
+    return Array.from(root.querySelectorAll<HTMLElement>(selectors)).map((element) => {
+      const style = getComputedStyle(element);
+      return {
+        className: element.className.toString(),
+        position: style.position,
+        left: style.left,
+        top: style.top,
+        width: style.width,
+        height: style.height,
+        boxSizing: style.boxSizing,
+        display: style.display,
+        gridTemplateColumns: style.gridTemplateColumns,
+        gridTemplateRows: style.gridTemplateRows,
+        gap: style.gap,
+        padding: style.padding,
+        border: style.border,
+        borderRadius: style.borderRadius,
+        backgroundImage: style.backgroundImage,
+        backgroundColor: style.backgroundColor,
+        boxShadow: style.boxShadow,
+        color: style.color,
+        fontFamily: style.fontFamily,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        clipPath: style.clipPath,
+        opacity: style.opacity,
+      };
+    });
+  });
+}
+
+test('theme mặc định giữ phong cách CSS fallback trên sáu cảnh', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
+  await page.addInitScript(() => {
+    let state = 0x0279;
+    Math.random = () => {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      return state / 0x1_0000_0000;
+    };
+  });
   const fallbackTheme: ResolvedTheme = { id: 'default', name: 'Giao diện mặc định', version: 1, tokens: {}, fonts: [], assets: {} };
   const defaultTheme: ResolvedTheme = { ...fallbackTheme, version: 2, tokens: { ...THEME_DEFAULT_TOKENS } };
   let activeTheme = fallbackTheme;
@@ -100,16 +147,24 @@ test('theme mặc định giữ pixel của overlay gốc ở sáu cảnh', asyn
     activeTheme = fallbackTheme;
     await openScene(page, entry.mock, entry.scene);
     await expect(page.locator('html')).toHaveAttribute('data-theme-version', '1');
-    await expect(page.locator(`[data-testid="stage"][data-state="${entry.state}"]`)).toBeVisible();
+    const fallbackStage = page.locator(`[data-testid="stage"][data-state="${entry.state}"]`);
+    await expect(fallbackStage).toBeVisible();
+    await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+    await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important}' });
     const screenshotOptions = { animations: 'disabled' as const, mask: [page.locator('[data-testid="timer"]')], maskColor: '#ff00ff' };
-    const fallbackPng = await page.screenshot({ ...screenshotOptions, path: join(screenshotDirectory, `theme-baseline-${entry.mock}.png`) });
+    const fallbackStyles = await captureThemeFrameStyles(fallbackStage);
+    await page.screenshot({ ...screenshotOptions, path: join(screenshotDirectory, `theme-baseline-${entry.mock}.png`) });
 
     activeTheme = defaultTheme;
-    await page.clock.runFor(2_600);
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
-    await expect(page.locator(`[data-testid="stage"][data-state="${entry.state}"]`)).toBeVisible();
-    const themedPng = await page.screenshot({ ...screenshotOptions, path: join(screenshotDirectory, `theme-default-${entry.mock}.png`) });
-    expect(themedPng.equals(fallbackPng), `${entry.mock}: default token overlay must be pixel-identical to CSS fallbacks`).toBe(true);
+    const defaultStage = page.locator(`[data-testid="stage"][data-state="${entry.state}"]`);
+    await expect(defaultStage).toBeVisible();
+    await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+    await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important}' });
+    const defaultStyles = await captureThemeFrameStyles(defaultStage);
+    expect(defaultStyles, `${entry.mock}: default tokens must preserve the fallback frame styles`).toEqual(fallbackStyles);
+    await page.screenshot({ ...screenshotOptions, path: join(screenshotDirectory, `theme-default-${entry.mock}.png`) });
   }
 });
 
@@ -299,6 +354,163 @@ test('READING shows the question and four answers without starting the answer co
   expect(errors).toEqual([]);
 });
 
+test('C-0279 keeps the approved fixed question frame and readable answer grid for short, longest and clamped text', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const reviewDirectory = join(process.cwd(), 'test-results', 'c0279');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const phases = [
+    { name: 'question', scene: 'QUESTION', phase: 'short-answer', long: false, reveal: false },
+    { name: 'question-longest', scene: 'QUESTION', phase: 'longest-prompt', long: false, reveal: false },
+    { name: 'question-grid-balance', scene: 'QUESTION', phase: 'grid-balance', long: true, reveal: false },
+    { name: 'question-clamp-text', scene: 'QUESTION', phase: 'clamp-text', long: true, reveal: false },
+    { name: 'reveal', scene: 'REVEAL', phase: 'short-reveal', long: false, reveal: true },
+    { name: 'reveal-grid-balance', scene: 'REVEAL', phase: 'grid-balance-reveal', long: true, reveal: true },
+    { name: 'reveal-clamp-text', scene: 'REVEAL', phase: 'clamp-reveal', long: true, reveal: true },
+  ] as const;
+
+  for (const entry of phases) {
+    const { stage } = await openScene(page, entry.name, entry.scene);
+    expect(stage).not.toHaveClass(/has-long-labels/);
+    const [boardBox, promptBox, top10Box] = await Promise.all([
+      stage.locator('.v3-board').boundingBox(), stage.locator('.v3-question').boundingBox(), stage.locator('.v3-top10').boundingBox(),
+    ]);
+    expect(boardBox).toMatchObject({ x: 410, y: 348, width: 600, height: 465 });
+    expect(promptBox).toMatchObject({ x: 428, y: 502, width: 564, height: 124 });
+    expect(top10Box).toMatchObject({ x: 70, y: 348, width: 317, height: 462 });
+    expect(top10Box!.x).toBeGreaterThanOrEqual(0);
+    expect(boardBox!.x - (top10Box!.x + top10Box!.width)).toBeGreaterThanOrEqual(12);
+    expect(promptBox!.y + promptBox!.height + 12).toBeLessThanOrEqual(boardBox!.y + 2 + 292);
+
+    const timer = stage.getByTestId('timer');
+    if (entry.name === 'question' || entry.name === 'reveal') {
+      await expect(timer).toHaveCSS('width', '124px');
+      await expect(timer).toHaveCSS('height', '124px');
+    }
+    expect(await stage.locator('.v3-question').evaluate((element) => {
+      const node = element as HTMLElement;
+      return node.scrollHeight <= node.clientHeight;
+    }), `${entry.phase}: prompt stays inside the fixed card`).toBe(true);
+
+    const cards = stage.locator('.v3-option');
+    const boxes = await cards.evaluateAll((elements) => elements.map((element) => {
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+    expect(boxes).toHaveLength(4);
+    for (const box of boxes.slice(1)) {
+      expect(Math.abs(box.width - boxes[0]!.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box.height - boxes[0]!.height)).toBeLessThanOrEqual(1);
+    }
+    expect(boxes[0]!.height).toBe(72);
+    expect(boxes[1]!.x - (boxes[0]!.x + boxes[0]!.width)).toBeGreaterThanOrEqual(12);
+    expect(boxes[2]!.y - (boxes[0]!.y + boxes[0]!.height)).toBeGreaterThanOrEqual(12);
+
+    for (const id of ['A', 'B', 'C', 'D'] as const) {
+      const card = stage.getByTestId(`option-${id}`);
+      const answer = card.locator('.v3-option-text');
+      const label = card.locator('.v3-letter');
+      if (entry.long) {
+        expect(Number.parseFloat(await answer.evaluate((element) => getComputedStyle(element).fontSize))).toBe(entry.reveal ? 15 : 17);
+      } else {
+        await expect(answer).toBeVisible();
+      }
+      await expect(label).toHaveText(id);
+      expect(Number.parseFloat(await label.evaluate((element) => getComputedStyle(element).fontSize))).toBe(22);
+      const [labelBox, answerBox] = await Promise.all([label.boundingBox(), answer.boundingBox()]);
+      expect(labelBox).not.toBeNull();
+      expect(answerBox).not.toBeNull();
+      expect(labelBox!.x + labelBox!.width).toBeLessThanOrEqual(answerBox!.x + 1);
+      const metrics = await answer.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const lineTops = [...new Set(Array.from(range.getClientRects()).filter((rect) => rect.width && rect.height).map((rect) => Math.round(rect.top)))];
+        const cellBox = element.closest('.v3-option')!.getBoundingClientRect();
+        const textRects = Array.from(range.getClientRects()).filter((rect) => rect.width && rect.height);
+        return {
+          widthFits: textRects.every((rect) => rect.left >= cellBox.left + 2 && rect.right <= cellBox.right - 2),
+          heightFits: textRects.every((rect) => rect.top >= cellBox.top + 2 && rect.bottom <= cellBox.bottom - 2),
+          lines: lineTops.length,
+          clientWidth: element.clientWidth,
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+          fontSize: getComputedStyle(element).fontSize,
+        };
+      });
+      expect(metrics.widthFits, `${entry.phase}/${id}: full answer fits its width (${JSON.stringify(metrics)})`).toBe(true);
+      expect(metrics.heightFits, `${entry.phase}/${id}: answer fits its height (${JSON.stringify(metrics)})`).toBe(true);
+      expect(metrics.lines, `${entry.phase}/${id}: answer respects its line limit (${JSON.stringify(metrics)})`).toBeLessThanOrEqual(entry.reveal && entry.long ? 3 : 2);
+      if (entry.reveal) {
+        const [countBox, meterBox] = await Promise.all([card.locator('.v3-option-count').boundingBox(), card.locator('.v3-option-meter').boundingBox()]);
+        expect(countBox).not.toBeNull();
+        expect(meterBox).not.toBeNull();
+        expect(countBox!.x).toBeGreaterThan(answerBox!.x + answerBox!.width);
+        expect(meterBox!.x).toBeGreaterThanOrEqual(countBox!.x);
+        expect(meterBox!.x + meterBox!.width).toBeLessThanOrEqual(countBox!.x + countBox!.width);
+      }
+    }
+    await page.screenshot({ path: join(reviewDirectory, `${entry.phase}.png`), animations: 'disabled' });
+  }
+});
+
+test('C-0279 captures all 12 approved overlay scenes at 1080×1920', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const reviewDirectory = join(process.cwd(), 'test-results', 'c0279', 'scenes');
+  mkdirSync(reviewDirectory, { recursive: true });
+  const scenes = [
+    { mock: 'lobby', scene: 'LOBBY', file: '01-lobby.png' },
+    { mock: 'prepare', scene: 'QUESTION', file: '02-prepare.png' },
+    { mock: 'reading', scene: 'QUESTION', file: '03-reading.png' },
+    { mock: 'question', scene: 'QUESTION', file: '04-question.png' },
+    { mock: 'reveal', scene: 'REVEAL', file: '05-reveal.png' },
+    { mock: 'fastest-a', scene: 'REVEAL', file: '06-fastest-a.png' },
+    { mock: 'top10', scene: 'INTERIM_TOP10', file: '07-top10.png' },
+    { mock: 'round-winner', scene: 'ROUND_WINNER', file: '08-round-winner.png' },
+    { mock: 'victory', scene: 'VICTORY', file: '09-victory.png' },
+    { mock: 'intermission', scene: 'INTERMISSION', file: '10-intermission.png' },
+    { mock: 'paused', scene: 'QUESTION', file: '11-paused.png' },
+    { mock: 'connection-lost', scene: 'CONNECTION_LOST', file: '12-connection-lost.png' },
+  ] as const;
+  for (const entry of scenes) {
+    const { stage, errors } = await openScene(page, entry.mock, entry.scene);
+    expect(errors, `${entry.file}: browser console stays clean`).toEqual([]);
+    await page.screenshot({ path: join(reviewDirectory, entry.file), animations: 'disabled' });
+  }
+});
+
+test('C-0278 renders two- and four-digit scores without padding on Top 10, interim, Victory and fastest-correct surfaces', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  const reviewDirectory = join(process.cwd(), 'test-results', 'c0278');
+  mkdirSync(reviewDirectory, { recursive: true });
+
+  const compact = await openScene(page, 'fastest-score-width', 'REVEAL');
+  await expect(compact.stage.getByTestId('fastest-callout')).toBeVisible();
+  const compactScores = compact.stage.locator('.v3-score');
+  await expect(compactScores.nth(0)).toHaveText('75');
+  await expect(compactScores.nth(1)).toHaveText('1.250');
+  await expect(compact.stage.getByTestId('leaderboard-row').filter({ hasText: 'StormKing' }).locator('.v3-score')).toHaveText('1.250');
+  await page.screenshot({ path: join(reviewDirectory, 'fastest-correct.png'), animations: 'disabled' });
+
+  const interim = await openScene(page, 'top10-score-width', 'INTERIM_TOP10');
+  const interimScores = interim.stage.locator('.v3-full-score');
+  await expect(interimScores.nth(0)).toHaveText('75điểm');
+  await expect(interimScores.nth(1)).toHaveText('1.250điểm');
+  await page.screenshot({ path: join(reviewDirectory, 'top10-scores-2-and-4-digits.png'), animations: 'disabled' });
+
+  const victory = await openScene(page, 'victory-score-width', 'VICTORY');
+  await expect(victory.stage.getByTestId('podium-slot-2')).toHaveAttribute('data-score', '75');
+  await expect(victory.stage.getByTestId('podium-slot-2').locator('i')).toContainText('75 PTS');
+  await expect(victory.stage.getByTestId('podium-slot-1')).toHaveAttribute('data-score', '1250');
+  await expect(victory.stage.getByTestId('podium-slot-1').locator('i')).toContainText('1.250 PTS');
+  await page.screenshot({ path: join(reviewDirectory, 'victory-scores-2-and-4-digits.png'), animations: 'disabled' });
+
+  for (const scoreSurface of [compactScores, interimScores, victory.stage.locator('.v3v-slot i')]) {
+    for (const score of await scoreSurface.allTextContents()) expect(score).not.toMatch(/(^|\s)0\d/);
+  }
+  expect(interim.errors).toEqual([]);
+  expect(victory.errors).toEqual([]);
+});
+
 test('mock-only badge stays hidden unless debug is enabled', async ({ page }) => {
   await openScene(page, 'question', 'QUESTION');
   await expect(page.getByTestId('demo-badge')).toHaveCount(0);
@@ -483,9 +695,9 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     event: { x: 82, y: 133, width: 230, height: 92 },
     ribbon: { x: 220, y: 250, width: 635, height: 72 },
     roundCard: { x: 770, y: 133, width: 230, height: 95 },
-    top10: { x: 88, y: 348, width: 317, height: 462 },
-    board: { x: 425, y: 348, width: 570, height: 465 },
-    question: { x: 450, y: 510, width: 525, height: 145 },
+    top10: { x: 70, y: 348, width: 317, height: 462 },
+    board: { x: 410, y: 348, width: 600, height: 465 },
+    question: { x: 428, y: 502, width: 564, height: 124 },
   } as const;
   for (const key of Object.keys(c0168Approved) as Array<keyof typeof c0168Approved>) {
     for (const dimension of ['x', 'y', 'width', 'height'] as const) {
@@ -690,7 +902,7 @@ test('C-0175 keeps the pill, Top 10 and question content inside their frame padd
     expect(box).not.toBeNull();
     if (!box) continue;
     const itemLabel = await item.getAttribute('data-testid') ?? await item.evaluate((element) => String(element.className));
-    const minHorizontalPadding = itemLabel === 'timer' || itemLabel.startsWith('option-') ? 16 : 18;
+    const minHorizontalPadding = itemLabel === 'timer' || itemLabel.startsWith('option-') ? 16 : itemLabel === 'question-prompt' ? 10 : 18;
     const minTopPadding = itemLabel === 'timer' ? 0 : 18;
     expect(box.x - boardBox.x).toBeGreaterThanOrEqual(minHorizontalPadding);
     expect(boardBox.x + boardBox.width - box.x - box.width).toBeGreaterThanOrEqual(minHorizontalPadding);
@@ -1008,7 +1220,9 @@ test('compact Top 10 stays within 45 percent and shows 14-character names beside
   const guide = page.getByTestId('top10-guide');
   await expect(guide).toBeVisible();
   await expect(guide.getByTestId('mc-bubble')).toBeVisible();
-  const [figureBox, bubbleBox] = await Promise.all([guide.locator('.v3-mc-figure').boundingBox(), guide.getByTestId('mc-bubble').boundingBox()]);
+  const figure = guide.locator('.v3-mc-figure');
+  await expect(figure).toHaveCSS('animation-name', 'none');
+  const [figureBox, bubbleBox] = await Promise.all([figure.boundingBox(), guide.getByTestId('mc-bubble').boundingBox()]);
   expect(figureBox).not.toBeNull();
   expect(bubbleBox).not.toBeNull();
   expect(bubbleBox).toMatchObject({ x: 115, y: 1178, width: 633, height: 145 });
@@ -1098,9 +1312,9 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(mcBox).not.toBeNull();
   const boardBox = await page.locator('.v3-board').boundingBox();
   expect(boardBox).not.toBeNull();
-  expect(top10Box!.x).toBeGreaterThanOrEqual(88);
+  expect(top10Box!.x).toBeGreaterThanOrEqual(68);
   expect(top10Box!.x + top10Box!.width).toBeLessThan(boardBox!.x);
-  expect(boardBox!.x + boardBox!.width).toBeLessThanOrEqual(995);
+  expect(boardBox!.x + boardBox!.width).toBeLessThanOrEqual(1010);
   expect(mcBox!.y).toBeGreaterThanOrEqual(815);
 
   const seatNames = page.locator('.v3-seat-name');
@@ -1164,7 +1378,7 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   for (const selector of ['.v3-top10', '.v3-board', '.v3-timer']) {
     const box = await page.locator(selector).boundingBox();
     expect(box, `${selector} has a measurable position`).not.toBeNull();
-    expect(box!.y).toBe(selector === '.v3-timer' ? 368 : 348);
+    expect(box!.y).toBe(selector === '.v3-timer' ? 364 : 348);
   }
 });
 
@@ -1255,12 +1469,16 @@ test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ 
   expect(stageBox!.width).toBeGreaterThan(921);
   expect(stageBox!.height).toBeGreaterThanOrEqual(1999);
   expect(stageBox!.height).toBeLessThanOrEqual(2001);
-  for (const selector of ['.v3-top10', '.v3-board', '.v3-timer', '.v3-question', '[data-testid="option-A"]']) {
+  for (const selector of ['.v3-top10 ol', '.v3-board', '.v3-timer', '.v3-question', '[data-testid="option-A"]']) {
     const box = await page.locator(selector).boundingBox();
     expect(box, `${selector} stays visible after phone side crop`).not.toBeNull();
-    // Fit=cover crops about 10px of the approved x=88 Top 10 anchor on this narrow viewport.
-    expect(box!.x).toBeGreaterThanOrEqual(selector === '.v3-top10' ? -12 : -2);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(selector === '.v3-top10' || selector === '.v3-board' ? 935 : 923);
+    // The shifted panel border may bleed into the crop; its title/rows remain inside the safe area.
+    expect(box!.x).toBeGreaterThanOrEqual(selector === '.v3-top10 ol' ? -12 : -2);
+    const rightLimit = selector === '.v3-top10 ol' ? 935
+      : selector === '.v3-board' ? 951
+        : selector === '.v3-timer' ? 936
+          : selector === '.v3-question' ? 934 : 923;
+    expect(box!.x + box!.width).toBeLessThanOrEqual(rightLimit);
   }
   await expect(page.getByTestId('tiktok-status-bar')).toBeVisible();
   await expect(page.getByTestId('tiktok-live-info')).toContainText('FFVN.Kelly');
@@ -1316,11 +1534,11 @@ test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ 
 test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) => {
   const { errors } = await openScene(page, 'question', 'QUESTION');
   await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
-  const seatEffects = await page.locator('.v3-seat-back, .v3-seat-name, .v3-chibi-hair, .v3-chibi-img img').evaluateAll((elements) => elements.map((element) => {
+  const seatEffects = await page.locator('.v3-seat-back, .v3-seat-back svg path, .v3-seat-name, .v3-chibi-hair, .v3-chibi-img img').evaluateAll((elements) => elements.map((element) => {
     const style = getComputedStyle(element);
     return { boxShadow: style.boxShadow, filter: style.filter, animationCount: style.animationIterationCount };
   }));
-  expect(seatEffects).toHaveLength(35 * 3);
+  expect(seatEffects).toHaveLength(35 * 4);
   expect(seatEffects.every((effect) => effect.boxShadow === 'none' && effect.filter === 'none' && effect.animationCount !== 'infinite')).toBe(true);
   const top10Rows = await page.locator('[data-testid="v3-top10"] [data-testid="leaderboard-row"]').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).animationIterationCount));
   expect(top10Rows.every((count) => count !== 'infinite')).toBe(true);

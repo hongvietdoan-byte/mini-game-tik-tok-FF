@@ -108,6 +108,30 @@ async function expectTextFits(page: Page, selectors: string[]) {
   }
 }
 
+async function expectClampedOptionTextFits(page: Page, maxLines: number) {
+  const metrics = await page.locator('[data-testid^="option-"] .v3-option-text').evaluateAll((elements) => elements.map((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+    const lineTops = new Set(rects.map((rect) => Math.round(rect.top)));
+    const cell = element.closest('.v3-option')!.getBoundingClientRect();
+    return {
+      text: element.textContent?.trim() ?? '',
+      lines: lineTops.size,
+      rects: rects.map((rect) => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })),
+      cell: { left: cell.left, right: cell.right, top: cell.top, bottom: cell.bottom },
+      widthFits: rects.every((rect) => rect.left >= cell.left + 2 && rect.right <= cell.right - 2),
+      heightFits: rects.every((rect) => rect.top >= cell.top + 2 && rect.bottom <= cell.bottom - 2),
+    };
+  }));
+  expect(metrics).toHaveLength(4);
+  for (const metric of metrics) {
+    expect(metric.widthFits, `option text fits its cell width: ${JSON.stringify(metric.text.slice(0, 32))}`).toBe(true);
+    expect(metric.heightFits, `option text fits its cell height: ${JSON.stringify(metric)}`).toBe(true);
+    expect(metric.lines, `option text stays within ${maxLines} visible lines: ${JSON.stringify(metric.text.slice(0, 32))}`).toBeLessThanOrEqual(maxLines);
+  }
+}
+
 async function expectFontSizeAtLeast(page: Page, selector: string, minimum: number) {
   const sizes = await page.locator(selector).evaluateAll((elements) => elements.map((element) =>
     Number.parseFloat(getComputedStyle(element).fontSize),
@@ -170,11 +194,13 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
     const prompt = stage.getByTestId('question-prompt');
     await expect(prompt).toHaveText(questionPrompt);
     await expectTextFits(page, ['[data-testid="question-prompt"]']);
-    await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 24);
+    // C-0279 clamps a 160-character prompt to 22px inside the approved fixed-height frame.
+    await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 22);
     const optionTextsRendered = stage.locator('[data-testid^="option-"] .v3-option-text');
     await expect(optionTextsRendered).toHaveCount(4);
-    await expectTextFits(page, ['[data-testid^="option-"] .v3-option-text']);
-    await expectFontSizeAtLeast(page, '[data-testid^="option-"] .v3-option-text', 20);
+    await expectClampedOptionTextFits(page, sceneName === 'reveal' ? 3 : 2);
+    // C-0279 keeps equal 72px cells: long answers use 17px while accepting and 15px on reveal.
+    await expectFontSizeAtLeast(page, '[data-testid^="option-"] .v3-option-text', sceneName === 'reveal' ? 15 : 17);
 
     const contentBoxes = [prompt, ...await optionTextsRendered.all()];
     const content = await Promise.all(contentBoxes.map((locator) => locator.boundingBox()));
