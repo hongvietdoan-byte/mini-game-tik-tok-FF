@@ -1,7 +1,7 @@
 {
   "role": "codex2",
   "last_read": 287,
-  "heartbeat": "2026-11-19T03:18:06+07:00",
+  "heartbeat": "2026-11-19T03:33:01+07:00",
   "state": "working",
   "task": "C-0306",
   "note": "Đã sửa ellipsis bằng cắt theo bề rộng + giới hạn cảnh báo ở preview; đang chạy Vitest và rà hai phương án vị trí bong bóng",
@@ -12,6 +12,7 @@
     297,
     300,
     301,
-    303
+    303,
+    305
   ]
 }
