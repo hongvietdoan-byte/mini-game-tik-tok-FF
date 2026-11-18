@@ -297,6 +297,28 @@ export const rankingSnapshots = sqliteTable(
   ],
 );
 
+/** Projection hiện hành theo từng người; composite PK chống phát thưởng trùng qua recovery. */
+export const achievementAwards = sqliteTable(
+  'achievement_awards',
+  {
+    roundId: text('round_id').notNull().references(() => rounds.id),
+    scope: text('scope').notNull(),
+    scopeId: text('scope_id').notNull(),
+    achievementId: text('achievement_id').notNull(),
+    playerId: text('player_id').notNull().references(() => players.id),
+    revision: integer('revision').notNull(),
+    metricKey: text('metric_key').notNull(),
+    metricValue: integer('metric_value').notNull(),
+    rank: integer('rank').notNull(),
+    tied: integer('tied').notNull(),
+    updatedAtMs: integer('updated_at_ms').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roundId, t.achievementId, t.scopeId, t.playerId] }),
+    index('achievement_awards_revision_idx').on(t.roundId, t.achievementId, t.scopeId, t.revision),
+  ],
+);
+
 // --- Trạng thái / kiểm toán -------------------------------------------------
 
 export const gameSnapshots = sqliteTable(
