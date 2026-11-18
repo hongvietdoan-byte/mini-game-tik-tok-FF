@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { DEFAULT_HUD_CONFIG, type HudConfig } from '@quiz/contracts';
 import { createServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { SessionConfigSchema, type CreateSessionRequest } from '@quiz/contracts';
+import { SessionConfigSchema, type AdminSnapshot, type CommandEnvelope, type CreateSessionRequest } from '@quiz/contracts';
 import { mockClient } from '../../apps/dashboard/src/api/mockClient';
 import type { NameModerationSettingsResponse, NameRuleGroup } from '../../apps/dashboard/src/nameModerationData';
 
@@ -346,6 +346,110 @@ test('MC chat hoạt động trong MOCK và câu mẫu gửi lại được', as
   await page.getByRole('button', { name: 'Gửi mẫu' }).click();
   await expect(page.getByTestId('mc-chat-queue-item').first()).toHaveAttribute('data-status', 'PLAYING');
   await expect(page.getByTestId('mc-chat-mock-note')).toContainText('không gọi dịch vụ sinh giọng');
+});
+
+test('C-0270: tự gửi lại PAUSE một lần với stateVersion mới và khoá nút khi đang chờ', async ({ page }) => {
+  test.setTimeout(30_000);
+  const previousSessionId = await mockClient.currentSession();
+  if (previousSessionId) {
+    const previous = await mockClient.getState('', previousSessionId);
+    await mockClient.sendCommand('', previousSessionId, {
+      commandId: 'c0270-cleanup-existing-session',
+      expectedStateVersion: previous.public.stateVersion,
+      operatorId: 'e2e',
+      requestedAtMs: Date.now(),
+      command: { type: 'STOP', reason: 'Dọn trạng thái giữa các bài E2E' },
+    });
+  }
+  const created = await mockClient.createSession('', {
+    name: 'C-0270 stale retry',
+    config: SessionConfigSchema.parse({ mode: 'MOCK', allowDemoQuestions: true }),
+  });
+  let snapshot: AdminSnapshot = created.snapshot;
+  const openLobby = await mockClient.sendCommand('', created.sessionId, {
+    commandId: 'c0270-open-lobby', expectedStateVersion: snapshot.public.stateVersion,
+    operatorId: 'e2e', requestedAtMs: Date.now(), command: { type: 'OPEN_LOBBY' },
+  });
+  expect(openLobby.result.ok).toBe(true);
+  snapshot = await mockClient.getState('', created.sessionId);
+  const startRound = await mockClient.sendCommand('', created.sessionId, {
+    commandId: 'c0270-start-round', expectedStateVersion: snapshot.public.stateVersion,
+    operatorId: 'e2e', requestedAtMs: Date.now(), command: { type: 'START_ROUND', questionCount: 20 },
+  });
+  expect(startRound.result.ok).toBe(true);
+  snapshot = await mockClient.getState('', created.sessionId);
+
+  const pauseEnvelopes: CommandEnvelope[] = [];
+  let signalFirstPause!: () => void;
+  const firstPauseReached = new Promise<void>((resolve) => { signalFirstPause = resolve; });
+  let releaseStaleResponse!: () => void;
+  const staleResponseReleased = new Promise<void>((resolve) => { releaseStaleResponse = resolve; });
+
+  // Tắt snapshot websocket để buộc dashboard làm mới state sau xung đột phiên bản.
+  await page.routeWebSocket('**/ws**', (socket) => socket.onMessage(() => {}));
+  await page.route('**/api/sessions/current', (route) => route.fulfill({ json: { sessionId: null } }));
+  await page.route('**/api/questions', (route) => route.fulfill({ json: makeQuestions(20, 20) }));
+  await page.route('**/api/preflight', (route) => route.fulfill({ json: { checks: [] } }));
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() !== 'POST') return route.fulfill({ json: { sessionId: null } });
+    return route.fulfill({ json: { sessionId: created.sessionId, snapshot } });
+  });
+  await page.route('**/api/sessions/*/state', (route) => route.fulfill({ json: snapshot }));
+  await page.route('**/api/sessions/*/commands', async (route) => {
+    const envelope = route.request().postDataJSON() as CommandEnvelope;
+    if (envelope.command.type === 'PAUSE') {
+      pauseEnvelopes.push(envelope);
+      if (pauseEnvelopes.length === 1) {
+        const latest = await mockClient.getState('', created.sessionId);
+        const concurrent: CommandEnvelope = {
+          ...envelope,
+          commandId: 'c0270-concurrent-auto-mode',
+          expectedStateVersion: latest.public.stateVersion,
+          command: { type: 'SET_AUTO_MODE', enabled: true },
+        };
+        const concurrentResponse = await mockClient.sendCommand('', created.sessionId, concurrent);
+        expect(concurrentResponse.status).toBe(200);
+        snapshot = await mockClient.getState('', created.sessionId);
+        signalFirstPause();
+        await staleResponseReleased;
+        return route.fulfill({ status: 409, json: {
+          ok: false, code: 'STALE_STATE_VERSION', message: 'Trạng thái đã thay đổi.',
+          stateVersion: snapshot.public.stateVersion, duplicate: false,
+        } });
+      }
+    }
+    const response = await mockClient.sendCommand('', created.sessionId, envelope);
+    snapshot = await mockClient.getState('', created.sessionId);
+    return route.fulfill({ status: response.status, json: response.result });
+  });
+
+  await launchDashboard(page, { mock: false });
+  await page.getByLabel('Mã quản trị').fill(adminToken);
+  await page.getByRole('button', { name: 'Kết nối', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tạo phiên MOCK' })).toBeVisible();
+  await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
+  await expect(page.getByRole('heading', { name: 'Phiên MOCK' })).toBeVisible();
+  const pauseButton = page.getByRole('button', { name: 'Tạm dừng', exact: true });
+  await expect(pauseButton).toBeEnabled();
+
+  const pauseClick = pauseButton.click();
+  await firstPauseReached;
+  await expect(pauseButton).toBeDisabled();
+  releaseStaleResponse();
+  await pauseClick;
+
+  await expect(page.getByRole('button', { name: 'Tiếp tục', exact: true })).toBeVisible();
+  await expect(page.locator('.alert-success')).toContainText('Đã gửi lệnh.');
+  expect(pauseEnvelopes).toHaveLength(2);
+  expect(pauseEnvelopes[1]!.expectedStateVersion).toBeGreaterThan(pauseEnvelopes[0]!.expectedStateVersion);
+
+  const latest = await mockClient.getState('', created.sessionId);
+  const stopped = await mockClient.sendCommand('', created.sessionId, {
+    commandId: 'c0270-cleanup-session', expectedStateVersion: latest.public.stateVersion,
+    operatorId: 'e2e', requestedAtMs: Date.now(),
+    command: { type: 'STOP', reason: 'Dọn trạng thái giữa các bài E2E' },
+  });
+  expect(stopped.result.ok).toBe(true);
 });
 
 test('sau STOP hiện Tạo phiên mới, giữ lựa chọn và tạo phiên kế tiếp không cần tải lại', async ({ page }) => {

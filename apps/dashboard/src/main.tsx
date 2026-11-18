@@ -24,6 +24,7 @@ import { approvedQuestionCount, buildSessionConfig, canCreateTikTokSession, disp
 import {
   actionsFor,
   buildCommandEnvelope,
+  canRetryStaleCommand,
   checkStatusTone,
   commandErrorMessage,
   commandForAction,
@@ -91,6 +92,7 @@ function App() {
   const [pendingDanger, setPendingDanger] = useState<PendingDanger | null>(null);
   const [reason, setReason] = useState('');
   const [pendingEnvelope, setPendingEnvelope] = useState<CommandEnvelope | null>(null);
+  const commandInFlightRef = useRef(false);
   const [acceptingSinceMs, setAcceptingSinceMs] = useState<number | null>(null);
   const disconnectRef = useRef<(() => void) | null>(null);
 
@@ -342,31 +344,47 @@ function App() {
   }
 
   async function submitEnvelope(envelope: CommandEnvelope) {
-    if (!snapshot || !sessionId) return;
-    setPendingEnvelope(envelope);
+    if (!snapshot || !sessionId || commandInFlightRef.current) return;
+    commandInFlightRef.current = true;
     setBusy(true);
     setError('');
     setNotice('');
+    let activeEnvelope = envelope;
+    let staleRetries = 0;
     try {
-      const response = await client.sendCommand(token.trim(), sessionId, envelope);
-      const message = response.result.ok ? '' : response.result.message;
-      if (response.status === 409) {
-        setError(commandErrorMessage(409, message));
-        setPendingEnvelope(null);
-      } else if (response.status === 422) {
-        setError(commandErrorMessage(422, message));
-        setPendingEnvelope(null);
-      } else if (!response.result.ok) {
-        setError(commandErrorMessage(response.status, message));
-        setPendingEnvelope(null);
-      } else {
-        setNotice(response.status === 202 && envelope.command.type === 'START_ROUND'
+      while (true) {
+        setPendingEnvelope(activeEnvelope);
+        const response = await client.sendCommand(token.trim(), sessionId, activeEnvelope);
+        if (!response.result.ok && response.status === 409) {
+          if (response.result.code === 'STALE_STATE_VERSION' && staleRetries === 0) {
+            const latest = await client.getState(token.trim(), sessionId);
+            setSnapshot(latest);
+            setTimerAnchor({ serverTimeMs: Date.now(), offsetMs: 0 });
+            if (canRetryStaleCommand(activeEnvelope.command.type, latest)) {
+              activeEnvelope = buildCommandEnvelope(latest, activeEnvelope.command, activeEnvelope.operatorId);
+              staleRetries += 1;
+              continue;
+            }
+            setError('Trạng thái vừa đổi, lệnh không còn phù hợp');
+          } else {
+            setError(commandErrorMessage(409, response.result.message));
+          }
+          setPendingEnvelope(null);
+          return;
+        }
+        if (!response.result.ok) {
+          setError(commandErrorMessage(response.status, response.result.message));
+          setPendingEnvelope(null);
+          return;
+        }
+
+        setNotice(response.status === 202 && activeEnvelope.command.type === 'START_ROUND'
           ? 'Đang chờ chuẩn bị giọng đọc câu 1.'
           : 'Đã gửi lệnh.');
         setPendingEnvelope(null);
         await refreshSessionSnapshot();
-        if (envelope.command.type === 'STOP'
-          || (envelope.command.type === 'RESOLVE_RECOVERY' && envelope.command.decision === 'STOP')) {
+        if (activeEnvelope.command.type === 'STOP'
+          || (activeEnvelope.command.type === 'RESOLVE_RECOVERY' && activeEnvelope.command.decision === 'STOP')) {
           try {
             if (!await client.currentSession()) {
               setSnapshot((current) => current ? { ...current, sessionStatus: 'CLOSED' } : current);
@@ -375,10 +393,11 @@ function App() {
             // Keep the refreshed state when the current-session endpoint is temporarily unavailable.
           }
         }
+        return;
       }
     } catch (cause) {
-      if (envelope.command.type === 'STOP'
-        || (envelope.command.type === 'RESOLVE_RECOVERY' && envelope.command.decision === 'STOP')) {
+      if (activeEnvelope.command.type === 'STOP'
+        || (activeEnvelope.command.type === 'RESOLVE_RECOVERY' && activeEnvelope.command.decision === 'STOP')) {
         try {
           if (!await client.currentSession()) {
             setSnapshot((current) => current ? { ...current, sessionStatus: 'CLOSED' } : current);
@@ -391,6 +410,7 @@ function App() {
       }
       setError('Mất kết nối khi gửi lệnh. Có thể gửi lại bằng chính commandId này.');
     } finally {
+      commandInFlightRef.current = false;
       setBusy(false);
     }
   }
@@ -627,7 +647,7 @@ function App() {
               {actions.map((action) => <button key={action.type} type="button" className="primary-button" disabled={busy || snapshot.sessionStatus !== 'OPEN' || (action.type === 'START_ROUND' && !!snapshot.roundStartWait)} onClick={() => beginAction(action)}>
                 {action.type === 'SET_AUTO_MODE' ? (snapshot.autoMode ? 'Tắt Auto' : 'Bật Auto') : action.label}
               </button>)}
-              {snapshot.public.state === 'CONNECTION_INTERRUPTED' && <button className="primary-button" type="button" onClick={() => beginAction({ type: 'RESUME', label: 'Tiếp tục' })}>Tiếp tục</button>}
+              {snapshot.public.state === 'CONNECTION_INTERRUPTED' && <button className="primary-button" type="button" disabled={busy || snapshot.sessionStatus !== 'OPEN'} onClick={() => beginAction({ type: 'RESUME', label: 'Tiếp tục' })}>Tiếp tục</button>}
               {snapshot.public.state === 'ERROR' && <button className="primary-button" type="button" onClick={() => beginAction({ type: 'STOP', label: 'Dừng phiên', danger: true })}>Dừng phiên</button>}
             </div>
             {snapshot.roundStartWait && roundStartWaitRemainingMs !== null && <div className="round-start-wait" role="status" data-testid="round-start-voice-wait">
