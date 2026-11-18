@@ -14,6 +14,9 @@ export function containsPlayerIdentity(text: string, playerNamesAndIds: Iterable
   const spoken = fold(text);
   for (const identity of playerNamesAndIds) {
     const candidate = fold(identity);
+    // Lọc rẻ trước: regex chỉ khớp khi chuỗi con có mặt; tránh dựng hàng nghìn RegExp cho mỗi câu
+    // (khôi phục phiên ~4.000 người từng làm server treo nhiều phút lúc khởi động).
+    if (!candidate || !spoken.includes(candidate)) continue;
     if ([...candidate.replace(/[^\p{L}\p{N}]/gu, '')].length < MIN_IDENTITY_MATCH_LENGTH) continue;
     const pattern = new RegExp(`(?<!${WORD_CHAR})${escapeRegex(candidate)}(?!${WORD_CHAR})`, 'u');
     if (pattern.test(spoken)) return true;
