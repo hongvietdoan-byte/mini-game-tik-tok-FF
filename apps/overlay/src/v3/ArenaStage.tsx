@@ -137,6 +137,8 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
   const promptClass = promptSize(q?.prompt);
   const promptText = truncateGraphemeText(q?.prompt ?? 'Đang chờ câu hỏi…', 160, true);
   const isLobby = snapshot.scene === 'LOBBY';
+  const lobbySeatCount = snapshot.audience?.seats.filter((seat) => seat.occupant !== null).length ?? 0;
+  const lobbyCountdown = snapshot.lobbyCountdown;
   const isPrepare = snapshot.state === 'PREPARE';
   const isReading = snapshot.state === 'READING';
   const optionsVisible = !!q?.optionsVisible && !isPrepare;
@@ -153,15 +155,30 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
           <>
             <div className="v3-lobby-copy">
               <strong>SẮP BẮT ĐẦU</strong>
-              <span data-testid="lobby-seat-count">Đã ngồi {snapshot.audience?.seats.filter((seat) => seat.occupant !== null).length ?? 0}/35</span>
-              <small>Comment <b>Free Fire</b> để giành ghế!</small>
+              <div className="v3-lobby-seat-summary" data-testid="lobby-seat-summary">
+                <span className="v3-lobby-seat-count" data-testid="lobby-seat-count">{lobbySeatCount}/35</span>
+                <span className="v3-lobby-seat-label">GHẾ ĐÃ CÓ CHỦ</span>
+              </div>
             </div>
-            {snapshot.lobbyCountdown && <span className="v3-lobby-countdown" data-testid="lobby-countdown">Vào trận sau {Math.ceil(snapshot.lobbyCountdown.remainingMs / 1_000)}…</span>}
           </>
         ) : (
           promptText
         )}
       </div>
+      {isLobby && (
+        <div className={`v3-lobby-status ${lobbyCountdown ? 'is-countdown' : ''}`} data-testid="lobby-status">
+          {lobbyCountdown ? (
+            <>
+              <span className="v3-lobby-countdown-label" data-testid="lobby-countdown-label">VÀO TRẬN SAU</span>
+              <strong className="v3-lobby-countdown" data-testid="lobby-countdown">{Math.ceil(lobbyCountdown.remainingMs / 1_000)}</strong>
+            </>
+          ) : lobbySeatCount === 35 ? (
+            <strong className="v3-lobby-full" data-testid="lobby-full">ĐÃ ĐỦ GHẾ!</strong>
+          ) : (
+            <span className="v3-lobby-reminder" data-testid="lobby-reminder">Comment <b>FREE FIRE</b> để giành ghế!</span>
+          )}
+        </div>
+      )}
       {!isLobby && (
         <div className={`v3-options ${reveal ? 'is-revealed' : ''} ${hasLongOption ? 'has-long-option' : ''} ${hasLongLabel ? 'has-long-label' : ''}`} data-testid="option-list">
           {(['A', 'B', 'C', 'D'] as const).map((id) => {
