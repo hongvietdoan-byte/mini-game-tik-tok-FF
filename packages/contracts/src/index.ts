@@ -924,6 +924,61 @@ export type RevealView = {
   explanation: string;
 };
 
+/** Phạm vi của một bảng xếp hạng V5. */
+export type RankingScope = 'QUESTION' | 'STAGE' | 'ROUND';
+
+/** Dòng xếp hạng công khai; playerId luôn là ID opaque do runtime phát hành. */
+export type RankedEntry = {
+  playerId: string;
+  safeDisplayName: string;
+  rank: number;
+  metricValue: number;
+  metricUnit: 'ms' | 'points' | 'questions' | 'places' | 'percent';
+  tied: boolean;
+};
+
+/** Mốc câu hỏi của một chặng, đánh số câu từ 1. */
+export type StageDefinition = {
+  stageId: string;
+  stageIndex: number;
+  firstQuestionIndex: number;
+  lastQuestionIndex: number;
+};
+
+/** Payload được lưu trong entries_json của ranking_snapshots. */
+export type RankingSnapshotEntries = {
+  metricKey: string;
+  entries: RankedEntry[];
+  totalQualified: number;
+  tiedOverflowCount: number;
+};
+
+/** Snapshot bền vững; revision tăng khi nội dung bảng thay đổi sau void/regrade. */
+export type RankingSnapshot = RankingSnapshotEntries & {
+  roundId: string;
+  scope: RankingScope;
+  scopeId: string;
+  achievementId: string;
+  finalizedAtMs: number;
+  revision: number;
+};
+
+export type QuestionTop3View = {
+  questionInstanceId: string;
+  entries: RankedEntry[];
+  totalQualified: number;
+  tiedOverflowCount: number;
+  revision: number;
+};
+
+export type StageTop3View = {
+  stage: StageDefinition;
+  entries: RankedEntry[];
+  totalQualified: number;
+  tiedOverflowCount: number;
+  revision: number;
+};
+
 /** Public-safe winner of one question; `publicPlayerId` is opaque and `seatId` matches AudienceSeatView.slotId. */
 export type FastestCorrectAnswer = {
   questionInstanceId: string;
@@ -980,6 +1035,10 @@ export type PublicSnapshot = {
   participantCount: number;
   /** Present only while publishing a question result or its following leaderboard. */
   fastestCorrectAnswer: FastestCorrectAnswer | null;
+  /** Tối đa ba đáp án đúng nhanh nhất, chỉ hiện ở REVEAL/LEADERBOARD của câu. */
+  questionTop3: QuestionTop3View | null;
+  /** Tối đa ba người dẫn đầu chặng, chỉ hiện tại INTERIM_TOP10. */
+  stageTop3: StageTop3View | null;
   /** Cue chỉ được gắn vào snapshot WS phát một lần; snapshot phục hồi luôn trả null. */
   mcVoiceCue?: McVoiceCue | null;
   /** Bubble chữ-only của operator; âm thanh dùng mcVoiceCue cùng mốc phát. */

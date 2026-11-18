@@ -602,6 +602,8 @@ class MockDashboardClient implements DashboardClient {
         safeDisplayName: leaderboardEntries[0]!.safeDisplayName,
         responseMs: 1_234,
       } : null,
+      questionTop3: null,
+      stageTop3: null,
       reveal: (effectiveState === 'REVEAL' || shortLeaderboard) && !this.voidedCurrent ? {
         questionInstanceId: demoQuestion.questionInstanceId,
         correctOptionId: 'B',

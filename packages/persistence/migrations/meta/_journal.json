@@ -29,6 +29,13 @@
       "when": 1794854914133,
       "tag": "0003_gigantic_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794975016717,
+      "tag": "0004_v5_ranking_snapshots",
+      "breakpoints": true
     }
   ]
 }

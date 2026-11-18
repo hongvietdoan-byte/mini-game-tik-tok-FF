@@ -10,6 +10,9 @@ import {
   type OptionId,
   type Question,
   type QuestionSnapshot,
+  type RankingScope,
+  type RankingSnapshot,
+  type RankingSnapshotEntries,
   type SessionConfig,
 } from '@quiz/contracts';
 import type { EngineState, LedgerEntry, PlayerTotals } from '@quiz/quiz-core';
@@ -530,6 +533,17 @@ export class Store {
       return value;
     };
 
+    const rankingSnapshots = this.raw.prepare('SELECT rowid AS id, entries_json AS json FROM ranking_snapshots').all() as { id: number; json: string }[];
+    const updateRankingSnapshot = this.raw.prepare('UPDATE ranking_snapshots SET entries_json = ? WHERE rowid = ?');
+    for (const row of rankingSnapshots) {
+      try {
+        const next = JSON.stringify(replace(JSON.parse(row.json)));
+        if (next !== row.json) updateRankingSnapshot.run(next, row.id);
+      } catch {
+        // Bản snapshot lỗi không được chặn luồng đổi tên/kiểm duyệt.
+      }
+    }
+
     const updateSnapshot = this.raw.prepare('UPDATE leaderboard_snapshots SET entries_json = ? WHERE id = ?');
     for (const row of snapshots) {
       try {
@@ -613,6 +627,29 @@ export class Store {
         'SELECT question_instance_id AS questionInstanceId, player_id AS playerId, option_id AS option, received_at_ms AS receivedAtMs FROM answers WHERE round_id = ? ORDER BY id',
       )
       .all(roundId) as StoredAnswer[];
+  }
+
+  /** Đáp án có thứ tự ID chấp nhận, chỉ dùng trong server để lập bảng đúng nhanh nhất. */
+  rankingAnswersForQuestion(roundId: string, questionInstanceId: string) {
+    return this.raw.prepare(
+      `SELECT a.id AS answerId, a.question_instance_id AS questionInstanceId, a.player_id AS playerId,
+              a.option_id AS option, a.received_at_ms AS receivedAtMs, p.display_name AS displayName
+       FROM answers a JOIN players p ON p.id = a.player_id
+       WHERE a.round_id = ? AND a.question_instance_id = ? ORDER BY a.id`,
+    ).all(roundId, questionInstanceId) as {
+      answerId: number; questionInstanceId: string; playerId: string; option: OptionId;
+      receivedAtMs: number; displayName: string;
+    }[];
+  }
+
+  /** Người tham gia theo câu, phục vụ hạng chặng kể cả người chỉ nhận 0 điểm. */
+  rankingAnswersForRound(roundId: string) {
+    return this.raw.prepare(
+      `SELECT a.question_instance_id AS questionInstanceId, a.player_id AS playerId,
+              p.display_name AS displayName
+       FROM answers a JOIN players p ON p.id = a.player_id
+       WHERE a.round_id = ? ORDER BY a.id`,
+    ).all(roundId) as { questionInstanceId: string; playerId: string; displayName: string }[];
   }
 
   scoringRowsForQuestion(roundId: string, questionInstanceId: string, correctOptionId: OptionId): QuestionScoringRow[] {
@@ -702,6 +739,78 @@ export class Store {
          FROM score_events WHERE round_id = ? ORDER BY id`,
       )
       .all(roundId) as { questionInstanceId: string; playerId: string; reason: string; points: number }[];
+  }
+
+  /** Lấy snapshot mới nhất; public runtime tự thay playerId bằng opaque ID. */
+  latestRankingSnapshot(
+    roundId: string,
+    scope: RankingScope,
+    scopeId: string,
+    achievementId: string,
+  ): RankingSnapshot | null {
+    const row = this.raw.prepare(
+      `SELECT round_id AS roundId, scope, scope_id AS scopeId, achievement_id AS achievementId,
+              revision, entries_json AS entriesJson, finalized_at_ms AS finalizedAtMs
+       FROM ranking_snapshots
+       WHERE round_id = ? AND scope = ? AND scope_id = ? AND achievement_id = ?
+       ORDER BY revision DESC LIMIT 1`,
+    ).get(roundId, scope, scopeId, achievementId) as {
+      roundId: string; scope: RankingScope; scopeId: string; achievementId: string;
+      revision: number; entriesJson: string; finalizedAtMs: number;
+    } | undefined;
+    if (!row) return null;
+    return { ...row, ...(JSON.parse(row.entriesJson) as RankingSnapshotEntries) };
+  }
+
+  /** Các scope đã chốt, mỗi scope chỉ trả revision mới nhất. */
+  rankingSnapshotsForRound(roundId: string, scope: RankingScope, achievementId: string): RankingSnapshot[] {
+    const rows = this.raw.prepare(
+      `SELECT r.round_id AS roundId, r.scope, r.scope_id AS scopeId, r.achievement_id AS achievementId,
+              r.revision, r.entries_json AS entriesJson, r.finalized_at_ms AS finalizedAtMs
+       FROM ranking_snapshots r
+       WHERE r.round_id = ? AND r.scope = ? AND r.achievement_id = ?
+         AND r.revision = (
+           SELECT MAX(latest.revision) FROM ranking_snapshots latest
+           WHERE latest.round_id = r.round_id AND latest.scope = r.scope
+             AND latest.scope_id = r.scope_id AND latest.achievement_id = r.achievement_id
+         )
+       ORDER BY r.scope_id`,
+    ).all(roundId, scope, achievementId) as {
+      roundId: string; scope: RankingScope; scopeId: string; achievementId: string;
+      revision: number; entriesJson: string; finalizedAtMs: number;
+    }[];
+    return rows.map((row) => ({ ...row, ...(JSON.parse(row.entriesJson) as RankingSnapshotEntries) }));
+  }
+
+  /**
+   * Ghi bất biến theo revision. Gọi lại sau recovery với cùng metric/entries là no-op;
+   * void/regrade chỉ tăng revision khi nội dung thực sự đổi.
+   */
+  saveRankingSnapshot(input: Omit<RankingSnapshot, 'revision'>): RankingSnapshot {
+    const latest = this.latestRankingSnapshot(input.roundId, input.scope, input.scopeId, input.achievementId);
+    const payload: RankingSnapshotEntries = {
+      metricKey: input.metricKey,
+      entries: input.entries,
+      totalQualified: input.totalQualified,
+      tiedOverflowCount: input.tiedOverflowCount,
+    };
+    if (latest && JSON.stringify({
+      metricKey: latest.metricKey,
+      entries: latest.entries,
+      totalQualified: latest.totalQualified,
+      tiedOverflowCount: latest.tiedOverflowCount,
+    }) === JSON.stringify(payload)) return latest;
+
+    const revision = (latest?.revision ?? 0) + 1;
+    this.raw.prepare(
+      `INSERT INTO ranking_snapshots
+         (round_id, scope, scope_id, achievement_id, revision, entries_json, finalized_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (round_id, achievement_id, scope_id, revision) DO NOTHING`,
+    ).run(input.roundId, input.scope, input.scopeId, input.achievementId, revision, JSON.stringify(payload), input.finalizedAtMs);
+    const saved = this.latestRankingSnapshot(input.roundId, input.scope, input.scopeId, input.achievementId);
+    if (!saved) throw new Error('Không đọc lại được ranking snapshot vừa ghi.');
+    return saved;
   }
 
   saveRoundPlayers(roundId: string, totals: Iterable<PlayerTotals>, now: number) {
