@@ -2,8 +2,10 @@ import {
   assignCharacter,
   createAudienceState,
   createSlots,
+  hydrateAudienceState,
   onPlayerJoined,
   pin,
+  reorderSeatedByRank,
   rotate,
   type AudienceState,
   type Slot,
@@ -96,7 +98,9 @@ export class AudienceManager {
   load(roundId: string) {
     this.lobbyReservation = false;
     this.roundId = roundId;
-    this.state = this.store.loadAudienceState<AudienceState>(roundId) ?? createAudienceState(this.slots);
+    const savedState = this.store.loadAudienceState<AudienceState>(roundId);
+    this.state = savedState ? hydrateAudienceState(savedState) : createAudienceState(this.slots);
+    this.dirty = !!savedState && !Array.isArray(savedState.joinOrder);
     this.chars = this.store.characterAssignments(roundId);
     this.joined = this.chars.size;
     const ids = [...Object.values(this.state.seats).flatMap((o) => (o ? [o.playerId] : []))];
@@ -163,6 +167,7 @@ export class AudienceManager {
       // state is private to AudienceManager and is persisted later by flush().
       state.queue.push(playerId);
       state.lastActiveAt[playerId] = now;
+      state.joinOrder.push(playerId);
     }
     this.known.add(playerId);
     this.joined += 1;
@@ -192,6 +197,19 @@ export class AudienceManager {
     if (incoming.length) for (const [id, n] of this.store.displayNames(incoming)) this.names.set(id, n);
     this.dirty = true;
     return t.events.length > 0;
+  }
+
+  /** Re-rank the existing audience after a finalized reveal; no one enters or leaves. */
+  reorderByRank(scoreByPlayer: ReadonlyMap<string, number | null>): boolean {
+    if (!this.state || !this.roundId) return false;
+    const previous = this.state;
+    const result = reorderSeatedByRank(previous, scoreByPlayer);
+    const changed = this.slots.some((slot) =>
+      previous.seats[slot.slotId]?.playerId !== result.state.seats[slot.slotId]?.playerId ||
+      previous.seats[slot.slotId]?.pinned !== result.state.seats[slot.slotId]?.pinned);
+    this.state = result.state;
+    if (changed || !Array.isArray(previous.joinOrder)) this.dirty = true;
+    return changed;
   }
 
   /** Ghi trạng thái nếu có thay đổi (gọi trong transaction của mỗi lần chuyển trạng thái hoặc theo nhịp). */

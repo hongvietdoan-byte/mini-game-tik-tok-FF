@@ -89,11 +89,12 @@ function seatSignature(h: Harness) {
 function checkRotation(h: Harness, before: ReturnType<typeof seatShape>) {
   const after = seatShape(h);
   expect(after.rotationId).toBe(before.rotationId + 1);
-  const changed = after.seats.filter((seat) => after.privateSeats[seat.slotId]?.playerId !== before.privateSeats[seat.slotId]?.playerId);
-  expect(changed.length).toBeGreaterThan(0);
-  expect(changed.length).toBeLessThanOrEqual(5);
-
   const seatedBefore = new Set(Object.values(before.privateSeats).flatMap((seat) => (seat ? [seat.playerId] : [])));
+  const newlySeated = new Set(Object.values(after.privateSeats)
+    .flatMap((seat) => seat && !seatedBefore.has(seat.playerId) ? [seat.playerId] : []));
+  expect(newlySeated.size).toBeGreaterThan(0);
+  expect(newlySeated.size).toBeLessThanOrEqual(5);
+
   const roundId = rt(h).engine.round!.roundId;
   const topPlayerIds = rankPlayers(h.store.standings(roundId)).slice(0, 3).map((entry) => entry.playerId);
   for (const playerId of topPlayerIds) {
@@ -101,6 +102,26 @@ function checkRotation(h: Harness, before: ReturnType<typeof seatShape>) {
     expect(Object.values(after.privateSeats).some((seat) => seat?.playerId === playerId && seat.pinned)).toBe(true);
   }
   return after;
+}
+
+function checkSeatsFollowRank(h: Harness) {
+  const audience = seatShape(h);
+  const standings = new Map(rankPlayers(h.store.standings(rt(h).engine.round!.roundId))
+    .map((entry) => [entry.playerId, entry.score]));
+  const occupied = audience.seats
+    .filter((seat) => seat.occupant !== null)
+    .sort((a, b) => b.rowIndex - a.rowIndex ||
+      Math.abs(a.seatIndex - 2) - Math.abs(b.seatIndex - 2) || a.seatIndex - b.seatIndex)
+    .map((seat) => {
+      const playerId = audience.privateSeats[seat.slotId]?.playerId;
+      expect(playerId).toBeDefined();
+      const score = standings.get(playerId!);
+      expect(score).toBeDefined();
+      return score!;
+    });
+  for (let index = 1; index < occupied.length; index += 1) {
+    expect(occupied[index - 1]).toBeGreaterThanOrEqual(occupied[index]!);
+  }
 }
 
 function memoryBytes() {
@@ -266,6 +287,7 @@ describe('C-0051 — soak MOCK 60 phút ảo', () => {
         flushComments();
 
         runUntil(h, () => rt(h).engine.state === 'REVEAL' && rt(h).engine.round!.questionIndex === question);
+        checkSeatsFollowRank(h);
         const audience = seatShape(h);
         expect(audience.total).toBe(question === 0 ? COMMENTS_PER_QUESTION : 2_000);
         if (commentNo === EXPECTED_COMMENTS / 2) middleHeap = await memorySnapshot();

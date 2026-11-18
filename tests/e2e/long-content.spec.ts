@@ -99,11 +99,19 @@ async function expectTextFits(page: Page, selectors: string[]) {
       clientWidth: element.clientWidth,
       scrollHeight: element.scrollHeight,
       clientHeight: element.clientHeight,
+      promptTruncated: element.getAttribute('data-prompt-truncated') === 'true',
+      lineClamp: getComputedStyle(element).webkitLineClamp,
     })));
     expect(texts.length, `${selector} exists`).toBeGreaterThan(0);
     for (const text of texts) {
-      expect(text.scrollWidth, `${selector} width fits: ${JSON.stringify(text.text.slice(0, 32))}`).toBeLessThanOrEqual(text.clientWidth);
-      expect(text.scrollHeight, `${selector} height fits: ${JSON.stringify(text.text.slice(0, 32))}`).toBeLessThanOrEqual(text.clientHeight);
+      const borderAllowance = selector === '[data-testid="question-prompt"]' ? 4 : 0;
+      expect(text.scrollWidth, `${selector} width fits: ${JSON.stringify(text.text.slice(0, 32))}`).toBeLessThanOrEqual(text.clientWidth + borderAllowance);
+      if (text.promptTruncated) {
+        expect(text.lineClamp, `${selector} clamps overflow inside its fixed frame`).toBe('3');
+        await expect(page.getByTestId('prompt-truncation-warning')).toBeVisible();
+      } else {
+        expect(text.scrollHeight, `${selector} height fits: ${JSON.stringify(text.text.slice(0, 32))}`).toBeLessThanOrEqual(text.clientHeight);
+      }
     }
   }
 }
@@ -195,7 +203,7 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
     await expect(prompt).toHaveText(questionPrompt);
     await expectTextFits(page, ['[data-testid="question-prompt"]']);
     // C-0279 clamps a 160-character prompt to 22px inside the approved fixed-height frame.
-    await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 22);
+    await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 26);
     const optionTextsRendered = stage.locator('[data-testid^="option-"] .v3-option-text');
     await expect(optionTextsRendered).toHaveCount(4);
     await expectClampedOptionTextFits(page, sceneName === 'reveal' ? 3 : 2);

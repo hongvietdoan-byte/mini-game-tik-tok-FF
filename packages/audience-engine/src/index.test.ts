@@ -3,9 +3,11 @@ import {
   assignCharacter,
   createAudienceState,
   createSlots,
+  hydrateAudienceState,
   onPlayerActive,
   onPlayerJoined,
   pin,
+  reorderSeatedByRank,
   rotate,
   type AudienceState,
 } from './index';
@@ -83,7 +85,7 @@ describe('assignCharacter', () => {
 });
 
 describe('audience seating', () => {
-  it('cấp ghế trống theo hàng trước→sau rồi giữa→mép; tràn vào queue', () => {
+  it('cấp ghế từ hàng trên xuống, giữa→mép; tràn vào queue', () => {
     let state = createAudienceState(createSlots(2, 5));
     const assigned: string[] = [];
     for (let index = 0; index < 10; index += 1) {
@@ -92,12 +94,32 @@ describe('audience seating', () => {
       assigned.push(result.events[0]!.slotId);
     }
     expect(assigned).toEqual([
-      'row-0-seat-2', 'row-0-seat-1', 'row-0-seat-3', 'row-0-seat-0', 'row-0-seat-4',
       'row-1-seat-2', 'row-1-seat-1', 'row-1-seat-3', 'row-1-seat-0', 'row-1-seat-4',
+      'row-0-seat-2', 'row-0-seat-1', 'row-0-seat-3', 'row-0-seat-0', 'row-0-seat-4',
     ]);
     const overflow = onPlayerJoined(state, 'overflow', 10);
     expect(overflow.events).toEqual([]);
     expect(overflow.state.queue).toEqual(['overflow']);
+  });
+
+  it('đặt người vào sớm lên hàng cao nhất cho 1, 5, 6 và 35 người, giữ nguyên hàng đợi', () => {
+    const expectedTopRow = ['row-6-seat-2', 'row-6-seat-1', 'row-6-seat-3', 'row-6-seat-0', 'row-6-seat-4'];
+    for (const count of [1, 5, 6, 35]) {
+      let state = createAudienceState();
+      const assigned: string[] = [];
+      for (let index = 0; index < count; index += 1) {
+        const transition = onPlayerJoined(state, `early-${index}`, index);
+        state = transition.state;
+        assigned.push(transition.events[0]!.slotId);
+      }
+      expect(assigned.slice(0, Math.min(count, 5))).toEqual(expectedTopRow.slice(0, Math.min(count, 5)));
+      if (count === 6) expect(assigned[5]).toBe('row-5-seat-2');
+      if (count === 35) {
+        const overflow = onPlayerJoined(state, 'queued-player', 35);
+        expect(overflow.state.queue).toEqual(['queued-player']);
+        expect(overflow.events).toEqual([]);
+      }
+    }
   });
 
   it('join lặp không nhân đôi, activity chỉ cập nhật người đã tham gia', () => {
@@ -144,6 +166,66 @@ describe('audience seating', () => {
     expect(result.events.filter((event) => event.type === 'seat_released')).toHaveLength(2);
     expect(Object.values(result.state.seats).find((seat) => seat?.playerId === pinnedPlayer)?.pinned).toBe(true);
     expect(ids(result.state)).toHaveLength(8);
+  });
+});
+
+describe('ranked audience seating', () => {
+  function seatsByPriority(state: AudienceState) {
+    return createSlots()
+      .sort((a, b) => b.rowIndex - a.rowIndex ||
+        Math.abs(a.seatIndex - 2) - Math.abs(b.seatIndex - 2) || a.seatIndex - b.seatIndex)
+      .flatMap((slot) => state.seats[slot.slotId] ? [state.seats[slot.slotId]!] : []);
+  }
+
+  it('places the current score order in the highest positions for 1, 7 and 35 seated players', () => {
+    for (const count of [1, 7, 35]) {
+      const before = joinMany(createAudienceState(), count);
+      const scores = new Map(Array.from({ length: count }, (_, index) => [`player-${String(index).padStart(3, '0')}`, index] as const));
+      const result = reorderSeatedByRank(before, scores).state;
+      expect(seatsByPriority(result).map((seat) => seat.playerId))
+        .toEqual(Array.from({ length: count }, (_, index) => `player-${String(count - index - 1).padStart(3, '0')}`));
+      expect(ids(result).sort()).toEqual(ids(before).sort());
+      expect(result.queue).toEqual(before.queue);
+    }
+  });
+
+  it('keeps equal scores in their old seat order, then seats unscored players by join order', () => {
+    const before = joinMany(createAudienceState(), 15);
+    const beforeSeats = seatsByPriority(before).map((seat) => seat.playerId);
+    const scores = new Map<string, number | null>([
+      ['player-010', 900], ['player-011', 700], ['player-012', 700], ['player-013', 100],
+    ]);
+    const result = reorderSeatedByRank(before, scores).state;
+    const afterSeats = seatsByPriority(result).map((seat) => seat.playerId);
+    expect(afterSeats.slice(0, 4)).toEqual(['player-010', 'player-011', 'player-012', 'player-013']);
+    expect(afterSeats.slice(4)).toEqual(Array.from({ length: 15 }, (_, index) => `player-${String(index).padStart(3, '0')}`)
+      .filter((playerId) => playerId !== 'player-010' && playerId !== 'player-011' && playerId !== 'player-012' && playerId !== 'player-013'));
+    expect(beforeSeats.indexOf('player-011')).toBeLessThan(beforeSeats.indexOf('player-012'));
+  });
+
+  it('keeps pins and queue intact and restores the ranked positions from persisted state', () => {
+    let before = joinMany(createAudienceState(), 38);
+    const first = seatsByPriority(before)[0]!.playerId;
+    before = pin(before, [first]);
+    const queueBefore = [...before.queue];
+    const scores = new Map(Array.from({ length: 35 }, (_, index) => [`player-${String(index).padStart(3, '0')}`, index] as const));
+    const ranked = reorderSeatedByRank(before, scores).state;
+    const serialized = JSON.stringify(ranked);
+    const restored = hydrateAudienceState(JSON.parse(serialized) as AudienceState);
+    expect(restored).toEqual(ranked);
+    expect(restored.queue).toEqual(queueBefore);
+    expect(seatsByPriority(restored).map((seat) => seat.playerId)).toEqual(seatsByPriority(ranked).map((seat) => seat.playerId));
+    expect(Object.values(restored.seats).find((seat) => seat?.playerId === first)?.pinned).toBe(true);
+    expect(ids(restored).sort()).toEqual(ids(before).sort());
+  });
+
+  it('hydrates older snapshots that did not store join order', () => {
+    const current = joinMany(createAudienceState(), 37);
+    const { joinOrder: _discarded, ...legacySnapshot } = current;
+    const restored = hydrateAudienceState(legacySnapshot as AudienceState);
+    expect(restored.joinOrder).toHaveLength(37);
+    expect(restored.queue).toHaveLength(2);
+    expect(ids(restored).sort()).toEqual(ids(current).sort());
   });
 });
 

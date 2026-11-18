@@ -292,7 +292,9 @@
   box-shadow: 0 0 10px var(--theme-neon-soft, rgba(177, 140, 255, 0.9));
 }
 .v3-seat { position: absolute; width: 0; height: 0; }
-.v3-seat > * { position: absolute; left: 0; transform: translateX(-50%) scale(calc(var(--s) / 0.72)); transform-origin: 50% 100%; }
+.v3-seat > .v3-seat-back { position: absolute; left: 0; transform: translateX(-50%) scale(calc(var(--s) / 0.72)); transform-origin: 50% 100%; }
+.v3-seat > .v3-seat-occupant { position: absolute; left: 0; top: 0; width: 0; height: 0; transform: translate(var(--move-x, 0px), var(--move-y, 0px)); transition: transform 500ms ease; }
+.v3-seat-occupant > * { position: absolute; left: 0; transform: translateX(-50%) scale(calc(var(--s) / 0.72)); transform-origin: 50% 100%; }
 .v3-seat-back {
   bottom: -6px;
   width: 128px;
@@ -307,7 +309,8 @@
 .v3-nametags { position: absolute; inset: 0; z-index: 60; }
 .v3-seat-name {
   position: absolute;
-  transform: translate(-50%, calc(-100% - 118px * var(--s) / 0.72)) scale(calc(var(--s) / 0.72));
+  transform: translate(var(--move-x, 0px), var(--move-y, 0px)) translate(-50%, calc(-100% - 118px * var(--s) / 0.72)) scale(calc(var(--s) / 0.72));
+  transition: transform 500ms ease;
   transform-origin: 50% 100%;
   max-width: 170px;
   padding: 3px 14px;
@@ -2154,6 +2157,24 @@
   text-align: center;
   text-shadow: 0 1px 0 var(--theme-ink, #0b0730);
 }
+
+/* C-0297: warn the operator outside the fixed prompt frame when 3-line clamping is needed. */
+.v3-prompt-truncation-warning {
+  position: absolute;
+  z-index: 12;
+  left: 430px;
+  top: 126px;
+  max-width: 540px;
+  padding: 3px 9px;
+  border: 1px solid var(--theme-wrong, #ff6a7c);
+  border-radius: 8px;
+  background: var(--theme-ink, rgba(24, 9, 42, .92));
+  color: var(--theme-text-primary, #fff);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: .35px;
+}
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-options .v3-option-meter,
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option-meter {
   position: absolute;
@@ -2217,6 +2238,7 @@
 .v3-stage .v3-full-row.v3-full-rank-1 { border-color: var(--theme-gold-soft, rgba(255, 210, 110, .65)); background: linear-gradient(90deg, var(--theme-gold-soft, rgba(255, 190, 60, .4)), var(--theme-ink-soft, rgba(255, 190, 60, .06))); }
 .v3-stage .v3-top10 li { height: 32px; }
 .v3-stage .v3-seat-name { border-radius: 999px; border-color: var(--theme-violet-soft, rgba(170, 180, 255, .75)); background: linear-gradient(180deg, var(--theme-deep, #2b2490), var(--theme-ink, #15125a)); color: var(--theme-text-primary, #fff); }
+
 
 /* Give intermission and connection-loss copy a dark, bordered reading surface. */
 .v3-stage .v3-intermission,
