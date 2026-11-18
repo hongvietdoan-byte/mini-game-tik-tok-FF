@@ -188,7 +188,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
   const podium = positiveScorePodium(snapshot.podium);
   useEffect(() => setFailedSources([]), [customBackground, theme.version, themeBackground]);
   return (
-    <div className="v3-stage v3v" data-scene={snapshot.scene}>
+    <div className="v3-stage v3v" data-scene={snapshot.scene} data-testid="victory-stage">
       <img className="v3v-bg-image" src={backgroundSource} alt="" draggable={false} decoding="async" data-testid="victory-background" onError={() => setFailedSources((current) => current.includes(backgroundSource) ? current : [...current, backgroundSource])} />
       <ArenaLoopVideo poster={backgroundSource} className="v3v-bg-video" testId="victory-background-video" />
       <VictoryConfetti />
@@ -200,7 +200,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
         {podium && podiumLeftToRight(podium.slots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />)}
         {(!podium || podium.slots.length === 0) && <div className="v3v-empty">Chưa có người chơi đạt điểm</div>}
       </div>
-      <McKelly snapshot={snapshot} bubbleOverride={snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble} />
+      {snapshot.scene !== 'VICTORY' && <McKelly snapshot={snapshot} bubbleOverride={snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble} />}
     </div>
   );
 }

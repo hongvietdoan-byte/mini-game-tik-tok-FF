@@ -17,6 +17,8 @@ export type AudienceState = {
   seats: Record<string, SeatOccupant | null>;
   queue: string[];
   lastActiveAt: Record<string, number>;
+  /** Join order for stable rank ties and for players with no score yet. */
+  joinOrder: string[];
 };
 
 export type AudienceEvent =
@@ -101,6 +103,28 @@ export function createSlots(rows = 7, seatsPerRow = 5): Slot[] {
 }
 
 function cloneState(state: AudienceState): AudienceState {
+  const present = new Set([
+    ...Object.values(state.seats).flatMap((occupant) => occupant ? [occupant.playerId] : []),
+    ...state.queue,
+  ]);
+  const joinOrder = [...(state.joinOrder ?? [])].filter((playerId, index, all) =>
+    present.has(playerId) && all.indexOf(playerId) === index);
+  const seen = new Set(joinOrder);
+  // Old persisted states predate joinOrder; their current seat order is the only
+  // deterministic ordering available, followed by the already ordered queue.
+  for (const slotId of orderedSlotIds(state.seats)) {
+    const playerId = state.seats[slotId]?.playerId;
+    if (playerId && !seen.has(playerId)) {
+      seen.add(playerId);
+      joinOrder.push(playerId);
+    }
+  }
+  for (const playerId of state.queue) {
+    if (!seen.has(playerId)) {
+      seen.add(playerId);
+      joinOrder.push(playerId);
+    }
+  }
   return {
     rotationId: state.rotationId,
     seats: Object.fromEntries(
@@ -111,7 +135,13 @@ function cloneState(state: AudienceState): AudienceState {
     ),
     queue: [...state.queue],
     lastActiveAt: { ...state.lastActiveAt },
+    joinOrder,
   };
+}
+
+/** Restore a persisted state, filling joinOrder for snapshots saved before C-0296. */
+export function hydrateAudienceState(state: AudienceState): AudienceState {
+  return cloneState(state);
 }
 
 /** Build an empty, serializable audience snapshot from a slot layout. */
@@ -121,7 +151,7 @@ export function createAudienceState(slots: readonly Slot[] = createSlots()): Aud
     if (Object.hasOwn(seats, slot.slotId)) throw new Error(`slotId bị trùng: ${slot.slotId}`);
     seats[slot.slotId] = null;
   }
-  return { rotationId: 0, seats, queue: [], lastActiveAt: {} };
+  return { rotationId: 0, seats, queue: [], lastActiveAt: {}, joinOrder: [] };
 }
 
 function orderedSlotIds(seats: Record<string, SeatOccupant | null>): string[] {
@@ -137,7 +167,8 @@ function orderedSlotIds(seats: Record<string, SeatOccupant | null>): string[] {
   }
   return parsed
     .sort((a, b) => {
-      if (a.row !== b.row) return a.row - b.row;
+      // row 0 is the front/bottom row; newcomers fill from the highest row down.
+      if (a.row !== b.row) return b.row - a.row;
       const count = counts.get(a.row) ?? 0;
       const center = (count - 1) / 2;
       const distance = Math.abs(a.seat - center) - Math.abs(b.seat - center);
@@ -160,13 +191,14 @@ function assertTime(now: number): void {
   if (!Number.isFinite(now)) throw new TypeError('now phải là số hữu hạn.');
 }
 
-/** First join takes the first free seat by row, then center-out; overflow queues. */
+/** First join takes the highest available row, center-out within that row; overflow queues. */
 export function onPlayerJoined(state: AudienceState, playerId: string, now: number): AudienceTransition {
   assertPlayerId(playerId);
   assertTime(now);
   if (knownPlayer(state, playerId)) return { state, events: [] };
 
   const next = cloneState(state);
+  next.joinOrder.push(playerId);
   const slotId = orderedSlotIds(next.seats).find((id) => next.seats[id] === null);
   if (slotId === undefined) {
     next.queue.push(playerId);
@@ -180,6 +212,54 @@ export function onPlayerJoined(state: AudienceState, playerId: string, now: numb
     state: next,
     events: [{ type: 'seat_assigned', rotationId: next.rotationId, slotId, playerId, atMs: now }],
   };
+}
+
+/**
+ * Move seated players into the highest-ranked occupied positions at REVEAL.
+ * Equal scores retain the previous seat order; players absent from the score map
+ * follow scored players in original join order. The seated set, queue, pins and
+ * all player-owned metadata remain unchanged.
+ */
+export function reorderSeatedByRank(
+  state: AudienceState,
+  scoreByPlayer: ReadonlyMap<string, number | null>,
+): AudienceTransition {
+  const next = cloneState(state);
+  const orderedSlots = orderedSlotIds(next.seats);
+  const oldPositions = orderedSlots.filter((slotId) => next.seats[slotId] !== null);
+  const occupants = oldPositions.map((slotId) => next.seats[slotId]!);
+  const oldPosition = new Map(occupants.map((occupant, index) => [occupant.playerId, index]));
+  const joinPosition = new Map(next.joinOrder.map((playerId, index) => [playerId, index]));
+  const scoreOf = (playerId: string) => scoreByPlayer.has(playerId) ? scoreByPlayer.get(playerId) ?? null : null;
+
+  for (const occupant of occupants) {
+    const score = scoreOf(occupant.playerId);
+    if (score !== null && !Number.isFinite(score)) throw new TypeError('Điểm xếp hạng phải là số hữu hạn hoặc null.');
+  }
+
+  occupants.sort((a, b) => {
+    const aScore = scoreOf(a.playerId);
+    const bScore = scoreOf(b.playerId);
+    if (aScore !== null && bScore === null) return -1;
+    if (aScore === null && bScore !== null) return 1;
+    if (aScore !== null && bScore !== null && aScore !== bScore) return bScore - aScore;
+    if (aScore === null && bScore === null) {
+      const joinDifference = (joinPosition.get(a.playerId) ?? Number.MAX_SAFE_INTEGER) -
+        (joinPosition.get(b.playerId) ?? Number.MAX_SAFE_INTEGER);
+      if (joinDifference) return joinDifference;
+    }
+    return oldPosition.get(a.playerId)! - oldPosition.get(b.playerId)!;
+  });
+
+  const targetSlots = orderedSlots.slice(0, occupants.length);
+  let changed = false;
+  for (let index = 0; index < orderedSlots.length; index += 1) {
+    const slotId = orderedSlots[index]!;
+    const occupant = index < targetSlots.length ? occupants[index]! : null;
+    if (next.seats[slotId]?.playerId !== occupant?.playerId || next.seats[slotId]?.pinned !== occupant?.pinned) changed = true;
+    next.seats[slotId] = occupant;
+  }
+  return { state: changed || !Array.isArray(state.joinOrder) ? next : state, events: [] };
 }
 
 /** Activity only updates known players; it never creates a seat or joins the queue. */
