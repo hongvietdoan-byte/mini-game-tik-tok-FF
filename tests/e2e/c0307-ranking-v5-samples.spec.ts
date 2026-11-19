@@ -12,8 +12,10 @@ type Entry = { rank: string; name: string; score: string; detail?: string; accen
 
 const prototypeCss = `
 .v3-leaderboard-full.v5-audit-frame { padding: 22px 24px 22px; }
+.v3-leaderboard-full.v5-audit-frame.v5-audit-stage-frame { box-sizing: border-box; height: auto !important; padding-bottom: 24px; }
 .v3-leaderboard-full.v5-audit-frame.v5-audit-combined { overflow: visible !important; }
 .v5-audit-root { box-sizing: border-box; width: 100%; height: 100%; padding-top: 2px; display: flex; flex-direction: column; gap: 0; overflow: hidden; color: #fff; background: #141832; font-family: inherit; }
+.v5-audit-stage-frame .v5-audit-root { height: auto; }
 .v5-audit-combined .v5-audit-root { overflow: visible !important; }
 .v5-audit-root.v5-audit-stage-page { justify-content: flex-start; }
 .v5-audit-table { box-sizing: border-box; width: 100%; min-width: 0; display: flex; flex-direction: column; }
@@ -43,10 +45,10 @@ const prototypeCss = `
 .v5-audit-option-b .v5-audit-pages { flex: 0 0 auto; }
 .v5-audit-option-b.v5-audit-overall-page .v5-audit-pages { flex: 1 1 auto; display: flex; flex-direction: column; }
 .v5-audit-option-b.v5-audit-overall-page .v5-audit-rows { flex: 1 1 auto; justify-content: space-between; padding-bottom: 0; }
-.v5-audit-option-b.v5-audit-stage-page .v5-audit-table { justify-content: flex-start; }
-.v5-audit-stage-content { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; }
+.v5-audit-option-b.v5-audit-stage-page .v5-audit-table { flex: 0 0 auto; min-height: 0; justify-content: flex-start; }
+.v5-audit-stage-content { box-sizing: border-box; flex: 0 0 auto; min-height: 0; display: flex; align-items: flex-start; }
 .v5-audit-stage-content-group { width: 100%; }
-.v5-audit-stage-content .v5-audit-columns { margin-top: 0; }
+.v5-audit-stage-content .v5-audit-columns { margin-top: 16px; }
 .v5-audit-option-b.v5-audit-stage-page .v5-audit-pages { flex: 0 0 auto; display: block; }
 .v5-audit-option-b.v5-audit-stage-page .v5-audit-rows { flex: 0 0 auto; justify-content: flex-start; padding-bottom: 0; }
 .v5-audit-option-b.v5-audit-stage-page .v5-audit-rows[data-fill="true"] .v5-audit-row { height: 100px; min-height: 100px; flex: 0 0 100px; padding: 6px 16px; font-size: 40px; line-height: 42px; }
@@ -168,11 +170,14 @@ function tableMarkup(title: string, subtitle: string, entries: Entry[], option: 
       ? [entries.slice(0, maxRows), [...entries.slice(0, maxRows - 2), ...entries.slice(-2)]]
       : [entries.slice(0, maxRows), ...Array.from({ length: Math.ceil((entries.length - maxRows) / 2) }, (_, page) => [...entries.slice(0, maxRows - 2), ...entries.slice(maxRows + (page * 2), maxRows + (page * 2) + 2)])];
   const pages = pageEntriesList.map((pageEntries, pageIndex) => {
-    const rows = pageEntries.map((entry) => `<li class="v5-audit-row v5-rank-${entry.accent ? '1' : 'n'}" data-rank="${escapeHtml(entry.rank)}" data-gold-accent="${entry.accent === true}">
+    const rows = pageEntries.map((entry) => {
+      const highlighted = entry.rank === '1' || entry.accent === true;
+      return `<li class="v5-audit-row v5-rank-${highlighted ? '1' : 'n'}" data-rank="${escapeHtml(entry.rank)}" data-gold-accent="${highlighted}">
       <span class="v5-rank"><span class="v5-rank-number">${escapeHtml(entry.rank)}</span></span>
       <span class="v5-player"><strong class="v5-name">${escapeHtml(entry.name)}</strong></span>
       <span class="v5-score">${escapeHtml(entry.score)}</span>
-    </li>`).join('');
+    </li>`;
+    }).join('');
     const hidden = pageIndex === 0 ? '' : ' hidden';
     const fill = option === 'b' && title.startsWith('TOP 3') && pageEntries.length === 3 ? ' data-fill="true"' : '';
     return `<ol class="v5-audit-rows" data-v5-page="${pageIndex}"${hidden}${fill}>${rows || '<li class="v5-audit-empty-row">—</li>'}</ol>`;
@@ -212,13 +217,15 @@ async function loadPrototype(page: Page, markup: string) {
   const before = await frame.boundingBox();
   await frame.evaluate((element, content) => {
     element.classList.add('v5-audit-frame');
+    const isStageTop3 = content.includes('v5-audit-stage-page');
+    if (isStageTop3) element.classList.add('v5-audit-stage-frame');
     if (content.includes('v5-audit-option-a')) {
       element.classList.add('v5-audit-combined');
       element.style.setProperty('overflow', 'visible', 'important');
     }
     element.innerHTML = content;
     if (content.includes('v5-audit-option-a')) element.querySelector<HTMLElement>('.v5-audit-root')?.style.setProperty('overflow', 'visible', 'important');
-    if (content.includes('v5-audit-stage-page')) {
+    if (isStageTop3) {
       const bubble = document.querySelector<HTMLElement>('.v3-top10-guide .v3-bubble p');
       if (!bubble) throw new Error('Thiếu bóng thoại MC trong mẫu Top 3 chặng.');
       bubble.textContent = 'Vinh danh Top 3 chặng này!';
@@ -246,7 +253,11 @@ async function loadPrototype(page: Page, markup: string) {
   expect(after!.x).toBe(before!.x);
   expect(after!.y).toBe(before!.y);
   expect(after!.width).toBe(before!.width);
-  expect(after!.height).toBe(before!.height);
+  if (markup.includes('v5-audit-stage-page')) {
+    expect(after!.height, 'Khung Top 3 co theo nội dung, giữ nguyên mép trên').toBeLessThan(before!.height);
+  } else {
+    expect(after!.height).toBe(before!.height);
+  }
   return { frame, frameBox: after! };
 }
 
@@ -268,6 +279,7 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
     };
     const contrast = (a: string, b: string) => { const x = rgbaLuminance(a); const y = rgbaLuminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
     const frame = frameElement.getBoundingClientRect();
+    const mcBubble = document.querySelector<HTMLElement>('.v3-top10-guide .v3-bubble')?.getBoundingClientRect();
     const styles = getComputedStyle(frameElement);
     const rootStyle = getComputedStyle(root);
     const lastContent = root.querySelector<HTMLElement>('.v5-audit-empty') ?? rows.at(-1);
@@ -361,6 +373,7 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
         fontSizes: [...new Set([...table.querySelectorAll<HTMLElement>('.v5-audit-title, .v5-audit-sub, .v5-audit-columns > *, .v5-audit-empty, .v5-audit-row, .v5-audit-row *')].map((element) => getComputedStyle(element).fontSize))],
         rowGapPx: gaps(tableRows).map((gap) => Math.round(gap * 100) / 100),
         goldAccents: Math.max(0, ...pages.map((page) => [...page.querySelectorAll<HTMLElement>('.v5-audit-row')].filter((row) => row.dataset.goldAccent === 'true').length)),
+        pageRankOneHighlightsMatch: pages.every((page) => [...page.querySelectorAll<HTMLElement>('.v5-audit-row')].every((row) => (row.dataset.rank === '1') === row.classList.contains('v5-rank-1'))),
         rowCount: tableRows.length,
         sourceRowCount: Number(pageSet?.dataset.sourceCount ?? 0),
         pageCount: pages.length,
@@ -369,6 +382,7 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
         pageRanks: pages.map((page) => [...page.querySelectorAll<HTMLElement>('.v5-audit-row .v5-rank')].map((rank) => rank.textContent?.trim() ?? '')),
         pageText: pages.map((page) => page.textContent ?? ''),
         pageGoldAccents: pages.map((page) => [...page.querySelectorAll<HTMLElement>('.v5-audit-row')].filter((row) => row.dataset.goldAccent === 'true').length),
+        pageRankOneCounts: pages.map((page) => [...page.querySelectorAll<HTMLElement>('.v5-audit-row')].filter((row) => row.dataset.rank === '1').length),
         pageHasTieSummary: pages.some((page) => [...page.querySelectorAll<HTMLElement>('.v5-audit-row')].some((row) => /\+\s*\d+\s+người/iu.test(row.textContent ?? ''))),
         pageRowCounts: pages.map((page) => page.querySelectorAll('.v5-audit-row').length),
         rowHeightsPx: tableRows.map((row) => Math.round(row.getBoundingClientRect().height * 100) / 100),
@@ -400,6 +414,7 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
     return {
       frame: { x: frame.x, y: frame.y, width: frame.width, height: frame.height },
       fixedFrameMatches: frame.x === frameBox.x && frame.y === frameBox.y && frame.width === frameBox.width && frame.height === frameBox.height,
+      mcBubbleGapPx: mcBubble ? Math.round((mcBubble.top - frame.bottom) * 100) / 100 : null,
       framePaddingPx: {
         top: Math.round((Number.parseFloat(styles.paddingTop) + Number.parseFloat(rootStyle.paddingTop)) * 100) / 100,
         right: Number.parseFloat(styles.paddingRight), bottom: Number.parseFloat(styles.paddingBottom) + Number.parseFloat(styles.borderBottomWidth), left: Number.parseFloat(styles.paddingLeft),
@@ -505,7 +520,9 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
     const minRowGap = rowGaps.length ? Math.min(...rowGaps) : null;
     const minContrast = Math.min(...metrics.text.map((element) => element.contrastRatio));
     const allLongNamesFit = !metrics.longNameRow || (metrics.longNameRow.nameGraphemes === 24 && metrics.longNameRow.nameLines <= 2 && !metrics.longNameRow.nameClipped);
-    const oneGoldPerTable = metrics.tables.every((table) => table.pageGoldAccents.length ? table.pageGoldAccents.every((count) => count === 1) : table.sourceRowCount === 0);
+    const oneGoldPerTable = metrics.tables.every((table) => table.pageGoldAccents.length
+      ? table.pageGoldAccents.every((count, index) => count === table.pageRankOneCounts[index]) && table.pageRankOneHighlightsMatch
+      : table.sourceRowCount === 0);
     const fullTieNames = sample.case !== 'tie' || metrics.tables.every((table) => {
       const names = table.pageNames.flat();
       const ranks = table.pageRanks.flat();
@@ -537,13 +554,13 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
         return edges.length < 2 || Math.max(...edges) - Math.min(...edges) <= 1;
       }),
       fullTieNames && metrics.tables.every((table) => table.pageRowCounts.every((count) => count <= 10)),
-      metrics.tables.every((table) => table.titleColumnGapPx === null || table.titleColumnGapPx >= 16),
+      metrics.tables.every((table) => table.titleColumnGapPx === null || (table.titleColumnGapPx >= 16 && (!table.title.startsWith('TOP 3') || table.titleColumnGapPx <= 24))),
       metrics.tables.filter((table) => table.title.startsWith('TOP 3')).every((table) => {
         const heights = table.rowHeightsPx;
         return heights.length !== 3 || Math.max(...heights) - Math.min(...heights) <= 1;
       }),
-      !sample.option.startsWith('A') && metrics.bottomSafeGapPx !== null && (sample.screen.includes('Top 10') ? metrics.bottomSafeGapPx <= 24 : metrics.bottomSafeGapPx >= 24),
-      metrics.rows.every((row) => row.rankDecorationCount === 0) && (sample.option.startsWith('A') || !sample.screen.includes('Top 3 chặng 3') || metrics.tables.every((table) => table.rowCount !== 3 || (table.columnHeaderToFirstRowGapPx === 8 && table.verticalBlankBalanceDeltaPx !== null && table.verticalBlankBalanceDeltaPx <= 8))),
+      !sample.option.startsWith('A') && metrics.bottomSafeGapPx !== null && (sample.screen.includes('Top 10') ? metrics.bottomSafeGapPx <= 24 : metrics.bottomSafeGapPx >= 24 && metrics.bottomSafeGapPx <= 32),
+      metrics.rows.every((row) => row.rankDecorationCount === 0) && (sample.option.startsWith('A') || !sample.screen.includes('Top 3 chặng 3') || (metrics.mcBubbleGapPx !== null && metrics.mcBubbleGapPx >= 24 && metrics.tables.every((table) => table.rowCount !== 3 || table.columnHeaderToFirstRowGapPx === 8))),
     ];
     return {
       ...sample,
@@ -575,7 +592,12 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
     } else {
       expect(sample.metrics.rows.every((row) => row.fontPx >= 40 && row.fontPx <= 44 && row.rowHeightFontRatio <= 2.5), 'Top 3 chặng: cỡ chữ 40–44 px, hàng/chữ ≤2,5×').toBe(true);
       expect(table.columnHeaderToFirstRowGapPx, `${sample.screen}/${sample.case}: header cột cách hàng 1 đúng 8px`).toBe(8);
-      expect(table.verticalBlankBalanceDeltaPx, `${sample.screen}/${sample.case}: khoảng trống trên/dưới khối Top 3 lệch tối đa 8px`).toBeLessThanOrEqual(8);
+      expect(table.titleColumnGapPx, `${sample.screen}/${sample.case}: title cách header tối đa 24px`).toBeLessThanOrEqual(24);
+      expect(sample.metrics.bottomSafeGapPx, `${sample.screen}/${sample.case}: hàng cuối cách đáy khung tối đa 32px`).toBeLessThanOrEqual(32);
+      expect(sample.metrics.mcBubbleGapPx, `${sample.screen}/${sample.case}: khung cách bóng MC ít nhất 24px`).toBeGreaterThanOrEqual(24);
+      if (sample.case === 'tie') {
+        expect(table.pageRankOneHighlightsMatch, `${sample.screen}: mọi dòng hạng 1 đồng nhất kiểu nhấn`).toBe(true);
+      }
     }
     expect(sample.metrics.rows.every((row) => row.rankDecorationCount === 0), `${sample.screen}/${sample.case}: không còn chấm cạnh số hạng`).toBe(true);
   }
@@ -596,10 +618,10 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
   const ruleNames = [
     'Tiêu đề gọn, tối đa 4 từ và 1 dòng phụ', 'Đơn vị chỉ ở tiêu đề cột, ô số không lặp đơn vị', 'Cột thẳng; tên trái, hạng giữa, điểm phải; số tabular',
     'Khung có padding ≥24 px, hàng cách ≥8 px, đáy an toàn ≥12 px', 'Cỡ đọc được, title ≥32 px, row/font ≥1,6, tối đa 3 cỡ',
-    'Chỉ một hàng nhấn màu trong mỗi bảng', 'Tên dài đủ 24 grapheme, không cắt tên hoặc số', 'Phương án B chỉ hiện một bảng mỗi ảnh, bảng tràn luân phiên',
-    'Tương phản chữ/nền ≥4.5:1', 'Khung chính giữ nguyên x/y/w/h', 'Mỗi hàng cao ≥1,6 lần cỡ chữ',
+    'Mọi hạng 1 đều được nhấn; đồng hạng cùng kiểu', 'Tên dài đủ 24 grapheme, không cắt tên hoặc số', 'Phương án B chỉ hiện một bảng mỗi ảnh, bảng tràn luân phiên',
+    'Tương phản chữ/nền ≥4.5:1', 'Khung giữ nguyên x/y/w; Top 3 co đáy theo nội dung', 'Mỗi hàng cao ≥1,6 lần cỡ chữ',
     'Mép trái tên trong một cột lệch không quá 1 px', 'Đồng hạng có đủ tên, không có “+N người”; trang không quá 10 hàng',
-    'Khoảng tiêu đề–đầu cột ≥16 px', 'Tiêu đề Top 3 căn trái thẳng Top 10; dòng phụ căn phải; padding 24px', 'Top 10 đáy ≤24 px; Top 3 header sát hàng 1, khối căn giữa lệch ≤8px', 'Không có chấm màu dính số hạng',
+    'Khoảng tiêu đề–đầu cột 16–24 px', 'Tiêu đề Top 3 căn trái thẳng Top 10; dòng phụ căn phải; padding 24px', 'Top 10 đáy ≤24 px; Top 3 ôm nội dung, đáy ≤32 px và cách MC ≥24 px', 'Không có chấm màu dính số hạng',
   ];
   const minTitleWords = Math.min(...check.flatMap((sample) => sample.metrics.tables.map((table) => table.titleWords)));
   const minNameScoreGap = Math.min(...check.flatMap((sample) => sample.metrics.rows.map((row) => row.nameScoreGapPx)));
@@ -614,23 +636,23 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
     `khe tên–điểm nhỏ nhất ${minNameScoreGap.toFixed(2)} px; mép tên lệch tối đa ${maxNameEdgeDelta.toFixed(2)} px; hàng 22–28 px`,
     `padding T/P/D/T ${check[0]!.metrics.framePaddingPx.top}/${check[0]!.metrics.framePaddingPx.right}/${check[0]!.metrics.framePaddingPx.bottom}/${check[0]!.metrics.framePaddingPx.left}px; gap hàng min ${Math.min(...check.flatMap((sample) => sample.metrics.tables.flatMap((table) => table.rowGapPx.length ? table.rowGapPx : [8])))} px; đáy Top 10 min ${minFrameSafeGap} px`,
     `Top 10: 22 px/36 px = ${(36 / 22).toFixed(2)}×; Top 3: ${referenceStage.rowHeightsPx[0]} px/hàng với chữ 42 px (≤2,5×); ≤${Math.max(...check.flatMap((sample) => sample.metrics.tables.map((table) => table.fontSizes.length)))} cỡ/bảng`,
-    `mỗi trang hiển thị 1 hàng nhấn; số hạng không có chấm/huy hiệu dính cạnh`,
+    `hạng 1 được nhấn đồng đều ở mọi dòng đồng hạng; số không có chấm/huy hiệu dính cạnh`,
     `tên dài “${longName}” đủ 24 grapheme, không cắt; hạng 2/3 giữ nền trung tính`,
     `B mỗi ảnh một bảng; Top 10 tie có ${tieOverall.sourceRowCount} tên trên ${tieOverall.pageCount} trang (${tieOverall.pageRowCounts.join('/')} hàng)`,
     `tương phản chữ/nền thấp nhất ${Math.min(...check.map((sample) => sample.minContrastRatio)).toFixed(2)}:1`,
-    `khung ${check[0]!.metrics.frame.width}×${check[0]!.metrics.frame.height}px giữ nguyên x=${check[0]!.metrics.frame.x}, y=${check[0]!.metrics.frame.y}`,
+    `Top 10 giữ khung ${check[0]!.metrics.frame.width}×${check[0]!.metrics.frame.height}px; Top 3 co chiều cao, giữ mép trên và chiều rộng`,
     `tỷ lệ hàng/font thấp nhất ${minRowRatio.toFixed(2)}× (ngưỡng 1,60×)`,
     `mép trái tên lệch tối đa ${maxNameEdgeDelta.toFixed(2)} px (ngưỡng 1 px)`,
     `Top 10 tie hiện đủ ${tieOverall.sourceRowCount} tên, tối đa ${Math.max(...tieOverall.pageRowCounts)} hàng/trang, không “+N”; Top 3 hạng 1, 1, 3`,
     `khoảng title–header nhỏ nhất ${Math.min(...check.flatMap((sample) => sample.metrics.tables.map((table) => table.titleColumnGapPx ?? 0)))} px`,
     `title Top 3 lệch mép trái Top 10 ${top10StageTitleInsetDeltaPx.toFixed(2)} px; header padding ${referenceStage.headerPaddingLeftPx}/${referenceStage.headerPaddingRightPx} px; phụ Top 10/Top 3 căn phải`,
-    `Top 10 đáy nhỏ nhất ${minFrameSafeGap} px; Top 3 cách cột→hàng ${referenceStage.columnHeaderToFirstRowGapPx} px, chênh trống trên/dưới ${referenceStage.verticalBlankBalanceDeltaPx} px; A chẩn đoán tràn ${minDiagnosticBottomGap} px`,
+    `Top 10 đáy nhỏ nhất ${minFrameSafeGap} px; Top 3 khung ${referenceStage.bounds.height}px, title→header ${referenceStage.titleColumnGapPx}px, cột→hàng ${referenceStage.columnHeaderToFirstRowGapPx}px, hàng→đáy ${check.find((sample) => sample.option.startsWith('B') && sample.case === 'normal' && sample.screen === 'Top 3 chặng 3')!.metrics.bottomSafeGapPx}px, khung→MC ${check.find((sample) => sample.option.startsWith('B') && sample.case === 'normal' && sample.screen === 'Top 3 chặng 3')!.metrics.mcBubbleGapPx}px; A chẩn đoán tràn ${minDiagnosticBottomGap} px`,
     'Số hạng luôn thẳng tâm cột; không render huy hiệu/chấm cạnh số',
   ];
   const report = [
     '# C-0307 · Tự kiểm ảnh mẫu BXH V5',
     '',
-    `Tên dài mẫu: “${longName}” — 24 grapheme. Khung chính: ${check[0]!.metrics.frame.x}×${check[0]!.metrics.frame.y}, ${check[0]!.metrics.frame.width}×${check[0]!.metrics.frame.height} px (không đổi). Top 10 dùng chữ hàng 22 px, cao 36 px (tỷ lệ 1,64), đáy ≤24 px; Top 3 chặng dùng 42 px trong hàng 104 px; REVEAL dùng chữ 28 px.`,
+    `Tên dài mẫu: “${longName}” — 24 grapheme. Khung Top 10: ${check[0]!.metrics.frame.x}×${check[0]!.metrics.frame.y}, ${check[0]!.metrics.frame.width}×${check[0]!.metrics.frame.height} px. Top 10 dùng chữ hàng 22 px, cao 36 px (tỷ lệ 1,64), đáy ≤24 px; Top 3 chặng dùng 42 px trong hàng 100 px và khung co theo nội dung; REVEAL dùng chữ 28 px.`,
     'Phương án A là ảnh chẩn đoán, không phải bản đạt: Top 10 + Top 3 cùng lúc vượt đáy khung (rule 4). Phương án B luân phiên Top 10 và Top 3 chặng 3, mỗi bảng 5 giây; cả 6 mẫu chính và 4 trạng thái 0–3 người đều vừa khung.',
     'Bản 0 người dùng dòng trống rõ ràng, không dựng hàng xếp hạng giả.',
     '',
