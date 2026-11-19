@@ -17,7 +17,7 @@ describe('checkFiles', () => {
       { path: 'docs/diagram.png' },
       { path: 'apps/dashboard/src/photo.webp' },
       { path: 'apps/dashboard/public/logo.jpeg' },
-      { path: 'tests/e2e/__screenshots__/baseline.gif' },
+      { path: 'tests/e2e/__screenshots__/baseline.gif', sizeBytes: 4_095 },
     ]);
 
     expect(violations).toEqual(expect.arrayContaining([
@@ -30,6 +30,21 @@ describe('checkFiles', () => {
     ]));
     expect(violations.some((violation) => violation.includes('public/logo.jpeg'))).toBe(false);
     expect(violations.some((violation) => violation.includes('__screenshots__/baseline.gif'))).toBe(false);
+  });
+
+  it('chặn ảnh 1 MB trong tests/e2e/__screenshots__ và yêu cầu ảnh nhỏ hơn 4 KB', () => {
+    expect(checkFiles([
+      { path: 'tests/e2e/__screenshots__/asset-capture.png', sizeBytes: 1_000_000 },
+    ])).toContain('tests/e2e/__screenshots__/asset-capture.png: ảnh nằm ngoài thư mục được phép');
+    expect(checkFiles([
+      { path: 'tests/e2e/__screenshots__/boundary.png', sizeBytes: 4_096 },
+    ])).toContain('tests/e2e/__screenshots__/boundary.png: ảnh nằm ngoài thư mục được phép');
+    expect(checkFiles([
+      { path: 'tests/e2e/__screenshots__/unknown-size.png' },
+    ])).toContain('tests/e2e/__screenshots__/unknown-size.png: ảnh nằm ngoài thư mục được phép');
+    expect(checkFiles([
+      { path: 'tests/e2e/__screenshots__/tiny-reference.png', sizeBytes: 4_095 },
+    ])).toEqual([]);
   });
 
   it('chỉ cho ảnh giữ chỗ trong fixtures, với ngoại lệ kích thước nền và manifest chibi', () => {
@@ -60,6 +75,23 @@ describe('checkFiles', () => {
     ])).toContain('fixtures/assets-placeholder/chibi/new-small-image.png: ảnh nằm ngoài thư mục được phép');
   });
 
+  it('chỉ cho phép đúng các ảnh giữ chỗ top2/top3/ngai mới của C-0339', () => {
+    const approved = [
+      'fixtures/assets-placeholder/chibi/dang-top2-top3/top2/top2-chibi-013-hayato.png',
+      'fixtures/assets-placeholder/chibi/dang-top2-top3/top2/top2-chibi-016-iris.png',
+      'fixtures/assets-placeholder/chibi/dang-top2-top3/top2/top2-chibi-020-kairos.png',
+      'fixtures/assets-placeholder/chibi/dang-top2-top3/top3/top3-chibi-013-hayato.png',
+      'fixtures/assets-placeholder/chibi/dang-top2-top3/top3/top3-chibi-016-iris.png',
+      'fixtures/assets-placeholder/chibi/dang-top2-top3/top3/top3-chibi-020-kairos.png',
+      'fixtures/assets-placeholder/throne/ngai-chibi-013-hayato.png',
+      'fixtures/assets-placeholder/throne/ngai-chibi-016-iris.png',
+      'fixtures/assets-placeholder/throne/ngai-chibi-020-kairos.png',
+    ];
+    expect(checkFiles(approved.map((path) => ({ path, sizeBytes: 3_500 })))).toEqual([]);
+    expect(checkFiles([{ path: 'fixtures/assets-placeholder/throne/ngai-unapproved.png', sizeBytes: 3_500 }]))
+      .toContain('fixtures/assets-placeholder/throne/ngai-unapproved.png: ảnh nằm ngoài thư mục được phép');
+  });
+
   it('xem file tracked đã bị xóa khỏi worktree là vắng mặt, không phải lỗi đọc', () => {
     const root = testTempRoot('quiz-privacy-missing-');
     const errors: string[] = [];
@@ -86,6 +118,7 @@ describe('checkFiles', () => {
       'assets/Screenshot-approved.png: tên tệp có cụm từ bị cấm',
       'assets/2026-11-11_chibi_kho/preview.png: đường dẫn kho chibi không được commit',
     ]));
+    expect(checkFiles([{ path: 'mailbox/to_coordinator/report-screenshot-review.md' }])).toEqual([]);
   });
 
   it('đòi phê duyệt cho mọi tệp assets ngoại trừ .gitkeep', () => {

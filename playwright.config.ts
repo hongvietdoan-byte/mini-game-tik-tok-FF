@@ -11,6 +11,8 @@ process.env.TMP = repoTempRoot;
 process.env.TEMP = repoTempRoot;
 
 const localAssetDirectory = getE2eAssetDirectory();
+// Keep test workers on the same asset mode as the servers started by this config.
+process.env.QUIZ_ASSETS_DIR = localAssetDirectory;
 const e2eTempDirectory = getE2eTempDirectory();
 const serverPort = Number(process.env.PLAYWRIGHT_SERVER_PORT ?? 18787);
 const overlayPort = Number(process.env.PLAYWRIGHT_OVERLAY_PORT ?? 15176);
