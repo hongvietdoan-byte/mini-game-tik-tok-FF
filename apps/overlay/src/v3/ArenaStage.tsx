@@ -170,9 +170,8 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
       element.style.overflow = '';
       element.style.whiteSpace = '';
       const baseSize = Number.parseFloat(window.getComputedStyle(element).fontSize) || 30;
-      // Preserve the class's preferred size, but allow long copy below the old
-      // 26px floor when the measured line count or the requested bottom inset requires it.
-      const minimumSize = 18;
+      // Keep question text readable on phones; unfit prompts are shortened instead of shrinking below 24px.
+      const minimumSize = 24;
       const bottomInset = 16;
       const style = window.getComputedStyle(element);
       const canvas = document.createElement('canvas');

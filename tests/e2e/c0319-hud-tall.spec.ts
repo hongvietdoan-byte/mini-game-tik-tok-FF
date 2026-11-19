@@ -1,6 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { DEMO_QUESTIONS } from '../../fixtures/questions';
+import { wrapPromptToLines } from '../../apps/overlay/src/v3/arenaLogic';
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -118,7 +120,6 @@ for (const mock of ['question-longest', 'reading-longest']) {
     const copy = page.getByTestId('question-prompt-copy');
     await expect(prompt).toBeVisible();
     await expect(copy).toBeVisible();
-    await expect(copy).toContainText(/Battle Royale/i);
     await page.waitForFunction(() => {
       const element = document.querySelector<HTMLElement>('[data-testid="question-prompt"]');
       return element?.style.fontSize !== '';
@@ -154,9 +155,58 @@ for (const mock of ['question-longest', 'reading-longest']) {
     });
     console.info(`C-0319 ${mock} prompt fit: ${JSON.stringify(metrics)}`);
     expect(metrics.lineCount).toBeGreaterThan(0);
-    expect(metrics.lineCount, `${mock}: the whole four-line question should fit`).toBe(4);
-    expect(metrics.visualLines.at(-1)?.trim(), `${mock}: the final line should end at the same text as the live reference`).toMatch(/Battle Royale\?$/);
-    expect(metrics.truncated, `${mock}: no part of this question should be hidden`).toBe('false');
+    expect(metrics.lineCount, `${mock}: question uses no more than four lines`).toBeLessThanOrEqual(4);
+    expect(Number.parseFloat(metrics.fontSize), `${mock}: question text never shrinks below 24px`).toBeGreaterThanOrEqual(24);
+    if (metrics.truncated === 'true') {
+      expect(metrics.visualLines.at(-1)?.trim(), `${mock}: truncated copy ends with an ellipsis`).toMatch(/…$/);
+      await expect(copy).toContainText(/…$/);
+    } else {
+      expect(metrics.visualLines.at(-1)?.trim(), `${mock}: full prompt ends with the live reference`).toMatch(/Battle Royale\?$/);
+      await expect(copy).toContainText(/Battle Royale\?/i);
+    }
     expect(metrics.lastLineGap, `${mock}: last text line needs a 16px bottom inset`).toBeGreaterThanOrEqual(16);
   });
 }
+
+test('C-0319 — demo question bank identifies prompts that reach the 24px floor', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.goto('/?mock=question-longest&hud=tall&role=program', { waitUntil: 'domcontentloaded' });
+  const prompts = DEMO_QUESTIONS.filter(({ prompt }) => prompt.length > 160).map(({ id, prompt }) => ({ id, prompt }));
+  const candidates = new Set<string>();
+  for (const { prompt } of prompts) {
+    const words = prompt.trim().split(/\s+/u);
+    for (let start = 0; start < words.length; start += 1) {
+      for (let end = start + 1; end <= words.length; end += 1) candidates.add(words.slice(start, end).join(' '));
+    }
+  }
+  const measurements = await page.evaluate(({ candidateTexts }) => {
+    const element = document.querySelector<HTMLElement>('[data-testid="question-prompt"]')!;
+    const originalClass = element.className;
+    const originalFontSize = element.style.fontSize;
+    element.classList.remove('is-prompt-truncated');
+    element.style.fontSize = '';
+    const style = getComputedStyle(element);
+    const baseSize = Number.parseFloat(style.fontSize) || 30;
+    const context = document.createElement('canvas').getContext('2d')!;
+    context.font = style.font.replace(/(?:\d*\.)?\d+px/u, '24px');
+    const width = element.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+    const contentHeight = element.clientHeight - (Number.parseFloat(style.paddingTop) || 0) - (Number.parseFloat(style.paddingBottom) || 0);
+    const lineHeight = (Number.parseFloat(style.lineHeight) || baseSize * 1.16) * 24 / baseSize;
+    const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+    const widths = Object.fromEntries(candidateTexts.map((text) => [
+      text,
+      context.measureText(text).width + Math.max(0, Array.from(text).length - 1) * letterSpacing,
+    ]));
+    element.className = originalClass;
+    element.style.fontSize = originalFontSize;
+    return { width, maxLines: Math.max(1, Math.min(4, Math.floor((contentHeight - 16) / lineHeight))), widths };
+  }, { candidateTexts: Array.from(candidates) });
+  const measured = prompts.map(({ id, prompt }) => {
+    const layout = wrapPromptToLines(prompt, measurements.width, measurements.maxLines, (text) => measurements.widths[text] ?? Infinity);
+    return { id, sourceCharacters: [...prompt].length, visibleLines: layout.lineCount, truncated: layout.truncated, text: layout.text };
+  });
+  console.info(`C-0319 demo bank prompts at 24px: ${JSON.stringify(measured)}`);
+  expect(measured.map(({ id }) => id)).toEqual(['demo-001', 'demo-023']);
+  expect(measured.map(({ visibleLines }) => visibleLines)).toEqual([3, 3]);
+  expect(measured.every(({ truncated }) => truncated)).toBe(true);
+});
