@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-19T20:21:29+07:00",
+  "heartbeat": "2026-11-19T20:29:50+07:00",
   "state": "working",
-  "task": "C-0335",
-  "note": "Đang làm phần selection theo chủ đề ưu tiên; selection.test 23/23 pass và typecheck pass. Đã hỏi coordinator về owner UI Dashboard (X-0559).",
+  "task": "C-0331",
+  "note": "Đang cập nhật mock, fixtures, inventory và privacy check theo thứ tự C-0337; C-0335 đã checkpoint commit 30ce661a trên nhánh riêng.",
   "done": [
     336,
     337
