@@ -310,6 +310,13 @@ export class Store {
     return new Map(rows.map((r) => [r.p, r.c]));
   }
 
+  /** Accepted participants in stable first-answer order; used only as the fallback when audience history is missing. */
+  roundPlayerJoinOrder(roundId: string): { playerId: string; joinedAtMs: number }[] {
+    return this.raw
+      .prepare('SELECT player_id AS playerId, joined_at_ms AS joinedAtMs FROM round_players WHERE round_id = ? ORDER BY joined_at_ms, player_id COLLATE BINARY')
+      .all(roundId) as { playerId: string; joinedAtMs: number }[];
+  }
+
   displayNames(playerIds: string[]): Map<string, string> {
     if (playerIds.length === 0) return new Map();
     const out = new Map<string, string>();
@@ -948,10 +955,10 @@ export class Store {
       .all(roundId) as any[];
   }
 
-  rankedStandings(roundId: string): { playerId: string; displayName: string; score: number; correctCount: number }[] {
+  rankedStandings(roundId: string): { playerId: string; displayName: string; score: number; correctCount: number; streak: number }[] {
     return this.raw
       .prepare(
-        `SELECT rp.player_id AS playerId, p.display_name AS displayName, rp.score AS score, rp.correct_count AS correctCount
+        `SELECT rp.player_id AS playerId, p.display_name AS displayName, rp.score AS score, rp.correct_count AS correctCount, rp.streak AS streak
          FROM round_players rp JOIN players p ON p.id = rp.player_id WHERE rp.round_id = ?
          ORDER BY rp.score DESC, rp.correct_count DESC, rp.player_id COLLATE BINARY ASC`,
       )

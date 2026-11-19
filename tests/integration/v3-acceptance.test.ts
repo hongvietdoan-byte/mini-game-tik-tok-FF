@@ -257,8 +257,8 @@ describe('V3 §17 — acceptance', () => {
     const port = (h.quiz.app.server.address() as { port: number }).port;
     const first = await connectOverlay(port);
     expect(first.snapshot.state).toBe('ACCEPTING');
-    expect(first.snapshot.audience).toMatchObject({ total: 40, queued: 5 });
-    expect(first.snapshot.audience!.seats.filter((seat) => seat.occupant)).toHaveLength(35);
+    expect(first.snapshot.audience).toMatchObject({ total: 40, queued: 10 });
+    expect(first.snapshot.audience!.seats.filter((seat) => seat.occupant)).toHaveLength(30);
     expect(first.snapshot.timer?.running).toBe(true);
     const signature = audienceSignature(first.snapshot.audience!);
     const remainingBefore = first.snapshot.timer!.remainingMs;
@@ -267,7 +267,7 @@ describe('V3 §17 — acceptance', () => {
     h.scheduler.advance(1_000);
     const reconnected = await connectOverlay(port);
     expect(reconnected.snapshot.state).toBe('ACCEPTING');
-    expect(reconnected.snapshot.audience).toMatchObject({ total: 40, queued: 5 });
+    expect(reconnected.snapshot.audience).toMatchObject({ total: 40, queued: 10 });
     expect(audienceSignature(reconnected.snapshot.audience!)).toEqual(signature);
     expect(reconnected.snapshot.timer?.running).toBe(true);
     expect(reconnected.snapshot.timer?.remainingMs).toBe(remainingBefore - 1_000);
