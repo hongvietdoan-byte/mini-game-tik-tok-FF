@@ -180,3 +180,23 @@ test('C-0312 — round-winner keeps MC clear with long names and a tied podium',
     expect(geometry.intersections, `${mock}: ${JSON.stringify(geometry)}`).toEqual([]);
   }
 });
+
+test('C-0311 — Kelly stays clear of the TikTok comment rail and input bar on intermission and round winner', async ({ page }) => {
+  for (const mock of ['intermission', 'round-winner', 'round-winner-long-name']) {
+    await page.goto(`/?mock=${mock}&hud=1&role=program`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.v3-mc-figure')).toBeVisible();
+    await expect(page.getByTestId('tiktok-comments')).toBeVisible();
+    const geometry = await page.evaluate(() => {
+      const box = (element: Element) => { const r = element.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }; };
+      const overlaps = (a: Rect, b: Rect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const mcParts = [...document.querySelectorAll('.v3-mc-figure, .v3-mc-plate, .v3-mc .v3-bubble')].map((element) => [element.className, box(element)] as const);
+      const tiktok = [['comment rail', '[data-testid="tiktok-comments"]'], ['comment input', '[data-testid="tiktok-comment-bar"]']]
+        .map(([label, selector]) => { const element = document.querySelector(selector); if (!element) throw new Error(`Missing ${label}`); return [label, box(element)] as const; });
+      return {
+        intersections: mcParts.flatMap(([part, partBox]) => tiktok.filter(([, other]) => overlaps(partBox, other)).map(([label]) => `${part} ↔ ${label}`)),
+        mcParts, tiktok,
+      };
+    });
+    expect(geometry.intersections, `${mock}: ${JSON.stringify(geometry)}`).toEqual([]);
+  }
+});
