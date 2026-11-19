@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 351,
-  "heartbeat": "2026-11-20T04:01:10+07:00",
+  "heartbeat": "2026-11-20T04:19:50+07:00",
   "state": "waiting",
   "task": "C-0339",
-  "note": "Không có thư mới; C-0339 chờ coordinator duyệt, DP3 đang được cập nhật; đã gửi note rảnh Y-0582.",
+  "note": "Chờ coordinator duyệt C-0339; inbox trống.",
   "done": []
 }
