@@ -2281,6 +2281,21 @@
 /* C-0281: keep the mid-round portrait fixed so its speech-bubble center stays aligned. */
 .v3-stage[data-scene="INTERIM_TOP10"] .v3-top10-guide .v3-mc-figure { animation: none; }
 
+/* C-0317: clear the actual Kelly pixels from the fixed Top 10 and her nameplate. */
+.v3-stage--question-user.v3-stage--user-question-layout .v3-mc .v3-mc-figure { top: 11px; height: 158px; }
+.v3-stage--question-user.v3-stage--user-question-layout .v3-mc .v3-mc-figure img {
+  transform: translateX(-50%) scale(.8);
+  transform-origin: 50% 0;
+  animation: none !important;
+}
+.v3-stage--question-user.v3-stage--user-question-layout .v3-mc .v3-mc-plate { top: 198px; }
+.v3-stage--question-user.v3-stage--user-question-layout .v3-mc .v3-bubble { left: 411px; }
+.v3-stage--question-user.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout { left: 411px; width: 599px; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-figure img,
+.v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-figure img { animation: none !important; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-plate,
+.v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-plate { top: 356px; }
+
 /* C-0287: make lobby information readable without changing the approved frame geometry. */
 .v3-stage.v3-stage--question-user .v3-question.is-lobby {
   display: grid;
