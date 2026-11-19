@@ -4,8 +4,8 @@ import { createAudienceState, createSlots, onPlayerJoined } from '@quiz/audience
 
 /** Mã chibi theo kho tách nền (assets-local/chibi). Không có ảnh → overlay tự dùng hình giữ chỗ. */
 const MOCK_CHIBI = ['chibi-002-a124', 'chibi-004-alvaro', 'chibi-005-andrew', 'chibi-006-antonio', 'chibi-007-caroline', 'chibi-008-clu',
-  'chibi-009-d-bee', 'chibi-010-dasha', 'chibi-011-dimitri', 'chibi-012-ford', 'chibi-013-hayato', 'chibi-014-homer', 'chibi-015-ignis',
-  'chibi-016-iris', 'chibi-017-joseph', 'chibi-018-jota', 'chibi-019-k', 'chibi-020-kairos', 'chibi-021-kapella', 'chibi-022-kassie'];
+  'chibi-009-d-bee', 'chibi-010-dasha', 'chibi-002-a124', 'chibi-012-ford', 'chibi-013-hayato', 'chibi-014-homer', 'chibi-015-ignis',
+  'chibi-016-iris', 'chibi-017-joseph', 'chibi-018-jota', 'chibi-008-clu', 'chibi-020-kairos', 'chibi-021-kapella', 'chibi-022-kassie'];
 
 /** 35 ghế mock (tên hư cấu, gồm tên dài / emoji / chuỗi giống HTML) — toạ độ lấy từ cùng audience-engine như server. */
 const MOCK_NAMES = [
