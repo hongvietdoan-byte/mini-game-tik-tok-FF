@@ -8,7 +8,7 @@ const longName32 = `${longName} ABCDEFG`;
 
 type Variant = 'normal' | 'long-name' | 'tie' | 'count-0' | 'count-1' | 'count-2' | 'count-3';
 type RevealVariant = 'normal' | 'long-name' | 'long-name-32' | 'tie';
-type Entry = { rank: string; name: string; score: string; detail?: string; accent?: boolean; medal?: 1 | 2 | 3 };
+type Entry = { rank: string; name: string; score: string; detail?: string; accent?: boolean };
 
 const prototypeCss = `
 .v3-leaderboard-full.v5-audit-frame { padding: 22px 24px 22px; }
@@ -18,10 +18,10 @@ const prototypeCss = `
 .v5-audit-root.v5-audit-stage-page { justify-content: flex-start; }
 .v5-audit-table { box-sizing: border-box; width: 100%; min-width: 0; display: flex; flex-direction: column; }
 .v5-audit-table + .v5-audit-table { margin-top: 24px; }
-.v5-audit-head { box-sizing: border-box; height: 40px; flex: 0 0 40px; padding-inline: 16px; display: grid; grid-template-columns: minmax(0,1fr) auto; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 2px solid rgba(220,226,255,.46); }
-.v5-audit-title { min-width: 0; margin: 0; color: #fff; font-size: 32px; line-height: 36px; font-weight: 950; letter-spacing: .25px; white-space: nowrap; }
-.v5-audit-sub { color: #e6e1ff; font-size: 22px; line-height: 26px; font-weight: 750; white-space: nowrap; }
-.v5-audit-columns { box-sizing: border-box; height: 24px; flex: 0 0 24px; margin-top: 16px; padding-inline: 17px; display: grid; grid-template-columns: 60px minmax(0,1fr) 120px; gap: 24px; align-items: center; color: #d9d4ef; font-size: 18px; line-height: 24px; font-weight: 850; }
+.v5-audit-head { box-sizing: border-box; height: 40px; flex: 0 0 40px; padding-inline: 24px; display: grid; grid-template-columns: minmax(0,1fr) auto; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 2px solid rgba(220,226,255,.46); }
+.v5-audit-title { min-width: 0; margin: 0; color: #fff; font-size: 32px; line-height: 36px; font-weight: 950; letter-spacing: .25px; text-align: left; white-space: nowrap; }
+.v5-audit-sub { justify-self: end; color: #e6e1ff; font-size: 22px; line-height: 26px; font-weight: 750; text-align: right; white-space: nowrap; }
+.v5-audit-columns { box-sizing: border-box; height: 24px; flex: 0 0 24px; margin-top: 16px; padding-inline: 17px; display: grid; grid-template-columns: 60px minmax(0,1fr) 120px; gap: 24px; align-items: center; color: #d9d4ef; font-size: 22px; line-height: 24px; font-weight: 850; }
 .v5-audit-columns > :first-child { text-align: center; }
 .v5-audit-columns > :last-child { text-align: right; }
 .v5-audit-empty { box-sizing: border-box; min-height: 88px; margin: 8px 0 0; padding: 24px; display: flex; align-items: center; justify-content: center; border: 1px dashed #747a9d; border-radius: 10px; color: #fff; font-size: 22px; line-height: 28px; font-weight: 800; text-align: center; }
@@ -31,11 +31,7 @@ const prototypeCss = `
 .v5-audit-row { box-sizing: border-box; min-width: 0; height: 36px; flex: 0 0 36px; padding: 1px 16px; display: grid; grid-template-columns: 60px minmax(0,1fr) 120px; gap: 24px; align-items: center; border: 1px solid #51577e; border-radius: 10px; background: #202448; color: #fff; font-size: 22px; line-height: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .v5-audit-row.v5-rank-1 { border: 1px solid #ffc94f; box-shadow: inset 0 0 0 1px #ffc94f; background: #fff0b5; color: #21183e; }
 .v5-audit-row .v5-rank { position: relative; min-width: 0; display: flex; align-items: center; justify-content: center; text-align: center; font-variant-numeric: tabular-nums; }
-.v5-audit-row .v5-medal-slot { position: absolute; left: 10px; top: 50%; width: 16px; height: 20px; display: grid; place-items: center; transform: translateY(-50%); }
 .v5-audit-row .v5-rank-number { min-width: 0; width: 100%; text-align: center; }
-.v5-audit-row .v5-medal { width: 16px; font-size: 18px; line-height: 20px; text-align: center; }
-.v5-audit-row .v5-medal-2 { color: #d6d9e7; }
-.v5-audit-row .v5-medal-3 { color: #d58e5b; }
 .v5-audit-row .v5-player { min-width: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; text-align: left; }
 .v5-audit-row .v5-name { min-width: 0; overflow-wrap: anywhere; }
 .v5-audit-row .v5-detail { flex: 0 0 auto; color: #e6e1ff; font-size: 22px; line-height: 26px; font-weight: 850; white-space: nowrap; }
@@ -47,8 +43,12 @@ const prototypeCss = `
 .v5-audit-option-b .v5-audit-pages { flex: 0 0 auto; }
 .v5-audit-option-b.v5-audit-overall-page .v5-audit-pages { flex: 1 1 auto; display: flex; flex-direction: column; }
 .v5-audit-option-b.v5-audit-overall-page .v5-audit-rows { flex: 1 1 auto; justify-content: space-between; padding-bottom: 0; }
-.v5-audit-option-b.v5-audit-stage-page .v5-audit-pages { flex: 1 1 auto; display: flex; flex-direction: column; }
-.v5-audit-option-b.v5-audit-stage-page .v5-audit-rows { flex: 1 1 auto; justify-content: center; padding-bottom: 0; }
+.v5-audit-option-b.v5-audit-stage-page .v5-audit-table { justify-content: flex-start; }
+.v5-audit-stage-content { box-sizing: border-box; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; }
+.v5-audit-stage-content-group { width: 100%; }
+.v5-audit-stage-content .v5-audit-columns { margin-top: 0; }
+.v5-audit-option-b.v5-audit-stage-page .v5-audit-pages { flex: 0 0 auto; display: block; }
+.v5-audit-option-b.v5-audit-stage-page .v5-audit-rows { flex: 0 0 auto; justify-content: flex-start; padding-bottom: 0; }
 .v5-audit-option-b.v5-audit-stage-page .v5-audit-rows[data-fill="true"] .v5-audit-row { height: 100px; min-height: 100px; flex: 0 0 100px; padding: 6px 16px; font-size: 40px; line-height: 42px; }
 .v5-audit-option-b.v5-audit-stage-page .v5-audit-rows[data-fill="true"] .v5-name { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; text-overflow: clip; }
 `;
@@ -61,29 +61,29 @@ function stageEntries(variant: Variant): Entry[] {
   const count = /^count-(\d)$/u.exec(variant);
   if (count) {
     const entries: Entry[] = [
-    { rank: '1', name: 'FFVN.Kelly', score: '1.850', accent: true, medal: 1 },
-    { rank: '2', name: 'StormKing', score: '1.720', medal: 2 },
-    { rank: '3', name: 'BVD.Champion', score: '1.620', medal: 3 },
+    { rank: '1', name: 'FFVN.Kelly', score: '1.850', accent: true },
+    { rank: '2', name: 'StormKing', score: '1.720' },
+    { rank: '3', name: 'BVD.Champion', score: '1.620' },
     ];
     return entries.slice(0, Number(count[1]));
   }
   if (variant === 'tie') return [
-    { rank: '1', name: 'FFVN.Kelly', score: '1.850', accent: true, medal: 1 },
+    { rank: '1', name: 'FFVN.Kelly', score: '1.850', accent: true },
     { rank: '1', name: 'StormKing', score: '1.850' },
-    { rank: '3', name: 'BVD.Champion', score: '1.620', medal: 3 },
+    { rank: '3', name: 'BVD.Champion', score: '1.620' },
   ];
   return [
-    { rank: '1', name: variant === 'long-name' ? longName : 'FFVN.Kelly', score: '1.850', accent: true, medal: 1 },
-    { rank: '2', name: 'StormKing', score: '1.720', medal: 2 },
-    { rank: '3', name: 'BVD.Champion', score: '1.620', medal: 3 },
+    { rank: '1', name: variant === 'long-name' ? longName : 'FFVN.Kelly', score: '1.850', accent: true },
+    { rank: '2', name: 'StormKing', score: '1.720' },
+    { rank: '3', name: 'BVD.Champion', score: '1.620' },
   ];
 }
 
 function overallEntries(variant: Variant): Entry[] {
   const entries: Entry[] = [
-    { rank: '1', name: 'FFVN.Kelly', score: '5.850', accent: true, medal: 1 },
-    { rank: '2', name: 'StormKing', score: variant === 'tie' ? '5.850' : '5.600', medal: 2 },
-    { rank: '3', name: 'BVD.Champion', score: '5.420', medal: 3 },
+    { rank: '1', name: 'FFVN.Kelly', score: '5.850', accent: true },
+    { rank: '2', name: 'StormKing', score: variant === 'tie' ? '5.850' : '5.600' },
+    { rank: '3', name: 'BVD.Champion', score: '5.420' },
     { rank: '4', name: variant === 'long-name' ? longName : 'Choco.M', score: '5.180' },
     { rank: '5', name: 'Hami', score: '4.960' },
     { rank: '6', name: 'Nyla_xinch', score: '4.820' },
@@ -94,7 +94,7 @@ function overallEntries(variant: Variant): Entry[] {
   ];
   if (variant !== 'tie') return entries;
   return [
-    { rank: '1', name: 'FFVN.Kelly', score: '5.850', accent: true, medal: 1 },
+    { rank: '1', name: 'FFVN.Kelly', score: '5.850', accent: true },
     { rank: '1', name: 'StormKing', score: '5.850' },
     ...entries.slice(2, 9),
     { rank: '10', name: 'Diemmy', score: '4.120' },
@@ -109,9 +109,9 @@ function fastestEntries(variant: RevealVariant): Entry[] {
     { rank: '3', name: 'BVD.Champion', score: '2,4' },
   ];
   return [
-    { rank: '1', name: variant === 'long-name' ? longName : variant === 'long-name-32' ? longName32 : 'FFVN.Kelly', score: '1,6', accent: true, medal: 1 },
-    { rank: '2', name: 'StormKing', score: '2,0', medal: 2 },
-    { rank: '3', name: 'BVD.Champion', score: '2,4', medal: 3 },
+    { rank: '1', name: variant === 'long-name' ? longName : variant === 'long-name-32' ? longName32 : 'FFVN.Kelly', score: '1,6', accent: true },
+    { rank: '2', name: 'StormKing', score: '2,0' },
+    { rank: '3', name: 'BVD.Champion', score: '2,4' },
   ];
 }
 
@@ -168,8 +168,8 @@ function tableMarkup(title: string, subtitle: string, entries: Entry[], option: 
       ? [entries.slice(0, maxRows), [...entries.slice(0, maxRows - 2), ...entries.slice(-2)]]
       : [entries.slice(0, maxRows), ...Array.from({ length: Math.ceil((entries.length - maxRows) / 2) }, (_, page) => [...entries.slice(0, maxRows - 2), ...entries.slice(maxRows + (page * 2), maxRows + (page * 2) + 2)])];
   const pages = pageEntriesList.map((pageEntries, pageIndex) => {
-    const rows = pageEntries.map((entry) => `<li class="v5-audit-row v5-rank-${entry.medal ?? 'n'}" data-rank="${escapeHtml(entry.rank)}" data-gold-accent="${entry.accent === true}">
-      <span class="v5-rank"><span class="v5-medal-slot">${entry.medal === 2 || entry.medal === 3 ? `<span class="v5-medal v5-medal-${entry.medal}" aria-label="huy chương ${entry.medal}">●</span>` : ''}</span><span class="v5-rank-number">${escapeHtml(entry.rank)}</span></span>
+    const rows = pageEntries.map((entry) => `<li class="v5-audit-row v5-rank-${entry.accent ? '1' : 'n'}" data-rank="${escapeHtml(entry.rank)}" data-gold-accent="${entry.accent === true}">
+      <span class="v5-rank"><span class="v5-rank-number">${escapeHtml(entry.rank)}</span></span>
       <span class="v5-player"><strong class="v5-name">${escapeHtml(entry.name)}</strong></span>
       <span class="v5-score">${escapeHtml(entry.score)}</span>
     </li>`).join('');
@@ -179,10 +179,13 @@ function tableMarkup(title: string, subtitle: string, entries: Entry[], option: 
   }).join('');
   const pageContainer = `<div class="v5-audit-pages" data-page-count="${pageEntriesList.length}" data-source-count="${entries.length}" data-rotation-ms="5000">${pages}</div>`;
   const subtitleMarkup = subtitle ? `<span class="v5-audit-sub">${escapeHtml(subtitle)}</span>` : '';
+  const columnsMarkup = `<div class="v5-audit-columns"><span>HẠNG</span><span>NGƯỜI CHƠI</span><span>${escapeHtml(unitLabel)}</span></div>`;
+  const bodyMarkup = option === 'b' && title.startsWith('TOP 3')
+    ? `<div class="v5-audit-stage-content"><div class="v5-audit-stage-content-group">${columnsMarkup}${entries.length ? pageContainer : '<p class="v5-audit-empty">CHƯA CÓ NGƯỜI ĐẠT ĐIỂM</p>'}</div></div>`
+    : `${columnsMarkup}${entries.length ? pageContainer : '<p class="v5-audit-empty">CHƯA CÓ NGƯỜI ĐẠT ĐIỂM</p>'}`;
   return `<section class="v5-audit-table" data-v5-table="${option}" data-unit-label="${escapeHtml(unitLabel)}">
     <header class="v5-audit-head"><h2 class="v5-audit-title">${escapeHtml(title)}</h2>${subtitleMarkup}</header>
-    <div class="v5-audit-columns"><span>HẠNG</span><span>NGƯỜI CHƠI</span><span>${escapeHtml(unitLabel)}</span></div>
-    ${entries.length ? pageContainer : '<p class="v5-audit-empty">CHƯA CÓ NGƯỜI ĐẠT ĐIỂM</p>'}
+    ${bodyMarkup}
   </section>`;
 }
 
@@ -197,7 +200,7 @@ function optionB(variant: Variant, table: 'overall' | 'stage'): string {
   const overall = table === 'overall';
   const content = overall
     ? tableMarkup('TOP 10 TOÀN TRẬN', 'SAU CÂU 15', overallEntries(variant), 'b')
-    : tableMarkup('TOP 3 CHẶNG 3', '', stageEntries(variant), 'b');
+    : tableMarkup('TOP 3 CHẶNG 3', 'CÂU 11–15', stageEntries(variant), 'b');
   return `<div class="v5-audit-root v5-audit-option-b ${overall ? 'v5-audit-overall-page' : 'v5-audit-stage-page'}">${content}</div>`;
 }
 
@@ -215,6 +218,11 @@ async function loadPrototype(page: Page, markup: string) {
     }
     element.innerHTML = content;
     if (content.includes('v5-audit-option-a')) element.querySelector<HTMLElement>('.v5-audit-root')?.style.setProperty('overflow', 'visible', 'important');
+    if (content.includes('v5-audit-stage-page')) {
+      const bubble = document.querySelector<HTMLElement>('.v3-top10-guide .v3-bubble p');
+      if (!bubble) throw new Error('Thiếu bóng thoại MC trong mẫu Top 3 chặng.');
+      bubble.textContent = 'Vinh danh Top 3 chặng này!';
+    }
     for (const pageSet of element.querySelectorAll<HTMLElement>('.v5-audit-pages[data-page-count]')) {
       const pages = [...pageSet.querySelectorAll<HTMLElement>(':scope > [data-v5-page]')];
       pageSet.dataset.activePage = '0';
@@ -228,6 +236,9 @@ async function loadPrototype(page: Page, markup: string) {
       }
     }
   }, markup);
+  if (markup.includes('v5-audit-stage-page')) {
+    await expect(page.locator('.v3-top10-guide .v3-bubble p')).toHaveText('Vinh danh Top 3 chặng này!');
+  }
   await page.waitForTimeout(150);
   const after = await frame.boundingBox();
   expect(after).not.toBeNull();
@@ -275,6 +286,7 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
       const rankNumberBox = rankNumber.getBoundingClientRect();
       return {
         rank: rank.textContent,
+        rankDecorationCount: rank.querySelectorAll('.v5-medal').length,
         unitLabel: row.closest<HTMLElement>('.v5-audit-table')?.dataset.unitLabel ?? 'ĐIỂM',
         name: name.textContent,
         nameGraphemes: [...new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name.textContent ?? '')].length,
@@ -331,7 +343,10 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
       const headerSubtitle = subtitle?.getBoundingClientRect();
       const headerBox = header.getBoundingClientRect();
       const tableBox = table.getBoundingClientRect();
+      const stageContent = table.querySelector<HTMLElement>('.v5-audit-stage-content')?.getBoundingClientRect();
       const frameRect = frameElement.getBoundingClientRect();
+      const tableLastContent = table.querySelector<HTMLElement>('.v5-audit-empty') ?? tableRows.at(-1);
+      const tableLastBox = tableLastContent?.getBoundingClientRect();
       return {
         title: title.textContent,
         unitLabel,
@@ -340,6 +355,8 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
         unitColumnCount: unit.length,
         titleFontPx: Number.parseFloat(getComputedStyle(title).fontSize),
         supportFontPx: subtitle ? Number.parseFloat(getComputedStyle(subtitle).fontSize) : null,
+        titleTextAlign: getComputedStyle(title).textAlign,
+        subtitleTextAlign: subtitle ? getComputedStyle(subtitle).textAlign : null,
         emptyFontPx: table.querySelector<HTMLElement>('.v5-audit-empty') ? Number.parseFloat(getComputedStyle(table.querySelector<HTMLElement>('.v5-audit-empty')!).fontSize) : null,
         fontSizes: [...new Set([...table.querySelectorAll<HTMLElement>('.v5-audit-title, .v5-audit-sub, .v5-audit-columns > *, .v5-audit-empty, .v5-audit-row, .v5-audit-row *')].map((element) => getComputedStyle(element).fontSize))],
         rowGapPx: gaps(tableRows).map((gap) => Math.round(gap * 100) / 100),
@@ -358,6 +375,8 @@ async function measureSample(page: Page, frameBox: { x: number; y: number; width
         nameLeftEdgesPx: tableRows.map((row) => Math.round(row.querySelector<HTMLElement>('.v5-name')!.getBoundingClientRect().left * 100) / 100),
         titleTopOffsetPx: Math.round((header.getBoundingClientRect().top - frameRect.top) * 100) / 100,
         titleColumnGapPx: columnsRow ? Math.round((columnsRow.getBoundingClientRect().top - header.getBoundingClientRect().bottom) * 100) / 100 : null,
+        columnHeaderToFirstRowGapPx: firstRow && columnsRow ? Math.round((firstRow.getBoundingClientRect().top - columnsRow.getBoundingClientRect().bottom) * 100) / 100 : null,
+        verticalBlankBalanceDeltaPx: stageContent && columnsRow && tableLastBox ? Math.round(Math.abs((columnsRow.getBoundingClientRect().top - stageContent.top) - (stageContent.bottom - tableLastBox.bottom)) * 100) / 100 : null,
         headerInsetLeftPx: Math.round((headerTitle.left - headerBox.left) * 100) / 100,
         headerInsetRightPx: headerSubtitle ? Math.round((headerBox.right - headerSubtitle.right) * 100) / 100 : null,
         headerPaddingLeftPx: Number.parseFloat(getComputedStyle(header).paddingLeft),
@@ -524,6 +543,7 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
         return heights.length !== 3 || Math.max(...heights) - Math.min(...heights) <= 1;
       }),
       !sample.option.startsWith('A') && metrics.bottomSafeGapPx !== null && (sample.screen.includes('Top 10') ? metrics.bottomSafeGapPx <= 24 : metrics.bottomSafeGapPx >= 24),
+      metrics.rows.every((row) => row.rankDecorationCount === 0) && (sample.option.startsWith('A') || !sample.screen.includes('Top 3 chặng 3') || metrics.tables.every((table) => table.rowCount !== 3 || (table.columnHeaderToFirstRowGapPx === 8 && table.verticalBlankBalanceDeltaPx !== null && table.verticalBlankBalanceDeltaPx <= 8))),
     ];
     return {
       ...sample,
@@ -535,7 +555,7 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
   });
 
   for (const result of check) {
-    const expected = Array(16).fill(true);
+    const expected = Array(17).fill(true);
     if (result.option.startsWith('A')) { expected[3] = false; expected[15] = false; }
     expect(result.checks, `${result.option}/${result.case}/${result.screen}: ${JSON.stringify(result.metrics)}`).toEqual(expected);
   }
@@ -544,15 +564,20 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
   for (const sample of reviewSamples) {
     const table = sample.metrics.tables[0]!;
     expect(table.headerAlignmentDeltaPx, `${sample.screen}/${sample.case}: cột header phải trùng hàng`).toBeLessThanOrEqual(1);
-    expect(table.headerPaddingLeftPx, `${sample.screen}/${sample.case}: padding trái header`).toBeGreaterThanOrEqual(16);
-    expect(table.headerPaddingRightPx, `${sample.screen}/${sample.case}: padding phải header`).toBeGreaterThanOrEqual(16);
+    expect(table.headerPaddingLeftPx, `${sample.screen}/${sample.case}: padding trái header`).toBeGreaterThanOrEqual(24);
+    expect(table.headerPaddingRightPx, `${sample.screen}/${sample.case}: padding phải header`).toBeGreaterThanOrEqual(24);
+    expect(table.titleTextAlign, `${sample.screen}/${sample.case}: title căn trái`).toBe('left');
+    expect(table.subtitleTextAlign, `${sample.screen}/${sample.case}: dòng phụ căn phải`).toBe('right');
     const rankCenter = table.columnHeaderEdgesPx[0]!.left + (table.columnHeaderEdgesPx[0]!.right - table.columnHeaderEdgesPx[0]!.left) / 2;
     expect(table.rankNumberCentersPx.every((center) => Math.abs(center - rankCenter) <= 1), `${sample.screen}/${sample.case}: tâm số hạng`).toBe(true);
     if (sample.screen === 'Top 10 toàn trận') {
       expect(sample.metrics.bottomSafeGapPx, 'Top 10: khoảng trống dưới tối đa 24 px').toBeLessThanOrEqual(24);
     } else {
       expect(sample.metrics.rows.every((row) => row.fontPx >= 40 && row.fontPx <= 44 && row.rowHeightFontRatio <= 2.5), 'Top 3 chặng: cỡ chữ 40–44 px, hàng/chữ ≤2,5×').toBe(true);
+      expect(table.columnHeaderToFirstRowGapPx, `${sample.screen}/${sample.case}: header cột cách hàng 1 đúng 8px`).toBe(8);
+      expect(table.verticalBlankBalanceDeltaPx, `${sample.screen}/${sample.case}: khoảng trống trên/dưới khối Top 3 lệch tối đa 8px`).toBeLessThanOrEqual(8);
     }
+    expect(sample.metrics.rows.every((row) => row.rankDecorationCount === 0), `${sample.screen}/${sample.case}: không còn chấm cạnh số hạng`).toBe(true);
   }
   for (const screen of ['Top 10 toàn trận', 'Top 3 chặng 3']) {
     const variants = reviewSamples.filter((sample) => sample.screen === screen);
@@ -566,15 +591,15 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
 
   const referenceTop10 = check.find((sample) => sample.option.startsWith('B') && sample.case === 'normal' && sample.screen === 'Top 10 toàn trận')!.metrics.tables[0]!;
   const referenceStage = check.find((sample) => sample.option.startsWith('B') && sample.case === 'normal' && sample.screen === 'Top 3 chặng 3')!.metrics.tables[0]!;
-  const top10StageHeaderDeltaPx = Math.abs(referenceTop10.titleTopOffsetPx - referenceStage.titleTopOffsetPx);
-  expect(top10StageHeaderDeltaPx, 'Tiêu đề Top 3 chặng phải ngang vị trí tiêu đề Top 10').toBeLessThanOrEqual(1);
+  const top10StageTitleInsetDeltaPx = Math.abs(referenceTop10.titleInsetLeftPx - referenceStage.titleInsetLeftPx);
+  expect(top10StageTitleInsetDeltaPx, 'Tiêu đề Top 3 phải thẳng trái với tiêu đề Top 10').toBeLessThanOrEqual(1);
   const ruleNames = [
     'Tiêu đề gọn, tối đa 4 từ và 1 dòng phụ', 'Đơn vị chỉ ở tiêu đề cột, ô số không lặp đơn vị', 'Cột thẳng; tên trái, hạng giữa, điểm phải; số tabular',
     'Khung có padding ≥24 px, hàng cách ≥8 px, đáy an toàn ≥12 px', 'Cỡ đọc được, title ≥32 px, row/font ≥1,6, tối đa 3 cỡ',
     'Chỉ một hàng nhấn màu trong mỗi bảng', 'Tên dài đủ 24 grapheme, không cắt tên hoặc số', 'Phương án B chỉ hiện một bảng mỗi ảnh, bảng tràn luân phiên',
     'Tương phản chữ/nền ≥4.5:1', 'Khung chính giữ nguyên x/y/w/h', 'Mỗi hàng cao ≥1,6 lần cỡ chữ',
     'Mép trái tên trong một cột lệch không quá 1 px', 'Đồng hạng có đủ tên, không có “+N người”; trang không quá 10 hàng',
-    'Khoảng tiêu đề–đầu cột ≥16 px', `Tiêu đề Top 3 cùng vị trí Top 10 (lệch ${top10StageHeaderDeltaPx.toFixed(2)} px), ba hàng chặng chia đều`, 'Top 10 đáy ≤24 px; Top 3 chặng có khoảng thở cân đối',
+    'Khoảng tiêu đề–đầu cột ≥16 px', 'Tiêu đề Top 3 căn trái thẳng Top 10; dòng phụ căn phải; padding 24px', 'Top 10 đáy ≤24 px; Top 3 header sát hàng 1, khối căn giữa lệch ≤8px', 'Không có chấm màu dính số hạng',
   ];
   const minTitleWords = Math.min(...check.flatMap((sample) => sample.metrics.tables.map((table) => table.titleWords)));
   const minNameScoreGap = Math.min(...check.flatMap((sample) => sample.metrics.rows.map((row) => row.nameScoreGapPx)));
@@ -589,7 +614,7 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
     `khe tên–điểm nhỏ nhất ${minNameScoreGap.toFixed(2)} px; mép tên lệch tối đa ${maxNameEdgeDelta.toFixed(2)} px; hàng 22–28 px`,
     `padding T/P/D/T ${check[0]!.metrics.framePaddingPx.top}/${check[0]!.metrics.framePaddingPx.right}/${check[0]!.metrics.framePaddingPx.bottom}/${check[0]!.metrics.framePaddingPx.left}px; gap hàng min ${Math.min(...check.flatMap((sample) => sample.metrics.tables.flatMap((table) => table.rowGapPx.length ? table.rowGapPx : [8])))} px; đáy Top 10 min ${minFrameSafeGap} px`,
     `Top 10: 22 px/36 px = ${(36 / 22).toFixed(2)}×; Top 3: ${referenceStage.rowHeightsPx[0]} px/hàng với chữ 42 px (≤2,5×); ≤${Math.max(...check.flatMap((sample) => sample.metrics.tables.map((table) => table.fontSizes.length)))} cỡ/bảng`,
-    `mỗi trang hiển thị 1 hàng vàng; hạng 2/3 có icon nhỏ trên cùng nền trung tính`,
+    `mỗi trang hiển thị 1 hàng nhấn; số hạng không có chấm/huy hiệu dính cạnh`,
     `tên dài “${longName}” đủ 24 grapheme, không cắt; hạng 2/3 giữ nền trung tính`,
     `B mỗi ảnh một bảng; Top 10 tie có ${tieOverall.sourceRowCount} tên trên ${tieOverall.pageCount} trang (${tieOverall.pageRowCounts.join('/')} hàng)`,
     `tương phản chữ/nền thấp nhất ${Math.min(...check.map((sample) => sample.minContrastRatio)).toFixed(2)}:1`,
@@ -598,8 +623,9 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
     `mép trái tên lệch tối đa ${maxNameEdgeDelta.toFixed(2)} px (ngưỡng 1 px)`,
     `Top 10 tie hiện đủ ${tieOverall.sourceRowCount} tên, tối đa ${Math.max(...tieOverall.pageRowCounts)} hàng/trang, không “+N”; Top 3 hạng 1, 1, 3`,
     `khoảng title–header nhỏ nhất ${Math.min(...check.flatMap((sample) => sample.metrics.tables.map((table) => table.titleColumnGapPx ?? 0)))} px`,
-    `title Top 3 lệch Top 10 ${top10StageHeaderDeltaPx.toFixed(2)} px; hàng Top 3 ${referenceStage.rowHeightsPx.join('/')} px`,
-    `Top 10 đáy nhỏ nhất ${minFrameSafeGap} px; Top 3 chặng căn giữa khối hàng; A chẩn đoán tràn ${minDiagnosticBottomGap} px`,
+    `title Top 3 lệch mép trái Top 10 ${top10StageTitleInsetDeltaPx.toFixed(2)} px; header padding ${referenceStage.headerPaddingLeftPx}/${referenceStage.headerPaddingRightPx} px; phụ Top 10/Top 3 căn phải`,
+    `Top 10 đáy nhỏ nhất ${minFrameSafeGap} px; Top 3 cách cột→hàng ${referenceStage.columnHeaderToFirstRowGapPx} px, chênh trống trên/dưới ${referenceStage.verticalBlankBalanceDeltaPx} px; A chẩn đoán tràn ${minDiagnosticBottomGap} px`,
+    'Số hạng luôn thẳng tâm cột; không render huy hiệu/chấm cạnh số',
   ];
   const report = [
     '# C-0307 · Tự kiểm ảnh mẫu BXH V5',
