@@ -49,8 +49,10 @@ describe('admin priority-topic settings', () => {
 
     await first.quiz.close();
     first.store.close();
+    opened.splice(opened.indexOf(first), 1);
     const second = await openHarness(path);
     const persisted = await second.quiz.app.inject({ method: 'GET', url: '/api/admin/priority-topic-settings', headers });
+    expect(persisted.statusCode).toBe(200);
     expect(persisted.json()).toMatchObject({ priorityTopicNames: ['FFA 2026', 'Đấu Trường Bão Tố'], priorityShare: 0.65 });
   });
 
@@ -61,6 +63,6 @@ describe('admin priority-topic settings', () => {
       method: 'PUT', url: '/api/admin/priority-topic-settings', headers,
       payload: { priorityTopicNames: ['FFA 2026'], priorityShare: 1.01 },
     });
-    expect(invalid.statusCode).toBe(400);
+    expect(invalid.statusCode).toBe(422);
   });
 });

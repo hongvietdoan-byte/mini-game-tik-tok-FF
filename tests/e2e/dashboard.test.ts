@@ -65,6 +65,22 @@ async function stopDashboardSession(page: Page) {
   await dialog.getByRole('button', { name: 'Xác nhận' }).click();
 }
 
+test('C-0335 cấu hình chủ đề ưu tiên trong Dashboard MOCK', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Ưu tiên câu hỏi' }).click();
+  const settings = page.getByTestId('priority-topic-settings');
+  await expect(settings.getByRole('heading', { name: 'Chủ đề ưu tiên' })).toBeVisible();
+
+  await settings.getByRole('textbox', { name: 'Thêm tên chủ đề' }).fill('Giải thử nghiệm');
+  await settings.getByRole('button', { name: 'Thêm' }).click();
+  const share = settings.getByRole('slider', { name: 'Tỉ lệ ưu tiên' });
+  await share.press('End');
+  await expect(share).toHaveValue('1');
+  await settings.getByRole('button', { name: 'Lưu cấu hình' }).click();
+  await expect(settings.getByRole('status')).toContainText('Đã lưu');
+  await expect(settings.getByText('100%')).toBeVisible();
+});
+
 async function createReviewPlaceholder(page: Page, kind: 'logo' | 'background'): Promise<Buffer> {
   const base64 = await page.evaluate((imageKind) => {
     const canvas = document.createElement('canvas');
