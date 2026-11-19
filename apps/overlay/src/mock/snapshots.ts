@@ -239,7 +239,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     ? leaderboard.map((entry, index) => ({ ...entry, score: emptyZeroScoreMock || index >= 6 ? 0 : entry.score }))
     : isScoreWidthMock ? scoreWidthLeaderboard : leaderboard;
   const question = ['prepare', 'reading', 'reading-longest', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name);
-  const longestPrompt = 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?';
+  const longestPrompt = 'Trong Free Fire, tên tiếng Anh của thể thức sinh tồn nơi nhiều người chơi chiến đấu trên đảo, tìm trang bị, theo dõi vòng bo đang thu hẹp và phối hợp với đồng đội để sống sót đến cuối trận là gì: Battle Royale?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
   const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
   const clampPrompt = firstGraphemes(

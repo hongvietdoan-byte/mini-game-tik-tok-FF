@@ -482,6 +482,7 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
     expect(top10Box!.x).toBeGreaterThanOrEqual(0);
     expect(boardBox!.x - (top10Box!.x + top10Box!.width)).toBeGreaterThanOrEqual(12);
     expect(promptBox!.y + promptBox!.height + 12).toBeLessThanOrEqual(boardBox!.y + 2 + 292);
+    expect(Number.parseFloat(await stage.locator('.v3-question').evaluate((element) => getComputedStyle(element).fontSize)), `${entry.phase}: question text never renders below 24px`).toBeGreaterThanOrEqual(24);
 
     const timer = stage.getByTestId('timer');
     if (entry.name === 'question' || entry.name === 'reveal') {
@@ -492,7 +493,7 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
       const node = element as HTMLElement;
       const truncated = node.dataset.promptTruncated === 'true';
       const copy = node.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]');
-      return node.scrollHeight <= node.clientHeight || (truncated && copy?.textContent?.endsWith('…') === true && Number.parseFloat(getComputedStyle(node).fontSize) >= 26);
+      return node.scrollHeight <= node.clientHeight || (truncated && copy?.textContent?.endsWith('…') === true && Number.parseFloat(getComputedStyle(node).fontSize) >= 24);
     }), `${entry.phase}: prompt stays inside the fixed card`).toBe(true);
 
     const cards = stage.locator('.v3-option');

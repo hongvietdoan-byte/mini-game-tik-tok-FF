@@ -170,7 +170,9 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
       element.style.overflow = '';
       element.style.whiteSpace = '';
       const baseSize = Number.parseFloat(window.getComputedStyle(element).fontSize) || 30;
-      const minimumSize = 26;
+      // Keep question text readable on phones; unfit prompts are shortened instead of shrinking below 24px.
+      const minimumSize = 24;
+      const bottomInset = 16;
       const style = window.getComputedStyle(element);
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -187,7 +189,7 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
       };
       const fits = (fontSize: number) => {
         const layout = layoutAt(fontSize, 4);
-        return layout.lineCount <= 3 && layout.lineCount * lineHeightAt(fontSize) <= contentHeight + 1;
+        return layout.lineCount <= 4 && layout.lineCount * lineHeightAt(fontSize) <= contentHeight - bottomInset + 1;
       };
 
       let best: number | null = null;
@@ -207,7 +209,7 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
       const truncated = best === null;
       const fontSize = best ?? minimumSize;
       element.style.fontSize = `${fontSize}px`;
-      const maxVisibleLines = Math.max(1, Math.min(3, Math.floor(contentHeight / lineHeightAt(fontSize))));
+      const maxVisibleLines = Math.max(1, Math.min(4, Math.floor((contentHeight - bottomInset) / lineHeightAt(fontSize))));
       const visibleText = truncated ? layoutAt(fontSize, maxVisibleLines).text : '';
       if (truncated) element.style.whiteSpace = 'pre-line';
       setPromptFit((current) => current.fontSize === fontSize && current.truncated === truncated && current.text === visibleText
