@@ -105,10 +105,12 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   prepare: { scene: 'QUESTION', state: 'PREPARE' },
   reading: { scene: 'QUESTION', state: 'READING' },
   'reading-longest': { scene: 'QUESTION', state: 'READING' },
+  'reading-demo-006': { scene: 'QUESTION', state: 'READING' },
   'reading-grid-balance': { scene: 'QUESTION', state: 'READING' },
   question: { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-long-name': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-longest': { scene: 'QUESTION', state: 'ACCEPTING' },
+  'question-demo-006': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-long-answer': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-grid-balance': { scene: 'QUESTION', state: 'ACCEPTING' },
   'question-clamp-text': { scene: 'QUESTION', state: 'ACCEPTING' },
@@ -238,8 +240,9 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
   const mockLeaderboard = isZeroScoreMock
     ? leaderboard.map((entry, index) => ({ ...entry, score: emptyZeroScoreMock || index >= 6 ? 0 : entry.score }))
     : isScoreWidthMock ? scoreWidthLeaderboard : leaderboard;
-  const question = ['prepare', 'reading', 'reading-longest', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name);
+  const question = ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name);
   const longestPrompt = 'Trong Free Fire, tên tiếng Anh của thể thức sinh tồn nơi nhiều người chơi chiến đấu trên đảo, tìm trang bị, theo dõi vòng bo đang thu hẹp và phối hợp với đồng đội để sống sót đến cuối trận là gì: Battle Royale?';
+  const demo006Prompt = 'Trong Clash Squad, người chơi dùng khu vực mua sắm trong trận để chọn vũ khí và trang bị cho vòng đấu. Khu vực đó thường được gọi là gì?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
   const longestAnswer = 'Một nhóm vật phẩm được sắp xếp trong hành trang';
   const clampPrompt = firstGraphemes(
@@ -292,7 +295,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     timer: {
       durationMs: name.startsWith('lobby') ? 30_000
         : name === 'prepare' ? 8_000
-          : name === 'reading' || name === 'reading-longest' ? 20_000
+          : name === 'reading' || name === 'reading-longest' || name === 'reading-demo-006' ? 20_000
             : isReveal ? 9_000
               : name.startsWith('top10') ? 6_000
                 : name === 'intermission' ? 30_000
@@ -300,7 +303,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
                     : 20_000,
       remainingMs: name.startsWith('lobby') ? 30_000
         : name === 'prepare' ? 8_000
-          : name === 'reading' || name === 'reading-longest' ? 19_000
+          : name === 'reading' || name === 'reading-longest' || name === 'reading-demo-006' ? 19_000
             : isReveal ? 9_000
               : name.startsWith('top10') ? 6_000
                 : name === 'intermission' ? 30_000
@@ -315,7 +318,9 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     question: question ? {
       questionInstanceId: 'demo-question-5',
       index: 4,
-      prompt: name === 'question-live-long' || name === 'reveal-live-long'
+      prompt: name === 'question-demo-006' || name === 'reading-demo-006'
+        ? demo006Prompt
+        : name === 'question-live-long' || name === 'reveal-live-long'
         ? 'Trong Free Fire, từ nào thường xuất hiện trên kết quả khi người chơi hoặc đội giành chiến thắng Battle Royale?'
         : name === 'question-clamp-text' || name === 'reveal-clamp-text'
         ? clampPrompt
@@ -328,7 +333,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
       optionsVisible,
       isDemo: true,
     } : null,
-    answerCount: name === 'prepare' || name === 'reading' ? 0 : 42,
+    answerCount: name === 'prepare' || name === 'reading' || name === 'reading-demo-006' ? 0 : 42,
     participantCount: short ? 3 : name.startsWith('question-audience-') ? audienceSeatCount : 57,
     fastestCorrectAnswer: isFastestMock ? {
       questionInstanceId: 'demo-question-5',
@@ -363,12 +368,12 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
         : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
-      state: mcStateOverride ?? (name === 'prepare' || name === 'reading' || name === 'reading-longest' ? 'ask' : isReveal ? 'react' : 'idle'),
+      state: mcStateOverride ?? (name === 'prepare' || name === 'reading' || name === 'reading-longest' || name === 'reading-demo-006' ? 'ask' : isReveal ? 'react' : 'idle'),
       bubble: isReveal
         ? 'Chính xác! Đáp án B. Cùng xem bảng xếp hạng nhé!'
         : name.startsWith('lobby')
           ? 'Comment Free Fire để giành ghế ngồi nhé!'
-        : name === 'reading' || name === 'reading-longest'
+        : name === 'reading' || name === 'reading-longest' || name === 'reading-demo-006'
           ? 'Cùng nghe câu hỏi và bốn đáp án nhé!'
         : name === 'prepare'
           ? 'Sẵn sàng nhé! Câu hỏi Free Fire sắp bắt đầu.'
@@ -376,7 +381,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     },
     audience: name.startsWith('lobby')
       ? mockLobbyAudience(lobbySeatCount)
-      : ['prepare', 'reading', 'reading-longest', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name) ? mockAudience(isReveal, audienceSeatCount) : null,
+      : ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused'].includes(name) ? mockAudience(isReveal, audienceSeatCount) : null,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   } as PublicSnapshot;
 }

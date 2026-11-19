@@ -2043,7 +2043,7 @@
   box-shadow: inset 0 0 0 1px var(--theme-sky-soft, rgba(106, 143, 255, .3)), 0 0 12px var(--theme-violet-soft, rgba(77, 76, 255, .3));
   line-height: 1.12;
 }
-.v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-question.is-long { font-size: 24px; }
+.v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-question.is-long { align-items: start; padding: 4px 16px 0; font-size: 24px; line-height: 1; }
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-question.is-xlong { font-size: 24px; }
 
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-options,
