@@ -159,12 +159,47 @@ for (const mock of ['question-longest', 'reading-longest']) {
     expect(Number.parseFloat(metrics.fontSize), `${mock}: question text never shrinks below 24px`).toBeGreaterThanOrEqual(24);
     if (metrics.truncated === 'true') {
       expect(metrics.visualLines.at(-1)?.trim(), `${mock}: truncated copy ends with an ellipsis`).toMatch(/…$/);
+      expect(metrics.visualLines.every((line) => line.trim() !== '…'), `${mock}: ellipsis must stay attached to real text`).toBe(true);
       await expect(copy).toContainText(/…$/);
     } else {
       expect(metrics.visualLines.at(-1)?.trim(), `${mock}: full prompt ends with the live reference`).toMatch(/Battle Royale\?$/);
       await expect(copy).toContainText(/Battle Royale\?/i);
     }
     expect(metrics.lastLineGap, `${mock}: last text line needs a 16px bottom inset`).toBeGreaterThanOrEqual(16);
+  });
+}
+
+const demo006 = DEMO_QUESTIONS.find(({ id }) => id === 'demo-006')!;
+for (const mock of ['reading-demo-006', 'question-demo-006']) {
+  test(`C-0328 — demo-006 fits in 24px in ${mock.startsWith('reading') ? 'READING' : 'ACCEPTING'}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1080, height: 1920 });
+    await page.goto(`/?mock=${mock}&hud=tall&role=program`, { waitUntil: 'domcontentloaded' });
+    const prompt = page.getByTestId('question-prompt');
+    const copy = page.getByTestId('question-prompt-copy');
+    await expect(prompt).toBeVisible();
+    await expect(copy).toBeVisible();
+    await page.waitForFunction(() => document.querySelector<HTMLElement>('[data-testid="question-prompt"]')?.style.fontSize !== '');
+    const metrics = await page.evaluate(() => {
+      const promptElement = document.querySelector<HTMLElement>('[data-testid="question-prompt"]')!;
+      const copyElement = document.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]')!;
+      const range = document.createRange();
+      range.selectNodeContents(copyElement);
+      const lines = Array.from(range.getClientRects()).filter(({ width }) => width > 1);
+      const promptRect = promptElement.getBoundingClientRect();
+      const style = getComputedStyle(promptElement);
+      return {
+        fontSize: Number.parseFloat(style.fontSize),
+        lineCount: lines.length,
+        lastLineGap: promptRect.bottom - Math.max(...lines.map(({ bottom }) => bottom)),
+        truncated: promptElement.dataset.promptTruncated,
+      };
+    });
+    expect([...demo006.prompt]).toHaveLength(136);
+    await expect(copy).toHaveText(demo006.prompt);
+    expect(metrics.fontSize, `${mock}: preserve the 24px minimum`).toBeGreaterThanOrEqual(24);
+    expect(metrics.lineCount, `${mock}: use at most four lines`).toBeLessThanOrEqual(4);
+    expect(metrics.truncated, `${mock}: show demo-006 in full`).toBe('false');
+    expect(metrics.lastLineGap, `${mock}: keep at least 16px below the last line`).toBeGreaterThanOrEqual(16);
   });
 }
 
