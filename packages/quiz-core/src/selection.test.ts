@@ -91,6 +91,101 @@ describe('selectRound', () => {
     }
   });
 
+  it.each(['RANDOM', 'DIFFICULTY'] as const)(
+    'đạt quota chủ đề ưu tiên cộng dồn trong từng mức độ với mode %s và seed tất định',
+    (selectionMode) => {
+      const pool = [
+        ...Array.from({ length: 30 }, (_, index) => question(index + 1, {
+          difficulty: 'EASY', subtopicId: index % 2 === 0 ? 'event' : 'other',
+        })),
+        ...Array.from({ length: 30 }, (_, index) => question(index + 31, {
+          difficulty: 'MEDIUM', subtopicId: index % 2 === 0 ? 'event' : 'other',
+        })),
+        ...Array.from({ length: 30 }, (_, index) => question(index + 61, {
+          difficulty: 'HARD', subtopicId: index % 2 === 0 ? 'event' : 'other',
+        })),
+      ];
+      const input = request(pool, {
+        count: 15,
+        selectionMode,
+        priorityTopicNames: ['  FFA 2026  '],
+        priorityShare: 0.6,
+        subtopicNamesById: { event: '\tfFa   2026 ', other: 'Tổng quan' },
+      });
+      const first = selectRound(input);
+      const repeated = selectRound(input);
+
+      expect(first).toEqual(repeated);
+      expect(first.ok).toBe(true);
+      if (first.ok) {
+        expect(first.snapshots.filter((snapshot) => snapshot.subtopicId === 'event')).toHaveLength(9);
+        expect(first.snapshots).toHaveLength(15);
+      }
+    },
+  );
+
+  it('bù bằng chủ đề thường khi số câu ưu tiên không đủ quota, không lặp câu', () => {
+    const pool = [
+      ...Array.from({ length: 2 }, (_, index) => question(index + 1, { subtopicId: 'event' })),
+      ...Array.from({ length: 18 }, (_, index) => question(index + 3, { subtopicId: 'other' })),
+    ];
+    const result = selectRound(request(pool, {
+      count: 10,
+      priorityTopicNames: ['FFA 2026'],
+      priorityShare: 0.6,
+      subtopicNamesById: { event: 'FFA 2026', other: 'Tổng quan' },
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.snapshots.filter((snapshot) => snapshot.subtopicId === 'event')).toHaveLength(2);
+      expect(new Set(result.snapshots.map((snapshot) => snapshot.questionId)).size).toBe(10);
+    }
+  });
+
+  it('bù bằng câu ưu tiên khi chủ đề khác thiếu và bỏ qua tên cấu hình chưa có', () => {
+    const priorityPool = Array.from({ length: 12 }, (_, index) => question(index + 1, { subtopicId: 'event' }));
+    const filled = selectRound(request(priorityPool, {
+      count: 10,
+      priorityTopicNames: ['FFA 2026'],
+      priorityShare: 0.6,
+      subtopicNamesById: { event: 'FFA 2026' },
+    }));
+    const mixedPool = [
+      ...Array.from({ length: 12 }, (_, index) => question(index + 1, { subtopicId: 'event' })),
+      ...Array.from({ length: 12 }, (_, index) => question(index + 13, { subtopicId: 'other' })),
+    ];
+    const baseline = selectRound(request(mixedPool, { count: 10 }));
+    const missingName = selectRound(request(mixedPool, {
+      count: 10,
+      priorityTopicNames: ['Đấu Trường Bão Tố'],
+      priorityShare: 0.6,
+      subtopicNamesById: { event: 'FFA 2026', other: 'Tổng quan' },
+    }));
+
+    expect(filled.ok).toBe(true);
+    if (filled.ok) expect(filled.snapshots.every((snapshot) => snapshot.subtopicId === 'event')).toBe(true);
+    expect(missingName).toEqual(baseline);
+  });
+
+  it('danh sách rỗng hoặc share bằng 0 giữ nguyên lựa chọn theo seed cũ', () => {
+    const pool = Array.from({ length: 20 }, (_, index) => question(index + 1, {
+      subtopicId: index % 2 === 0 ? 'event' : 'other',
+    }));
+    const baseline = selectRound(request(pool, { count: 10 }));
+    const emptyNames = selectRound(request(pool, {
+      count: 10, priorityTopicNames: [], priorityShare: 0.6,
+      subtopicNamesById: { event: 'FFA 2026', other: 'Tổng quan' },
+    }));
+    const zeroShare = selectRound(request(pool, {
+      count: 10, priorityTopicNames: ['FFA 2026'], priorityShare: 0,
+      subtopicNamesById: { event: 'FFA 2026', other: 'Tổng quan' },
+    }));
+
+    expect(emptyNames).toEqual(baseline);
+    expect(zeroShare).toEqual(baseline);
+  });
+
   it('chỉ chọn câu trong ngưỡng hiển thị 160/45 và loại câu vượt ngưỡng', () => {
     const pool = [
       question(1, {

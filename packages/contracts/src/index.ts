@@ -521,6 +521,21 @@ export const UpdateStreamDelaySettingsSchema = z.object({
 });
 export type UpdateStreamDelaySettings = z.infer<typeof UpdateStreamDelaySettingsSchema>;
 
+export const DEFAULT_PRIORITY_TOPIC_NAMES = ['FFA 2026', 'FFWS', 'Đấu Trường Bão Tố'] as const;
+export const DEFAULT_PRIORITY_SHARE = 0.6;
+export const PRIORITY_TOPIC_SETTINGS_KEY = 'round-selection-priority';
+export const PriorityTopicSettingsSchema = z.object({
+  priorityTopicNames: z.array(z.string().trim().min(1).max(80)).max(100),
+  priorityShare: z.number().finite().min(0).max(1),
+}).strict();
+export type PriorityTopicSettings = z.infer<typeof PriorityTopicSettingsSchema>;
+export const PriorityTopicOptionSchema = z.object({ id: z.string().min(1).max(64), name: z.string().min(1).max(80) }).strict();
+export type PriorityTopicOption = z.infer<typeof PriorityTopicOptionSchema>;
+export const PriorityTopicSettingsResponseSchema = PriorityTopicSettingsSchema.extend({
+  availableTopics: z.array(PriorityTopicOptionSchema),
+}).strict();
+export type PriorityTopicSettingsResponse = z.infer<typeof PriorityTopicSettingsResponseSchema>;
+
 export const SessionConfigSchema = z
   .object({
     mode: LiveSourceSchema.default('MOCK'),

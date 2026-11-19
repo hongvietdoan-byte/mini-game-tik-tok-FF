@@ -83,6 +83,23 @@ describe('Store: khởi tạo và câu hỏi', () => {
     expect(second.raw.pragma('foreign_keys', { simple: true })).toBe(1);
   });
 
+  it('lưu bền settings JSON và cung cấp tên subtopic cho bộ chọn câu', () => {
+    const path = tempDbPath();
+    const first = openStore(path);
+    first.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    first.setJsonSetting('round-selection-priority', {
+      priorityTopicNames: ['FFA 2026', 'FFWS'], priorityShare: 0.6,
+    }, 1234);
+    expect(first.listSubtopics(DEMO_PACK.id)).toContainEqual(expect.objectContaining({ id: 'ff-che-do' }));
+    first.close();
+
+    const reopened = openStore(path);
+    expect(reopened.getJsonSetting('round-selection-priority')).toEqual({
+      priorityTopicNames: ['FFA 2026', 'FFWS'], priorityShare: 0.6,
+    });
+    expect(reopened.listSubtopics(DEMO_PACK.id).length).toBeGreaterThan(0);
+  });
+
   it('ranking snapshots are idempotent on recovery, append revisions on changed results, and scrub safe names', () => {
     const store = openStore();
     addSession(store);

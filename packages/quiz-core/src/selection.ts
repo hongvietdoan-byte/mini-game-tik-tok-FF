@@ -159,6 +159,13 @@ export type SelectionRequest = {
   difficultyTargets?: DifficultyTargets;
   difficultyTolerance?: number;
   onDistribution?: (distribution: { counts: DifficultyCounts; targetCounts: DifficultyCounts; tolerance: number }) => void;
+  /** Tên subtopic được ưu tiên; được so khớp qua subtopicNamesById, không so khớp slug/id. */
+  priorityTopicNames?: readonly string[];
+  /** Tỉ lệ câu ưu tiên trong vòng; bỏ trống để giữ nguyên hành vi phiên cũ. */
+  priorityShare?: number;
+  /** Danh mục id → tên để selection không phải đoán tên từ slug. */
+  subtopicNamesById?: Readonly<Record<string, string>>;
+  onPriorityDistribution?: (distribution: { priority: number; total: number; share: number }) => void;
 };
 
 export type SelectionResult =
@@ -185,6 +192,18 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     .filter(isQuestionDisplayable)
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const unused = eligible.filter((q) => !req.usedInSession.has(q.id));
+  const priorityTopicNames = new Set(
+    (req.priorityTopicNames ?? []).map(normalizeTopicName).filter(Boolean),
+  );
+  const priorityShare = req.priorityShare;
+  const priorityMatches = (question: Question) => {
+    const name = req.subtopicNamesById?.[question.subtopicId];
+    return Boolean(name && priorityTopicNames.has(normalizeTopicName(name)));
+  };
+  // Không đổi lựa chọn/seed của phiên cũ, cấu hình rỗng hoặc khi mọi chủ đề cấu hình đều chưa có trong kho.
+  const applyPriority = priorityTopicNames.size > 0 && priorityShare !== undefined &&
+    Number.isFinite(priorityShare) && priorityShare > 0 && priorityShare <= 1 &&
+    unused.some(priorityMatches);
 
   let chosen: Question[];
   let reused: Question[] = [];
@@ -209,7 +228,9 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     if (unused.length >= req.count) {
       targetDifficultyCounts = scaleDifficultyTargets(req.count, targets);
       const plan = planDifficultyCounts(unused, req.count, targets, tolerance);
-      chosen = pickByDifficulty(unused, plan.counts, rnd);
+      chosen = applyPriority
+        ? pickByPriorityAndDifficulty(unused, plan.counts, priorityCounts(plan.counts, priorityShare!), priorityMatches, rnd)
+        : pickByDifficulty(unused, plan.counts, rnd);
     } else {
       // Nếu bật reuse do operator yêu cầu, giữ mọi câu chưa dùng rồi chỉ bù phần thiếu từ câu đã dùng.
       const reuseCount = req.count - unused.length;
@@ -241,6 +262,13 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     const difficultyCounts = emptyDifficultyCounts();
     for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
     req.onDistribution?.({ counts: difficultyCounts, targetCounts: targetDifficultyCounts, tolerance });
+    if (priorityTopicNames.size > 0 && priorityShare !== undefined && Number.isFinite(priorityShare) && priorityShare > 0 && priorityShare <= 1) {
+      req.onPriorityDistribution?.({
+        priority: chosen.filter(priorityMatches).length,
+        total: chosen.length,
+        share: priorityShare,
+      });
+    }
     const snapshots = orderSnapshotsByDifficulty(
       chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd)),
       req.roundId,
@@ -257,7 +285,15 @@ export function selectRound(req: SelectionRequest): SelectionResult {
   }
 
   if (unused.length >= req.count) {
-    chosen = shuffleInPlace([...unused], rnd).slice(0, req.count);
+    if (applyPriority) {
+      // RANDOM vẫn giữ nguyên phân bố độ khó mà seed vốn đã chọn; chỉ thay các câu trong
+      // từng mức để đáp ứng tỉ lệ ưu tiên, không làm thay đổi kế hoạch difficulty của vòng.
+      const randomBaseline = shuffleInPlace([...unused], rnd).slice(0, req.count);
+      const counts = countDifficulties(randomBaseline);
+      chosen = pickByPriorityAndDifficulty(unused, counts, priorityCounts(counts, priorityShare!), priorityMatches, rnd);
+    } else {
+      chosen = shuffleInPlace([...unused], rnd).slice(0, req.count);
+    }
   } else if (req.allowReuse && eligible.length >= req.count) {
     const compareReuse = (a: Question, b: Question) =>
       (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0) || (a.id < b.id ? -1 : 1);
@@ -277,6 +313,13 @@ export function selectRound(req: SelectionRequest): SelectionResult {
 
   const difficultyCounts = emptyDifficultyCounts();
   for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
+  if (priorityTopicNames.size > 0 && priorityShare !== undefined && Number.isFinite(priorityShare) && priorityShare > 0 && priorityShare <= 1) {
+    req.onPriorityDistribution?.({
+      priority: chosen.filter(priorityMatches).length,
+      total: chosen.length,
+      share: priorityShare,
+    });
+  }
   const snapshots = orderSnapshotsByDifficulty(
     chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd)),
     req.roundId,
@@ -310,6 +353,57 @@ function pickByDifficulty(
   for (const difficulty of DIFFICULTY_ORDER) {
     const category = pool.filter((question) => questionDifficulty(question) === difficulty);
     chosen.push(...shuffleInPlace(category, rnd).slice(0, counts[difficulty]));
+  }
+  return chosen;
+}
+
+function normalizeTopicName(value: string): string {
+  return value.normalize('NFKC').toLocaleLowerCase('vi-VN').replace(/\s+/gu, '');
+}
+
+/** Chia quota bằng hiệu số làm tròn cộng dồn để tổng quota khớp round(share × count). */
+function priorityCounts(counts: DifficultyCounts, share: number): DifficultyCounts {
+  const result = emptyDifficultyCounts();
+  let cumulative = 0;
+  let allocated = 0;
+  for (const difficulty of DIFFICULTY_ORDER) {
+    cumulative += counts[difficulty];
+    const cumulativeTarget = Math.round(cumulative * share);
+    result[difficulty] = cumulativeTarget - allocated;
+    allocated = cumulativeTarget;
+  }
+  return result;
+}
+
+function countDifficulties(questions: readonly Question[]): DifficultyCounts {
+  const counts = emptyDifficultyCounts();
+  for (const question of questions) counts[questionDifficulty(question)] += 1;
+  return counts;
+}
+
+function pickByPriorityAndDifficulty(
+  pool: readonly Question[],
+  counts: DifficultyCounts,
+  priorityTargets: DifficultyCounts,
+  isPriority: (question: Question) => boolean,
+  rnd: () => number,
+): Question[] {
+  const chosen: Question[] = [];
+  for (const difficulty of DIFFICULTY_ORDER) {
+    const category = pool.filter((question) => questionDifficulty(question) === difficulty);
+    const priority = shuffleInPlace(category.filter(isPriority), rnd);
+    const other = shuffleInPlace(category.filter((question) => !isPriority(question)), rnd);
+    const needed = counts[difficulty];
+    const preferredCount = Math.min(priorityTargets[difficulty], needed, priority.length);
+    const otherCount = Math.min(needed - preferredCount, other.length);
+    const additionalPriority = Math.min(needed - preferredCount - otherCount, priority.length - preferredCount);
+    const additionalOther = needed - preferredCount - otherCount - additionalPriority;
+    chosen.push(
+      ...priority.slice(0, preferredCount),
+      ...other.slice(0, otherCount),
+      ...priority.slice(preferredCount, preferredCount + additionalPriority),
+      ...other.slice(otherCount, otherCount + additionalOther),
+    );
   }
   return chosen;
 }

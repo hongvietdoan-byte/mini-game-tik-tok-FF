@@ -225,6 +225,26 @@ export class Store {
     });
   }
 
+  listSubtopics(packId?: string): Array<{ id: string; name: string }> {
+    const rows = packId
+      ? this.raw.prepare('SELECT id, name FROM subtopics WHERE pack_id = ? ORDER BY name COLLATE NOCASE, id').all(packId)
+      : this.raw.prepare('SELECT id, name FROM subtopics ORDER BY name COLLATE NOCASE, id').all();
+    return rows as Array<{ id: string; name: string }>;
+  }
+
+  /** Đọc một setting JSON bền; dữ liệu lỗi được trả về undefined để caller dùng default an toàn. */
+  getJsonSetting(key: string): unknown {
+    const row = this.raw.prepare('SELECT value_json AS valueJson FROM settings WHERE key = ?').get(key) as { valueJson: string } | undefined;
+    if (!row) return undefined;
+    try { return JSON.parse(row.valueJson) as unknown; } catch { return undefined; }
+  }
+
+  setJsonSetting(key: string, value: unknown, now: number): void {
+    this.raw.prepare(
+      'INSERT INTO settings (key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms',
+    ).run(key, JSON.stringify(value), Math.floor(now));
+  }
+
   listQuestions(packId: string): Question[] {
     const rows = this.raw.prepare('SELECT * FROM questions WHERE pack_id = ? ORDER BY id').all(packId) as any[];
     return rows.map((r) => ({

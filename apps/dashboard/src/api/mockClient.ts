@@ -1,5 +1,7 @@
 import {
   DEFAULT_HUD_CONFIG,
+  DEFAULT_PRIORITY_SHARE,
+  DEFAULT_PRIORITY_TOPIC_NAMES,
   HudConfigSchema,
   INITIAL_TEST_SAFE_ZONE,
   McChatRequestSchema,
@@ -24,6 +26,8 @@ import {
   type PublicSnapshot,
   type Question,
   type QuestionReview,
+  type PriorityTopicSettings,
+  type PriorityTopicSettingsResponse,
   type ResolvedTheme,
   type RejectReason,
   type SimulatorRequest,
@@ -111,6 +115,15 @@ function makeLeaderboard(): PublicLeaderboardEntry[] {
 class MockDashboardClient implements DashboardClient {
   private config = SessionConfigSchema.parse({ mode: 'MOCK', allowDemoQuestions: true });
   private hudConfig = HudConfigSchema.parse(DEFAULT_HUD_CONFIG);
+  private priorityTopicSettings: PriorityTopicSettingsResponse = {
+    priorityTopicNames: [...DEFAULT_PRIORITY_TOPIC_NAMES],
+    priorityShare: DEFAULT_PRIORITY_SHARE,
+    availableTopics: [
+      { id: 'ffa-2026', name: 'FFA 2026' },
+      { id: 'ffws', name: 'FFWS' },
+      { id: 'ff-general', name: 'Tổng quan Free Fire' },
+    ],
+  };
   private sessionId: string | null = null;
   private state: GameState = 'IDLE';
   private suspendedFrom: GameState | null = null;
@@ -499,6 +512,19 @@ class MockDashboardClient implements DashboardClient {
 
   async getQuestions(_token: string) {
     return mockReviewQuestions.map((question) => ({ ...question, options: question.options.map((option) => ({ ...option })) }));
+  }
+
+  async getPriorityTopicSettings(_token: string): Promise<PriorityTopicSettingsResponse> {
+    return {
+      ...this.priorityTopicSettings,
+      priorityTopicNames: [...this.priorityTopicSettings.priorityTopicNames],
+      availableTopics: [...this.priorityTopicSettings.availableTopics],
+    };
+  }
+
+  async savePriorityTopicSettings(_token: string, settings: PriorityTopicSettings): Promise<PriorityTopicSettingsResponse> {
+    this.priorityTopicSettings = { ...settings, availableTopics: [...this.priorityTopicSettings.availableTopics] };
+    return this.getPriorityTopicSettings(_token);
   }
 
   async reviewQuestion(_token: string, questionId: string, decision: QuestionReview['decision'], _reason?: string) {

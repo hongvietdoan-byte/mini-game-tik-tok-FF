@@ -9,6 +9,10 @@ import {
   MAX_MC_READING_MS,
   McChatRequestSchema,
   MC_VOICE_POLICY_VERSION,
+  DEFAULT_PRIORITY_SHARE,
+  DEFAULT_PRIORITY_TOPIC_NAMES,
+  PRIORITY_TOPIC_SETTINGS_KEY,
+  PriorityTopicSettingsSchema,
   McVoiceCueSchema,
   McVoiceEventSchema,
   type McVoiceCue,
@@ -1989,6 +1993,13 @@ export class SessionRuntime {
     const roundId = `${this.id}:r${roundNumber}`;
     const seed =
       this.config.seed !== undefined ? (this.config.seed + roundNumber * 7919) | 0 : randomInt(1, 2 ** 31 - 1);
+    const storedPrioritySettings = PriorityTopicSettingsSchema.safeParse(
+      this.store.getJsonSetting(PRIORITY_TOPIC_SETTINGS_KEY),
+    );
+    const prioritySettings = storedPrioritySettings.success
+      ? storedPrioritySettings.data
+      : { priorityTopicNames: [...DEFAULT_PRIORITY_TOPIC_NAMES], priorityShare: DEFAULT_PRIORITY_SHARE };
+    const subtopics = this.store.listSubtopics(this.config.packId);
     const sel = selectRound({
       roundId,
       seed,
@@ -2001,8 +2012,14 @@ export class SessionRuntime {
       selectionMode: this.config.questionSelectionMode,
       difficultyTargets: this.config.difficultyTargets,
       difficultyTolerance: this.config.difficultyTolerance,
+      priorityTopicNames: prioritySettings.priorityTopicNames,
+      priorityShare: prioritySettings.priorityShare,
+      subtopicNamesById: Object.fromEntries(subtopics.map((subtopic) => [subtopic.id, subtopic.name])),
       onDistribution: ({ counts, targetCounts, tolerance }) => this.deps.warn?.(
         `[quiz] Phân bố độ khó: ${formatDifficultyCounts(counts)} (mục tiêu ${formatDifficultyCounts(targetCounts)} ±${tolerance}).`,
+      ),
+      onPriorityDistribution: ({ priority, total, share }) => this.deps.warn?.(
+        `[quiz] Ưu tiên chủ đề sự kiện: ${priority}/${total} câu (mục tiêu ${Math.round(share * 100)}%).`,
       ),
     });
     if (!sel.ok) return { ok: false, eligible: sel.eligible, unused: sel.unused, required: sel.required };
