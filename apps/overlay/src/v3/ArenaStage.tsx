@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { positiveScoreEntries } from '../overlayLogic';
-import { answerPercentages, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
+import { answerPercentages, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText, wrapPromptToLines } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
 import { BrandMark } from './BrandMark';
 import { publicPlayerName } from '../publicPlayerName';
@@ -131,14 +131,14 @@ function optionSize(text: string | undefined) {
   return n > 45 ? 'is-xlong' : n > 30 ? 'is-long' : '';
 }
 
-function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnapshot; remainingMs: number; debug: boolean }) {
+function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot: PublicSnapshot; remainingMs: number; debug: boolean; overlayRole: 'preview' | 'program' }) {
   const q = snapshot.question;
   const reveal = snapshot.reveal;
   const promptClass = promptSize(q?.prompt);
   const promptText = q?.prompt ?? 'Đang chờ câu hỏi…';
   const isLobby = snapshot.scene === 'LOBBY';
   const promptRef = useRef<HTMLDivElement>(null);
-  const [promptFit, setPromptFit] = useState({ fontSize: 0, truncated: false });
+  const [promptFit, setPromptFit] = useState({ fontSize: 0, truncated: false, text: '' });
   const lobbySeatCount = snapshot.audience?.seats.filter((seat) => seat.occupant !== null).length ?? 0;
   const lobbyCountdown = snapshot.lobbyCountdown;
   const isPrepare = snapshot.state === 'PREPARE';
@@ -157,25 +157,37 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
       element.style.webkitBoxOrient = '';
       element.style.webkitLineClamp = '';
       element.style.overflow = '';
-      setPromptFit({ fontSize: 0, truncated: false });
+      setPromptFit({ fontSize: 0, truncated: false, text: '' });
       return;
     }
 
     const fit = () => {
-      // Reset to the stylesheet's natural size before each real DOM measurement.
+      // Reset to the stylesheet's natural size before measuring the available inner box.
       element.style.fontSize = '';
       element.style.display = '';
       element.style.webkitBoxOrient = '';
       element.style.webkitLineClamp = '';
       element.style.overflow = '';
+      element.style.whiteSpace = '';
       const baseSize = Number.parseFloat(window.getComputedStyle(element).fontSize) || 30;
       const minimumSize = 26;
-      const range = document.createRange();
-      range.selectNodeContents(element);
+      const style = window.getComputedStyle(element);
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      const width = element.clientWidth - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+      const contentHeight = element.clientHeight - (Number.parseFloat(style.paddingTop) || 0) - (Number.parseFloat(style.paddingBottom) || 0);
+      const baseLineHeight = Number.parseFloat(style.lineHeight) || baseSize * 1.16;
+      const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+      const lineHeightAt = (fontSize: number) => baseLineHeight * fontSize / baseSize;
+      const layoutAt = (fontSize: number, maxLines: number) => {
+        context.font = style.font.replace(/(?:\d*\.)?\d+px/u, `${fontSize}px`);
+        return wrapPromptToLines(promptText, width, maxLines, (value) =>
+          context.measureText(value).width + Math.max(0, Array.from(value).length - 1) * letterSpacing);
+      };
       const fits = (fontSize: number) => {
-        element.style.fontSize = `${fontSize}px`;
-        const lines = range.getClientRects().length;
-        return lines <= 3 && element.scrollHeight <= element.clientHeight + 1;
+        const layout = layoutAt(fontSize, 4);
+        return layout.lineCount <= 3 && layout.lineCount * lineHeightAt(fontSize) <= contentHeight + 1;
       };
 
       let best: number | null = null;
@@ -195,15 +207,12 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
       const truncated = best === null;
       const fontSize = best ?? minimumSize;
       element.style.fontSize = `${fontSize}px`;
-      if (truncated) {
-        element.style.display = '-webkit-box';
-        element.style.webkitBoxOrient = 'vertical';
-        element.style.webkitLineClamp = '3';
-        element.style.overflow = 'hidden';
-      }
-      setPromptFit((current) => current.fontSize === fontSize && current.truncated === truncated
+      const maxVisibleLines = Math.max(1, Math.min(3, Math.floor(contentHeight / lineHeightAt(fontSize))));
+      const visibleText = truncated ? layoutAt(fontSize, maxVisibleLines).text : '';
+      if (truncated) element.style.whiteSpace = 'pre-line';
+      setPromptFit((current) => current.fontSize === fontSize && current.truncated === truncated && current.text === visibleText
         ? current
-        : { fontSize, truncated });
+        : { fontSize, truncated, text: visibleText });
     };
 
     fit();
@@ -219,7 +228,7 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
       {isReading && <div className="v3-reading-status" data-testid="reading-status">MC ĐANG ĐỌC</div>}
       <div
         ref={promptRef}
-        className={`v3-question ${promptClass} ${isLobby ? 'is-lobby' : ''}`}
+        className={`v3-question ${promptClass} ${isLobby ? 'is-lobby' : ''} ${promptFit.truncated ? 'is-prompt-truncated' : ''}`}
         data-testid="question-prompt"
         data-prompt-truncated={promptFit.truncated && !isLobby ? 'true' : 'false'}
         aria-label={promptFit.truncated ? `${promptText} — Câu hỏi quá dài, cần rút gọn` : promptText}
@@ -236,10 +245,10 @@ function QuestionBoard({ snapshot, remainingMs, debug }: { snapshot: PublicSnaps
             </div>
           </>
         ) : (
-          promptText
+          <span data-testid="question-prompt-copy">{promptFit.truncated ? promptFit.text : promptText}</span>
         )}
       </div>
-      {promptFit.truncated && !isLobby && <span className="v3-prompt-truncation-warning" data-testid="prompt-truncation-warning" role="status">CÂU HỎI QUÁ DÀI · CẦN RÚT GỌN</span>}
+      {promptFit.truncated && !isLobby && overlayRole !== 'program' && <span className="v3-prompt-truncation-warning" data-testid="prompt-truncation-warning" role="status">CÂU HỎI QUÁ DÀI · CẦN RÚT GỌN</span>}
       {isLobby && (
         <div className={`v3-lobby-status ${lobbyCountdown ? 'is-countdown' : ''}`} data-testid="lobby-status">
           {lobbyCountdown ? (
@@ -332,14 +341,23 @@ export function McBubbleText({ text, playerNames = [], as = 'span', highlight = 
   return as === 'p' ? <p ref={setElement}>{content}</p> : <span ref={setElement}>{content}</span>;
 }
 
-export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b' }) {
+const questionCallToAction = /(?:comment|bình luận)\s+A\s*,\s*B\s*,\s*C\s+hoặc\s+D/iu;
+
+export function sceneMcBubbleText(snapshot: PublicSnapshot, text: string): string {
+  if (!questionCallToAction.test(text)) return text;
+  if (snapshot.scene === 'INTERMISSION') return 'Nghỉ giữa vòng nhé!\nChặng tiếp theo sắp bắt đầu.';
+  if (snapshot.scene === 'ROUND_WINNER') return 'Chúc mừng người thắng chặng!\nCùng nhìn lại màn bứt phá nhé.';
+  return text;
+}
+
+export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant, hideBubble = false }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b'; hideBubble?: boolean }) {
   const playerNames = snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName) ?? [];
   const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
     'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
   );
   return (
-    <section className={`v3-mc v3-mc-${snapshot.mc.state}`} data-layer="kelly">
+    <section className={`v3-mc v3-mc-${snapshot.mc.state}${hideBubble ? ' v3-mc--voice-only' : ''}`} data-layer="kelly">
       <div className="v3-mc-figure">
         <McSequence state={snapshot.mc.state} />
       </div>
@@ -349,7 +367,7 @@ export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant }: {
         </svg>
         MC KELLY
       </div>
-      {bubbleOverride !== undefined && <div className={`v3-bubble ${fastest ? `v3-fastest-callout v3-fastest-callout-${fastestVariant ?? 'a'}` : ''}`} data-testid="mc-bubble">
+      {!hideBubble && bubbleOverride !== undefined && <div className={`v3-bubble ${fastest ? `v3-fastest-callout v3-fastest-callout-${fastestVariant ?? 'a'}` : ''}`} data-testid="mc-bubble">
         {fastest ? <div className="v3-fastest-copy" data-testid="fastest-callout">
           <strong>{fastestVariant === 'b' ? '⚡ NHANH NHẤT' : 'NHANH NHẤT'}</strong>
           <b className="v3-fastest-name">{fastest.safeDisplayName}</b>
@@ -499,7 +517,7 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
   );
 }
 
-export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNames = false }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; allowLegacyNames?: boolean }) {
+export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNames = false, overlayRole = 'preview' }: { snapshot: PublicSnapshot; remainingMs: number; debug?: boolean; allowLegacyNames?: boolean; overlayRole?: 'preview' | 'program' }) {
   const config = useHudConfig();
   const [voiceBubble, setVoiceBubble] = useState<{ cueId: string; eventType: string; text: string; durationMs: number } | null>(null);
   useLayoutEffect(() => {
@@ -629,7 +647,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
       </div>
       <BrandHeader snapshot={snapshot} />
       <Top10 entries={positiveScoreEntries(snapshot.leaderboard?.entries ?? [])} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
-      <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} />
+      <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} overlayRole={overlayRole} />
       <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={fastest} fastestVariant={fastestVariant} />
       <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} />
     </div>

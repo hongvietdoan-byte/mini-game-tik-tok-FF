@@ -17,8 +17,8 @@ declare global {
 
 const assetUrl = `/api/mc-voice/assets/${'a'.repeat(64)}`;
 
-function cue(cueId: string, durationMs: number, startsAtServerMs: number): McVoiceCue {
-  return { cueId, eventType: 'QUESTION', assetUrl, durationMs, startsAtServerMs };
+function cue(cueId: string, durationMs: number, startsAtServerMs: number, eventType: McVoiceCue['eventType'] = 'QUESTION'): McVoiceCue {
+  return { cueId, eventType, assetUrl, durationMs, startsAtServerMs };
 }
 
 async function installFakeAudioProvider(page: Page) {
@@ -117,8 +117,8 @@ async function installFakeAudioProvider(page: Page) {
   });
 }
 
-async function installVoiceSnapshots(page: Page, onHello: (send: (seq: number, stateVersion: number, voiceCue: McVoiceCue | null) => void) => void) {
-  const base = makeMockSnapshot('question');
+async function installVoiceSnapshots(page: Page, onHello: (send: (seq: number, stateVersion: number, voiceCue: McVoiceCue | null) => void) => void, baseSnapshot?: PublicSnapshot) {
+  const base = baseSnapshot ?? makeMockSnapshot('question');
   if (!base) throw new Error('Missing question snapshot fixture.');
   await page.routeWebSocket('/ws', (socket) => {
     socket.onMessage((raw) => {
@@ -165,6 +165,22 @@ test('program phát một lần cho mỗi cueId trùng trong snapshot và duck S
   expect(result.maxConcurrentVoices).toBe(1);
   expect(result.sfxTargets.some((value) => Math.abs(value - 0.6 * 0.18) < 0.00001)).toBe(true);
   expect(result.sfxTargets.some((value) => Math.abs(value - 0.6) < 0.00001)).toBe(true);
+});
+
+test('ROUND_WINNER ẩn bong bóng nhưng vẫn phát cue voice của MC', async ({ page }) => {
+  await installFakeAudioProvider(page);
+  await page.route('**/api/mc-voice/assets/**', (route) => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: 'fake audio' }));
+  const winnerSnapshot = makeMockSnapshot('round-winner');
+  if (!winnerSnapshot) throw new Error('Missing three-winner round fixture.');
+  await installVoiceSnapshots(page, (send) => {
+    send(1, 1, cue('8123386f-f29b-4a39-b56e-833adfe9bd21', 3_000, Date.now() + 50, 'ROUND_COMPLETE_GENERIC'));
+  }, winnerSnapshot);
+
+  await page.goto('/?role=program&bgm=0', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('[data-testid^="podium-slot-"]')).toHaveCount(3);
+  await expect(page.locator('.v3-mc--voice-only')).toBeVisible();
+  await expect(page.locator('.v3-bubble')).toHaveCount(0);
+  await expect.poll(async () => (await probe(page)).voiceStarts).toBe(1);
 });
 
 test('cue mới dừng giọng cũ trước khi phát, không chồng audio', async ({ page }) => {

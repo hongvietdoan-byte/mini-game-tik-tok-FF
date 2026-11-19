@@ -490,9 +490,9 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
     }
     expect(await stage.locator('.v3-question').evaluate((element) => {
       const node = element as HTMLElement;
-      const style = getComputedStyle(node);
       const truncated = node.dataset.promptTruncated === 'true';
-      return node.scrollHeight <= node.clientHeight || (truncated && style.webkitLineClamp === '3' && Number.parseFloat(style.fontSize) >= 26);
+      const copy = node.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]');
+      return node.scrollHeight <= node.clientHeight || (truncated && copy?.textContent?.endsWith('…') === true && Number.parseFloat(getComputedStyle(node).fontSize) >= 26);
     }), `${entry.phase}: prompt stays inside the fixed card`).toBe(true);
 
     const cards = stage.locator('.v3-option');
@@ -1098,7 +1098,7 @@ test('cắt câu hỏi và đáp án dài theo grapheme ở QUESTION và REVEAL'
     if (promptTruncated) {
       await expect(prompt).toHaveAttribute('title', fullPrompt);
       await expect(stage.getByTestId('prompt-truncation-warning')).toBeVisible();
-      expect(await prompt.evaluate((element) => getComputedStyle(element).webkitLineClamp)).toBe('3');
+      await expect(stage.getByTestId('question-prompt-copy')).toContainText(/…$/);
     } else {
       expect(displayedPrompt).toBe(fullPrompt);
     }

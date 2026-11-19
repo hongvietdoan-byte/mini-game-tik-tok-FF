@@ -18,13 +18,15 @@ test('C-0293 — MC stays off the VICTORY Top 3 while the audio layer remains mo
   await page.screenshot({ path: join(reviewDirectory, 'victory-no-mc.png'), animations: 'disabled' });
 });
 
-test('C-0293 — round-winner scene keeps its existing MC presentation', async ({ page }) => {
+test('C-0293 — round-winner keeps the MC voice without a bubble', async ({ page }) => {
   await page.goto('/?mock=round-winner', { waitUntil: 'domcontentloaded' });
   const stage = page.getByTestId('victory-stage');
   await expect(stage).toHaveAttribute('data-scene', 'ROUND_WINNER');
   await expect(stage.locator('[data-layer="kelly"]')).toBeVisible();
-  await expect(stage.getByTestId('mc-bubble')).toBeVisible();
-  await page.screenshot({ path: join(reviewDirectory, 'round-winner-mc-audit.png'), animations: 'disabled' });
+  await expect(stage.locator('.v3-mc--voice-only')).toBeVisible();
+  await expect(stage.locator('.v3-bubble')).toHaveCount(0);
+  await expect(stage.locator('.v3v-podium .v3v-slot')).toHaveCount(3);
+  await page.screenshot({ path: join(reviewDirectory, 'round-winner-voice-only-audit.png'), animations: 'disabled' });
 });
 
 test('C-0293 — capture MC overlays for INTERMISSION and the full leaderboard for manual overlap review', async ({ page }) => {

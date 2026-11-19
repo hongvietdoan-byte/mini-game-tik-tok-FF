@@ -2175,6 +2175,7 @@
   line-height: 1.1;
   letter-spacing: .35px;
 }
+.v3-question.is-prompt-truncated { white-space: pre-line; line-height: 1.08; }
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-options .v3-option-meter,
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option-meter {
   position: absolute;
@@ -2238,6 +2239,16 @@
 .v3-stage .v3-full-row.v3-full-rank-1 { border-color: var(--theme-gold-soft, rgba(255, 210, 110, .65)); background: linear-gradient(90deg, var(--theme-gold-soft, rgba(255, 190, 60, .4)), var(--theme-ink-soft, rgba(255, 190, 60, .06))); }
 .v3-stage .v3-top10 li { height: 32px; }
 .v3-stage .v3-seat-name { border-radius: 999px; border-color: var(--theme-violet-soft, rgba(170, 180, 255, .75)); background: linear-gradient(180deg, var(--theme-deep, #2b2490), var(--theme-ink, #15125a)); color: var(--theme-text-primary, #fff); }
+
+/* C-0311: move MC into the empty floor at intermission and round winner. */
+.v3-aux-stage[data-scene="INTERMISSION"] > .v3-mc { top: 1250px; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-figure { left: 760px; width: 244px; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-figure img { width: 198px; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-plate { left: 758px; width: 242px; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-bubble { left: 100px; top: 28px; height: auto; min-height: 112px; padding: 16px 28px; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-bubble::before { left: auto; right: -34px; transform: scaleX(-1); }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-bubble p { font-size: 30px; line-height: 1.25; }
+.v3v[data-scene="ROUND_WINNER"] > .v3-mc { top: 1440px; }
 
 
 /* Give intermission and connection-loss copy a dark, bordered reading surface. */

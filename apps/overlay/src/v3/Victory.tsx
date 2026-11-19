@@ -8,7 +8,7 @@ import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle, hudImageUrl } from './hudText';
 import { ArenaLoopVideo } from './ArenaLoopVideo';
 import { themeAssetChildUrl, themeAssetUrl, useTheme } from '../theme';
-import { McKelly } from './ArenaStage';
+import { McKelly, sceneMcBubbleText } from './ArenaStage';
 
 const ASSET = '/assets';
 const VICTORY_BACKGROUND = `${ASSET}/victory/bg-user-cover.jpg`;
@@ -186,6 +186,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
   const [failedSources, setFailedSources] = useState<string[]>([]);
   const backgroundSource = [customBackground, themeBackground, VICTORY_BACKGROUND].find((source) => source && !failedSources.includes(source)) ?? VICTORY_BACKGROUND;
   const podium = positiveScorePodium(snapshot.podium);
+  const bubbleText = snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble;
   useEffect(() => setFailedSources([]), [customBackground, theme.version, themeBackground]);
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene} data-testid="victory-stage">
@@ -200,7 +201,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
         {podium && podiumLeftToRight(podium.slots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />)}
         {(!podium || podium.slots.length === 0) && <div className="v3v-empty">Chưa có người chơi đạt điểm</div>}
       </div>
-      {snapshot.scene !== 'VICTORY' && <McKelly snapshot={snapshot} bubbleOverride={snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble} />}
+      {snapshot.scene !== 'VICTORY' && <McKelly snapshot={snapshot} bubbleOverride={sceneMcBubbleText(snapshot, bubbleText)} hideBubble={snapshot.scene === 'ROUND_WINNER'} />}
     </div>
   );
 }

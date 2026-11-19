@@ -132,6 +132,8 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'top10-score-width': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-xss': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'round-winner': { scene: 'ROUND_WINNER', state: 'ROUND_END' },
+  'round-winner-long-name': { scene: 'ROUND_WINNER', state: 'ROUND_END' },
+  'round-winner-tie': { scene: 'ROUND_WINNER', state: 'ROUND_END' },
   victory: { scene: 'VICTORY', state: 'VICTORY' },
   'victory-zero-score': { scene: 'VICTORY', state: 'VICTORY' },
   'victory-zero-score-empty': { scene: 'VICTORY', state: 'VICTORY' },
@@ -199,6 +201,17 @@ function victoryNameTestPodium(): PublicPodium {
           : entries,
       };
     }),
+  };
+}
+
+function roundWinnerLongNamePodium(): PublicPodium {
+  const demo = podium(false);
+  return {
+    ...demo,
+    slots: demo.slots.map((slot) => ({
+      ...slot,
+      entries: slot.entries.map((entry) => ({ ...entry, safeDisplayName: 'BVD.ChampionshipXYZ' })),
+    })),
   };
 }
 
@@ -334,8 +347,8 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
     } : null,
     leaderboard: question
       ? { kind: 'COMPACT', entries: visibleLeaderboard.slice(0, 10) }
-      : ['top10', 'top10-zero-score', 'top10-zero-score-empty', 'top10-short', 'top10-long-name', 'top10-score-width', 'top10-xss', 'round-winner', 'victory', 'victory-tie', 'victory-zero-score', 'victory-zero-score-empty'].includes(name)
-        ? { kind: name === 'top10' || name === 'top10-short' || name === 'top10-long-name' || name === 'top10-score-width' || name === 'top10-xss' ? 'FULL' : 'COMPACT', entries: short ? visibleLeaderboard.slice(0, 3) : visibleLeaderboard.slice(0, name === 'round-winner' ? 3 : 10) }
+      : ['top10', 'top10-zero-score', 'top10-zero-score-empty', 'top10-short', 'top10-long-name', 'top10-score-width', 'top10-xss', 'round-winner', 'round-winner-long-name', 'round-winner-tie', 'victory', 'victory-tie', 'victory-zero-score', 'victory-zero-score-empty'].includes(name)
+        ? { kind: name === 'top10' || name === 'top10-short' || name === 'top10-long-name' || name === 'top10-score-width' || name === 'top10-xss' ? 'FULL' : 'COMPACT', entries: short ? visibleLeaderboard.slice(0, 3) : visibleLeaderboard.slice(0, name.startsWith('round-winner') ? 3 : 10) }
         : null,
     podium: name === 'victory-name-test'
       ? victoryNameTestPodium()
@@ -343,8 +356,10 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Publi
         ? scoreWidthPodium()
       : name === 'victory-zero-score' || name === 'victory-zero-score-empty'
         ? zeroScorePodium(emptyZeroScoreMock)
-      : name === 'victory' || name === 'victory-tie'
-        ? podium(name === 'victory-tie')
+      : name === 'round-winner-long-name'
+        ? roundWinnerLongNamePodium()
+      : name === 'victory' || name === 'victory-tie' || name === 'round-winner' || name === 'round-winner-tie'
+        ? podium(name === 'victory-tie' || name === 'round-winner-tie')
         : null,
     connection: name === 'connection-lost' ? 'BLOCKED' : 'CONNECTED',
     mc: {
