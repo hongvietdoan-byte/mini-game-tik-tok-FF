@@ -100,14 +100,23 @@ async function expectTextFits(page: Page, selectors: string[]) {
       scrollHeight: element.scrollHeight,
       clientHeight: element.clientHeight,
       promptTruncated: element.getAttribute('data-prompt-truncated') === 'true',
-      lineClamp: getComputedStyle(element).webkitLineClamp,
     })));
     expect(texts.length, `${selector} exists`).toBeGreaterThan(0);
     for (const text of texts) {
       const borderAllowance = selector === '[data-testid="question-prompt"]' ? 4 : 0;
       expect(text.scrollWidth, `${selector} width fits: ${JSON.stringify(text.text.slice(0, 32))}`).toBeLessThanOrEqual(text.clientWidth + borderAllowance);
       if (text.promptTruncated) {
-        expect(text.lineClamp, `${selector} clamps overflow inside its fixed frame`).toBe('3');
+        const copy = page.getByTestId('question-prompt-copy');
+        const visible = await copy.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return {
+            text: element.textContent ?? '',
+            lineCount: new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size,
+          };
+        });
+        expect(visible.text.endsWith('…'), `${selector} shows an in-frame ellipsis`).toBe(true);
+        expect(visible.lineCount, `${selector} stays within three lines`).toBeLessThanOrEqual(3);
         await expect(page.getByTestId('prompt-truncation-warning')).toBeVisible();
       } else {
         expect(text.scrollHeight, `${selector} height fits: ${JSON.stringify(text.text.slice(0, 32))}`).toBeLessThanOrEqual(text.clientHeight);
@@ -200,9 +209,10 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
 
     const stage = await openSnapshot(page, snapshot);
     const prompt = stage.getByTestId('question-prompt');
-    await expect(prompt).toHaveText(questionPrompt);
+    await expect(prompt).toHaveAttribute('aria-label', new RegExp(questionPrompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    await expect(prompt).toHaveAttribute('data-prompt-truncated', 'true');
     await expectTextFits(page, ['[data-testid="question-prompt"]']);
-    // C-0279 clamps a 160-character prompt to 22px inside the approved fixed-height frame.
+    // C-0306 measures the visible copy and keeps a complete ellipsis inside the fixed frame.
     await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 26);
     const optionTextsRendered = stage.locator('[data-testid^="option-"] .v3-option-text');
     await expect(optionTextsRendered).toHaveCount(4);

@@ -50,6 +50,71 @@ export function truncateGraphemeText(text: string, maxGraphemes: number, preferW
   return parts.length <= maxGraphemes ? text : truncatedText(parts, maxGraphemes, preferWordBoundary);
 }
 
+export type MeasuredPromptLayout = { text: string; lineCount: number; truncated: boolean };
+
+/** Wrap prompt text to a measured width and put an explicit, in-bounds ellipsis on the final line. */
+export function wrapPromptToLines(
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+  measureText: (value: string) => number,
+): MeasuredPromptLayout {
+  const normalized = text.replace(/\r\n?/gu, '\n');
+  if (maxWidth <= 0 || maxLines <= 0) return { text: normalized, lineCount: 0, truncated: normalized.length > 0 };
+
+  const lines: string[] = [];
+  const addParagraph = (paragraph: string) => {
+    const words = paragraph.trim().split(/\s+/u).filter(Boolean);
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (measureText(candidate) <= maxWidth || !line) {
+        if (!line && measureText(word) > maxWidth) {
+          let part = '';
+          for (const grapheme of graphemes(word)) {
+            if (part && measureText(part + grapheme) > maxWidth) {
+              lines.push(part);
+              part = '';
+            }
+            part += grapheme;
+          }
+          line = part;
+        } else line = candidate;
+        continue;
+      }
+
+      lines.push(line);
+      line = '';
+      if (measureText(word) <= maxWidth) line = word;
+      else {
+        let part = '';
+        for (const grapheme of graphemes(word)) {
+          if (part && measureText(part + grapheme) > maxWidth) {
+            lines.push(part);
+            part = '';
+          }
+          part += grapheme;
+        }
+        line = part;
+      }
+    }
+    if (line) lines.push(line);
+  };
+
+  const paragraphs = normalized.split('\n');
+  paragraphs.forEach((paragraph, index) => {
+    addParagraph(paragraph);
+    if (index < paragraphs.length - 1) lines.push('');
+  });
+  if (lines.length <= maxLines) return { text: normalized, lineCount: lines.length, truncated: false };
+
+  const visible = lines.slice(0, maxLines);
+  const last = graphemes((visible[maxLines - 1] ?? '').trimEnd());
+  while (last.length > 0 && measureText(last.join('') + '…') > maxWidth) last.pop();
+  visible[maxLines - 1] = `${last.join('').trimEnd()}…`;
+  return { text: visible.join('\n'), lineCount: visible.length, truncated: true };
+}
+
 /** Rút gọn tên theo grapheme (emoji ghép không bị cắt đôi). */
 export function shortName(name: string, max = 13): string {
   const trimmed = name.trim();

@@ -14,14 +14,16 @@ test('C-0297 — long prompts fit three lines or clamp inside the fixed frame in
     await expect(prompt).toHaveAttribute('title', /./);
 
     const metrics = await prompt.evaluate((element) => {
+      const copy = element.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]')!;
       const style = getComputedStyle(element);
       const range = document.createRange();
-      range.selectNodeContents(element);
+      range.selectNodeContents(copy);
+      const lineTops = [...new Set([...range.getClientRects()].map((rect) => Math.round(rect.top)))];
       return {
         fontSize: Number.parseFloat(style.fontSize),
-        lineClamp: style.webkitLineClamp,
         height: element.getBoundingClientRect().height,
-        visibleLines: range.getClientRects().length,
+        visibleLines: lineTops.length,
+        visibleText: copy.textContent ?? '',
         fullPromptLength: element.getAttribute('title')?.length ?? 0,
       };
     });
@@ -31,7 +33,8 @@ test('C-0297 — long prompts fit three lines or clamp inside the fixed frame in
       expect(metrics.fullPromptLength).toBeGreaterThanOrEqual(150);
       await expect(page.getByTestId('prompt-truncation-warning')).toBeVisible();
       await expect(prompt).toHaveAttribute('data-prompt-truncated', 'true');
-      expect(metrics.lineClamp).toBe('3');
+      expect(metrics.visibleLines).toBeLessThanOrEqual(3);
+      expect(metrics.visibleText.endsWith('…')).toBe(true);
       const option = page.getByTestId('option-B').locator('.v3-option-text');
       await expect(option).toHaveAttribute('data-option-truncated', 'true');
       await expect(option).toHaveAttribute('title', /Phối hợp với đồng đội/);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerPercentages, characterHue, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText } from './arenaLogic';
+import { answerPercentages, characterHue, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText, wrapPromptToLines } from './arenaLogic';
 
 describe('V3 arena logic', () => {
   it('phân bố phần trăm đáp án tổng đúng 100%, hòa theo A→D và không cộng cho ô 0', () => {
@@ -46,6 +46,17 @@ describe('V3 arena logic', () => {
     expect(truncateGraphemeText('Free Fire có nhiều chiến thuật', 12, true)).toBe('Free Fire…');
     expect(truncateGraphemeText('khongcocho', 5, true)).toBe('khong…');
     expect(truncateGraphemeText('Free Fire', 9, true)).toBe('Free Fire');
+  });
+
+  it('rút gọn prompt theo chiều rộng đo được và giữ dấu ba chấm trong dòng cuối', () => {
+    const measure = (value: string) => Array.from(value).length * 10;
+    expect(wrapPromptToLines('Alpha beta gamma', 50, 2, measure)).toEqual({
+      text: 'Alpha\nbeta…', lineCount: 2, truncated: true,
+    });
+    expect(wrapPromptToLines('Free Fire có 4 người', 200, 3, measure)).toEqual({
+      text: 'Free Fire có 4 người', lineCount: 1, truncated: false,
+    });
+    expect(wrapPromptToLines('A👨‍👩‍👧‍👦BC D', 30, 1, measure).text).toBe('A…');
   });
 
   it('giữ nguyên newline biên tập và ghép cụm MC quan trọng để text-wrap không xé đôi', () => {

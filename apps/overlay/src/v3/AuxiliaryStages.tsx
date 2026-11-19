@@ -1,7 +1,7 @@
 import React from 'react';
 import type { PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
 import { positiveScoreEntries } from '../overlayLogic';
-import { BrandHeader, McKelly } from './ArenaStage';
+import { BrandHeader, McKelly, sceneMcBubbleText } from './ArenaStage';
 import { ArenaBackdrop } from './ArenaBackdrop';
 import { publicPlayerName } from '../publicPlayerName';
 import { useHudConfig } from '../hudConfig';
@@ -62,6 +62,7 @@ function FullTimer({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remain
 
 export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicSnapshot; remainingMs: number }) {
   const config = useHudConfig();
+  const bubbleText = snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble;
   return <div className="v3-stage v3-aux-stage" data-scene={snapshot.scene}>
     <ArenaBackdrop arena questionBackground showFlags={false} backgroundId={config.images.bgLobby} />
     <BrandHeader snapshot={snapshot} />
@@ -72,7 +73,7 @@ export function IntermissionStage({ snapshot, remainingMs }: { snapshot: PublicS
       <p>Hãy sẵn sàng cho chặng tiếp theo</p>
       <FullTimer snapshot={snapshot} remainingMs={remainingMs} />
     </section>
-    <McKelly snapshot={snapshot} bubbleOverride={snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble} />
+    <McKelly snapshot={snapshot} bubbleOverride={sceneMcBubbleText(snapshot, bubbleText)} />
   </div>;
 }
 
