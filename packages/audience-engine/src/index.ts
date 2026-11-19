@@ -393,12 +393,17 @@ export function rotate(state: AudienceState, options: RotateOptions): AudienceTr
   return { state: next, events };
 }
 
-/** Stateless assignment: same identity, round, pool and seed always select the same ID. */
+/**
+ * Deterministic assignment. When `usedCharacterIds` is supplied, choose from the
+ * remaining pool first; once every character has been used, reuse is allowed.
+ * The caller persists the result so a later arrival cannot reshuffle earlier players.
+ */
 export function assignCharacter(
   playerId: string,
   roundId: string,
   pool: readonly string[],
   seed: number,
+  usedCharacterIds: readonly string[] = [],
 ): string {
   assertPlayerId(playerId);
   assertPlayerId(roundId);
@@ -414,5 +419,8 @@ export function assignCharacter(
     hash = Math.imul(hash, 0x01000193);
   }
   const unsignedHash = hash >>> 0;
-  return sortedPool[unsignedHash % sortedPool.length]!;
+  const used = new Set(usedCharacterIds);
+  const unusedPool = sortedPool.filter((characterId) => !used.has(characterId));
+  const candidates = unusedPool.length > 0 ? unusedPool : sortedPool;
+  return candidates[unsignedHash % candidates.length]!;
 }

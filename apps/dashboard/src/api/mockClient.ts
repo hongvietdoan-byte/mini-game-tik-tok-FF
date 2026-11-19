@@ -102,9 +102,9 @@ const mockReviewQuestions: Question[] = Array.from({ length: 18 }, (_, index) =>
 
 function makeLeaderboard(): PublicLeaderboardEntry[] {
   return [
-    { rank: 1, tied: false, playerId: 'demo-01', safeDisplayName: 'Chiến binh DEMO 01', score: 900, correctCount: 8 },
-    { rank: 2, tied: false, playerId: 'demo-02', safeDisplayName: 'Chiến binh DEMO 02', score: 700, correctCount: 7 },
-    { rank: 3, tied: false, playerId: 'demo-03', safeDisplayName: 'Chiến binh DEMO 03', score: 600, correctCount: 6 },
+    { rank: 1, tied: false, playerId: 'demo-01', safeDisplayName: 'Chiến binh DEMO 01', score: 900, correctCount: 8, characterId: 'chibi-01' },
+    { rank: 2, tied: false, playerId: 'demo-02', safeDisplayName: 'Chiến binh DEMO 02', score: 700, correctCount: 7, characterId: 'chibi-02' },
+    { rank: 3, tied: false, playerId: 'demo-03', safeDisplayName: 'Chiến binh DEMO 03', score: 600, correctCount: 6, characterId: 'chibi-03' },
   ];
 }
 
@@ -748,6 +748,19 @@ class MockDashboardClient implements DashboardClient {
       mcChatBubble: this.mcChatBubble && this.mcChatBubble.endsAtServerMs > Date.now() ? this.mcChatBubble : null,
       connection: this.connection,
       audience: this.state === 'LOBBY' ? this.lobbyAudience() : null,
+      throne: this.state === 'LOBBY' || this.questionIndex < 5
+        ? { state: 'LOCKED', unlockAfterQuestion: 5 }
+        : {
+            state: 'HELD',
+            unlockAfterQuestion: 5,
+            holder: {
+              playerId: leaderboardEntries[0]!.playerId,
+              safeDisplayName: leaderboardEntries[0]!.safeDisplayName,
+              characterId: leaderboardEntries[0]!.characterId ?? 'chibi-01',
+              score: leaderboardEntries[0]!.score,
+              streak: 5,
+            },
+          },
       lobbyCountdown: this.lobbyCountdownEndsAtMs === null ? null : {
         durationMs: 10_000,
         remainingMs: Math.max(0, this.lobbyCountdownEndsAtMs - Date.now()),

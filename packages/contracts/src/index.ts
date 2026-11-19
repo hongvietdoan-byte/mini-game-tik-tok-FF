@@ -982,6 +982,8 @@ export type RankedEntry = {
   metricValue: number;
   metricUnit: 'ms' | 'points' | 'questions' | 'places' | 'percent';
   tied: boolean;
+  /** Nhân vật cố định của người chơi trong vòng; server không chọn ảnh thay thế khi thiếu. */
+  characterId?: string;
 };
 
 /** Mốc câu hỏi của một chặng, đánh số câu từ 1. */
@@ -1082,6 +1084,20 @@ export type AudienceView = {
   total: number;
 };
 
+/** Chủ ngai dùng cùng playerId opaque như PublicLeaderboardEntry. */
+export type ThroneHolderView = {
+  playerId: string;
+  safeDisplayName: string;
+  characterId: string;
+  score: number;
+  /** Chuỗi trả lời đúng hiện tại tại mốc chốt gần nhất. */
+  streak: number;
+};
+export type ThroneView =
+  | { state: 'LOCKED'; unlockAfterQuestion: 5 }
+  | { state: 'EMPTY'; unlockAfterQuestion: 5 }
+  | { state: 'HELD'; unlockAfterQuestion: 5; holder: ThroneHolderView };
+
 export type PublicSnapshot = {
   contractVersion: number;
   /** Phiên bản nội dung HUD; server gắn vào snapshot WS để overlay nạp lại cấu hình khi đổi. */
@@ -1123,6 +1139,8 @@ export type PublicSnapshot = {
   mc: McView;
   /** null khi chưa có vòng. */
   audience: AudienceView | null;
+  /** Ngai chỉ mở sau khi câu 5 được chốt; server là nguồn sự thật duy nhất. */
+  throne: ThroneView;
   connection: ConnectionStatus;
   safeZone: SafeZonePreset;
 };
