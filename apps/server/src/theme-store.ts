@@ -213,6 +213,12 @@ export class ThemeStore {
     return theme ? structuredClone(theme.manifest.achievements ?? {}) : null;
   }
 
+  getManifest(themeId: string): ThemeManifest | null {
+    this.scan();
+    const theme = this.valid.get(themeId);
+    return theme ? structuredClone(theme.manifest) : null;
+  }
+
   saveAchievements(themeId: string, rawAchievements: unknown) {
     if (themeId === 'default')
       throw new ThemeStoreError('THEME_READ_ONLY', 422, 'Theme mặc định là gói xuất sẵn; hãy nhân bản thành theme mới trước khi chỉnh sửa.');

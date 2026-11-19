@@ -63,7 +63,7 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
   const [operation, setOperation] = useState<'reload' | 'apply' | null>(null);
   const [achievementDraft, setAchievementDraft] = useState<ThemeAchievements>({});
   const [achievementLoading, setAchievementLoading] = useState(false);
-  const [achievementOperation, setAchievementOperation] = useState<'save' | 'reset' | null>(null);
+  const [achievementOperation, setAchievementOperation] = useState<'save' | 'reset' | 'export' | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -192,6 +192,37 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
     setError('');
     setNotice('Danh hiệu hợp lệ theo schema C-0288. Máy chủ sẽ kiểm tra thêm các tệp icon khi lưu.');
     return true;
+  }
+
+  async function exportAchievements() {
+    if (!selectedTheme || !selectedThemeId || !selectedTheme.valid || achievementLoading || achievementOperation || operation !== null) return;
+    const parsed = ThemeAchievementsSchema.safeParse(achievementDraft);
+    if (!parsed.success) {
+      setError(`Danh hiệu chưa hợp lệ: ${validationMessage(parsed.error)}`);
+      setNotice('');
+      return;
+    }
+    setAchievementOperation('export');
+    setError('');
+    setNotice('');
+    try {
+      const manifest = await client.getThemeManifest(token, selectedThemeId);
+      const payload = { ...manifest, achievements: Object.keys(parsed.data).length ? parsed.data : undefined };
+      const filename = `${selectedThemeId}-theme.json`;
+      const url = URL.createObjectURL(new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setNotice(`Đã xuất ${filename}.`);
+    } catch (cause) {
+      setError(`Xuất theme thất bại: ${errorText(cause)}`);
+    } finally {
+      setAchievementOperation(null);
+    }
   }
 
   async function saveAchievements(next = achievementDraft, kind: 'save' | 'reset' = 'save') {
@@ -338,6 +369,9 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
         </div>}
       {selectedTheme?.valid && <div className="achievement-actions">
         <div className="achievement-actions-left">
+          <button className="secondary-button" type="button" onClick={() => void exportAchievements()} disabled={achievementLoading || achievementOperation !== null || operation !== null}>
+            {achievementOperation === 'export' ? 'Đang xuất…' : 'Export JSON'}
+          </button>
           <button className="secondary-button" type="button" onClick={validateAchievements} disabled={achievementLoading || achievementOperation !== null || operation !== null}>Validate</button>
           <button className="secondary-button" type="button" onClick={() => void resetAchievements()} disabled={achievementLoading || achievementOperation !== null || operation !== null}>
             {achievementOperation === 'reset' ? 'Đang đặt lại…' : 'Reset về mặc định'}

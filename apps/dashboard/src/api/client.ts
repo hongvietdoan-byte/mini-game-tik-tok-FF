@@ -15,6 +15,7 @@ import type {
   ResolvedTheme,
   SimulatorRequest,
   SystemCheck,
+  ThemeManifest,
   ThemeAchievements,
 } from '@quiz/contracts';
 import { shouldAcceptSnapshotSeq } from '../logic';
@@ -81,6 +82,7 @@ export interface DashboardClient {
   getActiveTheme(): Promise<ResolvedTheme>;
   reloadThemes(token: string): Promise<AdminThemesResponse>;
   setActiveTheme(token: string, themeId: string): Promise<SetActiveThemeResponse>;
+  getThemeManifest(token: string, themeId: string): Promise<ThemeManifest>;
   updateStreamDelaySettings(token: string, sessionId: string, update: UpdateStreamDelaySettings): Promise<UpdateStreamDelayResponse>;
   getThemeAchievements(token: string, themeId: string): Promise<ThemeAchievementsResponse>;
   saveThemeAchievements(token: string, themeId: string, achievements: ThemeAchievements): Promise<SaveThemeAchievementsResponse>;
@@ -269,6 +271,10 @@ export const apiClient: DashboardClient = {
 
   setActiveTheme(token, themeId) {
     return jsonRequest('/api/admin/themes/active', token, { method: 'PUT', body: JSON.stringify({ themeId }) });
+  },
+
+  getThemeManifest(token, themeId) {
+    return jsonRequest(`/api/admin/themes/${encodeURIComponent(themeId)}/manifest`, token);
   },
 
   updateStreamDelaySettings(token, sessionId, update) {

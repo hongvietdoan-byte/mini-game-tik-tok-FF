@@ -389,6 +389,7 @@ describe('ThemeStore', () => {
     const url = '/api/admin/themes/spring-event/achievements';
     try {
       expect((await quiz.app.inject({ method: 'PUT', url, payload: { achievements: { LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân', maxRows: 3 } } } })).statusCode).toBe(401);
+      expect((await quiz.app.inject('/api/admin/themes/spring-event/manifest')).statusCode).toBe(401);
 
       const saved = await quiz.app.inject({
         method: 'PUT', url, headers: auth,
@@ -404,6 +405,12 @@ describe('ThemeStore', () => {
       expect(backups).toHaveLength(1);
       expect(readFileSync(join(themeDirectory, backups[0]!))).toEqual(original);
       expect((await quiz.app.inject({ url, headers: auth })).json()).toMatchObject({ themeVersion: 2, achievements: { LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân' } } });
+      const exported = await quiz.app.inject({ url: '/api/admin/themes/spring-event/manifest', headers: auth });
+      expect(exported.statusCode).toBe(200);
+      expect(exported.json()).toMatchObject({
+        schemaVersion: 1, id: 'spring-event', name: 'Theme Halloween',
+        achievements: { LONGEST_STREAK: { title: 'Chuỗi Mùa Xuân', displaySlot: 'victory' } },
+      });
 
       const savedBytes = readFileSync(join(themeDirectory, 'theme.json'));
       const rejected = await quiz.app.inject({ method: 'PUT', url, headers: auth, payload: { achievements: { LONGEST_STREAK: { maxRows: 5 } } } });

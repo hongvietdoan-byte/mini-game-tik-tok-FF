@@ -28,6 +28,7 @@ import {
   type Question,
   type QuestionReview,
   type ResolvedTheme,
+  type ThemeManifest,
   type RejectReason,
   type SimulatorRequest,
   type SystemCheck,
@@ -186,6 +187,21 @@ class MockDashboardClient implements DashboardClient {
     const theme = mockThemeDefinitions.find((item) => item.item.id === themeId && item.item.valid);
     if (!theme) throw new ApiError('Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.', 422, 'THEME_INVALID');
     return this.resolvedTheme(themeId);
+  }
+
+  async getThemeManifest(_token: string, themeId: string): Promise<ThemeManifest> {
+    const theme = mockThemeDefinitions.find((item) => item.item.id === themeId && item.item.valid);
+    if (!theme) throw new ApiError('Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.', 422, 'THEME_INVALID');
+    return {
+      schemaVersion: 1,
+      id: themeId,
+      name: theme.item.name,
+      description: 'Theme xuất từ Dashboard mock.',
+      tokens: theme.tokens,
+      fonts: [],
+      assets: {},
+      achievements: structuredClone(this.themeAchievements.get(themeId) ?? {}),
+    };
   }
 
   async reloadThemes() {

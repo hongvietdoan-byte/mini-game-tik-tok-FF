@@ -1,8 +1,9 @@
 import { createServer as createNodeServer } from 'node:net';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createServer as createViteServer, type ViteDevServer } from '../../apps/dashboard/node_modules/vite/dist/node/index.js';
 import { ManualScheduler } from '@quiz/live-adapters';
+import { ThemeManifestSchema } from '@quiz/contracts';
 import { Store } from '@quiz/persistence';
 import { buildApp, type QuizApp } from '@quiz/server';
 import { expect, test, type Page } from '@playwright/test';
@@ -153,9 +154,11 @@ test('tab Theme đọc API thật, quét lại theme tạm, chặn gói lỗi v�
 
 test('C-0290 trang danh hiệu theo chủ đề preview, validate và lưu qua endpoint có backup', async ({ page }) => {
   await openThemePage(page);
+  await page.getByRole('radio', { name: /Mùa xuân/ }).click();
   const editor = page.getByTestId('achievement-editor');
   await expect(editor.getByRole('heading', { name: 'Danh hiệu theo chủ đề' })).toBeVisible();
   const fastest = editor.locator('[data-achievement="FASTEST_CORRECT"]');
+  await expect(fastest.getByLabel('FASTEST_CORRECT · tên')).toHaveValue('ĐÚNG NHANH NHẤT');
   await fastest.getByLabel('FASTEST_CORRECT · tên').fill('Tốc độ Mùa Xuân');
   await fastest.getByLabel('FASTEST_CORRECT · subtitle').fill('Ba người trả lời nhanh nhất');
   await editor.getByRole('button', { name: 'Validate' }).click();
@@ -166,6 +169,20 @@ test('C-0290 trang danh hiệu theo chủ đề preview, validate và lưu qua e
   await editor.getByRole('button', { name: 'Lưu danh hiệu' }).click();
   await expect(page.locator('.alert-success')).toContainText('máy chủ đã tạo bản sao lưu theme.json.bak-');
   await expect(editor).toContainText('Tốc độ Mùa Xuân');
+
+  const downloadPromise = page.waitForEvent('download');
+  await editor.getByRole('button', { name: 'Export JSON' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('spring-event-theme.json');
+  const downloadedPath = await download.path();
+  if (!downloadedPath) throw new Error('Dashboard không tạo file Export JSON.');
+  const exportedManifest = ThemeManifestSchema.parse(JSON.parse(readFileSync(downloadedPath, 'utf8')));
+  expect(exportedManifest).toMatchObject({
+    schemaVersion: 1,
+    id: 'spring-event',
+    name: 'Mùa xuân',
+    achievements: { FASTEST_CORRECT: { title: 'Tốc độ Mùa Xuân', subtitle: 'Ba người trả lời nhanh nhất', displaySlot: 'question-reveal' } },
+  });
 
   const reviewDirectory = resolve(process.cwd(), '.claude/review/C0290');
   mkdirSync(reviewDirectory, { recursive: true });
