@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-19T21:36:26+07:00",
+  "heartbeat": "2026-11-19T22:41:12+07:00",
   "state": "working",
   "task": "C-0333",
-  "note": "Đang khảo sát contracts/runtime cho luật ngai và liên kết nhân vật; gửi schema sớm cho coordinator",
+  "note": "Đang hoàn tất luật ngai vàng; targeted tests xanh, đang chạy full suite rồi E2E/bench trước báo cáo",
   "done": [
     331,
     336,
