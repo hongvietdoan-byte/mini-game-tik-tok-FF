@@ -245,3 +245,44 @@ test('C-0319 — demo question bank identifies prompts that reach the 24px floor
   expect(measured.map(({ visibleLines }) => visibleLines)).toEqual([3, 3]);
   expect(measured.every(({ truncated }) => truncated)).toBe(true);
 });
+
+for (const { mock, state } of [
+  { mock: 'reading-demo-006', state: 'READING' },
+  { mock: 'question-demo-006', state: 'ACCEPTING' },
+] as const) {
+  test(`C-0328 — demo-006 is complete at 24px in ${state}`, async ({ page }) => {
+    const expected = DEMO_QUESTIONS.find(({ id }) => id === 'demo-006')!.prompt;
+    expect(Array.from(expected).length).toBe(136);
+    await page.setViewportSize({ width: 1080, height: 1920 });
+    await page.goto(`/?mock=${mock}&hud=tall&role=program`, { waitUntil: 'domcontentloaded' });
+    if (state === 'READING') await expect(page.getByTestId('reading-status')).toBeVisible();
+    else await expect(page.getByTestId('timer')).toBeVisible();
+    const prompt = page.getByTestId('question-prompt');
+    const copy = page.getByTestId('question-prompt-copy');
+    await expect(copy).toBeVisible();
+    const metrics = await page.evaluate(() => {
+      const promptElement = document.querySelector<HTMLElement>('[data-testid="question-prompt"]')!;
+      const copyElement = document.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]')!;
+      const range = document.createRange();
+      range.selectNodeContents(copyElement);
+      const lines = Array.from(range.getClientRects()).filter(({ width }) => width > 1);
+      const promptRect = promptElement.getBoundingClientRect();
+      return {
+        text: copyElement.textContent,
+        fontSize: Number.parseFloat(getComputedStyle(promptElement).fontSize),
+        font: getComputedStyle(promptElement).font,
+        promptBox: (() => { const rect = promptElement.getBoundingClientRect(); return { width: rect.width, height: rect.height }; })(),
+        padding: getComputedStyle(promptElement).padding,
+        truncated: promptElement.dataset.promptTruncated,
+        lineCount: lines.length,
+        lastLineGap: promptRect.bottom - Math.max(...lines.map(({ bottom }) => bottom)),
+      };
+    });
+    console.info(`C-0328 ${state} demo-006 fit: ${JSON.stringify(metrics)}`);
+    await expect(prompt).toHaveAttribute('data-prompt-truncated', 'false');
+    expect(metrics.text).toBe(expected);
+    expect(metrics.fontSize).toBeGreaterThanOrEqual(24);
+    expect(metrics.lineCount).toBe(4);
+    expect(metrics.lastLineGap).toBeGreaterThanOrEqual(16);
+  });
+}

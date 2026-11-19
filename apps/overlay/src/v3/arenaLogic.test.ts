@@ -62,6 +62,12 @@ describe('V3 arena logic', () => {
     });
   });
 
+  it('không để dấu ba chấm thành một dòng riêng khi dòng cuối bị trống', () => {
+    const layout = wrapPromptToLines('Alpha\n\nbeta gamma', 60, 2, (value) => Array.from(value).length * 10);
+    expect(layout).toEqual({ text: 'Alpha…', lineCount: 1, truncated: true });
+    expect(layout.text.split('\n').at(-1)).toMatch(/.+…$/u);
+  });
+
   it('giữ nguyên newline biên tập và ghép cụm MC quan trọng để text-wrap không xé đôi', () => {
     expect(wrapMcBubbleText('CHÀO MỪNG ĐẾN VỚI\r\nĐẤU TRƯỜNG BÃO TỐ!')).toBe(
       'CHÀO MỪNG ĐẾN VỚI\nĐẤU\u00a0TRƯỜNG\u00a0BÃO\u00a0TỐ!',

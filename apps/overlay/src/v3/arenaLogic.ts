@@ -113,8 +113,8 @@ export function wrapPromptToLines(
   let ellipsizedLine = '';
   while (ellipsisLine >= 0) {
     const last = graphemes((visible[ellipsisLine] ?? '').trimEnd());
-    while (last.length > 0 && measureText(last.join('') + '…') > maxWidth) last.pop();
-    if (last.length > 0) {
+    if (last.length) {
+      while (last.length > 1 && measureText(last.join('') + '…') > maxWidth) last.pop();
       ellipsizedLine = `${last.join('').trimEnd()}…`;
       break;
     }
@@ -124,7 +124,10 @@ export function wrapPromptToLines(
     visible.splice(ellipsisLine + 1);
     visible[ellipsisLine] = ellipsizedLine;
   } else {
-    while (visible.length && !visible.at(-1)?.trim()) visible.pop();
+    const firstText = graphemes(normalized.trim())[0];
+    return firstText
+      ? { text: `${firstText}…`, lineCount: 1, truncated: true }
+      : { text: normalized, lineCount: 0, truncated: false };
   }
   return { text: visible.join('\n'), lineCount: visible.length, truncated: true };
 }
