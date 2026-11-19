@@ -647,8 +647,8 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   expect(freshSnapshot.stateVersion).toBeGreaterThanOrEqual(disconnectVersion);
   expect(freshSnapshot.payload.stateVersion).toBe(runtime.engine.stateVersion);
   expect(freshSnapshot.payload.scene).toBe(runtime.adminSnapshot().public.scene);
-  await expect(overlay.getByTestId('audience-seat')).toHaveCount(35);
-  await expect(overlay.getByTestId('audience-seat').locator('img')).toHaveCount(35);
+  await expect(overlay.getByTestId('audience-seat')).toHaveCount(30);
+  await expect(overlay.getByTestId('audience-seat').locator('img')).toHaveCount(30);
   const frameSeqs = frames.map((frame) => frame.seq);
   expect(frameSeqs.every((seq, index) => index === 0 || seq > frameSeqs[index - 1]!)).toBe(true);
   const stateVersions = frames.map((frame) => frame.payload.stateVersion);
