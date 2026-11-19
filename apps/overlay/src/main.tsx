@@ -167,8 +167,8 @@ function queryPixelOverride(query: URLSearchParams, key: string, fallback: numbe
   return Math.min(max, Number(raw));
 }
 
-function TikTokHudSimulator({ debug }: { debug: boolean }) {
-  return <div className="tiktok-hud" data-testid="tiktok-hud" aria-label="Mô phỏng giao diện TikTok LIVE">
+function TikTokHudSimulator({ debug, tall }: { debug: boolean; tall: boolean }) {
+  return <div className={`tiktok-hud ${tall ? 'tiktok-hud--tall' : ''}`} data-testid="tiktok-hud" aria-label="Mô phỏng giao diện TikTok LIVE">
     <div className="tiktok-hud-status" data-testid="tiktok-status-bar" aria-label="Thanh trạng thái điện thoại">
       <b>9:41</b><span>▮▮▮　◉　▰</span>
     </div>
@@ -182,18 +182,25 @@ function TikTokHudSimulator({ debug }: { debug: boolean }) {
       <b>6,5K</b><span className="tiktok-hud-collapse">⌄</span><span className="tiktok-hud-close">×</span>
     </div>
     <div className="tiktok-hud-chips" data-testid="tiktok-live-chips">
-      <span>♛ Bảng xếp hạng chơi game</span><span>Khám phá</span>
+      <span>{tall ? 'Top 99% Cấp 10' : '♛ Bảng xếp hạng chơi game'}</span>{!tall && <span>Khám phá</span>}
     </div>
     <div className="tiktok-hud-event-banner" data-testid="tiktok-event-banner">
-      <small>LIVE EVENT</small><b>LIVE FEST 2026</b><span>Đấu trường bão tố</span>
+      {tall ? <b>Phòng · Đấu Trường</b> : <><small>LIVE EVENT</small><b>LIVE FEST 2026</b><span>Đấu trường bão tố</span></>}
     </div>
     <section className="tiktok-hud-comments" data-testid="tiktok-comments" aria-label="Bình luận mẫu">
       <p><i>H</i><span><small><b>Hồ Anh Tuấn</b><em>▲9</em></small><strong>Bão tố hôm nay đẹp quá 💜</strong></span></p>
       <p><i>M</i><span><small><b>Mai Linh</b><em>▲12</em></small><strong>Đang chờ vòng tiếp theo!</strong></span></p>
       <p className="tiktok-hud-join"><b>StormKing đã tham gia</b></p>
       <p><i>C</i><span><small><b>Choco.M</b><em>▲7</em></small><strong>Kelly ơi mình mới vào nè</strong></span></p>
+      {tall && <>
+        <p><i>L</i><span><small><b>lucky_ff</b><em>▲4</em></small><strong>Câu này khó ghê 😅</strong></span></p>
+        <p><i>N</i><span><small><b>Ngọc Anh</b><em>▲6</em></small><strong>Kelly đọc nhanh quá</strong></span></p>
+        <p><i>T</i><span><small><b>Thắng gà</b><em>▲3</em></small><strong>A hay B mọi người?</strong></span></p>
+        <p><i>P</i><span><small><b>proplayer</b><em>▲8</em></small><strong>Battle Royale 🔥</strong></span></p>
+      </>}
       <p className="tiktok-hud-join"><b>thảo cute đã tham gia</b></p>
     </section>
+    {tall && <div className="tiktok-hud-join-banner" data-testid="tiktok-join-banner">StormKing đã tham gia</div>}
     <div className="tiktok-hud-gift-toast" data-testid="tiktok-gift-toast"><b>🌹</b> FFVN.Kelly đã gửi Hoa hồng <strong>x1</strong></div>
     <div className="tiktok-hud-share-float" data-testid="tiktok-share-float" aria-hidden="true">↗</div>
     <div className="tiktok-hud-hearts" aria-hidden="true"><i>♥</i><i>♥</i><i>♥</i></div>
@@ -211,7 +218,9 @@ function TikTokHudSimulator({ debug }: { debug: boolean }) {
 
 function App() {
   const query = new URLSearchParams(location.search);
-  const hud = query.get('hud') === '1';
+  const hudMode = query.get('hud') ?? '';
+  const tallHud = hudMode === 'tall';
+  const hud = hudMode === '1' || tallHud;
   const overlayRole = overlayRoleFromSearch(location.search);
   const fit = overlayFitFromSearch(location.search, overlayRole);
   const scale = useStageScale(fit);
@@ -228,7 +237,12 @@ function App() {
   const hudConfig = useLiveHudConfig(networkSnapshot?.hudVersion, mockScene !== null);
   useEffect(() => {
     if (requestedMock !== 'cycle') return;
-    const available = MOCK_SCENES.filter((scene) => scene !== 'paused');
+    // C-0319 added direct QA states for the same demo question. Keep those
+    // snapshots addressable by URL, but out of the cycle so audio cues fire
+    // once per phase instead of replaying as the mock IDs alternate.
+    const available = MOCK_SCENES.filter((scene) =>
+      scene !== 'paused' && scene !== 'reading-demo-006' && scene !== 'question-demo-006',
+    );
     const timer = window.setInterval(() => setCycleScene((current) => {
       const index = available.indexOf(current);
       return available[(index + 1) % available.length] ?? 'lobby';
@@ -274,7 +288,7 @@ function App() {
         <div className="safe-zone-guides" data-testid="safe-zone-guides" style={{ inset: `${safeZone.top}px 0px ${safeZone.bottom}px ${safeZone.left}px` }} />
         <div className="safe-zone-right-band" aria-hidden="true" style={{ top: `${Math.max(safeZone.top, safeZone.rightFromY ?? 0)}px`, bottom: `${safeZone.bottom}px`, width: `${safeZone.right}px` }} />
       </>}
-      {hud && <TikTokHudSimulator debug={debug} />}
+      {hud && <TikTokHudSimulator debug={debug} tall={tallHud} />}
       {snapshot.paused && <div className="paused-overlay"><b>TẠM DỪNG</b></div>}
     </div> : <div className="waiting-card"><div className="brand-mark">BV</div><h1>ĐANG KẾT NỐI</h1><p>{connection === 'reconnecting' ? 'Đang thử kết nối lại…' : 'Đang chờ phiên LIVE'}</p></div>}
     {snapshot && <AudioFxLayer snapshot={snapshot} remainingMs={remainingMs} clockOffsetMs={clockOffsetMs} role={overlayRole} onAudioStateChange={setAudioState} />}
