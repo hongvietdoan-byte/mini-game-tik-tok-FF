@@ -57,6 +57,9 @@ describe('V3 arena logic', () => {
       text: 'Free Fire có 4 người', lineCount: 1, truncated: false,
     });
     expect(wrapPromptToLines('A👨‍👩‍👧‍👦BC D', 30, 1, measure).text).toBe('A…');
+    expect(wrapPromptToLines('Alpha\n\nBravo', 60, 2, measure)).toEqual({
+      text: 'Alpha…', lineCount: 1, truncated: true,
+    });
   });
 
   it('giữ nguyên newline biên tập và ghép cụm MC quan trọng để text-wrap không xé đôi', () => {
