@@ -237,7 +237,12 @@ function App() {
   const hudConfig = useLiveHudConfig(networkSnapshot?.hudVersion, mockScene !== null);
   useEffect(() => {
     if (requestedMock !== 'cycle') return;
-    const available = MOCK_SCENES.filter((scene) => scene !== 'paused');
+    // C-0319 added direct QA states for the same demo question. Keep those
+    // snapshots addressable by URL, but out of the cycle so audio cues fire
+    // once per phase instead of replaying as the mock IDs alternate.
+    const available = MOCK_SCENES.filter((scene) =>
+      scene !== 'paused' && scene !== 'reading-demo-006' && scene !== 'question-demo-006',
+    );
     const timer = window.setInterval(() => setCycleScene((current) => {
       const index = available.indexOf(current);
       return available[(index + 1) % available.length] ?? 'lobby';

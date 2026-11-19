@@ -14,10 +14,11 @@ const targetBoxes = {
   'Question tab': { x: 440, y: 370, width: 225, height: 55 },
   'Prompt frame': { x: 428, y: 502, width: 564, height: 124 },
   'Answer grid': { x: 428, y: 642, width: 564, height: 156 },
-  'Kelly portrait': { x: 130, y: 815, width: 205, height: 205 },
-  'Kelly nameplate': { x: 92, y: 1018, width: 250, height: 49 },
-  'MC bubble': { x: 410, y: 860, width: 575, height: 145 },
-} as const;
+  // C-0317 intentionally shortens and lowers the portrait to clear the chibi row.
+  'Kelly portrait': { x: 130, y: 826, width: 205, height: 158 },
+  'Kelly nameplate': { x: 92, y: 1013, width: 250, height: 49 },
+  'MC bubble': { x: 411, y: 860, width: 575, height: 145 },
+};
 
 const box = (root: Element, selector: string) => {
   const element = root.querySelector<HTMLElement>(selector);
@@ -139,10 +140,13 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
         return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
       }, { selector: selectors[name]! });
       if (capture.mock === 'question-ref' || capture.mock === 'fastest-a-ref') {
-        if (capture.mock === 'question-ref') measurements.push({ name, phase: 'question + fastest', target, actual });
+        const expectedTarget = name === 'MC bubble' && capture.mock === 'fastest-a-ref'
+          ? { ...target, width: 599 }
+          : target;
+        if (capture.mock === 'question-ref') measurements.push({ name, phase: 'question + fastest', target: expectedTarget, actual });
         expect(actual, `${name} must be measurable`).not.toBeNull();
         for (const dimension of ['x', 'y', 'width', 'height'] as const) {
-          expect(Math.abs(actual![dimension] - target[dimension]), `${name}.${dimension} must stay within 1px of the approved layout`).toBeLessThanOrEqual(1);
+          expect(Math.abs(actual![dimension] - expectedTarget[dimension]), `${name}.${dimension} must stay within 1px of the approved layout`).toBeLessThanOrEqual(1);
         }
       }
     }
@@ -173,10 +177,26 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
     await stage.screenshot({ path: join(reviewRoot, capture.output), animations: 'disabled' });
   }
 
+  // Separate close-ups make the C-0317 MC crop and the approved question card
+  // easy to inspect without scaling the 1080×1920 reference captures.
+  await page.goto('/?mock=question-ref', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('[data-testid="stage"][data-scene="QUESTION"]')).toBeVisible();
+  await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+  await page.screenshot({
+    path: join(reviewRoot, 'question-frame-zoom.png'),
+    clip: { x: 400, y: 340, width: 620, height: 485 },
+    animations: 'disabled',
+  });
+  await page.screenshot({
+    path: join(reviewRoot, 'mc-frame-zoom.png'),
+    clip: { x: 70, y: 800, width: 300, height: 270 },
+    animations: 'disabled',
+  });
+
   const report = [
     '# C-0214 / C-0216 / C-0220 đo hình học',
     '',
-    'Ảnh kiểm tra ở viewport 1080×1920; dung sai ±12px cho khung, tiêu đề, bảng câu hỏi, đáp án, MC và bong bóng.',
+    'Ảnh kiểm tra ở viewport 1080×1920; dung sai ±12px cho khung, tiêu đề, bảng câu hỏi, đáp án, MC và bong bóng. C-0317 đặt khung MC QUESTION/REVEAL tại x=130, y=826, 205×158 để chừa hàng chibi; nameplate y=1013 giữ khe 29px, bong bóng x=411 và callout nhanh rộng 599px; các phần khác giữ nguyên mốc mẫu.',
     '',
     '| Phần | Pha đo | Mẫu x/y/w/h | Bản dựng x/y/w/h | Lệch tuyệt đối lớn nhất |',
     '|---|---|---:|---:|---:|',

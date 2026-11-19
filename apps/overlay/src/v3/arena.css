@@ -2294,8 +2294,8 @@
 .v3-stage--question-user.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout { left: 411px; width: 599px; }
 .v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-figure img,
 .v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-figure img { animation: none !important; }
-.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-plate,
-.v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-plate { top: 356px; }
+.v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-mc-plate { top: 356px; }
+.v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-plate { top: 304px; }
 
 /* C-0287: make lobby information readable without changing the approved frame geometry. */
 .v3-stage.v3-stage--question-user .v3-question.is-lobby {

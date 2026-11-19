@@ -14,9 +14,11 @@ const reference = {
   prompt: { x: 428, y: 502, width: 564, height: 124 },
   options: { x: 428, y: 642, width: 564, height: 156 },
   mc: { x: 0, y: 815, width: 1080, height: 252 },
-  figure: { x: 130, y: 815, width: 205, height: 205 },
-  plate: { x: 92, y: 1018, width: 250, height: 49 },
-  bubble: { x: 410, y: 860, width: 575, height: 145 },
+  // C-0317 moves the cropped MC portrait down and shortens its frame so it
+  // clears the Top 10/chibi row while retaining the approved 205px width.
+  figure: { x: 130, y: 826, width: 205, height: 158 },
+  plate: { x: 92, y: 1013, width: 250, height: 49 },
+  bubble: { x: 411, y: 860, width: 575, height: 145 },
   timer: { x: 870, y: 364, width: 124, height: 124 },
   logoFrame: { x: 400, y: 30, width: 255, height: 210 },
   ribbon: { x: 220, y: 250, width: 635, height: 72 },
@@ -94,9 +96,12 @@ for (const header of headerVariants) {
       expect(geometry.prompt, `${header}/${phase.name}: prompt follows the user's reference`).toEqual(reference.prompt);
       expect(geometry.options, `${header}/${phase.name}: answer grid follows the user's reference`).toEqual(reference.options);
       expect(geometry.mc, `${header}/${phase.name}: MC stage follows the user's reference`).toEqual(reference.mc);
-      expect(geometry.figure, `${header}/${phase.name}: head-and-shoulders portrait follows the user's reference`).toEqual(reference.figure);
+      expect(geometry.figure, `${header}/${phase.name}: MC portrait uses the C-0317 clear frame`).toEqual(reference.figure);
       expect(geometry.plate, `${header}/${phase.name}: Kelly nameplate follows the user's reference`).toEqual(reference.plate);
-      expect(geometry.bubble, `${header}/${phase.name}: MC bubble follows the user's reference`).toEqual(reference.bubble);
+      const expectedBubble = phase.name.startsWith('fastest-')
+        ? { ...reference.bubble, width: 599 }
+        : reference.bubble;
+      expect(geometry.bubble, `${header}/${phase.name}: MC bubble uses the C-0317 position/fastest width`).toEqual(expectedBubble);
       expect(geometry.logoFrame, `${header}/${phase.name}: event logo frame`).toEqual(reference.logoFrame);
       expect(geometry.ribbon, `${header}/${phase.name}: arrow ribbon`).toEqual(reference.ribbon);
       expect(geometry.event, `${header}/${phase.name}: Storm Arena mark`).toEqual(reference.event);

@@ -83,10 +83,12 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
           overflow: getComputedStyle(figure).overflow,
         };
       });
-      expect(geometry.figure).toMatchObject({ x: 130, y: 815, width: 205, height: 205 });
-      expect(geometry.plate).toMatchObject({ x: 92, y: 1018, width: 250, height: 49 });
+      // C-0317 intentionally lowers and shortens the cropped portrait to clear the chibi row.
+      expect(geometry.figure).toMatchObject({ x: 130, y: 826, width: 205, height: 158 });
+      expect(geometry.plate).toMatchObject({ x: 92, y: 1013, width: 250, height: 49 });
       expect(geometry.overflow).toBe('hidden');
-      expect(geometry.image.width).toBe(168);
+      // C-0317 scales the portrait to 80% to keep Kelly's pixels clear of the chibi row.
+      expect(geometry.image.width).toBeCloseTo(134.4, 1);
       expect(geometry.image.x).toBeCloseTo(geometry.figure.x + (geometry.figure.width - geometry.image.width) / 2, 0);
       expect(geometry.image.y).toBe(geometry.figure.y);
       expect(geometry.image.naturalWidth).toBeGreaterThan(0);
@@ -95,8 +97,10 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
       const visibleSourceBottom = Math.round(((geometry.figure.bottom - geometry.image.y) / geometry.image.height) * geometry.image.naturalHeight);
       let cropNote = `placeholder; thấy ${visibleSourceBottom}px nguồn`;
       if (!placeholderAssets) {
-        expect(visibleSourceBottom).toBeGreaterThanOrEqual(325);
-        expect(visibleSourceBottom).toBeLessThanOrEqual(345);
+        // C-0317 scales the real portrait to 80% in a 158px frame; this shows
+        // 315–325 source pixels while keeping the chin landmark inside the crop.
+        expect(visibleSourceBottom).toBeGreaterThanOrEqual(315);
+        expect(visibleSourceBottom).toBeLessThanOrEqual(325);
         const chinY = Math.round(geometry.image.y + (chinSourceY / geometry.image.naturalHeight) * geometry.image.height);
         expect(chinY).toBeGreaterThan(geometry.figure.y + geometry.figure.height * 0.75);
         expect(chinY).toBeLessThan(geometry.figure.bottom);
@@ -140,8 +144,8 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
     ...rows,
     '',
     placeholderAssets
-      ? 'Màn QUESTION/FASTEST giữ nguyên khung MC 130/815/205/205 và bảng tên 92/1018/250/49. Cụm Top 10 giữ nguyên kích thước, mép phải căn với bảng; khoảng cách dọc nằm trong 12–20px.'
-      : 'Màn QUESTION/FASTEST giữ nguyên hộp Kelly 130/815/205/205 và bảng tên 92/1018/250/49. Cụm Top 10 giữ nguyên kích thước, mép phải căn với bảng; khoảng cách dọc nằm trong 12–20px.',
+      ? 'C-0317 đặt khung MC QUESTION/FASTEST tại 130/826/205/158 để chừa hàng chibi; bảng tên y=1013 giữ khe 29px (x=92, 250×49). Cụm Top 10 giữ kích thước, mép phải căn với bảng; khoảng cách dọc 12–20px.'
+      : 'C-0317 đặt khung Kelly QUESTION/FASTEST tại 130/826/205/158 để chừa hàng chibi; bảng tên y=1013 giữ khe 29px (x=92, 250×49). Cụm Top 10 giữ kích thước, mép phải căn với bảng; khoảng cách dọc 12–20px.',
   ].join('\n');
   await writeFile(join(reviewRoot, 'measurements.md'), report, 'utf8');
 });
