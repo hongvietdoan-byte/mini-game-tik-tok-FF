@@ -403,7 +403,7 @@ test('C-0339 holder change animates and carries the same player identity into th
   const champion = podium.getByTestId('podium-slot-1');
   await expect(victory).toHaveAttribute('data-scene', 'VICTORY');
   await expect(victory).toHaveAttribute('data-holder-id', 'demo-player-2');
-  await expect(champion.getByTestId('podium-rank')).toHaveText('TOP 1');
+  await expect(champion.getByTestId('podium-rank')).toHaveText('TOP 1 · ĐỒNG HẠNG');
   await expect(champion).toContainText('StormKing');
   await expect(champion).toHaveAttribute('data-score', '1500');
   await expect(champion.getByTestId('podium-character')).toHaveAttribute('data-podium-role', 'top1');
@@ -436,41 +436,65 @@ test('C-0339 holder change animates and carries the same player identity into th
 
   const podiumGeometry = await podium.evaluate((root) => [...root.querySelectorAll<HTMLElement>('.v3v-slot')].map((slot) => {
     const figure = slot.querySelector<HTMLElement>('.v3v-figure')!.getBoundingClientRect();
-    const nameplate = slot.querySelector<HTMLElement>('.v3v-nameplate')!.getBoundingClientRect();
+    const nameplateElement = slot.querySelector<HTMLElement>('.v3v-nameplate')!;
+    const nameplate = nameplateElement.getBoundingClientRect();
+    const frameInset = 8;
+    const plateStyle = getComputedStyle(nameplateElement);
+    const insideFrame = {
+      left: nameplate.left + Number.parseFloat(plateStyle.borderLeftWidth) + frameInset,
+      top: nameplate.top + Number.parseFloat(plateStyle.borderTopWidth) + frameInset,
+      right: nameplate.right - Number.parseFloat(plateStyle.borderRightWidth) - frameInset,
+      bottom: nameplate.bottom - Number.parseFloat(plateStyle.borderBottomWidth) - frameInset,
+    };
     const crown = slot.querySelector<HTMLElement>('[data-testid="podium-crown"]')!.getBoundingClientRect();
     const crownStyle = getComputedStyle(slot.querySelector<HTMLElement>('[data-testid="podium-crown"]')!);
     const image = slot.querySelector<HTMLImageElement>('[data-testid="podium-character"]')!.getBoundingClientRect();
-    const name = slot.querySelector<HTMLElement>('.v3v-player-name')!.getBoundingClientRect();
-    const score = slot.querySelector<HTMLElement>('.v3v-names i')!.getBoundingClientRect();
-    const tieLabelElement = slot.querySelector<HTMLElement>('.tie-label');
-    let tieLabel: { top: number; bottom: number } | null = null;
-    if (tieLabelElement) {
+    const actualTextBounds = (element: HTMLElement) => {
       const range = document.createRange();
-      range.selectNodeContents(tieLabelElement);
+      range.selectNodeContents(element);
       const text = range.getBoundingClientRect();
-      tieLabel = { top: text.top, bottom: text.bottom };
-    }
+      return { left: text.left, top: text.top, right: text.right, bottom: text.bottom };
+    };
+    const textRows = [...slot.querySelectorAll<HTMLElement>('.v3v-rank-label, .v3v-player-name, .v3v-names small, .v3v-names i')]
+      .map((element) => ({
+        label: element.matches('.v3v-rank-label') ? 'rank' : element.matches('.v3v-player-name') ? 'name' : element.matches('.v3v-names i') ? 'score' : 'extra',
+        text: element.textContent ?? '',
+        ...actualTextBounds(element),
+      }))
+      .sort((a, b) => a.top - b.top || a.left - b.left);
+    const rankText = textRows.find((row) => row.label === 'rank')!;
+    const nameText = textRows.find((row) => row.label === 'name')!;
+    const scoreText = textRows.find((row) => row.label === 'score')!;
     const badgeElement = slot.querySelector<HTMLElement>('.v3-top1-badge');
     const badge = badgeElement?.getBoundingClientRect() ?? null;
-    const horizontalBadgeScoreGap = badge ? Math.max(0, score.left - badge.right, badge.left - score.right) : null;
-    const verticalBadgeScoreGap = badge ? Math.max(0, score.top - badge.bottom, badge.top - score.bottom) : null;
+    const badgeName = badgeElement?.closest('.v3v-player-row')?.querySelector<HTMLElement>('.v3v-player-name');
+    const badgeNameText = badgeName ? actualTextBounds(badgeName) : null;
+    const badgeRankText = badge && textRows.find((row) => row.label === 'rank');
+    const horizontalBadgeRankGap = badge && badgeRankText ? Math.max(0, badgeRankText.left - badge.right, badge.left - badgeRankText.right) : null;
+    const verticalBadgeRankGap = badge && badgeRankText ? Math.max(0, badgeRankText.top - badge.bottom, badge.top - badgeRankText.bottom) : null;
+    const horizontalBadgeNameGap = badge && badgeNameText ? Math.max(0, badgeNameText.left - badge.right, badge.left - badgeNameText.right) : null;
+    const verticalBadgeNameGap = badge && badgeNameText ? Math.max(0, badgeNameText.top - badge.bottom, badge.top - badgeNameText.bottom) : null;
     return {
       place: slot.getAttribute('data-place'),
+      tied: slot.querySelector<HTMLElement>('.v3v-nameplate')!.classList.contains('is-tied'),
       feetGap: Math.round((nameplate.top - figure.bottom) * 10) / 10,
       figure: { top: figure.top, bottom: figure.bottom },
-      nameplate: { top: nameplate.top, bottom: nameplate.bottom },
+      nameplate: { left: nameplate.left, top: nameplate.top, right: nameplate.right, bottom: nameplate.bottom, width: nameplate.width, height: nameplate.height, insideFrame },
       crown: { left: crown.left, top: crown.top, right: crown.right, bottom: crown.bottom },
       crownVisible: crownStyle.visibility === 'visible' && Number.parseFloat(crownStyle.opacity) > 0,
       crownZIndex: Number.parseInt(crownStyle.zIndex, 10),
       image: { width: image.width, height: image.height },
       nameFont: Number.parseFloat(getComputedStyle(slot.querySelector<HTMLElement>('.v3v-player-name')!).fontSize),
       scoreFont: Number.parseFloat(getComputedStyle(slot.querySelector<HTMLElement>('.v3v-names i')!).fontSize),
-      nameInside: name.left >= nameplate.left && name.right <= nameplate.right && name.top >= nameplate.top && name.bottom <= nameplate.bottom,
-      scoreInside: score.left >= nameplate.left && score.right <= nameplate.right && score.top >= nameplate.top && score.bottom <= nameplate.bottom,
-      tieLabelBottomClearance: tieLabel ? nameplate.bottom - 4 - tieLabel.bottom : null,
+      rankFont: Number.parseFloat(getComputedStyle(slot.querySelector<HTMLElement>('.v3v-rank-label')!).fontSize),
+      nameInside: nameText.left >= insideFrame.left && nameText.right <= insideFrame.right && nameText.top >= insideFrame.top && nameText.bottom <= insideFrame.bottom,
+      scoreInside: scoreText.left >= insideFrame.left && scoreText.right <= insideFrame.right && scoreText.top >= insideFrame.top && scoreText.bottom <= insideFrame.bottom,
+      rankInside: rankText.left >= insideFrame.left && rankText.right <= insideFrame.right && rankText.top >= insideFrame.top && rankText.bottom <= insideFrame.bottom,
+      textRows,
       badgeTopInset: badge ? badge.top - nameplate.top : null,
       badgeRightInset: badge ? nameplate.right - badge.right : null,
-      badgeScoreGap: badge ? Math.hypot(horizontalBadgeScoreGap!, verticalBadgeScoreGap!) : null,
+      badgeRankGap: badge && badgeRankText ? Math.hypot(horizontalBadgeRankGap!, verticalBadgeRankGap!) : null,
+      badgeNameGap: badge && badgeNameText ? Math.hypot(horizontalBadgeNameGap!, verticalBadgeNameGap!) : null,
       plateInsideViewport: nameplate.left >= 24 && nameplate.right <= 1056,
       crownInsideViewport: crown.left >= 24 && crown.right <= 1056 && crown.top >= 0 && crown.bottom <= 1920,
     };
@@ -480,14 +504,27 @@ test('C-0339 holder change animates and carries the same player identity into th
     expect(slot.feetGap, `top${slot.place} figure/nameplate gap`).toBeGreaterThanOrEqual(8);
     expect(slot.nameFont, `top${slot.place} name font`).toBeGreaterThanOrEqual(28);
     expect(slot.scoreFont, `top${slot.place} score font`).toBeGreaterThanOrEqual(32);
-    expect(slot.nameInside, `top${slot.place} name stays inside plate`).toBe(true);
-    expect(slot.scoreInside, `top${slot.place} score stays inside plate`).toBe(true);
-    if (slot.tieLabelBottomClearance !== null)
-      expect(slot.tieLabelBottomClearance, `top${slot.place} tie label clears inner gold border by 8 px`).toBeGreaterThanOrEqual(8);
-    if (slot.badgeScoreGap !== null) {
+    expect(slot.rankFont, `top${slot.place} rank font stays at least 22px`).toBeGreaterThanOrEqual(22);
+    expect(slot.nameInside, `top${slot.place} name stays inside plate with 8 px inset`).toBe(true);
+    expect(slot.scoreInside, `top${slot.place} score stays inside plate with 8 px inset`).toBe(true);
+    expect(slot.rankInside, `top${slot.place} rank stays inside plate with 8 px inset`).toBe(true);
+    for (let index = 0; index < slot.textRows.length; index += 1) {
+      const row = slot.textRows[index]!;
+      expect(row.left, `top${slot.place} ${row.label} text has 8 px left inset from inner frame`).toBeGreaterThanOrEqual(slot.nameplate.insideFrame.left);
+      expect(row.right, `top${slot.place} ${row.label} text has 8 px right inset from inner frame`).toBeLessThanOrEqual(slot.nameplate.insideFrame.right);
+      expect(row.top, `top${slot.place} ${row.label} text has 8 px top inset from inner frame`).toBeGreaterThanOrEqual(slot.nameplate.insideFrame.top);
+      expect(row.bottom, `top${slot.place} ${row.label} text has 8 px bottom inset from inner frame`).toBeLessThanOrEqual(slot.nameplate.insideFrame.bottom);
+      if (index > 0) {
+        const previous = slot.textRows[index - 1]!;
+        expect(row.top - previous.bottom, `top${slot.place} ${previous.label}/${row.label} text rows do not overlap and have a 4 px gap`)
+          .toBeGreaterThanOrEqual(4);
+      }
+    }
+    if (slot.badgeNameGap !== null) {
       expect(slot.badgeTopInset, `top${slot.place} streak badge moves to upper right`).toBeGreaterThanOrEqual(8);
       expect(slot.badgeRightInset, `top${slot.place} streak badge stays inside right border`).toBeGreaterThanOrEqual(8);
-      expect(slot.badgeScoreGap, `top${slot.place} streak badge clears PTS by 8 px`).toBeGreaterThanOrEqual(8);
+      expect(slot.badgeRankGap, `top${slot.place} streak badge clears rank text by 8 px`).toBeGreaterThanOrEqual(8);
+      expect(slot.badgeNameGap, `top${slot.place} streak badge clears its name by 8 px`).toBeGreaterThanOrEqual(8);
     }
     expect(slot.plateInsideViewport, `top${slot.place} plate stays within safe margins`).toBe(true);
     expect(slot.crownInsideViewport, `top${slot.place} crown stays visible`).toBe(true);
@@ -509,23 +546,48 @@ test('C-0339 holder change animates and carries the same player identity into th
     for (const element of root.querySelectorAll<HTMLElement>('.v3v-figure, .v3v-nameplate'))
       for (const animation of element.getAnimations()) if (animation.playState === 'running') animation.finish();
   });
+  const regularNameplates = await normalVictory.evaluate((root) => [...root.querySelectorAll<HTMLElement>('.v3v-slot')].map((slot) => {
+    const plate = slot.querySelector<HTMLElement>('.v3v-nameplate')!.getBoundingClientRect();
+    return { place: slot.getAttribute('data-place'), width: plate.width, height: plate.height };
+  }));
+  for (const tiedSlot of podiumGeometry.filter((slot) => slot.tied)) {
+    const regular = regularNameplates.find((slot) => slot.place === tiedSlot.place)!;
+    expect(Math.abs(tiedSlot.nameplate.width - regular.width), `top${tiedSlot.place} tied plate matches regular width`).toBeLessThanOrEqual(1);
+    expect(Math.abs(tiedSlot.nameplate.height - regular.height), `top${tiedSlot.place} tied plate matches regular height`).toBeLessThanOrEqual(1);
+  }
   const normalBadgeGeometry = await normalChampion.evaluate((slot) => {
     const plate = slot.querySelector<HTMLElement>('.v3v-nameplate')!.getBoundingClientRect();
     const badge = slot.querySelector<HTMLElement>('.v3-top1-badge')!.getBoundingClientRect();
     const score = slot.querySelector<HTMLElement>('.v3v-names i')!;
+    const name = slot.querySelector<HTMLElement>('.v3v-player-name')!;
     const range = document.createRange();
     range.selectNodeContents(score);
     const pts = range.getBoundingClientRect();
+    const nameRange = document.createRange();
+    nameRange.selectNodeContents(name);
+    const nameText = nameRange.getBoundingClientRect();
+    const rank = slot.querySelector<HTMLElement>('.v3v-rank-label')!;
+    const rankRange = document.createRange();
+    rankRange.selectNodeContents(rank);
+    const rankText = rankRange.getBoundingClientRect();
     const horizontalGap = Math.max(0, pts.left - badge.right, badge.left - pts.right);
     const verticalGap = Math.max(0, pts.top - badge.bottom, badge.top - pts.bottom);
+    const horizontalNameGap = Math.max(0, nameText.left - badge.right, badge.left - nameText.right);
+    const verticalNameGap = Math.max(0, nameText.top - badge.bottom, badge.top - nameText.bottom);
+    const horizontalRankGap = Math.max(0, rankText.left - badge.right, badge.left - rankText.right);
+    const verticalRankGap = Math.max(0, rankText.top - badge.bottom, badge.top - rankText.bottom);
     return {
       topInset: badge.top - plate.top,
       rightInset: plate.right - badge.right,
       scoreGap: Math.hypot(horizontalGap, verticalGap),
+      nameGap: Math.hypot(horizontalNameGap, verticalNameGap),
+      rankGap: Math.hypot(horizontalRankGap, verticalRankGap),
     };
   });
   expect(normalBadgeGeometry.topInset).toBeGreaterThanOrEqual(8);
   expect(normalBadgeGeometry.rightInset).toBeGreaterThanOrEqual(8);
   expect(normalBadgeGeometry.scoreGap).toBeGreaterThanOrEqual(8);
+  expect(normalBadgeGeometry.nameGap).toBeGreaterThanOrEqual(8);
+  expect(normalBadgeGeometry.rankGap).toBeGreaterThanOrEqual(8);
   await capture(page, 'victory');
 });

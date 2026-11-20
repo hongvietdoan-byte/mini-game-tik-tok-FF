@@ -2478,20 +2478,25 @@
   .v3-throne.is-changing .v3-throne-art { animation: none !important; }
 }
 .v3v .v3v-figure img[data-testid="podium-character"] { width: auto; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center bottom; transform: none; }
-.v3v .v3v-player-name { min-width: 0; font-size: 28px; }
+.v3v .v3v-player-name { min-width: 0; font-size: 28px; line-height: 1; }
 .v3v .v3v-names i { font-size: 32px !important; }
-.v3v .v3v-rank-label { font-size: 20px; }
+.v3v .v3v-rank-label { font-size: 22px; line-height: 1; white-space: nowrap; }
+.v3v .v3v-names { gap: 15px; line-height: 1; }
 .v3v .v3v-place-1.is-tied { top: calc(var(--v3v-place-1-feet) - var(--v3v-center-height)); }
 .v3v .v3v-place-1 .v3v-figure,
 .v3v .v3v-place-1.is-tied .v3v-figure { width: var(--v3v-center-width); height: var(--v3v-center-height); }
 .v3v .v3v-place-1 .v3v-nameplate,
 .v3v .v3v-place-1 .v3v-nameplate.is-tied { width: 340px; flex-basis: 128px; }
-.v3v .v3v-nameplate { box-sizing: border-box; min-width: 0; max-width: none; }
+.v3v .v3v-nameplate { box-sizing: border-box; min-width: 0; max-width: none; flex-basis: 144px; height: 144px; }
+.v3v .v3v-place-1 .v3v-nameplate { flex-basis: 144px; height: 144px; }
 .v3v .v3v-nameplate { z-index: 1; }
 .v3v .v3-rank-crown,
 .v3v .v3v-rank-crown { z-index: 5; }
 .v3v .v3v-place-2 .v3v-nameplate,
 .v3v .v3v-place-3 .v3v-nameplate { width: 280px; }
-.v3v .v3v-nameplate.is-tied { flex-basis: 184px; height: 184px; padding-top: 10px; padding-bottom: 10px; }
-.v3v .v3v-nameplate.is-tied .tie-label { transform: translateY(-4px); }
-.v3v .v3v-nameplate .v3-top1-badge { top: 12px; right: 18px; bottom: auto; }
+.v3v .v3v-nameplate.is-tied { flex-basis: 144px; height: 144px; margin-top: 12px; padding: 7px 20px; }
+.v3v .v3v-nameplate.is-tied .v3v-names { gap: 15px; }
+.v3v .v3v-nameplate.is-tied .v3v-rank-label { letter-spacing: 0; }
+.v3v .v3v-nameplate.is-tied .v3v-rank-label.has-streak-badge { transform: translateX(-32px) scaleX(.88); transform-origin: center; }
+.v3v .v3v-place-1 .v3v-nameplate.is-tied { flex-basis: 144px; height: 144px; }
+.v3v .v3v-nameplate .v3-top1-badge { top: 8px; right: 18px; bottom: auto; height: 16px; }

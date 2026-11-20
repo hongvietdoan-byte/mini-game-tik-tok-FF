@@ -63,6 +63,7 @@ function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPod
   const entries = orderRankOneHolderFirst(slot.entries, holderId);
   const lead = entries[0]!;
   const tied = slot.tied || (tieAcross && slot.entries.length > 1);
+  const hasStreakBadge = entries.slice(0, 2).some((entry) => (entry.top1Streak ?? 0) >= 2);
   return (
     <div className={`v3v-slot v3v-place-${slot.place}${tied ? ' is-tied' : ''}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} data-rank={slot.rank} data-score={lead.score}>
       <div className="v3v-figure">
@@ -80,7 +81,7 @@ function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPod
           <svg viewBox="0 0 60 42"><path d="M4 11 15 21 25 5 30 22 41 5 47 21 56 11 52 35 8 35Z" /></svg>
         </span>
         <div className="v3v-names">
-          <span className="v3v-rank-label" data-testid="podium-rank">TOP {slot.rank}</span>
+          <span className={`v3v-rank-label${tied && hasStreakBadge ? ' has-streak-badge' : ''}`} data-testid="podium-rank">TOP {slot.rank}{tied ? ' · ĐỒNG HẠNG' : ''}</span>
           {entries.slice(0, 2).map((entry, index) => {
             const displayName = shortName(publicPlayerName(entry, `Người chơi hạng ${slot.rank}${slot.entries.length > 1 ? ` · ${index + 1}` : ''}`, allowLegacyNames), 16);
             return (
@@ -92,7 +93,6 @@ function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPod
           })}
           {slot.entries.length > 2 && <small>+{slot.entries.length - 2} người</small>}
           <i>{lead.score.toLocaleString('vi-VN')} PTS</i>
-          {tied && <strong className="tie-label">ĐỒNG HẠNG</strong>}
         </div>
       </div>
     </div>
