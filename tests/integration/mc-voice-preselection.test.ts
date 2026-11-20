@@ -259,7 +259,9 @@ describe('MC Voice lựa chọn trước trong LOBBY', () => {
     try {
       const { runtime, send } = await createVoiceSession(h, { lobbyMs: 100 });
       await send({ type: 'OPEN_LOBBY' });
-      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+      await vi.waitFor(() => expect(
+        vi.mocked(h.provider.synthesize).mock.calls.some(([request]) => request.text.startsWith('Câu hỏi thử nghiệm số')),
+      ).toBe(true));
       await send({ type: 'SET_AUTO_MODE', enabled: true });
       h.scheduler.advance(100);
       expect(runtime.engine.state).toBe('LOBBY');
