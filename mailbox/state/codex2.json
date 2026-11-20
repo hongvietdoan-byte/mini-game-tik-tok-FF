@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 359,
-  "heartbeat": "2026-11-20T14:28:46+07:00",
-  "state": "waiting",
-  "task": "C-0355",
-  "note": "Không có thư mới; DP3 vẫn đang được codex2 cập nhật theo BOARD; note rảnh Y-0602 đã gửi, chờ thư mới.",
+  "heartbeat": "2026-11-20T14:59:45+07:00",
+  "state": "working",
+  "task": "C-0363",
+  "note": "Đã ack Y-0605; bắt đầu C-0310 question length trong phạm vi tools/docs, sau đó C-0324.",
   "done": []
 }
