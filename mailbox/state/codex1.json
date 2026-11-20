@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-20T14:48:52+07:00",
+  "heartbeat": "2026-11-20T15:17:51+07:00",
   "state": "working",
-  "task": "C-0335",
-  "note": "C-0361 đã gửi report X-0604 và đánh dấu done; đã nhập origin/main, hòa giải import trên nhánh C-0335, đang chạy unit/integration",
+  "task": "C-0362",
+  "note": "Tạm dừng C-0335; bắt đầu đối chiếu test preselection 20 lượt trên main và nhánh C-0361 theo C-0362",
   "done": [
     331,
     333,
