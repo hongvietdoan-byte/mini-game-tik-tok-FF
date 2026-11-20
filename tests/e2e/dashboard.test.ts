@@ -65,6 +65,25 @@ async function stopDashboardSession(page: Page) {
   await dialog.getByRole('button', { name: 'Xác nhận' }).click();
 }
 
+test('C-0335 cấu hình chủ đề ưu tiên trong Dashboard MOCK', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Duyệt câu hỏi' }).click();
+  const settings = page.getByTestId('priority-topic-settings');
+  await expect(settings.getByRole('heading', { name: 'Chủ đề ưu tiên' })).toBeVisible();
+  await expect(settings.getByRole('checkbox', { name: 'Ưu tiên FFA 2026' })).toBeVisible();
+  await expect(settings.getByText('0 câu APPROVED').first()).toBeVisible();
+  mkdirSync(resolve(process.cwd(), 'test-results/C0335'), { recursive: true });
+  await settings.screenshot({ path: resolve(process.cwd(), 'test-results/C0335/priority-topic-settings.png') });
+
+  await settings.getByRole('textbox', { name: 'Thêm tên chủ đề' }).fill('Giải thử nghiệm');
+  await settings.getByRole('button', { name: 'Thêm' }).click();
+  const share = settings.getByRole('spinbutton', { name: 'Tỉ lệ ưu tiên (%)' });
+  await share.fill('100');
+  await expect(share).toHaveValue('100');
+  await settings.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await expect(settings.getByText(/Đã lưu/)).toBeVisible();
+});
+
 async function createReviewPlaceholder(page: Page, kind: 'logo' | 'background'): Promise<Buffer> {
   const base64 = await page.evaluate((imageKind) => {
     const canvas = document.createElement('canvas');
@@ -558,7 +577,8 @@ test('lọc câu hỏi, xác nhận duyệt hàng loạt và bắt buộc nhập
   await expect(page.locator('.review-result-count')).toHaveText('10 câu');
   await status.selectOption('PENDING');
 
-  await page.getByLabel('Chủ đề').selectOption('clash-squad');
+  const topicFilter = page.locator('.review-toolbar').getByLabel('Chủ đề');
+  await topicFilter.selectOption('clash-squad');
   await page.getByLabel('Độ khó').selectOption('EASY');
   await expect(page.locator('.review-result-count')).toHaveText('1 câu');
   const bulkButton = page.getByRole('button', { name: 'Duyệt tất cả câu đang lọc (1)' });
@@ -570,7 +590,7 @@ test('lọc câu hỏi, xác nhận duyệt hàng loạt và bắt buộc nhập
   await expect(page.getByRole('status')).toContainText('Đã duyệt 1 câu hỏi.');
   await expect(page.locator('.review-summary')).toContainText('Đã duyệt 11 / cần 15');
 
-  await page.getByLabel('Chủ đề').selectOption('');
+  await topicFilter.selectOption('');
   await page.getByLabel('Độ khó').selectOption('');
   await page.getByRole('button', { name: 'Từ chối', exact: true }).first().click();
   const rejectDialog = page.getByRole('dialog', { name: 'Nhập lý do từ chối' });

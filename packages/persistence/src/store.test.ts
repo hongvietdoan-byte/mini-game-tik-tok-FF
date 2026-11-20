@@ -83,6 +83,40 @@ describe('Store: khởi tạo và câu hỏi', () => {
     expect(second.raw.pragma('foreign_keys', { simple: true })).toBe(1);
   });
 
+  it('lưu bền settings JSON và cung cấp tên subtopic cho bộ chọn câu', () => {
+    const path = tempDbPath();
+    const first = openStore(path);
+    first.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    first.setJsonSetting('round-selection-priority', {
+      priorityTopicNames: ['FFA 2026', 'FFWS'], priorityShare: 0.6,
+    }, 1234);
+    expect(first.listSubtopics(DEMO_PACK.id)).toContainEqual(expect.objectContaining({ id: 'ff-che-do' }));
+    first.close();
+
+    const reopened = openStore(path);
+    expect(reopened.getJsonSetting('round-selection-priority')).toEqual({
+      priorityTopicNames: ['FFA 2026', 'FFWS'], priorityShare: 0.6,
+    });
+    expect(reopened.listSubtopics(DEMO_PACK.id).length).toBeGreaterThan(0);
+  });
+
+  it('đếm đúng câu APPROVED theo từng chủ đề, không tính PENDING/REJECTED', () => {
+    const store = openStore();
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    const topicId = DEMO_QUESTIONS.map((question) => question.subtopicId).find((id) =>
+      DEMO_QUESTIONS.filter((question) => question.subtopicId === id).length >= 2,
+    )!;
+    const topicQuestions = DEMO_QUESTIONS.filter((question) => question.subtopicId === topicId);
+    const approved = topicQuestions[0]!;
+    const rejected = topicQuestions[1]!;
+    store.reviewQuestion(approved.id, 'APPROVE', 'test', 101);
+    store.reviewQuestion(rejected.id, 'REJECT', 'test', 102);
+
+    const count = store.listSubtopicsWithApprovedCounts(DEMO_PACK.id).find((topic) => topic.id === topicId)?.approvedCount;
+    const otherApproved = topicQuestions.slice(2).filter((question) => question.approvalStatus === 'APPROVED').length;
+    expect(count).toBe(otherApproved + 1);
+  });
+
   it('ranking snapshots are idempotent on recovery, append revisions on changed results, and scrub safe names', () => {
     const store = openStore();
     addSession(store);

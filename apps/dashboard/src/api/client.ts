@@ -12,6 +12,8 @@ import type {
   OverlayAudioState,
   Question,
   QuestionReview,
+  PriorityTopicSettings,
+  PriorityTopicSettingsResponse,
   ResolvedTheme,
   SimulatorRequest,
   SystemCheck,
@@ -69,6 +71,8 @@ export interface DashboardClient {
   addMcChatPreset(token: string, text: string): Promise<{ ok: boolean; presets: McChatPreset[] }>;
   deleteMcChatPreset(token: string, presetId: string): Promise<{ ok: boolean; presets: McChatPreset[] }>;
   getQuestions(token: string): Promise<Question[]>;
+  getPriorityTopicSettings(token: string): Promise<PriorityTopicSettingsResponse>;
+  savePriorityTopicSettings(token: string, settings: PriorityTopicSettings): Promise<PriorityTopicSettingsResponse>;
   reviewQuestion(token: string, questionId: string, decision: QuestionReview['decision'], reason?: string): Promise<{ ok: boolean; question: Question }>;
   getSystemChecks(token: string): Promise<SystemChecksResponse>;
   getPreflight(token: string): Promise<PreflightResponse>;
@@ -205,6 +209,14 @@ export const apiClient: DashboardClient = {
 
   getQuestions(token) {
     return jsonRequest('/api/questions', token);
+  },
+
+  getPriorityTopicSettings(token) {
+    return jsonRequest('/api/admin/priority-topic-settings', token);
+  },
+
+  savePriorityTopicSettings(token, settings) {
+    return jsonRequest('/api/admin/priority-topic-settings', token, { method: 'PUT', body: JSON.stringify(settings) });
   },
 
   reviewQuestion(token, questionId, decision, reason) {

@@ -23,6 +23,10 @@ import {
   ThemeAchievementsSchema,
   QuestionReviewSchema,
   DEFAULT_DIFFICULTY_TARGETS,
+  DEFAULT_PRIORITY_SHARE,
+  DEFAULT_PRIORITY_TOPIC_NAMES,
+  PRIORITY_TOPIC_SETTINGS_KEY,
+  PriorityTopicSettingsSchema,
   questionLengthWarnings,
   QUESTION_DISPLAY_LIMITS,
   SimulatorRequestSchema,
@@ -127,6 +131,16 @@ function safeEqual(a: string, b: string) {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
+}
+
+function normalizePriorityTopicNames(names: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return names.map((name) => name.trim()).filter((name) => {
+    const normalized = name.normalize('NFKC').toLocaleLowerCase('vi-VN').replace(/\s+/gu, '');
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
 }
 
 const MockConnectionSchema = z.object({ action: z.enum(['LOSE', 'RESTORE']) });
@@ -316,6 +330,15 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     return true;
   }
 
+  function priorityTopicSettingsSnapshot() {
+    const stored = PriorityTopicSettingsSchema.safeParse(store.getJsonSetting(PRIORITY_TOPIC_SETTINGS_KEY));
+    const settings = stored.success ? stored.data : {
+      priorityTopicNames: [...(rt?.config.priorityTopicNames ?? DEFAULT_PRIORITY_TOPIC_NAMES)],
+      priorityShare: rt?.config.priorityShare ?? DEFAULT_PRIORITY_SHARE,
+    };
+    return { ...settings, availableTopics: store.listSubtopicsWithApprovedCounts() };
+  }
+
   function sessionOr404(id: string, reply: FastifyReply): SessionRuntime | null {
     if (!rt || rt.id !== id) {
       void reply.code(404).send({ ok: false, code: 'NOT_FOUND', message: 'Không có phiên đang mở với id này' });
@@ -327,6 +350,23 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   app.get('/api/admin/name-filter', async (req, reply) => {
     if (!guard(req, reply, false)) return reply;
     return nameFilter.getAdminSettings();
+  });
+
+  app.get('/api/admin/priority-topic-settings', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return priorityTopicSettingsSnapshot();
+  });
+
+  app.put('/api/admin/priority-topic-settings', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = PriorityTopicSettingsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    const settings = {
+      priorityTopicNames: normalizePriorityTopicNames(parsed.data.priorityTopicNames),
+      priorityShare: parsed.data.priorityShare,
+    };
+    store.setJsonSetting(PRIORITY_TOPIC_SETTINGS_KEY, settings, scheduler.now());
+    return priorityTopicSettingsSnapshot();
   });
 
   app.put('/api/admin/name-filter', async (req, reply) => {

@@ -595,6 +595,26 @@ input:focus, select:focus, textarea:focus { border-color: var(--violet); box-sha
 .hud-version b { color: #fff; }
 .hud-settings-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); align-items: start; gap: 14px; }
 .hud-settings-controls { display: grid; gap: 14px; }
+.priority-topic-settings { margin: 0 0 14px; padding: 16px; font-size: 16px; }
+.priority-topic-settings .eyebrow { font-size: 16px; }
+.priority-topic-heading h2 { margin: 4px 0 6px; }
+.priority-topic-heading p { margin: 0; color: var(--muted); line-height: 1.5; }
+.priority-settings-form { display: grid; gap: 12px; margin-top: 12px; }
+.priority-topic-options { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.priority-topic-options legend { padding: 0 5px; font-size: 16px; font-weight: 700; }
+.priority-topic-option { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 16px; }
+.priority-topic-option input { width: 18px; height: 18px; margin: 0; accent-color: var(--violet); }
+.priority-topic-option small, .priority-settings-form small { color: var(--muted); font-size: 16px; line-height: 1.5; }
+.priority-settings-form small { display: block; margin-top: 5px; }
+.priority-topic-add-row { display: flex; gap: 8px; }
+.priority-topic-add-row input { flex: 1; min-width: 0; }
+.priority-topic-add-row input, .priority-share-control input { font-size: 16px; }
+.priority-topic-settings button { font-size: 16px; }
+.priority-topic-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.priority-topic-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-raised); line-height: 1.5; }
+.priority-topic-chip button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; }
+.priority-share-control { display: grid; gap: 8px; font-size: 16px; }
+.priority-share-control input[type="number"] { width: min(180px, 100%); }
 .hud-panel, .hud-preview-panel { padding: 17px; }
 .hud-text-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 16px; margin-top: 16px; }
 .hud-text-field { min-width: 0; display: grid; gap: 5px; color: #e8e9f2; font-size: 11px; font-weight: 750; }
