@@ -213,8 +213,8 @@ const ROWS: QuestionRow[] = [
   {
     subtopicId: 'ff-thuat-ngu',
     prompt: 'Trong Free Fire, “squad” là nhóm người chơi nào trong trận?',
-    answer: 'Một nhóm đồng đội phối hợp trong trận',
-    distractors: ['Một nhóm khán giả theo dõi trận đấu', 'Nhóm vật phẩm trong hành trang', 'Nhóm nhân vật trong bộ sưu tập'],
+    answer: 'Nhóm đồng đội phối hợp trong trận',
+    distractors: ['Nhóm khán giả theo dõi trận đấu', 'Nhóm vật phẩm trong hành trang', 'Nhóm nhân vật trong bộ sưu tập'],
     explanation: 'Squad là nhóm người chơi phối hợp cùng nhau.',
   },
   {
