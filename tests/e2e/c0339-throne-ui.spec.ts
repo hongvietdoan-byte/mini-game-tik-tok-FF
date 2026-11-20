@@ -551,7 +551,7 @@ test('C-0339 holder change animates and carries the same player identity into th
     expect(slot.scoreFont, `top${slot.place} score font`).toBeGreaterThanOrEqual(32);
     expect(slot.rankFont, `top${slot.place} rank font stays at least 20px`).toBeGreaterThanOrEqual(20);
     expect(slot.nameInside, `top${slot.place} name stays inside plate with 8 px inset`).toBe(true);
-    expect(slot.scoreInside, `top${slot.place} score stays inside plate with 8 px inset`).toBe(true);
+    expect(slot.scoreInside, `top${slot.place} score stays inside plate with 8 px inset: ${JSON.stringify({ nameplate: slot.nameplate, safeArea: slot.safeArea, score: slot.textRows.find((row) => row.label === 'score') })}`).toBe(true);
     expect(slot.rankInside, `top${slot.place} rank stays inside plate with 8 px inset`).toBe(true);
     for (let index = 0; index < slot.textRows.length; index += 1) {
       const row = slot.textRows[index]!;

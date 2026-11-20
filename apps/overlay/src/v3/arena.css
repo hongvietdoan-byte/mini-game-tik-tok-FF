@@ -2250,7 +2250,7 @@
 .v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-bubble::before { left: auto; right: -34px; transform: scaleX(-1); }
 .v3-aux-stage[data-scene="INTERMISSION"] .v3-mc .v3-bubble p { font-size: 30px; line-height: 1.25; }
 /* Round winner: right side of the floor, below the podium and clear of the TikTok comment rail (x 100-750, y 1510-1746). */
-.v3v[data-scene="ROUND_WINNER"] > .v3-mc { top: 1400px; }
+.v3v[data-scene="ROUND_WINNER"] > .v3-mc { top: 1410px; }
 .v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-figure { left: 760px; width: 244px; }
 .v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-figure img { width: 198px; }
 .v3v[data-scene="ROUND_WINNER"] .v3-mc .v3-mc-plate { left: 758px; width: 242px; }
@@ -2479,6 +2479,7 @@
 }
 .v3v .v3v-figure img[data-testid="podium-character"] { width: auto; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center bottom; transform: none; }
 .v3v .v3v-player-name { min-width: 0; font-size: 28px; line-height: 1; }
+.v3v .v3v-player-name { min-height: calc(1em + 8px); line-height: calc(1em + 6px); }
 .v3v .v3v-names i { font-size: 32px !important; }
 .v3v .v3v-rank-label { font-size: 22px; line-height: 1; white-space: nowrap; }
 .v3v .v3v-names { gap: 15px; line-height: 1; }
@@ -2495,8 +2496,10 @@
 .v3v .v3v-rank-crown { z-index: 5; }
 .v3v .v3v-place-2 .v3v-nameplate,
 .v3v .v3v-place-3 .v3v-nameplate { width: 280px; }
-.v3v .v3v-nameplate.is-tied { flex-basis: 192px; height: 192px; margin-top: 12px; padding: 7px 20px; }
-.v3v .v3v-nameplate.is-tied .v3v-names { gap: 16px; }
+.v3v .v3v-nameplate,
+.v3v .v3v-nameplate.is-tied { padding-right: 8px; padding-left: 8px; }
+.v3v .v3v-nameplate.is-tied { flex-basis: 192px; height: 192px; margin-top: 12px; padding-top: 7px; padding-bottom: 7px; }
+.v3v .v3v-nameplate.is-tied .v3v-names { gap: 12px; }
 .v3v .v3v-nameplate.is-tied .v3v-rank-label { letter-spacing: 0; }
 .v3v .v3v-place-1 .v3v-nameplate.is-tied { flex-basis: 192px; height: 192px; }
 .v3v .v3v-laurel { top: 3px; width: 44px; height: 62px; }
@@ -2504,21 +2507,22 @@
 .v3v .v3v-laurel-right { right: -30px; }
 .v3v-place-1 .v3v-laurel-left { left: -19px; }
 .v3v-place-1 .v3v-laurel-right { right: -19px; }
+.v3v .v3v-place-3 .v3v-names { padding-right: 0; }
 .v3v .v3v-rank-label { max-width: 100%; font-size: clamp(20px, 7cqi, 22px); line-height: 1.05; letter-spacing: 0; white-space: normal; overflow-wrap: normal; }
 .v3v .v3v-rank-top,
 .v3v .v3v-rank-tie { display: inline; }
 .v3v .v3v-player-row.has-streak-badge { gap: 8px; justify-content: center; }
 .v3v .v3v-player-row.has-streak-badge .v3v-player-name { flex: 0 1 auto; width: auto; max-width: calc(100% - 42px); text-align: right; }
 .v3v .v3v-nameplate .v3-top1-badge { position: static; top: auto; right: auto; bottom: auto; flex: 0 0 auto; height: 18px; margin: 0; }
-@container (max-width: 260px) {
+@container (max-width: 280px) {
   .v3v .v3v-nameplate.is-tied .v3v-rank-label { display: flex; flex-direction: column; align-items: center; }
   .v3v .v3v-nameplate.is-tied .v3v-rank-label { line-height: 1.6; }
   .v3v .v3v-nameplate.is-tied .v3v-rank-separator { display: none; }
   .v3v .v3v-nameplate.is-tied .v3v-rank-top,
   .v3v .v3v-nameplate.is-tied .v3v-rank-tie { display: block; }
 }
-@container (max-width: 220px) {
-  .v3v .v3v-nameplate.is-tied:has(.has-streak-badge) .v3v-names { padding-top: 24px; }
+@container (max-width: 260px) {
+  .v3v .v3v-nameplate:has(.has-streak-badge) .v3v-names { padding-top: 24px; }
   .v3v .v3v-player-row.has-streak-badge .v3v-player-name { max-width: 100%; text-align: center; }
   .v3v .v3v-player-row.has-streak-badge .v3-top1-badge { position: absolute; top: 12px; right: 24px; }
 }

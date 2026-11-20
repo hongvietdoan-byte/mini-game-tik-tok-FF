@@ -56,7 +56,8 @@ function WinnerFigure({ entry, place }: { entry: PublicLeaderboardEntry; place: 
 
 function podiumNameSize(name: string): number {
   const length = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name)).length;
-  return Math.max(28, Math.min(34, 40 - length));
+  const size = Math.max(28, Math.min(34, 40 - length));
+  return length >= 16 ? Math.max(22, size - 2) : size;
 }
 
 function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPodiumSlot; tieAcross: boolean; allowLegacyNames: boolean; holderId?: string }) {
