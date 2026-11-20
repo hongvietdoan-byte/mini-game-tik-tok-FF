@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-20T12:35:34+07:00",
+  "heartbeat": "2026-11-20T13:15:39+07:00",
   "state": "working",
   "task": "C-0335",
-  "note": "Đã nhận C-0335, đang rà cấu hình và selection engine; C-0347 đã push/report",
+  "note": "Đang chạy lại full Playwright tài sản thật sau khi cô lập locator filter; Vitest toàn bộ có 2 lỗi giọng MC ngoài phạm vi, đã tái hiện riêng",
   "done": [
     331,
     333,
