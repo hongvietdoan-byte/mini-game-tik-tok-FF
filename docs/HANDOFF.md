@@ -1,6 +1,6 @@
 # HANDOFF — phiên coordinator (cập nhật 20/11/2026 chiều)
 
-**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 20/11 ~17:15) — ĐỌC ĐẦU TIÊN.**
+**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 20/11 ~17:15) — ĐÃ NHẬN 20/11 17:17.**
 
 ## Mới nhất 20/11 ~17:15 — đọc khối này trước, các khối dưới đã cũ
 - **Main `ea469287`+.** Hôm nay đã gộp:
