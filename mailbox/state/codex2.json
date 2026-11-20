@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 359,
-  "heartbeat": "2026-11-20T13:48:42+07:00",
+  "heartbeat": "2026-11-20T14:08:48+07:00",
   "state": "waiting",
   "task": "C-0355",
-  "note": "Không có thư mới; note rảnh Y-0602 đã gửi. DP3 trên BOARD vẫn đang được codex2 cập nhật, không tự nhận lại việc cũ.",
+  "note": "Inbox vẫn trống; DP3 trên BOARD đang được codex2 cập nhật và note rảnh Y-0602 đã gửi. Chờ thư mới.",
   "done": []
 }
