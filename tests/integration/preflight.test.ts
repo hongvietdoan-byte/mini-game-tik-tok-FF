@@ -34,6 +34,7 @@ class BlockedTikTokAdapter extends ReadyTikTokAdapter {
 
 type Harness = { quiz: QuizApp; store: Store; tempRoot: string; scheduler: ManualScheduler; port: number; sockets: WebSocket[] };
 const opened: Harness[] = [];
+const TEST_CHARACTER_IDS = ['chibi-test'];
 
 async function createWebRoots(root: string, completeAssets = true, staleBuilds = false) {
   const assets = join(root, 'assets');
@@ -48,11 +49,24 @@ async function createWebRoots(root: string, completeAssets = true, staleBuilds =
     writeFile(join(overlay, '.build-commit'), `${buildHash}\n`),
   ]);
   if (completeAssets) {
-    for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
+    const characterFiles = TEST_CHARACTER_IDS.flatMap((id) => [
+      `chibi/${id}.png`,
+      `throne/ngai-${id}.png`,
+      `chibi/dang-top2-top3/top2/top2-${id}.png`,
+      `chibi/dang-top2-top3/top3/top3-${id}.png`,
+    ]);
+    for (const relative of [
+      'brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png',
+      ...characterFiles,
+    ]) {
       const path = join(assets, relative);
       await mkdir(join(path, '..'), { recursive: true });
       await writeFile(path, 'test-placeholder');
     }
+    await writeFile(
+      join(assets, 'chibi', 'manifest.json'),
+      JSON.stringify({ characters: TEST_CHARACTER_IDS.map((id) => ({ id })) }),
+    );
   }
   return { assets, dashboard, overlay };
 }
