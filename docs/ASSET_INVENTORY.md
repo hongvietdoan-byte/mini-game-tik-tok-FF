@@ -5,8 +5,9 @@
 ## Phạm vi và kết quả quét
 
 - Quét ảnh nguồn/tham chiếu trong checkout chính và các thư mục asset đã biết; bỏ `.git`, `node_modules`, `.claude`, `test-results`, build output và thư mục backup chibi cũ theo C-0046. Không đọc/listing `.xlsx`.
-- Kết quả hiện tại: **238 ảnh** (`216 PNG`, `22 JPEG`). Không có SVG/GIF/WebP/video/audio trong bộ ảnh kiểm kê.
-- 66 PNG alpha tại `assets-local/chibi/` khớp 66 mục trong manifest; không thiếu file, không thừa file. Đây là Character Pool runtime duy nhất được duyệt.
+- Kết quả hiện tại: **229 ảnh** (`207 PNG`, `22 JPEG`). Không có SVG/GIF/WebP/video/audio trong bộ ảnh kiểm kê.
+- 19/11: bỏ 3 nhân vật theo quyết định người dùng; Character Pool runtime còn 62 nhân vật.
+- 62 PNG alpha tại `assets-local/chibi/` khớp 62 mục trong manifest; không thiếu file, không thừa file. Đây là Character Pool runtime duy nhất được duyệt.
 - `assets-local/mc/kelly.png`: PNG alpha 273×640. `assets-local/mc/kelly/` có thư mục trạng thái và `HUONG_DAN.txt`, nhưng chưa có manifest/frame PNG; McSequence cần fallback ảnh tĩnh.
 - `assets-local/brand/logo.png`: PNG alpha 1089×1125; C-0049 duyệt dùng nguyên ảnh ở header. Logo chữ Storm Arena tiếp tục dựng bằng CSS.
 - `assets-local/cards/the-chien-dau-ffvn-kelly.png`: PNG alpha 1107×1421; C-0050 chỉ duyệt làm tham chiếu cho viền neon và dải tên chéo, không dùng làm ảnh runtime cho người chơi.
@@ -19,9 +20,9 @@
 | Nhóm | Số ảnh | Dạng | Trạng thái |
 |---|---:|---|---|
 | Root references | 17 | Poster, logo sheet, arena/storm, cúp và screenshot target mới | Chỉ tham khảo |
-| `2026-11-11_chibi_kho/` | 71 | 67 PNG nền đục + 4 JPEG sheet | Chỉ tham khảo/xử lý |
-| `assets-local/chibi/` | 66 | PNG alpha, cao 360 px | Runtime được duyệt |
-| `assets-local/chibi-clean/` | 68 | 66 chibi + Kelly + cúp | Không dùng theo C-0046 |
+| `2026-11-11_chibi_kho/` | 68 | 64 PNG nền đục + 4 JPEG sheet | Chỉ tham khảo/xử lý |
+| `assets-local/chibi/` | 62 | PNG alpha, cao 360 px | Runtime được duyệt |
+| `assets-local/chibi-clean/` | 65 | 63 chibi + Kelly + cúp | Không dùng theo C-0046 |
 | `assets-local/chibi-clean/.preview/` | 11 | PNG/JPEG preview | Review only |
 | `assets-local/mc/` + `assets-local/victory/` | 3 | Kelly + background/cúp chiến thắng | Kelly và VictoryStage đang dùng |
 | `assets-local/brand/` + `assets-local/cards/` | 2 | Logo chính thức + thẻ FFVN.Kelly | Logo runtime; thẻ chỉ tham chiếu |
@@ -38,7 +39,7 @@
 | Khung bảng xếp hạng/nền tên | Không có bitmap frame độc lập | `MISSING_ASSET`; dựng bằng CSS/SVG động | Leaderboard/nameplates |
 | Thẻ chiến đấu FFVN.Kelly | `assets-local/cards/the-chien-dau-ffvn-kelly.png` 1107×1421 alpha | Chỉ tham chiếu màu neon hồng–tím–xanh, góc vát, sét và dải tên chéo; không dùng runtime | Visual reference cho Top 3/nameplates |
 | MC Kelly | `assets-local/mc/kelly.png` 273×640 alpha | Đang dùng làm ảnh tĩnh và McSequence fallback | MC Character Layer |
-| Nhân vật chibi | 66 PNG alpha + manifest tại `assets-local/chibi/` | Nguồn runtime duy nhất được duyệt; random theo pool | Audience + podium |
+| Nhân vật chibi | 62 PNG alpha + manifest tại `assets-local/chibi/` | Nguồn runtime duy nhất được duyệt; random theo pool | Audience + podium |
 | Ghế/khán đài | Không có asset tách lớp | `MISSING_ASSET`; dựng CSS/SVG theo C-0042 | Arena Environment |
 | Cúp/sân khấu chiến thắng | `victory/trophy-stage.png` 1408×900 alpha + `victory/bg.jpg` 1080×1920 | Đang dùng trong VictoryStage | Victory |
 | Lightning/VFX | Không có file VFX riêng | `MISSING_ASSET`; dựng nhẹ bằng CSS/SVG | Decorative VFX |
@@ -71,7 +72,7 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | Ảnh ChatGPT 10_21_39 11 thg 11, 2026.jpg | Ảnh ChatGPT 10_21_39 11 thg 11, 2026.jpg | JPEG | 1152×2048 | không | Reference background bão 9:16; chỉ tham khảo bố cục. | THAM CHIẾU — không dùng runtime | Visual reference only |
 | Đấu Trường Bão Tố_ MC Kelly Live Quiz.png | Đấu Trường Bão Tố_ MC Kelly Live Quiz.png | PNG | 937×1639 | không | Screenshot target đầy đủ do người dùng gửi; tham chiếu bố cục, ánh sáng, khán đài và góc crop nhân vật. | THAM CHIẾU — không dùng runtime | Visual target only |
 
-### Kho nhân vật nguồn 2026-11-11_chibi_kho (71)
+### Kho nhân vật nguồn 2026-11-11_chibi_kho (68)
 
 | Đường dẫn | Tên file | Định dạng | Pixel | Alpha | Vai trò | Trạng thái | Component |
 |---|---|---|---:|---|---|---|---|
@@ -83,7 +84,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | 2026-11-11_chibi_kho/008_CLU.png | 008_CLU.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/009_D_BEE.png | 009_D_BEE.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/010_DASHA.png | 010_DASHA.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
-| 2026-11-11_chibi_kho/011_DIMITRI.png | 011_DIMITRI.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/012_FORD.png | 012_FORD.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/013_HAYATO.png | 013_HAYATO.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/014_HOMER.png | 014_HOMER.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
@@ -91,7 +91,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | 2026-11-11_chibi_kho/016_IRIS.png | 016_IRIS.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/017_JOSEPH.png | 017_JOSEPH.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/018_JOTA.png | 018_JOTA.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
-| 2026-11-11_chibi_kho/019_K.png | 019_K.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/020_KAIROS.png | 020_KAIROS.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/021_KAPELLA.png | 021_KAPELLA.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/022_KASSIE.png | 022_KASSIE.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
@@ -127,7 +126,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | 2026-11-11_chibi_kho/055_STEFFIE.png | 055_STEFFIE.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/056_SUZY.png | 056_SUZY.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/057_TATSUYA.png | 057_TATSUYA.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
-| 2026-11-11_chibi_kho/058_THIVA.png | 058_THIVA.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/059_WOLFRAHH.png | 059_WOLFRAHH.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/060_WUKONG.png | 060_WUKONG.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/061_XAYNE.png | 061_XAYNE.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
@@ -147,7 +145,7 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | 2026-11-11_chibi_kho/maxim.png | maxim.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 | 2026-11-11_chibi_kho/TINH VÂN.png | TINH VÂN.png | PNG | 1152×2048 | không | Ảnh nguồn nhân vật nền đục; không dùng runtime. | NGUỒN THAM KHẢO — không dùng runtime | Reference/processing source only |
 
-### Chibi đã tách nền — nguồn runtime được duyệt (66)
+### Chibi đã tách nền — nguồn runtime được duyệt (62)
 
 | Đường dẫn | Tên file | Định dạng | Pixel | Alpha | Vai trò | Trạng thái | Component |
 |---|---|---|---:|---|---|---|---|
@@ -159,7 +157,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/chibi/chibi-008-clu.png | chibi-008-clu.png | PNG | 152×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-009-d-bee.png | chibi-009-d-bee.png | PNG | 148×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-010-dasha.png | chibi-010-dasha.png | PNG | 145×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
-| assets-local/chibi/chibi-011-dimitri.png | chibi-011-dimitri.png | PNG | 141×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-012-ford.png | chibi-012-ford.png | PNG | 153×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-013-hayato.png | chibi-013-hayato.png | PNG | 162×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-014-homer.png | chibi-014-homer.png | PNG | 168×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
@@ -167,7 +164,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/chibi/chibi-016-iris.png | chibi-016-iris.png | PNG | 161×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-017-joseph.png | chibi-017-joseph.png | PNG | 137×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-018-jota.png | chibi-018-jota.png | PNG | 137×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
-| assets-local/chibi/chibi-019-k.png | chibi-019-k.png | PNG | 175×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-020-kairos.png | chibi-020-kairos.png | PNG | 157×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-021-kapella.png | chibi-021-kapella.png | PNG | 167×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-022-kassie.png | chibi-022-kassie.png | PNG | 172×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
@@ -203,7 +199,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/chibi/chibi-055-steffie.png | chibi-055-steffie.png | PNG | 159×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-056-suzy.png | chibi-056-suzy.png | PNG | 143×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-057-tatsuya.png | chibi-057-tatsuya.png | PNG | 155×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
-| assets-local/chibi/chibi-058-thiva.png | chibi-058-thiva.png | PNG | 134×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-059-wolfrahh.png | chibi-059-wolfrahh.png | PNG | 150×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-060-wukong.png | chibi-060-wukong.png | PNG | 155×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-061-xayne.png | chibi-061-xayne.png | PNG | 169×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
@@ -218,7 +213,7 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/chibi/chibi-thu-v1-004-alvaro.png | chibi-thu-v1-004-alvaro.png | PNG | 157×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 | assets-local/chibi/chibi-tinh-van.png | chibi-tinh-van.png | PNG | 151×360 | có | PNG chibi toàn thân alpha, 360 px cao; nguồn Character Pool runtime đã duyệt. | SỬ DỤNG ĐƯỢC — nguồn runtime được duyệt | Audience + Victory podium (`/assets/chibi/{id}.png`) |
 
-### Bộ chibi thay thế khác — không dùng theo C-0046 (68)
+### Bộ chibi thay thế khác — không dùng theo C-0046 (65)
 
 | Đường dẫn | Tên file | Định dạng | Pixel | Alpha | Vai trò | Trạng thái | Component |
 |---|---|---|---:|---|---|---|---|
@@ -230,7 +225,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/chibi-clean/chibi-008-clu.png | chibi-008-clu.png | PNG | 152×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-009-d-bee.png | chibi-009-d-bee.png | PNG | 148×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-010-dasha.png | chibi-010-dasha.png | PNG | 145×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
-| assets-local/chibi-clean/chibi-011-dimitri.png | chibi-011-dimitri.png | PNG | 141×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-012-ford.png | chibi-012-ford.png | PNG | 153×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-013-hayato.png | chibi-013-hayato.png | PNG | 162×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-014-homer.png | chibi-014-homer.png | PNG | 168×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
@@ -238,7 +232,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/chibi-clean/chibi-016-iris.png | chibi-016-iris.png | PNG | 161×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-017-joseph.png | chibi-017-joseph.png | PNG | 137×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-018-jota.png | chibi-018-jota.png | PNG | 137×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
-| assets-local/chibi-clean/chibi-019-k.png | chibi-019-k.png | PNG | 175×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-020-kairos.png | chibi-020-kairos.png | PNG | 157×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-021-kapella.png | chibi-021-kapella.png | PNG | 167×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-022-kassie.png | chibi-022-kassie.png | PNG | 172×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
@@ -274,7 +267,6 @@ Mỗi hàng ghi đường dẫn, file, định dạng, kích thước pixel, alp
 | assets-local/chibi-clean/chibi-055-steffie.png | chibi-055-steffie.png | PNG | 159×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-056-suzy.png | chibi-056-suzy.png | PNG | 143×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-057-tatsuya.png | chibi-057-tatsuya.png | PNG | 155×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
-| assets-local/chibi-clean/chibi-058-thiva.png | chibi-058-thiva.png | PNG | 134×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-059-wolfrahh.png | chibi-059-wolfrahh.png | PNG | 150×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-060-wukong.png | chibi-060-wukong.png | PNG | 155×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
 | assets-local/chibi-clean/chibi-061-xayne.png | chibi-061-xayne.png | PNG | 169×360 | có | Bản thay thế ngoài nguồn runtime được duyệt; không dùng theo C-0046. | KHÔNG DÙNG — C-0046 chỉ định assets-local/chibi/ | Không dùng theo C-0046 |
@@ -345,7 +337,7 @@ Hiện trạng xác minh C-0196: `countdown-tick.mp3` và `.ogg` là asset runti
 
 | Đường dẫn | Dạng | Vai trò | Trạng thái |
 |---|---|---|---|
-| `assets-local/chibi/manifest.json` | JSON | Manifest 66 ID/file; khớp kho ảnh runtime | Đang dùng |
+| `assets-local/chibi/manifest.json` | JSON | Manifest 62 ID/file; khớp kho ảnh runtime | Đang dùng |
 | `assets-local/chibi-clean/manifest.json` | JSON | Bản thay thế ngoài nguồn đã duyệt | Không dùng theo C-0046 |
 | `assets-local/review/cutout-sheet.html` | HTML | Sheet review chibi/Kelly/cúp | Review only |
 | `assets-local/mc/kelly/HUONG_DAN.txt` | TXT | Hướng dẫn sequence; chưa có manifest/frame | Hướng dẫn |
@@ -353,6 +345,6 @@ Hiện trạng xác minh C-0196: `countdown-tick.mp3` và `.ogg` là asset runti
 
 ## Runtime và preview
 
-- Server Character Pool đọc `assets-local/chibi/manifest.json`; overlay render `/assets/chibi/{characterId}.png`. C-0046 xác nhận đây là 66 ảnh đã tách nền sạch và là nguồn được duyệt.
+- Server Character Pool đọc `assets-local/chibi/manifest.json`; overlay render `/assets/chibi/{characterId}.png`. C-0046 xác nhận đây là nguồn ảnh đã tách nền sạch được duyệt; sau quyết định 19/11, pool còn 62 nhân vật.
 - MC dùng `<McSequence state={snapshot.mc.state} />`; khi thiếu `assets-local/mc/kelly/manifest.json` hoặc frame, component dùng `/assets/mc/kelly.png`.
 - Vite proxy và Playwright cần phục vụ `/assets` từ server; asset bank nằm ngoài Git nên kiểm tra ảnh thật chỉ chạy khi local assets có mặt.

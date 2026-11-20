@@ -483,6 +483,7 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
     expect(top10Box!.x).toBeGreaterThanOrEqual(0);
     expect(boardBox!.x - (top10Box!.x + top10Box!.width)).toBeGreaterThanOrEqual(12);
     expect(promptBox!.y + promptBox!.height + 12).toBeLessThanOrEqual(boardBox!.y + 2 + 292);
+    expect(Number.parseFloat(await stage.locator('.v3-question').evaluate((element) => getComputedStyle(element).fontSize)), `${entry.phase}: question text never renders below 24px`).toBeGreaterThanOrEqual(24);
 
     const timer = stage.getByTestId('timer');
     if (entry.name === 'question' || entry.name === 'reveal') {
@@ -493,7 +494,7 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
       const node = element as HTMLElement;
       const truncated = node.dataset.promptTruncated === 'true';
       const copy = node.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]');
-      return node.scrollHeight <= node.clientHeight || (truncated && copy?.textContent?.endsWith('…') === true && Number.parseFloat(getComputedStyle(node).fontSize) >= 26);
+      return node.scrollHeight <= node.clientHeight || (truncated && copy?.textContent?.endsWith('…') === true && Number.parseFloat(getComputedStyle(node).fontSize) >= 24);
     }), `${entry.phase}: prompt stays inside the fixed card`).toBe(true);
 
     const cards = stage.locator('.v3-option');
@@ -1225,7 +1226,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     }
     expect(geometry.mcFrame, `${name}: MC has the approved frame`).not.toBeNull();
     expect(Math.abs(geometry.mcFrame!.width - 205), `${name}: MC portrait matches user reference width`).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.mcFrame!.height - 205), `${name}: MC portrait matches user reference height`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.mcFrame!.height - 158), `${name}: MC portrait uses the C-0317 frame height to clear the chibi row`).toBeLessThanOrEqual(1);
     expect(geometry.bubble, `${name}: fixed speech bubble exists`).not.toBeNull();
     expect(Math.abs(geometry.bubble!.x - 410), `${name}: bubble x matches C-0133`).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.bubble!.y - 860), `${name}: bubble matches C-0219 y`).toBeLessThanOrEqual(1);
@@ -1234,7 +1235,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.promptFits, `${name}: prompt fits without enlarging its card`).toBe(true);
     expect(geometry.mcFigure, `${name}: Kelly has a visible fixed portrait frame`).not.toBeNull();
     expect(geometry.mcPlate, `${name}: Kelly nameplate has a fixed position`).not.toBeNull();
-    expect(Math.abs(geometry.mcPlate!.y - 1018), `${name}: Kelly nameplate matches C-0219 y`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.mcPlate!.y - 1013), `${name}: C-0317 keeps a 29px portrait-to-nameplate gap`).toBeLessThanOrEqual(1);
     expect(geometry.logo!.y + geometry.logo!.height, `${name}: logo remains above the baked flags`).toBeLessThanOrEqual(270);
     if (name === 'prepare') expect(geometry.blankAnswers).toBe(true);
     if (!reference) reference = geometry;
@@ -1387,7 +1388,7 @@ test('question scene uses the official logo, approved Kelly/chibi assets and are
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
-  expect(mcCrop.parentHeight).toBe(205);
+  expect(mcCrop.parentHeight).toBe(158);
   expect(mcCrop.imageWidth).toBe(168);
   expect(mcCrop.imageHeight).toBeGreaterThan(mcCrop.parentHeight);
   expect(mcCrop.imageHeight / mcCrop.imageWidth).toBeCloseTo(mcCrop.naturalHeight / mcCrop.naturalWidth, 2);

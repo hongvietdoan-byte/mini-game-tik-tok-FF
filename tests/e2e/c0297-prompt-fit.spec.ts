@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 
 const reviewDirectory = resolve(process.cwd(), '.claude', 'review', 'C0297');
 
-test('C-0297 — long prompts fit three lines or clamp inside the fixed frame in QUESTION and REVEAL', async ({ page }) => {
+test('C-0297 — long prompts fit four lines or clamp inside the fixed frame in QUESTION and REVEAL', async ({ page }) => {
   mkdirSync(reviewDirectory, { recursive: true });
   for (const mock of ['question-live-long', 'reveal-live-long', 'question-clamp-text', 'reveal-clamp-text']) {
     await page.goto(`/?mock=${mock}`, { waitUntil: 'domcontentloaded' });
@@ -27,13 +27,15 @@ test('C-0297 — long prompts fit three lines or clamp inside the fixed frame in
         fullPromptLength: element.getAttribute('title')?.length ?? 0,
       };
     });
-    expect(metrics.fontSize).toBeGreaterThanOrEqual(26);
+    // C-0319 approved a 24px readability floor and a fourth line in the fixed frame.
+    expect(metrics.fontSize).toBeGreaterThanOrEqual(24);
     expect(metrics.height).toBeLessThanOrEqual(126);
+    expect(metrics.visibleLines).toBeLessThanOrEqual(4);
     if (clamped) {
       expect(metrics.fullPromptLength).toBeGreaterThanOrEqual(150);
       await expect(page.getByTestId('prompt-truncation-warning')).toBeVisible();
       await expect(prompt).toHaveAttribute('data-prompt-truncated', 'true');
-      expect(metrics.visibleLines).toBeLessThanOrEqual(3);
+      expect(metrics.visibleLines).toBeLessThanOrEqual(4);
       expect(metrics.visibleText.endsWith('…')).toBe(true);
       const option = page.getByTestId('option-B').locator('.v3-option-text');
       await expect(option).toHaveAttribute('data-option-truncated', 'true');

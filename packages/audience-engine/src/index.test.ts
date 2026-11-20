@@ -78,6 +78,18 @@ describe('assignCharacter', () => {
       .toBeGreaterThan(1);
   });
 
+  it('chọn nhân vật chưa dùng trước và chỉ bắt đầu cho trùng sau khi hết pool', () => {
+    const used: string[] = [];
+    const firstPoolSize = 62;
+    const largePool = Array.from({ length: firstPoolSize }, (_, index) => `chibi-${String(index + 1).padStart(3, '0')}`);
+    for (let index = 0; index < firstPoolSize; index += 1)
+      used.push(assignCharacter(`player-${index}`, 'round-unique', largePool, 91, used));
+    expect(new Set(used).size).toBe(firstPoolSize);
+    const sixtyThird = assignCharacter('player-62', 'round-unique', largePool, 91, used);
+    expect(largePool).toContain(sixtyThird);
+    expect(used).toContain(sixtyThird);
+  });
+
   it('từ chối pool rỗng và định danh không hợp lệ', () => {
     expect(() => assignCharacter('p', 'r', [], 1)).toThrow(RangeError);
     expect(() => assignCharacter('p', 'r', [''], 1)).toThrow(TypeError);

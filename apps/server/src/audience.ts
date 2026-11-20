@@ -16,12 +16,12 @@ import type { Store } from '@quiz/persistence';
 export const DEFAULT_CHARACTER_POOL = Array.from({ length: 12 }, (_, i) => `chibi-${String(i + 1).padStart(2, '0')}`);
 
 /**
- * Vỏ có hiệu ứng quanh audience-engine (thuần): giữ trạng thái 35 ghế của vòng hiện tại,
+ * Vỏ có hiệu ứng quanh audience-engine (thuần): giữ trạng thái 30 ghế của vòng hiện tại,
  * gán nhân vật (lưu DB, không random lại), xoay ghế giữa các câu, và dựng AudienceView công khai.
  * Ghi DB theo lô (flush) — không ghi theo từng bình luận.
  */
 export class AudienceManager {
-  private readonly slots: Slot[] = createSlots();
+  private readonly slots: Slot[] = createSlots(6, 5);
   private state: AudienceState | null = null;
   private roundId: string | null = null;
   private chars = new Map<string, string>();
@@ -32,6 +32,8 @@ export class AudienceManager {
   private lobbyKey: string | null = null;
   /** Người đã vào vòng (ngồi hoặc chờ) — tránh dò tuyến tính hàng chờ ở mỗi đáp án. */
   private known = new Set<string>();
+  /** Stable first-join positions, maintained as players register. */
+  private joinOrderIndices = new Map<string, number>();
   private dirty = false;
   private answersCache: { qid: string; answers: Map<string, OptionId> } | null = null;
 
@@ -56,6 +58,7 @@ export class AudienceManager {
     this.chars.clear();
     this.names.clear();
     this.known.clear();
+    this.joinOrderIndices.clear();
     this.joined = 0;
     this.answersCache = null;
     this.dirty = false;
@@ -68,14 +71,14 @@ export class AudienceManager {
     return this.join(playerId, displayName, now, false);
   }
 
-  /** Vòng mới: 35 ghế trống. Gọi TRONG transaction của ROUND_STARTED. */
+  /** Vòng mới: 30 ghế trống bên dưới ngai. Gọi TRONG transaction của ROUND_STARTED. */
   startRound(roundId: string, now: number) {
     if (this.state && this.lobbyReservation) {
       this.roundId = roundId;
       this.lobbyReservation = false;
       for (const playerId of this.known) {
         // Giữ nhân vật người xem đã thấy ở sảnh để không bị đổi hình khi vào vòng.
-        const proposed = this.chars.get(playerId) ?? assignCharacter(playerId, roundId, this.pool, this.seed);
+        const proposed = this.chars.get(playerId) ?? assignCharacter(playerId, roundId, this.pool, this.seed, [...this.chars.values()]);
         this.chars.set(playerId, this.store.assignCharacter(roundId, playerId, proposed, now));
       }
       this.store.saveAudienceState(roundId, 0, this.state, now);
@@ -87,6 +90,7 @@ export class AudienceManager {
     this.chars.clear();
     this.names.clear();
     this.known.clear();
+    this.joinOrderIndices.clear();
     this.joined = 0;
     this.answersCache = null;
     this.store.saveAudienceState(roundId, 0, this.state, now);
@@ -95,22 +99,73 @@ export class AudienceManager {
   }
 
   /** Khôi phục sau khởi động lại / reload: ghế và nhân vật lấy đúng từ DB. */
-  load(roundId: string) {
+  load(roundId: string, now = Date.now()) {
     this.lobbyReservation = false;
     this.roundId = roundId;
     const savedState = this.store.loadAudienceState<AudienceState>(roundId);
-    this.state = savedState ? hydrateAudienceState(savedState) : createAudienceState(this.slots);
-    this.dirty = !!savedState && !Array.isArray(savedState.joinOrder);
+    let repairedState = false;
+    if (savedState) {
+      const hydrated = hydrateAudienceState(savedState);
+      const currentSlotIds = this.slots.map((slot) => slot.slotId).sort();
+      const savedSlotIds = Object.keys(hydrated.seats).sort();
+      this.state = currentSlotIds.length === savedSlotIds.length && currentSlotIds.every((id, index) => id === savedSlotIds[index])
+        ? hydrated
+        : this.migrateToThroneSeats(hydrated);
+      repairedState = this.state !== hydrated;
+    } else {
+      this.state = createAudienceState(this.slots);
+    }
+    repairedState ||= !!savedState && !Array.isArray(savedState.joinOrder);
+    const presentBeforeRepair = new Set([
+      ...Object.values(this.state.seats).flatMap((occupant) => occupant ? [occupant.playerId] : []),
+      ...this.state.queue,
+    ]);
+    for (const player of this.store.roundPlayerJoinOrder(roundId)) {
+      if (presentBeforeRepair.has(player.playerId)) continue;
+      this.state = onPlayerJoined(this.state, player.playerId, player.joinedAtMs).state;
+      presentBeforeRepair.add(player.playerId);
+      repairedState = true;
+    }
+    this.dirty = repairedState;
     this.chars = this.store.characterAssignments(roundId);
-    this.joined = this.chars.size;
     const ids = [...Object.values(this.state.seats).flatMap((o) => (o ? [o.playerId] : []))];
     this.names = this.store.displayNames(ids);
-    this.known = new Set([...ids, ...this.state.queue]);
+    const joinOrder = this.state.joinOrder ?? [];
+    const orderedKnown = [...new Set([...joinOrder, ...ids, ...this.state.queue])];
+    this.known = new Set(orderedKnown);
+    this.joinOrderIndices = new Map(orderedKnown.map((playerId, index) => [playerId, index]));
+    for (const playerId of orderedKnown) {
+      if (this.chars.has(playerId)) continue;
+      const assigned = this.assignRoundCharacter(playerId, now);
+      this.chars.set(playerId, assigned);
+      console.warn('Missing character assignment repaired from saved audience order.', { roundId, playerId, characterId: assigned });
+    }
+    this.joined = this.known.size;
     this.answersCache = null;
   }
 
-  characterOf(playerId: string): string | undefined {
-    return this.chars.get(playerId);
+  characterOf(playerId: string, now = Date.now()): string | undefined {
+    return this.chars.get(playerId) ?? this.repairCharacter(playerId, now);
+  }
+
+  /** Persist the first accepted answer's assignment inside the answer transaction. */
+  persistRoundCharacter(playerId: string, now: number): string | undefined {
+    if (!this.roundId) return undefined;
+    const saved = this.store.characterAssignments(this.roundId);
+    const existing = saved.get(playerId);
+    if (existing) return existing;
+    const used = new Set([...saved.values(), ...this.chars.values()]);
+    const proposed = assignCharacter(playerId, this.roundId, this.pool, this.seed, [...used]);
+    return this.store.assignCharacter(this.roundId, playerId, proposed, now);
+  }
+
+  /** Stable registration order used by the throne tie-break, including lobby arrivals. */
+  joinOrderIndex(playerId: string): number {
+    return this.joinOrderIndices.get(playerId) ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  registrationOrder(): string[] {
+    return [...(this.state?.joinOrder ?? [])];
   }
 
   updateDisplayName(playerId: string, displayName: string): boolean {
@@ -137,6 +192,7 @@ export class AudienceManager {
     this.state = null;
     this.roundId = null;
     this.lobbyReservation = false;
+    this.joinOrderIndices.clear();
   }
 
   /**
@@ -170,19 +226,20 @@ export class AudienceManager {
       state.joinOrder.push(playerId);
     }
     this.known.add(playerId);
+    this.joinOrderIndices.set(playerId, this.joinOrderIndices.size);
     this.joined += 1;
     this.names.set(playerId, displayName);
     if (persistCharacter && this.roundId) {
-      const proposed = assignCharacter(playerId, this.roundId, this.pool, this.seed);
+      const proposed = this.chars.get(playerId) ?? assignCharacter(playerId, this.roundId, this.pool, this.seed, [...this.chars.values()]);
       this.chars.set(playerId, this.store.assignCharacter(this.roundId, playerId, proposed, now));
     } else if (this.lobbyReservation && !this.chars.has(playerId)) {
       // Sảnh chưa có roundId: gán tạm trong RAM (không ghi DB) để mỗi người có nhân vật riêng.
       this.lobbyKey ??= `lobby-${Math.floor(now)}`;
-      this.chars.set(playerId, assignCharacter(playerId, this.lobbyKey, this.pool, this.seed));
+      this.chars.set(playerId, assignCharacter(playerId, this.lobbyKey, this.pool, this.seed, [...this.chars.values()]));
     }
     this.dirty = true;
     // LOBBY also displays the waiting count, so every new participant changes
-    // the public audience view even when all 35 seats are already occupied.
+    // the public audience view even when all 30 seats are already occupied.
     return true;
   }
 
@@ -227,8 +284,13 @@ export class AudienceManager {
    * Dựng view công khai. `revealedQid` khác null (sau khi công bố) → kèm đúng/sai của người đang ngồi cho câu đó.
    * Không bao giờ chứa playerId.
    */
-  view(revealed: { qid: string; correctOptionId: OptionId } | null): AudienceView | null {
+  view(
+    revealed: { qid: string; correctOptionId: OptionId } | null,
+    now = Date.now(),
+    hiddenPlayerIds: readonly string[] = [],
+  ): AudienceView | null {
     if (!this.state) return null;
+    const hidden = new Set(hiddenPlayerIds);
     let answers: Map<string, OptionId> | null = null;
     if (revealed) {
       if (this.answersCache?.qid !== revealed.qid)
@@ -236,7 +298,10 @@ export class AudienceManager {
       answers = this.answersCache.answers;
     }
     const seats = this.slots.map((slot) => {
-      const occ = this.state!.seats[slot.slotId] ?? null;
+      const storedOccupant = this.state!.seats[slot.slotId] ?? null;
+      // A throne holder keeps their stable audience assignment but is not rendered
+      // in two places at once. The seat is visually vacant until the normal rotation.
+      const occ = storedOccupant && !hidden.has(storedOccupant.playerId) ? storedOccupant : null;
       return {
         slotId: slot.slotId,
         rowIndex: slot.rowIndex,
@@ -248,7 +313,7 @@ export class AudienceManager {
         occupant: occ
           ? {
               safeDisplayName: this.names.get(occ.playerId) ?? 'Khán giả',
-              characterId: this.chars.get(occ.playerId) ?? this.pool[0]!,
+              characterId: this.characterOf(occ.playerId, now)!,
               pinned: occ.pinned,
               result: !revealed
                 ? null
@@ -262,5 +327,62 @@ export class AudienceManager {
       };
     });
     return { rotationId: this.state.rotationId, seats, queued: this.state.queue.length, total: this.joined };
+  }
+
+  private assignRoundCharacter(playerId: string, now: number): string {
+    const roundId = this.roundId;
+    if (!roundId) throw new Error('Không thể gán nhân vật bền khi chưa có vòng.');
+    const used = [...this.store.characterAssignments(roundId).values(), ...this.chars.values()];
+    const proposed = assignCharacter(playerId, roundId, this.pool, this.seed, used);
+    return this.store.assignCharacter(roundId, playerId, proposed, now);
+  }
+
+  /** Drop the old front row when restoring a 7×5 audience snapshot for the throne layout. */
+  private migrateToThroneSeats(previous: AudienceState): AudienceState {
+    const migrated = createAudienceState(this.slots);
+    const queue = [...previous.queue];
+    for (let row = 0; row < 7; row += 1) {
+      for (let seat = 0; seat < 5; seat += 1) {
+        const occupant = previous.seats[`row-${row}-seat-${seat}`] ?? null;
+        if (!occupant) continue;
+        if (row === 0) {
+          queue.push(occupant.playerId);
+          continue;
+        }
+        migrated.seats[`row-${row - 1}-seat-${seat}`] = { ...occupant };
+      }
+    }
+    const present = new Set([
+      ...Object.values(migrated.seats).flatMap((occupant) => occupant ? [occupant.playerId] : []),
+      ...queue,
+    ]);
+    migrated.rotationId = previous.rotationId;
+    migrated.queue = [...new Set(queue)];
+    migrated.lastActiveAt = Object.fromEntries(Object.entries(previous.lastActiveAt).filter(([id]) => present.has(id)));
+    migrated.joinOrder = (previous.joinOrder ?? []).filter((id, index, all) => present.has(id) && all.indexOf(id) === index);
+    for (const id of [...Object.values(migrated.seats).flatMap((occupant) => occupant ? [occupant.playerId] : []), ...migrated.queue])
+      if (!migrated.joinOrder.includes(id)) migrated.joinOrder.push(id);
+    return migrated;
+  }
+
+  private repairCharacter(playerId: string, now: number): string | undefined {
+    if (this.roundId) {
+      const assigned = this.assignRoundCharacter(playerId, now);
+      this.chars.set(playerId, assigned);
+      this.known.add(playerId);
+      this.joined = this.known.size;
+      console.warn('Missing character assignment repaired before public snapshot.', { roundId: this.roundId, playerId, characterId: assigned });
+      return assigned;
+    }
+    if (this.lobbyReservation) {
+      this.lobbyKey ??= `lobby-${Math.floor(now)}`;
+      const assigned = assignCharacter(playerId, this.lobbyKey, this.pool, this.seed, [...this.chars.values()]);
+      this.chars.set(playerId, assigned);
+      this.known.add(playerId);
+      this.joined = this.known.size;
+      console.warn('Missing lobby character assignment repaired before public snapshot.', { playerId, characterId: assigned });
+      return assigned;
+    }
+    throw new Error(`Audience player ${playerId} has no character assignment outside a round or lobby.`);
   }
 }

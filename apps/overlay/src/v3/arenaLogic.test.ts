@@ -57,6 +57,15 @@ describe('V3 arena logic', () => {
       text: 'Free Fire có 4 người', lineCount: 1, truncated: false,
     });
     expect(wrapPromptToLines('A👨‍👩‍👧‍👦BC D', 30, 1, measure).text).toBe('A…');
+    expect(wrapPromptToLines('Alpha\n\nBravo', 60, 2, measure)).toEqual({
+      text: 'Alpha…', lineCount: 1, truncated: true,
+    });
+  });
+
+  it('không để dấu ba chấm thành một dòng riêng khi dòng cuối bị trống', () => {
+    const layout = wrapPromptToLines('Alpha\n\nbeta gamma', 60, 2, (value) => Array.from(value).length * 10);
+    expect(layout).toEqual({ text: 'Alpha…', lineCount: 1, truncated: true });
+    expect(layout.text.split('\n').at(-1)).toMatch(/.+…$/u);
   });
 
   it('giữ nguyên newline biên tập và ghép cụm MC quan trọng để text-wrap không xé đôi', () => {

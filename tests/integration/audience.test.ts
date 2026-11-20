@@ -22,25 +22,25 @@ const seatedKey = (h: Harness) =>
     .audience!.seats.map((s) => `${s.slotId}=${s.occupant ? `${s.occupant.safeDisplayName}|${s.occupant.characterId}` : '-'}`)
     .join(',');
 
-describe('V3 §6 — 35 ghế khán giả', () => {
-  it('500 người tham gia: đủ 500 trong bảng điểm, đúng 35 ghế, 465 hàng chờ; overlay không lộ ID; đúng/sai sau công bố', async () => {
+describe('V3 §6 — 30 ghế khán giả', () => {
+  it('500 người tham gia: đủ 500 trong bảng điểm, đúng 30 ghế, 470 hàng chờ; overlay không lộ ID; đúng/sai sau công bố', async () => {
     const h = await session();
     await command(h, { type: 'OPEN_LOBBY' });
     await command(h, { type: 'START_ROUND' });
     const r = rt(h);
     expect(r.publicSnapshot().audience).toMatchObject({ queued: 0, total: 0 });
-    expect(r.publicSnapshot().audience!.seats).toHaveLength(35);
+    expect(r.publicSnapshot().audience!.seats).toHaveLength(30);
     runUntil(h, () => r.engine.state === 'ACCEPTING');
     const correct = r.adminSnapshot().current!.correctOptionId;
     for (let i = 0; i < 500; i++)
       r.ingest({ source: 'MOCK', userId: `v${i}`, displayName: `Khán giả ${i}`, text: i % 2 ? correct : correct === 'A' ? 'B' : 'A', eventId: `e${i}` });
     const a = r.publicSnapshot().audience!;
-    expect(a.seats.filter((s) => s.occupant)).toHaveLength(35);
-    expect(a.queued).toBe(465);
+    expect(a.seats.filter((s) => s.occupant)).toHaveLength(30);
+    expect(a.queued).toBe(470);
     expect(a.total).toBe(500);
-    expect(new Set(a.seats.map((s) => s.occupant?.safeDisplayName)).size).toBe(35);
+    expect(new Set(a.seats.map((s) => s.occupant?.safeDisplayName)).size).toBe(30);
     // Người đầu tiên ngồi giữa hàng trên cùng.
-    expect(a.seats.find((s) => s.occupant?.safeDisplayName === 'Khán giả 0')).toMatchObject({ rowIndex: 6, seatIndex: 2 });
+    expect(a.seats.find((s) => s.occupant?.safeDisplayName === 'Khán giả 0')).toMatchObject({ rowIndex: 5, seatIndex: 2 });
     // Trước công bố: không có đúng/sai
     expect(a.seats.every((s) => s.occupant?.result === null)).toBe(true);
     // Overlay không bao giờ thấy playerId / userId
@@ -68,13 +68,13 @@ describe('V3 §6 — 35 ghế khán giả', () => {
     await command(h, { type: 'START_ROUND' });
     const r = rt(h);
     runUntil(h, () => r.engine.state === 'ACCEPTING');
-    // 35 người ngồi trả lời đúng câu 1, 30 người hàng chờ trả lời đúng
+    // 30 người ngồi trả lời đúng câu 1, 35 người hàng chờ trả lời đúng
     const c1 = r.adminSnapshot().current!.correctOptionId;
     for (let i = 0; i < 65; i++) r.ingest({ source: 'MOCK', userId: `p${i}`, displayName: `P${i}`, text: c1 });
     runUntil(h, () => r.engine.state === 'ACCEPTING' && r.engine.round!.questionIndex === 1);
     // câu 2: chỉ p0..p2 (đang ngồi, dẫn đầu sau câu này) và hàng chờ trả lời
     const c2 = r.adminSnapshot().current!.correctOptionId;
-    for (const i of [0, 1, 2, ...Array.from({ length: 30 }, (_, k) => 35 + k)])
+    for (const i of [0, 1, 2, ...Array.from({ length: 30 }, (_, k) => 30 + k)])
       r.ingest({ source: 'MOCK', userId: `p${i}`, displayName: `P${i}`, text: c2 });
     const before = r.publicSnapshot().audience!;
     runUntil(h, () => r.engine.state === 'PREPARE' && r.engine.round!.questionIndex === 2); // xoay khi vào câu 3
@@ -150,6 +150,6 @@ describe('V3 §6 — 35 ghế khán giả', () => {
     const h2: Harness = { ...b2, sessionId: h.sessionId };
     open.push(h2);
     expect(seatedKey(h2)).toBe(before);
-    expect(rt(h2).publicSnapshot().audience).toMatchObject({ queued: 5, total: 40 });
+    expect(rt(h2).publicSnapshot().audience).toMatchObject({ queued: 10, total: 40 });
   });
 });
