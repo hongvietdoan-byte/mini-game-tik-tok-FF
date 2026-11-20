@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-20T14:35:16+07:00",
+  "heartbeat": "2026-11-20T17:48:06+07:00",
   "state": "working",
-  "task": "C-0361",
-  "note": "Đã ack X-0603; tạm lưu C-0335 ở commit 8676b637, đang tạo worktree riêng để tìm nguyên nhân preselection/preflight",
+  "task": "C-0362",
+  "note": "Tiếp tục xử lý C-0224 theo thư C-0366; kiểm tra lượt tái hiện repeat=5 rồi sửa đúng file E2E được cấp phạm vi",
   "done": [
     331,
     333,
@@ -15,6 +15,7 @@
     347,
     349,
     358,
-    361
+    361,
+    366
   ]
 }
