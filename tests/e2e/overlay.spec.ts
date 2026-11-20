@@ -482,6 +482,7 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
     expect(top10Box!.x).toBeGreaterThanOrEqual(0);
     expect(boardBox!.x - (top10Box!.x + top10Box!.width)).toBeGreaterThanOrEqual(12);
     expect(promptBox!.y + promptBox!.height + 12).toBeLessThanOrEqual(boardBox!.y + 2 + 292);
+    expect(Number.parseFloat(await stage.locator('.v3-question').evaluate((element) => getComputedStyle(element).fontSize)), `${entry.phase}: question text never renders below 24px`).toBeGreaterThanOrEqual(24);
 
     const timer = stage.getByTestId('timer');
     if (entry.name === 'question' || entry.name === 'reveal') {
@@ -492,7 +493,7 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
       const node = element as HTMLElement;
       const truncated = node.dataset.promptTruncated === 'true';
       const copy = node.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]');
-      return node.scrollHeight <= node.clientHeight || (truncated && copy?.textContent?.endsWith('…') === true && Number.parseFloat(getComputedStyle(node).fontSize) >= 26);
+      return node.scrollHeight <= node.clientHeight || (truncated && copy?.textContent?.endsWith('…') === true && Number.parseFloat(getComputedStyle(node).fontSize) >= 24);
     }), `${entry.phase}: prompt stays inside the fixed card`).toBe(true);
 
     const cards = stage.locator('.v3-option');
@@ -1224,7 +1225,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     }
     expect(geometry.mcFrame, `${name}: MC has the approved frame`).not.toBeNull();
     expect(Math.abs(geometry.mcFrame!.width - 205), `${name}: MC portrait matches user reference width`).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.mcFrame!.height - 205), `${name}: MC portrait matches user reference height`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.mcFrame!.height - 158), `${name}: MC portrait uses the C-0317 frame height to clear the chibi row`).toBeLessThanOrEqual(1);
     expect(geometry.bubble, `${name}: fixed speech bubble exists`).not.toBeNull();
     expect(Math.abs(geometry.bubble!.x - 410), `${name}: bubble x matches C-0133`).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.bubble!.y - 860), `${name}: bubble matches C-0219 y`).toBeLessThanOrEqual(1);
@@ -1233,7 +1234,7 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.promptFits, `${name}: prompt fits without enlarging its card`).toBe(true);
     expect(geometry.mcFigure, `${name}: Kelly has a visible fixed portrait frame`).not.toBeNull();
     expect(geometry.mcPlate, `${name}: Kelly nameplate has a fixed position`).not.toBeNull();
-    expect(Math.abs(geometry.mcPlate!.y - 1018), `${name}: Kelly nameplate matches C-0219 y`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.mcPlate!.y - 1013), `${name}: C-0317 keeps a 29px portrait-to-nameplate gap`).toBeLessThanOrEqual(1);
     expect(geometry.logo!.y + geometry.logo!.height, `${name}: logo remains above the baked flags`).toBeLessThanOrEqual(270);
     if (name === 'prepare') expect(geometry.blankAnswers).toBe(true);
     if (!reference) reference = geometry;
@@ -1386,7 +1387,7 @@ test('question scene uses the official logo, approved Kelly/chibi assets and are
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
-  expect(mcCrop.parentHeight).toBe(205);
+  expect(mcCrop.parentHeight).toBe(158);
   expect(mcCrop.imageWidth).toBe(168);
   expect(mcCrop.imageHeight).toBeGreaterThan(mcCrop.parentHeight);
   expect(mcCrop.imageHeight / mcCrop.imageWidth).toBeCloseTo(mcCrop.naturalHeight / mcCrop.naturalWidth, 2);
@@ -1556,7 +1557,7 @@ test('question uses the baked stadium, audience ranks and the accepting instruct
   const bubble = page.getByTestId('mc-bubble');
   await expect(bubble).toContainText('Trả lời bằng cách');
   await expect(bubble).toContainText('comment A, B, C hoặc D');
-  await expect(bubble).toContainText('để tham gia ngay!');
+  await expect(bubble).not.toContainText('để tham gia ngay!');
   expect(await bubble.evaluate((element) => getComputedStyle(element, '::before').content)).not.toBe('none');
   expect(await bubble.locator('p').evaluate((element) => getComputedStyle(element).whiteSpace)).toBe('pre-line');
   const instructionBox = await bubble.boundingBox();
@@ -1807,19 +1808,18 @@ test('victory-tie labels the tie and orders podium slots by x coordinate', async
   await expect(runnerUp).toHaveAttribute('data-rank', '1');
   await expect(champion).toHaveAttribute('data-score', '1500');
   await expect(runnerUp).toHaveAttribute('data-score', '1500');
-  await expect(champion.getByTestId('podium-rank')).toHaveText('TOP 1');
-  await expect(runnerUp.getByTestId('podium-rank')).toHaveText('TOP 1');
+  await expect(champion.getByTestId('podium-rank')).toHaveText('TOP 1 · ĐỒNG HẠNG');
+  await expect(runnerUp.getByTestId('podium-rank')).toHaveText('TOP 1 · ĐỒNG HẠNG');
   await expect(third).toHaveAttribute('data-rank', '3');
   await expect(third.getByTestId('podium-rank')).toHaveText('TOP 3');
   await expect(runnerUp.getByText('ĐỒNG HẠNG')).toBeVisible();
-  const [firstSlotBox, secondSlotBox, firstNameplate, secondNameplate, firstColor, secondColor] = await Promise.all([
-    champion.boundingBox(), runnerUp.boundingBox(),
+  const [firstNameplate, secondNameplate, firstColor, secondColor] = await Promise.all([
     champion.locator('.v3v-nameplate').boundingBox(), runnerUp.locator('.v3v-nameplate').boundingBox(),
     champion.locator('.v3v-nameplate').evaluate((el) => getComputedStyle(el).getPropertyValue('--rank-color').trim()),
     runnerUp.locator('.v3v-nameplate').evaluate((el) => getComputedStyle(el).getPropertyValue('--rank-color').trim()),
   ]);
-  expect(firstSlotBox?.y).toBe(secondSlotBox?.y);
   expect(firstNameplate?.y).toBe(secondNameplate?.y);
+  expect(firstNameplate?.height).toBe(secondNameplate?.height);
   expect(firstColor).toBe(secondColor);
   const badge = champion.locator('[data-testid="top1-badge"]').first();
   const name = champion.locator('.v3v-player-name').first();
@@ -1868,13 +1868,18 @@ test('Victory keeps 16-character podium names readable at the same size in tied 
     truncatedName.evaluate((element) => ({
       widthFits: element.scrollWidth <= element.clientWidth,
       heightFits: element.scrollHeight <= element.clientHeight,
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      fontSize: getComputedStyle(element).fontSize,
     })),
     truncatedName.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
   ]);
   expect(tiedStyle).toBe(regularStyle);
   expect(fits).toEqual([true, true]);
-  expect(truncatedMetrics.widthFits).toBe(true);
-  expect(truncatedMetrics.heightFits).toBe(true);
+  expect(truncatedMetrics.widthFits, JSON.stringify(truncatedMetrics)).toBe(true);
+  expect(truncatedMetrics.heightFits, JSON.stringify(truncatedMetrics)).toBe(true);
   expect(truncatedFontSize).toBeGreaterThanOrEqual(22);
   expect(errors).toEqual([]);
 });
@@ -2008,20 +2013,20 @@ test('Victory uses the selected background unchanged and keeps podium labels on 
   expect(geometry.slots).toHaveLength(3);
   for (const slot of geometry.slots) {
     const center = slot.place === 1;
-    expect(slot.centerX).toBeGreaterThanOrEqual(center ? 536 : slot.place === 2 ? 152 : 918);
-    expect(slot.centerX).toBeLessThanOrEqual(center ? 544 : slot.place === 2 ? 162 : 928);
+    const expectedCenterX = 1080 * (slot.place === 1 ? 0.5 : slot.place === 2 ? 0.18 : 0.82);
+    expect(Math.abs(slot.centerX - expectedCenterX)).toBeLessThanOrEqual(5);
     expect(slot.footY).toBeGreaterThanOrEqual(1195);
     expect(slot.footY).toBeLessThanOrEqual(1205);
-    expect(slot.figureHeight).toBeGreaterThanOrEqual(375);
-    expect(slot.figureHeight).toBeLessThanOrEqual(390);
-    expect(slot.imageHeight).toBeGreaterThanOrEqual(375);
-    expect(slot.imageHeight).toBeLessThanOrEqual(415);
+    expect(slot.figureHeight).toBeGreaterThanOrEqual(center ? 515 : 415);
+    expect(slot.figureHeight).toBeLessThanOrEqual(center ? 525 : 425);
+    expect(slot.imageHeight).toBeGreaterThanOrEqual(slot.figureHeight - 2);
+    expect(slot.imageHeight).toBeLessThanOrEqual(slot.figureHeight * 1.3);
     expect(slot.plateTop).toBeGreaterThanOrEqual(1200);
     expect(slot.plateTop).toBeLessThanOrEqual(1225);
-    expect(slot.plateBottom).toBeLessThanOrEqual(1345);
+    expect(slot.plateBottom).toBeLessThanOrEqual(1420);
     expect(slot.plateLeft).toBeGreaterThanOrEqual(0);
     expect(slot.plateRight).toBeLessThanOrEqual(1080);
-    expect(slot.plateWidth).toBe(slot.place === 1 ? 320 : 280);
+    expect(slot.plateWidth).toBe(slot.place === 1 ? 340 : 280);
     expect(slot.plateText).toContain('PTS');
     expect(slot.plateReflection).toBe('none');
   }

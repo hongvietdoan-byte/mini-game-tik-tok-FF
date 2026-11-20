@@ -88,17 +88,17 @@ describe('ghế giành được ở LOBBY', () => {
     reserve(runtime, 35);
 
     const lobby = runtime.publicSnapshot().audience!;
-    expect(lobby.seats.filter((seat) => seat.occupant !== null)).toHaveLength(35);
+    expect(lobby.seats.filter((seat) => seat.occupant !== null)).toHaveLength(30);
     expect(lobby.total).toBe(36);
-    expect(lobby.queued).toBe(1);
+    expect(lobby.queued).toBe(6);
     expect(runtime.metrics.accepted).toBe(0);
 
     expect(command(runtime, scheduler, { type: 'START_ROUND' }).result.ok).toBe(true);
     const roundId = runtime.engine.round!.roundId;
     const started = runtime.publicSnapshot().audience!;
-    expect(started.seats.filter((seat) => seat.occupant !== null)).toHaveLength(35);
+    expect(started.seats.filter((seat) => seat.occupant !== null)).toHaveLength(30);
     expect(started.total).toBe(36);
-    expect(started.queued).toBe(1);
+    expect(started.queued).toBe(6);
     expect(started.seats[0]?.occupant?.safeDisplayName).toBe(lobby.seats[0]?.occupant?.safeDisplayName);
     // Mỗi người có nhân vật riêng ngay ở sảnh (không cùng một hình), và giữ nguyên khi vào vòng.
     const lobbyChars = lobby.seats.map((seat) => seat.occupant?.characterId);
@@ -113,7 +113,7 @@ describe('ghế giành được ở LOBBY', () => {
     const harness = await makeRuntime();
     await openLobby(harness);
     const { runtime, scheduler, preflightFails } = harness;
-    reserve(runtime, 34);
+    reserve(runtime, 29);
     expect(command(runtime, scheduler, { type: 'SET_LOBBY_AUTO_START', enabled: true }).result.ok).toBe(true);
     const state = internals(runtime);
     state.lobbyOpenedAtMs = scheduler.now() - 30_000;
@@ -121,7 +121,7 @@ describe('ghế giành được ở LOBBY', () => {
     state.readyQuestionVoiceKeys.add(state.questionVoiceKey(first));
     expect(state.lobbyAutoStartGatesPass(scheduler.now())).toBe(false);
 
-    reserve(runtime, 1, 34);
+    reserve(runtime, 1, 29);
     state.lobbyOpenedAtMs = scheduler.now() - 29_999;
     expect(state.lobbyAutoStartGatesPass(scheduler.now())).toBe(false);
     state.lobbyOpenedAtMs = scheduler.now() - 30_000;

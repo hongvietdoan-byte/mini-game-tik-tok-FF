@@ -31,6 +31,7 @@ import {
   type LeaderboardEntry,
   type OptionId,
   type PublicSnapshot,
+  type ThroneView,
   type PublicAchievementSnapshot,
   type RankingSnapshot,
   type StageDefinition,
@@ -89,8 +90,9 @@ import {
 } from '@quiz/quiz-core';
 import { MockAdapter, MockSimulator, type LiveAdapter, type Scheduler, type SimPlayer } from '@quiz/live-adapters';
 import type { FilteredPlayerName } from '@quiz/name-filter';
-import type { RoundQuestionRow, SessionRow, Store } from '@quiz/persistence';
+import type { QuestionScoringRow, RoundQuestionRow, SessionRow, Store } from '@quiz/persistence';
 import { AudienceManager, DEFAULT_CHARACTER_POOL } from './audience';
+import { chooseThroneHolder, replayThrone, type ThroneCandidate, type ThroneQuestion, type ThroneReplay } from './throne';
 import type { NameFilterStore } from './name-filter-store';
 import { McVoiceService, type McVoiceReadingBundle, type McVoiceReadingLine } from './voice/service';
 import { mcVoiceSettingsForEvent, type McVoiceProfile } from './voice/types';
@@ -292,6 +294,8 @@ export class SessionRuntime {
   private participants = 0;
   private ranked: LeaderboardEntry[] = [];
   private top1 = new Map<string, number>();
+  private throne: ThroneReplay = { unlocked: false, holder: null, correctElapsedMs: new Map() };
+  private throneStreaks = new Map<string, number>();
   private publicPlayerIds = new Map<string, string>();
   private fastestCorrectByQuestion = new Map<string, { playerId: string; responseMs: number } | null>();
   private seenEvents = new Set<string>();
@@ -319,7 +323,7 @@ export class SessionRuntime {
   private roundStartedAtMs: number | null = null;
   private outageStartedAtMs: number | null = null;
   private overlayInfo: AdminSnapshot['overlay'] = { clients: 0, lastAckStateVersion: null, lastAckAtMs: null };
-  /** 35 ghế khán giả (V3 §6). */
+  /** 30 ghế khán giả dưới ngai (V3 §6). */
   private readonly audience: AudienceManager;
   private audienceChanged = false;
   /** Tên gốc chỉ giữ trong RAM để role admin duyệt; DB và public WS luôn nhận tên đã lọc. */
@@ -507,13 +511,14 @@ export class SessionRuntime {
     const r = this.engine.round;
     if (!r) return;
     this.loadRound(r.roundId);
-    this.audience.load(r.roundId);
+    this.audience.load(r.roundId, this.scheduler.now());
     this.rankRound(r.roundId);
     // Cơ sở dữ liệu chỉ giữ tên đã che khi tên bị gắn cờ. Khi phục hồi, tuyệt đối
     // không suy đoán lại tên gốc từ bất kỳ snapshot nào.
     this.refreshNameFilter(false);
     this.participants = this.store.participantCount(r.roundId);
     this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
+    this.rebuildThrone(r.roundId);
     const qid = currentQuestionInstanceId(this.engine);
     if (qid) {
       this.countsQid = qid;
@@ -665,6 +670,8 @@ export class SessionRuntime {
           this.ranked = [];
           this.participants = 0;
           this.top1 = new Map();
+          this.throne = { unlocked: false, holder: null, correctElapsedMs: new Map() };
+          this.throneStreaks.clear();
           this.audience.startRound(e.roundId, now);
           this.telemetryRoundId = e.roundId;
           this.roundStartedAtMs = now;
@@ -700,7 +707,7 @@ export class SessionRuntime {
           if (e.afterReveal) {
             this.store.insertVoidReversals(this.engine.round!.roundId, e.questionInstanceId, now);
             integrity = this.scoreRound(now, 'AFTER_VOID', e.questionInstanceId) ?? integrity;
-          }
+          } else if (this.engine.round) this.rebuildThrone(this.engine.round.roundId);
           break;
         case 'ROUND_ABORTED':
           this.store.setRoundStatus(e.roundId, 'ABORTED', now);
@@ -774,6 +781,7 @@ export class SessionRuntime {
     let ledger: LedgerEntry[];
     let totals: Iterable<PlayerTotals>;
     let scoringQuestion: (typeof questions)[number] | null = null;
+    let scoringRows: QuestionScoringRow[] = [];
     let expectedTotals: Map<string, PlayerTotals> | null = null;
     if (kind === 'AFTER_VOID') {
       const full = computeRoundScores(questions, this.store.answersForRound(r.roundId), scoringOptions);
@@ -786,7 +794,7 @@ export class SessionRuntime {
       if (!scoringQuestion) throw new Error(`Thiếu câu hỏi ${qid} khi chấm điểm.`);
       // Đáp án sai/bỏ lỡ chỉ cần reset chuỗi; chỉ đọc dữ liệu người trả lời đúng câu này.
       // Điểm của nhóm không trả lời không đổi, còn xếp hạng vẫn dựng trên toàn bộ standings bên dưới.
-      const scoringRows = this.store.scoringRowsForQuestion(r.roundId, qid, scoringQuestion.correctOptionId);
+      scoringRows = this.store.scoringRowsForQuestion(r.roundId, qid, scoringQuestion.correctOptionId);
       const delta = computeQuestionScoreDeltaFromCorrectRows(
         scoringQuestion,
         scoringRows,
@@ -821,6 +829,8 @@ export class SessionRuntime {
       now,
     });
     this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
+    if (kind === 'AFTER_VOID' || insertedLedger !== ledger.length) this.rebuildThrone(r.roundId);
+    else this.updateThroneAfterQuestion(r.roundId, scoringQuestion!, scoringRows);
     this.persistQuestionRanking(r.roundId, qid, now);
     this.persistFinalizedStageRankings(r.roundId, qid, now, kind);
     return integrity;
@@ -850,6 +860,116 @@ export class SessionRuntime {
     });
   }
 
+  /** Ngai được replay từ câu đã chốt và đáp án lưu; không có cột holder riêng. */
+  private rebuildThrone(roundId: string) {
+    const round = this.engine.round;
+    if (!round || round.roundId !== roundId) {
+      this.throne = { unlocked: false, holder: null, correctElapsedMs: new Map() };
+      this.throneStreaks.clear();
+      return;
+    }
+    const joinRows = this.store.roundPlayerJoinOrder(roundId);
+    const order = [...new Set([
+      ...this.audience.registrationOrder(),
+      ...joinRows.map((player) => player.playerId),
+    ])];
+    const orderIndex = new Map(order.map((playerId, index) => [playerId, index]));
+    const names = this.store.displayNames(joinRows.map((player) => player.playerId));
+    const players = joinRows.map((player) => ({
+      playerId: player.playerId,
+      displayName: names.get(player.playerId) ?? 'Người chơi',
+      joinOrder: orderIndex.get(player.playerId) ?? Number.MAX_SAFE_INTEGER,
+    }));
+    const scoringQuestions = this.scoringQuestions(round).map((question) => ({
+      ...question,
+      questionInstanceId: question.questionInstanceId,
+    }));
+    const answers = this.store.answersForRound(roundId).map((answer) => ({
+      questionInstanceId: answer.questionInstanceId,
+      playerId: answer.playerId,
+      option: answer.option,
+      receivedAtMs: answer.receivedAtMs,
+    }));
+    this.throne = replayThrone(scoringQuestions, answers, players, {
+      mode: this.config.scoringMode ?? 'CLASSIC',
+      speedBonusMax: this.config.speedBonusMax ?? 0,
+    });
+  }
+
+  /** Cập nhật holder theo câu vừa chốt; chỉ replay toàn vòng khi recovery/VOID. */
+  private updateThroneAfterQuestion(roundId: string, question: ThroneQuestion, correctRows: QuestionScoringRow[]) {
+    const correctElapsedMs = this.throne.correctElapsedMs;
+    for (const answer of correctRows) {
+      if (answer.receivedAtMs === undefined) continue;
+      const rawElapsed = question.openedAtMs == null ? 0 : Math.max(0, answer.receivedAtMs - question.openedAtMs);
+      const elapsed = question.streamDelayMs == null ? rawElapsed : effectiveElapsedMs(rawElapsed, question.streamDelayMs);
+      correctElapsedMs.set(answer.playerId, (correctElapsedMs.get(answer.playerId) ?? 0) + elapsed);
+    }
+
+    if (question.index + 1 < 5) {
+      this.throne = { unlocked: false, holder: null, correctElapsedMs };
+      return;
+    }
+
+    const leaders = this.ranked.filter((entry) => entry.rank === 1);
+    let fallbackJoinOrder: Map<string, number> | null = null;
+    const joinOrderIndex = (playerId: string) => {
+      const index = this.audience.joinOrderIndex(playerId);
+      if (index !== Number.MAX_SAFE_INTEGER) return index;
+      if (!fallbackJoinOrder) {
+        const audienceCount = this.audience.registrationOrder().length;
+        fallbackJoinOrder = new Map(this.store.roundPlayerJoinOrder(roundId)
+          .map((player, joinedIndex) => [player.playerId, audienceCount + joinedIndex]));
+      }
+      return fallbackJoinOrder.get(playerId) ?? Number.MAX_SAFE_INTEGER;
+    };
+    const candidates = leaders.map((entry): ThroneCandidate => ({
+      playerId: entry.playerId,
+      score: entry.score,
+      correctCount: entry.correctCount,
+      streak: this.throneStreaks.get(entry.playerId) ?? 0,
+      correctElapsedMs: correctElapsedMs.get(entry.playerId) ?? 0,
+      joinOrder: joinOrderIndex(entry.playerId),
+    }));
+    this.throne = {
+      unlocked: true,
+      holder: chooseThroneHolder(candidates, this.throne.holder?.playerId ?? null),
+      correctElapsedMs,
+    };
+  }
+
+  private publicThrone(now: number): ThroneView {
+    if (!this.throne.unlocked) return { state: 'LOCKED', unlockAfterQuestion: 5 };
+    const holder = this.throne.holder;
+    if (!holder) return { state: 'EMPTY', unlockAfterQuestion: 5 };
+    const standing = this.ranked.find((entry) => entry.playerId === holder.playerId);
+    const characterId = this.audience.characterOf(holder.playerId, now);
+    if (!characterId) throw new Error(`Throne holder ${holder.playerId} has no character assignment.`);
+    return {
+      state: 'HELD',
+      unlockAfterQuestion: 5,
+      holder: {
+        playerId: this.publicPlayerIdFor(holder.playerId),
+        safeDisplayName: this.safeDisplayNameFor(holder.playerId, standing?.displayName ?? 'Người chơi', now),
+        characterId,
+        score: holder.score,
+        streak: holder.streak,
+      },
+    };
+  }
+
+  /** Put the throne holder first within a tied rank-one group without changing shared ranks. */
+  private rankedForPublic(): LeaderboardEntry[] {
+    const ranked = [...this.ranked];
+    const holderId = this.throne.holder?.playerId;
+    if (!holderId) return ranked;
+    const leaderGroup = ranked.filter((entry) => entry.rank === 1);
+    const holderIndex = leaderGroup.findIndex((entry) => entry.playerId === holderId);
+    if (holderIndex <= 0) return ranked;
+    const holder = leaderGroup.splice(holderIndex, 1)[0]!;
+    return [holder, ...leaderGroup, ...ranked.filter((entry) => entry.rank !== 1)];
+  }
+
   private compareLedger(roundId: string, totals: Map<string, { score: number }>): string | null {
     const sums = this.store.ledgerTotals(roundId);
     const bad: string[] = [];
@@ -862,6 +982,7 @@ export class SessionRuntime {
 
   private rankRound(roundId: string) {
     const standings = this.store.rankedStandings(roundId);
+    this.throneStreaks = new Map(standings.map((entry) => [entry.playerId, entry.streak]));
     // SQLite's BINARY and JS's string comparison have identical order for ASCII
     // provider IDs; retain the previous comparator for any unusual Unicode ID.
     for (let i = 1; i < standings.length; i += 1) {
@@ -1752,7 +1873,7 @@ export class SessionRuntime {
 
   private lobbyAutoStartGatesPass(now: number) {
     if (this.engine.state !== 'LOBBY' || !this.engine.autoStartWhenAudienceFull) return false;
-    if (this.audience.occupiedSeats !== 35) return false;
+    if (this.audience.occupiedSeats !== 30) return false;
     if (this.lobbyOpenedAtMs === null || now - this.lobbyOpenedAtMs < LOBBY_AUTO_START_AFTER_MS) return false;
     const first = this.preparedLobbyRound?.selection.snapshots[0];
     if (!first || !this.readyQuestionVoiceKeys.has(this.questionVoiceKey(first))) return false;
@@ -2160,6 +2281,7 @@ export class SessionRuntime {
         receivedAtMs: now,
         sourceEventId: ev.eventId ?? null,
       });
+      if (outcome.inserted) this.audience.persistRoundCharacter(playerId, now);
       return { playerId, filtered, inserted: outcome.inserted, participantAdded: outcome.participantAdded };
     });
     if (accepted === 'DUP_EVENT') return this.reject('DUPLICATE_EVENT', now);
@@ -2794,7 +2916,7 @@ export class SessionRuntime {
     const question = snapshot.scope === 'QUESTION' && snapshot.metricKey === 'responseMs'
       ? this.questionFor(snapshot.roundId, snapshot.scopeId)
       : undefined;
-    return snapshot.entries.map((entry) => {
+    const entries = snapshot.entries.map((entry) => {
       const standings = this.ranked.find((player) => player.playerId === entry.playerId);
       return {
         ...entry,
@@ -2807,8 +2929,22 @@ export class SessionRuntime {
           standings?.displayName ?? entry.safeDisplayName ?? 'Người chơi',
           now,
         ),
+        characterId: this.audience.characterOf(entry.playerId, now),
       };
     });
+    return this.holderFirstWithinRankOne(entries);
+  }
+
+  /** Public Top 3/achievement rows use the same rank-one tie order as the throne and leaderboard. */
+  private holderFirstWithinRankOne<T extends { playerId: string; rank: number }>(entries: T[]): T[] {
+    const holderId = this.throne.holder?.playerId;
+    if (!holderId) return entries;
+    const publicHolderId = this.publicPlayerIdFor(holderId);
+    const leaders = entries.filter((entry) => entry.rank === 1);
+    const holderIndex = leaders.findIndex((entry) => entry.playerId === publicHolderId);
+    if (holderIndex <= 0) return entries;
+    const holder = leaders.splice(holderIndex, 1)[0]!;
+    return [holder, ...leaders, ...entries.filter((entry) => entry.rank !== 1)];
   }
 
   private questionTop3ForPublic(roundId: string, questionInstanceId: string, now: number) {
@@ -2960,9 +3096,10 @@ export class SessionRuntime {
     const showReveal = !!snap && postReveal;
     const showFastestCorrect = !!snap && !!e.round && postReveal;
     let leaderboard: PublicSnapshot['leaderboard'] = null;
+    const publicRanked = this.rankedForPublic();
     const withChar = (list: LeaderboardEntry[]) =>
       list.map((x) => {
-        const characterId = this.audience.characterOf(x.playerId);
+        const characterId = this.audience.characterOf(x.playerId, now);
         const top1Streak = this.top1.get(x.playerId);
         return {
           rank: x.rank,
@@ -2976,10 +3113,10 @@ export class SessionRuntime {
         };
       });
     if (e.round && (bigBoard || eff === 'ROUND_END' || eff === 'VICTORY' || eff === 'INTERMISSION'))
-      leaderboard = { kind: 'FULL', entries: withChar(topN(this.ranked, 10)) };
+      leaderboard = { kind: 'FULL', entries: withChar(topN(publicRanked, 10)) };
     // Top 10 gọn cạnh câu hỏi (V3 §10) — chỉ cập nhật khi chốt câu, không đổi trong lúc trả lời.
     else if (e.round && (eff === 'PREPARE' || eff === 'READING' || eff === 'ACCEPTING' || postReveal))
-      leaderboard = { kind: 'COMPACT', entries: withChar(topN(this.ranked, 10)) };
+      leaderboard = { kind: 'COMPACT', entries: withChar(topN(publicRanked, 10)) };
     const revealView = showReveal
       ? {
           questionInstanceId: snap!.questionInstanceId,
@@ -3048,14 +3185,19 @@ export class SessionRuntime {
       podium:
         e.round && (eff === 'ROUND_END' || eff === 'VICTORY')
           ? (() => {
-              const p = buildPodium(this.ranked);
+              const p = buildPodium(publicRanked);
               return { ...p, slots: p.slots.map((s) => ({ ...s, entries: withChar(s.entries) })) };
             })()
           : null,
       mc: mcFor(e, revealView),
       audience: this.audience.active
-        ? this.audience.view(revealView ? { qid: revealView.questionInstanceId, correctOptionId: revealView.correctOptionId } : null)
+        ? this.audience.view(
+            revealView ? { qid: revealView.questionInstanceId, correctOptionId: revealView.correctOptionId } : null,
+            now,
+            this.throne.holder ? [this.throne.holder.playerId] : [],
+          )
         : null,
+      throne: this.publicThrone(now),
       connection: this.adapter.status(),
       safeZone: INITIAL_TEST_SAFE_ZONE,
     };

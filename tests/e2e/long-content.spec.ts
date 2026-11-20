@@ -116,7 +116,7 @@ async function expectTextFits(page: Page, selectors: string[]) {
           };
         });
         expect(visible.text.endsWith('…'), `${selector} shows an in-frame ellipsis`).toBe(true);
-        expect(visible.lineCount, `${selector} stays within three lines`).toBeLessThanOrEqual(3);
+        expect(visible.lineCount, `${selector} stays within the four-line C-0319 limit`).toBeLessThanOrEqual(4);
         await expect(page.getByTestId('prompt-truncation-warning')).toBeVisible();
       } else {
         expect(text.scrollHeight, `${selector} height fits: ${JSON.stringify(text.text.slice(0, 32))}`).toBeLessThanOrEqual(text.clientHeight);
@@ -201,7 +201,7 @@ async function expectWithinSafeZone(
 }
 
 for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
-  test(`nội dung đến mốc hiển thị 160/45 không cắt hoặc đè thành phần — ${sceneName}`, async ({ page }) => {
+  test(`nội dung đến mốc 160/45 hiển thị đủ trong tối đa bốn dòng — ${sceneName}`, async ({ page }) => {
     const snapshot = questionSnapshot(sceneName);
     expect(snapshot.question?.prompt).toHaveLength(DISPLAY_LIMITS.prompt);
     expect(snapshot.question?.options).toHaveLength(4);
@@ -210,10 +210,17 @@ for (const sceneName of ['prepare', 'question-longest', 'reveal'] as const) {
     const stage = await openSnapshot(page, snapshot);
     const prompt = stage.getByTestId('question-prompt');
     await expect(prompt).toHaveAttribute('aria-label', new RegExp(questionPrompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    await expect(prompt).toHaveAttribute('data-prompt-truncated', 'true');
+    // C-0319 lets the 160-character sample use four lines at 24px when it fits.
+    await expect(prompt).toHaveAttribute('data-prompt-truncated', 'false');
+    await expect(stage.getByTestId('question-prompt-copy')).toHaveText(questionPrompt);
     await expectTextFits(page, ['[data-testid="question-prompt"]']);
-    // C-0306 measures the visible copy and keeps a complete ellipsis inside the fixed frame.
-    await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 26);
+    await expectFontSizeAtLeast(page, '[data-testid="question-prompt"]', 24);
+    const promptLineCount = await stage.getByTestId('question-prompt-copy').evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+    });
+    expect(promptLineCount, 'prompt fits within the approved four lines').toBeLessThanOrEqual(4);
     const optionTextsRendered = stage.locator('[data-testid^="option-"] .v3-option-text');
     await expect(optionTextsRendered).toHaveCount(4);
     await expectClampedOptionTextFits(page, sceneName === 'reveal' ? 3 : 2);

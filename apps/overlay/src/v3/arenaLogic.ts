@@ -109,9 +109,26 @@ export function wrapPromptToLines(
   if (lines.length <= maxLines) return { text: normalized, lineCount: lines.length, truncated: false };
 
   const visible = lines.slice(0, maxLines);
-  const last = graphemes((visible[maxLines - 1] ?? '').trimEnd());
-  while (last.length > 0 && measureText(last.join('') + '…') > maxWidth) last.pop();
-  visible[maxLines - 1] = `${last.join('').trimEnd()}…`;
+  let ellipsisLine = visible.length - 1;
+  let ellipsizedLine = '';
+  while (ellipsisLine >= 0) {
+    const last = graphemes((visible[ellipsisLine] ?? '').trimEnd());
+    if (last.length) {
+      while (last.length > 1 && measureText(last.join('') + '…') > maxWidth) last.pop();
+      ellipsizedLine = `${last.join('').trimEnd()}…`;
+      break;
+    }
+    ellipsisLine -= 1;
+  }
+  if (ellipsisLine >= 0) {
+    visible.splice(ellipsisLine + 1);
+    visible[ellipsisLine] = ellipsizedLine;
+  } else {
+    const firstText = graphemes(normalized.trim())[0];
+    return firstText
+      ? { text: `${firstText}…`, lineCount: 1, truncated: true }
+      : { text: normalized, lineCount: 0, truncated: false };
+  }
   return { text: visible.join('\n'), lineCount: visible.length, truncated: true };
 }
 

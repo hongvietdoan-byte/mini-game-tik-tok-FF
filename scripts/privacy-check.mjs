@@ -19,6 +19,7 @@ const LOCAL_EXTRA_PATTERNS_PATH = 'assets-local/privacy-patterns.txt';
 const PLACEHOLDER_ASSET_PREFIX = 'fixtures/assets-placeholder/';
 const MAX_PLACEHOLDER_IMAGE_BYTES = 4 * 1024;
 const MAX_PLACEHOLDER_BACKGROUND_BYTES = 16 * 1024;
+const MAX_REVIEW_SCREENSHOT_BYTES = 4 * 1024;
 const PLACEHOLDER_IMAGE_PATHS = new Set([
   'fixtures/assets-placeholder/brand/logo.png',
   'fixtures/assets-placeholder/chibi/chibi-01.png',
@@ -41,7 +42,6 @@ const PLACEHOLDER_IMAGE_PATHS = new Set([
   'fixtures/assets-placeholder/chibi/chibi-008-clu.png',
   'fixtures/assets-placeholder/chibi/chibi-009-d-bee.png',
   'fixtures/assets-placeholder/chibi/chibi-010-dasha.png',
-  'fixtures/assets-placeholder/chibi/chibi-011-dimitri.png',
   'fixtures/assets-placeholder/chibi/chibi-012-ford.png',
   'fixtures/assets-placeholder/chibi/chibi-013-hayato.png',
   'fixtures/assets-placeholder/chibi/chibi-014-homer.png',
@@ -49,11 +49,19 @@ const PLACEHOLDER_IMAGE_PATHS = new Set([
   'fixtures/assets-placeholder/chibi/chibi-016-iris.png',
   'fixtures/assets-placeholder/chibi/chibi-017-joseph.png',
   'fixtures/assets-placeholder/chibi/chibi-018-jota.png',
-  'fixtures/assets-placeholder/chibi/chibi-019-k.png',
   'fixtures/assets-placeholder/chibi/chibi-020-kairos.png',
   'fixtures/assets-placeholder/chibi/chibi-021-kapella.png',
   'fixtures/assets-placeholder/chibi/chibi-022-kassie.png',
+  'fixtures/assets-placeholder/chibi/dang-top2-top3/top2/top2-chibi-013-hayato.png',
+  'fixtures/assets-placeholder/chibi/dang-top2-top3/top2/top2-chibi-016-iris.png',
+  'fixtures/assets-placeholder/chibi/dang-top2-top3/top2/top2-chibi-020-kairos.png',
+  'fixtures/assets-placeholder/chibi/dang-top2-top3/top3/top3-chibi-013-hayato.png',
+  'fixtures/assets-placeholder/chibi/dang-top2-top3/top3/top3-chibi-016-iris.png',
+  'fixtures/assets-placeholder/chibi/dang-top2-top3/top3/top3-chibi-020-kairos.png',
   'fixtures/assets-placeholder/mc/kelly.png',
+  'fixtures/assets-placeholder/throne/ngai-chibi-013-hayato.png',
+  'fixtures/assets-placeholder/throne/ngai-chibi-016-iris.png',
+  'fixtures/assets-placeholder/throne/ngai-chibi-020-kairos.png',
   'fixtures/assets-placeholder/arena/bg.jpg',
   'fixtures/assets-placeholder/arena/bg-question-user.jpg',
   'fixtures/assets-placeholder/victory/bg.jpg',
@@ -101,11 +109,15 @@ function isTextScanPath(path) {
   return /^(fixtures|apps|packages)\//.test(normalized) && isTextFile(normalized);
 }
 
-function isAllowedImagePath(path) {
+function isAllowedImagePath(path, sizeBytes) {
   const normalized = lowerPath(path);
+  const isSmallReviewScreenshot = normalized.startsWith('tests/e2e/__screenshots__/')
+    && Number.isInteger(sizeBytes)
+    && sizeBytes >= 0
+    && sizeBytes < MAX_REVIEW_SCREENSHOT_BYTES;
   return normalized.startsWith('assets/')
     || /^apps\/[^/]+\/public\//.test(normalized)
-    || normalized.startsWith('tests/e2e/__screenshots__/')
+    || isSmallReviewScreenshot
     || PLACEHOLDER_IMAGE_PATHS.has(normalized);
 }
 
@@ -155,11 +167,12 @@ export function checkFiles(files, extraPatterns = []) {
     }
 
     const fileName = basename(normalized);
-    if (['ảnh chatgpt', 'megasheet', 'screenshot'].some((term) => fileName.includes(term))) {
+    if (['ảnh chatgpt', 'megasheet'].some((term) => fileName.includes(term))
+      || (IMAGE_EXTENSIONS.has(ext) && fileName.includes('screenshot'))) {
       violations.push(`${path}: tên tệp có cụm từ bị cấm`);
     }
 
-    if (IMAGE_EXTENSIONS.has(ext) && !isAllowedImagePath(path)) {
+    if (IMAGE_EXTENSIONS.has(ext) && !isAllowedImagePath(path, file.sizeBytes)) {
       violations.push(`${path}: ảnh nằm ngoài thư mục được phép`);
     }
 

@@ -10,6 +10,7 @@ import { themeAssetChildUrl, useTheme } from '../theme';
 import { ArenaBackdrop } from './ArenaBackdrop';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle } from './hudText';
+import { getPublicThrone, orderRankOneHolderFirst, publicThroneHolderId, type PublicThrone } from '../throne';
 import './arena.css';
 
 /**
@@ -140,6 +141,7 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
   const promptRef = useRef<HTMLDivElement>(null);
   const [promptFit, setPromptFit] = useState({ fontSize: 0, truncated: false, text: '' });
   const lobbySeatCount = snapshot.audience?.seats.filter((seat) => seat.occupant !== null).length ?? 0;
+  const seatCapacity = snapshot.audience?.seats.length ?? 0;
   const lobbyCountdown = snapshot.lobbyCountdown;
   const isPrepare = snapshot.state === 'PREPARE';
   const isReading = snapshot.state === 'READING';
@@ -170,7 +172,9 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
       element.style.overflow = '';
       element.style.whiteSpace = '';
       const baseSize = Number.parseFloat(window.getComputedStyle(element).fontSize) || 30;
-      const minimumSize = 26;
+      // Keep question text readable on phones; unfit prompts are shortened instead of shrinking below 24px.
+      const minimumSize = 24;
+      const bottomInset = 16;
       const style = window.getComputedStyle(element);
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
@@ -187,7 +191,7 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
       };
       const fits = (fontSize: number) => {
         const layout = layoutAt(fontSize, 4);
-        return layout.lineCount <= 3 && layout.lineCount * lineHeightAt(fontSize) <= contentHeight + 1;
+        return layout.lineCount <= 4 && layout.lineCount * lineHeightAt(fontSize) <= contentHeight - bottomInset + 1;
       };
 
       let best: number | null = null;
@@ -207,7 +211,7 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
       const truncated = best === null;
       const fontSize = best ?? minimumSize;
       element.style.fontSize = `${fontSize}px`;
-      const maxVisibleLines = Math.max(1, Math.min(3, Math.floor(contentHeight / lineHeightAt(fontSize))));
+      const maxVisibleLines = Math.max(1, Math.min(4, Math.floor((contentHeight - bottomInset) / lineHeightAt(fontSize))));
       const visibleText = truncated ? layoutAt(fontSize, maxVisibleLines).text : '';
       if (truncated) element.style.whiteSpace = 'pre-line';
       setPromptFit((current) => current.fontSize === fontSize && current.truncated === truncated && current.text === visibleText
@@ -239,7 +243,7 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
             <div className="v3-lobby-copy">
               <strong>SẮP BẮT ĐẦU</strong>
               <div className="v3-lobby-seat-summary" data-testid="lobby-seat-summary">
-                <span className="v3-lobby-seat-count" data-testid="lobby-seat-count">{lobbySeatCount}/35</span>
+                <span className="v3-lobby-seat-count" data-testid="lobby-seat-count">{lobbySeatCount}/{seatCapacity}</span>
                 <span className="v3-lobby-seat-label">GHẾ ĐÃ CÓ CHỦ</span>
               </div>
             </div>
@@ -256,7 +260,7 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
               <span className="v3-lobby-countdown-label" data-testid="lobby-countdown-label">VÀO TRẬN SAU</span>
               <strong className="v3-lobby-countdown" data-testid="lobby-countdown">{Math.ceil(lobbyCountdown.remainingMs / 1_000)}</strong>
             </>
-          ) : lobbySeatCount === 35 ? (
+          ) : seatCapacity > 0 && lobbySeatCount >= seatCapacity ? (
             <strong className="v3-lobby-full" data-testid="lobby-full">ĐÃ ĐỦ GHẾ!</strong>
           ) : (
             <span className="v3-lobby-reminder" data-testid="lobby-reminder">Comment <b>FREE FIRE</b> để giành ghế!</span>
@@ -343,6 +347,10 @@ export function McBubbleText({ text, playerNames = [], as = 'span', highlight = 
 
 const questionCallToAction = /(?:comment|bình luận)\s+A\s*,\s*B\s*,\s*C\s+hoặc\s+D/iu;
 
+export function throneMcBubbleText(text: string): string {
+  return questionCallToAction.test(text) ? 'Comment A/B/C/D\nđể trả lời ngay!' : text;
+}
+
 export function sceneMcBubbleText(snapshot: PublicSnapshot, text: string): string {
   if (!questionCallToAction.test(text)) return text;
   if (snapshot.scene === 'INTERMISSION') return 'Nghỉ giữa vòng nhé!\nChặng tiếp theo sắp bắt đầu.';
@@ -350,11 +358,14 @@ export function sceneMcBubbleText(snapshot: PublicSnapshot, text: string): strin
   return text;
 }
 
-export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant, hideBubble = false }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b'; hideBubble?: boolean }) {
+export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant, hideBubble = false, throneLayout = false }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b'; hideBubble?: boolean; throneLayout?: boolean }) {
   const playerNames = snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName) ?? [];
   const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
-    'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
+    'Trả lời bằng cách comment A, B, C hoặc D',
+  ).replace(
+    /^Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!$/u,
+    'Trả lời bằng cách comment A, B, C hoặc D',
   );
   return (
     <section className={`v3-mc v3-mc-${snapshot.mc.state}${hideBubble ? ' v3-mc--voice-only' : ''}`} data-layer="kelly">
@@ -368,6 +379,7 @@ export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant, hid
         MC KELLY
       </div>
       {!hideBubble && bubbleOverride !== undefined && <div className={`v3-bubble ${fastest ? `v3-fastest-callout v3-fastest-callout-${fastestVariant ?? 'a'}` : ''}`} data-testid="mc-bubble">
+        {throneLayout && <strong className="v3-throne-bubble-label">MC KELLY</strong>}
         {fastest ? <div className="v3-fastest-copy" data-testid="fastest-callout">
           <strong>{fastestVariant === 'b' ? '⚡ NHANH NHẤT' : 'NHANH NHẤT'}</strong>
           <b className="v3-fastest-name">{fastest.safeDisplayName}</b>
@@ -388,13 +400,64 @@ export function McCelebration() {
 }
 
 /** Nén riêng khoảng hàng ghế của màn câu hỏi theo lưới 7 hàng trong ảnh mẫu C-0216. */
-const seatY = (y: number, compactQuestion = false, userQuestionLayout = false) => {
-  const top = userQuestionLayout ? 1211 : compactQuestion ? 1330 : AUDIENCE_TOP_Y;
-  const front = userQuestionLayout ? 1839 : compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
+const seatY = (y: number, compactQuestion = false, userQuestionLayout = false, hasThrone = false) => {
+  const top = hasThrone ? 1320 : userQuestionLayout ? 1211 : compactQuestion ? 1330 : AUDIENCE_TOP_Y;
+  const front = hasThrone ? 1890 : userQuestionLayout ? 1839 : compactQuestion ? 1860 : AUDIENCE_FRONT_Y;
   return top + ((y - 1105) * (front - top)) / (1825 - 1105);
 };
 const AUDIENCE_TOP_Y = 1190;
 const AUDIENCE_FRONT_Y = 1880;
+
+function audiencePosition(seat: AudienceSeatView, compactQuestion: boolean, userQuestionLayout: boolean, hasThrone: boolean) {
+  return {
+    x: seat.x,
+    y: seatY(seat.y, compactQuestion, userQuestionLayout, hasThrone),
+  };
+}
+
+function ThronePanel({ throne }: { throne: PublicThrone }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const previousHolder = useRef<string | null>(null);
+  const holderId = throne.state === 'HELD' ? publicThroneHolderId(throne.holder) : null;
+  useEffect(() => {
+    setImageFailed(false);
+    if (!holderId) {
+      previousHolder.current = null;
+      setChanging(false);
+      return;
+    }
+    const changed = previousHolder.current !== null && previousHolder.current !== holderId;
+    previousHolder.current = holderId;
+    if (!changed) return;
+    setChanging(true);
+    const timer = window.setTimeout(() => setChanging(false), 850);
+    return () => window.clearTimeout(timer);
+  }, [holderId]);
+
+  const holder = throne.state === 'HELD' ? throne.holder : null;
+  const image = holder ? `${ASSET_BASE}/throne/ngai-${holder.characterId}.png` : `${ASSET_BASE}/throne/ngai-trong.png`;
+  useEffect(() => setImageFailed(false), [image]);
+  return <section className={`v3-throne v3-throne-${throne.state.toLowerCase()}${changing ? ' is-changing' : ''}`} data-testid="throne-panel" data-throne-state={throne.state} data-holder-id={holderId ?? ''} data-score={holder?.score ?? ''} data-visible-art="372,837,706,1176" aria-label={holder ? `Ngai vàng, ${holder.safeDisplayName}, ${holder.score.toLocaleString('vi-VN')} điểm` : throne.state === 'LOCKED' ? 'Ngai vàng đang khoá' : 'Ngai vàng đang trống'}>
+    <div className="v3-throne-art" aria-hidden="true">
+      {!imageFailed
+        ? <img src={image} alt="" draggable={false} decoding="async" data-testid="throne-art" onError={() => setImageFailed(true)} />
+        : <svg className="v3-throne-emblem" viewBox="0 0 800 800" aria-label="Ngai vàng trống">
+            <path d="M64 744V80h146v270h380V80h146v664M64 744h672M210 350v220h380V350M280 465h240v190H280z" />
+            <path d="m64 80 73 100 73-100m380 0 73 100 73-100" />
+          </svg>}
+    </div>
+    <div className="v3-throne-copy">
+      <strong className="v3-throne-title">NGAI VÀNG</strong>
+      {holder ? <>
+        <b className="v3-throne-name" data-testid="throne-holder-name" title={holder.safeDisplayName}>{shortName(holder.safeDisplayName, 12)}</b>
+        <span className="v3-throne-score" data-testid="throne-holder-score">{holder.score.toLocaleString('vi-VN')} ĐIỂM</span>
+      </> : throne.state === 'LOCKED'
+        ? <span className="v3-throne-status" data-testid="throne-status">Mở sau câu 5</span>
+        : <span className="v3-throne-status" data-testid="throne-status">đang chờ chủ</span>}
+    </div>
+  </section>;
+}
 
 function SeatChibi({ characterId }: { characterId: string }) {
   const [ok, setOk] = useState(true);
@@ -416,7 +479,7 @@ function SeatChibi({ characterId }: { characterId: string }) {
 }
 
 type SeatMotion = { x: number; y: number };
-type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; userQuestionLayout: boolean; allowLegacyNames: boolean; fastestSeatId?: string | null; motion?: SeatMotion };
+type SeatProps = { seat: AudienceSeatView; compactQuestion: boolean; userQuestionLayout: boolean; hasThrone: boolean; allowLegacyNames: boolean; fastestSeatId?: string | null; motion?: SeatMotion };
 
 function audienceIdentity(seat: AudienceSeatView) {
   return seat.occupant ? JSON.stringify([seat.occupant.safeDisplayName, seat.occupant.characterId]) : null;
@@ -433,22 +496,24 @@ function sameSeat(previous: SeatProps, next: SeatProps) {
     left.pinned === right.pinned &&
     left.result === right.result);
   const sameMotion = previous.motion?.x === next.motion?.x && previous.motion?.y === next.motion?.y;
-  return previous.compactQuestion === next.compactQuestion && previous.userQuestionLayout === next.userQuestionLayout && previous.allowLegacyNames === next.allowLegacyNames && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant && sameMotion;
+  return previous.compactQuestion === next.compactQuestion && previous.userQuestionLayout === next.userQuestionLayout && previous.hasThrone === next.hasThrone && previous.allowLegacyNames === next.allowLegacyNames && previous.fastestSeatId === next.fastestSeatId && a.slotId === b.slotId && a.x === b.x && a.y === b.y && a.scale === b.scale && a.depth === b.depth && a.rowIndex === b.rowIndex && sameOccupant && sameMotion;
 }
 
-const Seat = React.memo(function Seat({ seat, compactQuestion, userQuestionLayout, fastestSeatId, motion }: SeatProps) {
+const Seat = React.memo(function Seat({ seat, compactQuestion, userQuestionLayout, hasThrone, fastestSeatId, motion }: SeatProps) {
   const o = seat.occupant;
   const isFastest = !!fastestSeatId && seat.slotId === fastestSeatId;
+  const position = audiencePosition(seat, compactQuestion, userQuestionLayout, hasThrone);
   return (
     <div
       className={`v3-seat ${o ? '' : 'is-empty'} ${o?.pinned ? 'is-pinned' : ''} ${o?.result === 'correct' ? 'is-correct' : ''} ${isFastest ? 'is-fastest' : ''}`}
       style={{
-        left: seat.x,
-        top: seatY(seat.y, compactQuestion, userQuestionLayout),
+        left: position.x,
+        top: position.y,
         zIndex: 10 + Math.round(seat.depth),
         ['--s' as string]: seat.scale,
       }}
       data-testid="audience-seat"
+      data-slot-id={seat.slotId}
       data-row-index={seat.rowIndex}
     >
       {o && <div className="v3-seat-occupant" style={{ ['--move-x' as string]: `${motion?.x ?? 0}px`, ['--move-y' as string]: `${motion?.y ?? 0}px` }}><SeatChibi characterId={o.characterId} /></div>}
@@ -461,15 +526,16 @@ const Seat = React.memo(function Seat({ seat, compactQuestion, userQuestionLayou
   );
 }, sameSeat);
 
-const SeatName = React.memo(function SeatName({ seat, compactQuestion, userQuestionLayout, allowLegacyNames, fastestSeatId, motion }: SeatProps) {
+const SeatName = React.memo(function SeatName({ seat, compactQuestion, userQuestionLayout, hasThrone, allowLegacyNames, fastestSeatId, motion }: SeatProps) {
   const occupant = seat.occupant;
   if (!occupant) return null;
-  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} data-row-index={seat.rowIndex} style={{ left: seat.x, top: seatY(seat.y, compactQuestion, userQuestionLayout), ['--s' as string]: seat.scale, ['--move-x' as string]: `${motion?.x ?? 0}px`, ['--move-y' as string]: `${motion?.y ?? 0}px` }}>
+  const position = audiencePosition(seat, compactQuestion, userQuestionLayout, hasThrone);
+  return <div className={`v3-seat-name ${occupant.pinned ? 'is-pinned' : ''} ${seat.slotId === fastestSeatId ? 'is-fastest' : ''}`} data-slot-id={seat.slotId} data-row-index={seat.rowIndex} style={{ left: position.x, top: position.y, ['--s' as string]: seat.scale, ['--move-x' as string]: `${motion?.x ?? 0}px`, ['--move-y' as string]: `${motion?.y ?? 0}px` }}>
     {shortName(publicPlayerName(occupant, `Khán giả ${seat.slotId}`, allowLegacyNames), 13)}
   </div>;
 }, sameSeat);
 
-function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; allowLegacyNames: boolean }) {
+function Audience({ snapshot, allowLegacyNames, hasThrone }: { snapshot: PublicSnapshot; allowLegacyNames: boolean; hasThrone: boolean }) {
   const a = snapshot.audience;
   const fastest = fastestCorrectFor(snapshot);
   const compactQuestion = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
@@ -482,7 +548,7 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
     for (const seat of a?.seats ?? []) {
       const identity = audienceIdentity(seat);
       if (!identity) continue;
-      const position = { x: seat.x, y: seatY(seat.y, compactQuestion, userQuestionLayout) };
+      const position = audiencePosition(seat, compactQuestion, userQuestionLayout, hasThrone);
       const previous = previousPositions.current.get(identity);
       if (snapshot.scene === 'REVEAL' && previous && (previous.x !== position.x || previous.y !== position.y)) {
         nextMotions[identity] = { x: previous.x - position.x, y: previous.y - position.y };
@@ -499,7 +565,7 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
     return () => window.cancelAnimationFrame(frame);
   }, [snapshot.scene, a?.seats, compactQuestion, userQuestionLayout]);
   const rows = a
-    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion, userQuestionLayout)])).entries()].map(([row, y]) => ({ row, y }))
+    ? [...new Map(a.seats.map((s) => [s.rowIndex, seatY(s.y, compactQuestion, userQuestionLayout, hasThrone)])).entries()].map(([row, y]) => ({ row, y }))
     : [];
   return (
     <section className="v3-audience" data-layer="audience-seats">
@@ -507,10 +573,10 @@ function Audience({ snapshot, allowLegacyNames }: { snapshot: PublicSnapshot; al
       {rows.map((r) => (
         <span key={r.row} className="v3-step" aria-hidden="true" style={{ top: r.y + 4, ['--r' as string]: r.row }} />
       ))}
-      {a?.seats.map((s) => { const identity = audienceIdentity(s); const motion = identity ? motions[identity] : undefined; return <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} userQuestionLayout={userQuestionLayout} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} motion={motion} />; })}
+      {a?.seats.map((s) => { const identity = audienceIdentity(s); const motion = identity ? motions[identity] : undefined; return <Seat key={s.slotId} seat={s} compactQuestion={compactQuestion} userQuestionLayout={userQuestionLayout} hasThrone={hasThrone} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} motion={motion} />; })}
       {/* Lớp bảng tên riêng (V3 §3 audience-nametags) — luôn trên mọi nhân vật, không bị hàng trước che */}
       <div className="v3-nametags" data-layer="audience-nametags">
-        {a?.seats.map((s) => { const identity = audienceIdentity(s); const motion = identity ? motions[identity] : undefined; return <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} userQuestionLayout={userQuestionLayout} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} motion={motion} />; })}
+        {a?.seats.map((s) => { const identity = audienceIdentity(s); const motion = identity ? motions[identity] : undefined; return <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} userQuestionLayout={userQuestionLayout} hasThrone={hasThrone} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} motion={motion} />; })}
       </div>
       {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
@@ -539,15 +605,18 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
     return () => window.clearTimeout(timeout);
   }, [voiceBubble?.cueId]);
   const fastest = fastestCorrectFor(snapshot);
+  const throne = getPublicThrone(snapshot);
+  const holderId = throne?.state === 'HELD' ? publicThroneHolderId(throne.holder) ?? undefined : undefined;
   const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
-  const questionBubble = snapshot.scene === 'LOBBY'
-    ? (voiceBubble?.text ?? snapshot.mcChatBubble?.text ?? snapshot.lobbyMessage ?? 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!')
+  const questionBubbleSource = snapshot.scene === 'LOBBY'
+    ? (voiceBubble?.text ?? snapshot.mcChatBubble?.text ?? snapshot.lobbyMessage ?? (throne ? 'Vào sảnh nhé!' : 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!'))
     : questionBackground ? (voiceBubble?.text ?? snapshot.mcChatBubble?.text ?? snapshot.mc.bubble) : undefined;
+  const questionBubble = questionBubbleSource !== undefined && throne ? throneMcBubbleText(questionBubbleSource) : questionBubbleSource;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
   const userQuestionLayout = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', userQuestionLayout && 'v3-stage--user-question-layout', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', userQuestionLayout && 'v3-stage--user-question-layout', throne && 'v3-stage--has-throne', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} loopVideo={snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL'} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
@@ -646,10 +715,11 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
         </svg>
       </div>
       <BrandHeader snapshot={snapshot} />
-      <Top10 entries={positiveScoreEntries(snapshot.leaderboard?.entries ?? [])} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
+      <Top10 entries={orderRankOneHolderFirst(positiveScoreEntries(snapshot.leaderboard?.entries ?? []), holderId)} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} overlayRole={overlayRole} />
-      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={fastest} fastestVariant={fastestVariant} />
-      <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} />
+      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={fastest} fastestVariant={fastestVariant} throneLayout={!!throne} />
+      {throne && questionBackground && <ThronePanel throne={throne} />}
+      <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} hasThrone={!!throne} />
     </div>
   );
 }

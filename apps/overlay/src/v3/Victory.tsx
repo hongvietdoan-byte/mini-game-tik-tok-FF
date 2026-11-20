@@ -7,22 +7,23 @@ import { publicPlayerName } from '../publicPlayerName';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle, hudImageUrl } from './hudText';
 import { ArenaLoopVideo } from './ArenaLoopVideo';
-import { themeAssetChildUrl, themeAssetUrl, useTheme } from '../theme';
+import { themeAssetUrl, useTheme } from '../theme';
 import { McKelly, sceneMcBubbleText } from './ArenaStage';
+import { getPublicThrone, orderPodiumHolderFirst, orderRankOneHolderFirst, publicThroneHolderId } from '../throne';
 
 const ASSET = '/assets';
 const VICTORY_BACKGROUND = `${ASSET}/victory/bg-user-cover.jpg`;
 const VICTORY_LAYOUT = {
-  '--v3v-place-2-x': '14.5%',
+  '--v3v-place-2-x': '18%',
   '--v3v-place-1-x': '50%',
-  '--v3v-place-3-x': '85.5%',
+  '--v3v-place-3-x': '82%',
   '--v3v-place-2-feet': '62.5%',
   '--v3v-place-1-feet': '62.5%',
   '--v3v-place-3-feet': '62.5%',
-  '--v3v-side-height': '384px',
-  '--v3v-center-height': '384px',
-  '--v3v-side-width': '180px',
-  '--v3v-center-width': '242px',
+  '--v3v-side-height': '420px',
+  '--v3v-center-height': '520px',
+  '--v3v-side-width': '240px',
+  '--v3v-center-width': '440px',
 } as CSSProperties;
 
 function VictoryLogo() {
@@ -40,69 +41,62 @@ function VictoryLogo() {
     : <div className="v3v-logo-fallback"><BrandMark /></div>;
 }
 
-function Chibi({ entry }: { entry: PublicLeaderboardEntry }) {
-  const [ok, setOk] = useState(true);
-  const [failedTheme, setFailedTheme] = useState(false);
-  const theme = useTheme();
-  const themeBank = theme.assets['chibi.bankDir'];
-  const themedSrc = themeBank && entry.characterId ? themeAssetChildUrl(themeBank, `${entry.characterId}.png`) : '';
-  const fallbackSrc = entry.characterId ? `${ASSET}/chibi/${entry.characterId}.png` : '';
-  const source = themedSrc && !failedTheme ? themedSrc : fallbackSrc;
-  useEffect(() => { setOk(true); setFailedTheme(false); }, [entry.characterId, theme.version, themedSrc]);
-  return ok && entry.characterId ? (
-    <img
-      src={source}
-      alt=""
-      draggable={false}
-      decoding="async"
-      onError={() => {
-        if (themedSrc && !failedTheme && source === themedSrc) setFailedTheme(true);
-        else setOk(false);
-      }}
-    />
-  ) : (
-    <div className="v3v-chibi-placeholder" aria-hidden="true" />
-  );
+function WinnerFigure({ entry, place }: { entry: PublicLeaderboardEntry; place: 1 | 2 | 3 }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const asset = entry.characterId
+    ? place === 1
+      ? `${ASSET}/throne/ngai-${entry.characterId}.png`
+      : `${ASSET}/chibi/dang-top2-top3/top${place}/top${place}-${entry.characterId}.png`
+    : null;
+  useEffect(() => setImageFailed(false), [asset]);
+  return asset && !imageFailed
+    ? <img src={asset} alt="" draggable={false} decoding="async" data-testid="podium-character" data-character-id={entry.characterId} data-podium-role={`top${place}`} data-asset-src={asset} onError={() => setImageFailed(true)} />
+    : <div className="v3v-chibi-placeholder" data-testid="podium-character-missing" data-podium-role={`top${place}`} aria-label={`Thiếu ảnh dáng top ${place}`} />;
 }
 
 function podiumNameSize(name: string): number {
   const length = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name)).length;
-  return Math.max(22, Math.min(34, 38 - length));
+  const size = Math.max(28, Math.min(34, 40 - length));
+  return length >= 16 ? Math.max(22, size - 2) : size;
 }
 
-function Slot({ slot, tieAcross, allowLegacyNames }: { slot: PublicPodiumSlot; tieAcross: boolean; allowLegacyNames: boolean }) {
-  const lead = slot.entries[0]!;
+function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPodiumSlot; tieAcross: boolean; allowLegacyNames: boolean; holderId?: string }) {
+  const entries = orderRankOneHolderFirst(slot.entries, holderId);
+  const lead = entries[0]!;
   const tied = slot.tied || (tieAcross && slot.entries.length > 1);
   return (
     <div className={`v3v-slot v3v-place-${slot.place}${tied ? ' is-tied' : ''}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} data-rank={slot.rank} data-score={lead.score}>
       <div className="v3v-figure">
-        <Chibi entry={lead} />
+        <WinnerFigure entry={lead} place={slot.place} />
         <span className="v3v-shadow" aria-hidden="true" />
       </div>
       <div className={`v3v-nameplate${tied ? ' is-tied' : ''}`} data-testid="podium-nameplate">
-        <svg className="v3v-laurel v3v-laurel-left" viewBox="0 0 64 92" aria-hidden="true">
+        {slot.place !== 3 && <svg className="v3v-laurel v3v-laurel-left" viewBox="0 0 64 92" aria-hidden="true">
           <path d="M55 87C25 72 12 46 17 9M45 72C29 73 20 67 17 56c13 0 22 5 28 16ZM35 54C20 52 14 44 13 33c12 3 19 10 22 21ZM27 35C15 29 12 20 16 10c10 7 14 15 11 25Z" />
-        </svg>
-        <svg className="v3v-laurel v3v-laurel-right" viewBox="0 0 64 92" aria-hidden="true">
+        </svg>}
+        {slot.place !== 2 && <svg className="v3v-laurel v3v-laurel-right" viewBox="0 0 64 92" aria-hidden="true">
           <path d="M55 87C25 72 12 46 17 9M45 72C29 73 20 67 17 56c13 0 22 5 28 16ZM35 54C20 52 14 44 13 33c12 3 19 10 22 21ZM27 35C15 29 12 20 16 10c10 7 14 15 11 25Z" />
-        </svg>
-        <span className="v3v-rank-crown" aria-hidden="true">
+        </svg>}
+        <span className="v3v-rank-crown" data-testid="podium-crown" aria-hidden="true">
           <svg viewBox="0 0 60 42"><path d="M4 11 15 21 25 5 30 22 41 5 47 21 56 11 52 35 8 35Z" /></svg>
         </span>
         <div className="v3v-names">
-          <span className="v3v-rank-label" data-testid="podium-rank">TOP {slot.rank}</span>
-          {slot.entries.slice(0, 2).map((entry, index) => {
+          <span className="v3v-rank-label" data-testid="podium-rank">
+            <span className="v3v-rank-top">TOP {slot.rank}</span>
+            {tied && <><span className="v3v-rank-separator"> · </span><span className="v3v-rank-tie">ĐỒNG HẠNG</span></>}
+          </span>
+          {entries.slice(0, 2).map((entry, index) => {
             const displayName = shortName(publicPlayerName(entry, `Người chơi hạng ${slot.rank}${slot.entries.length > 1 ? ` · ${index + 1}` : ''}`, allowLegacyNames), 16);
+            const hasStreakBadge = (entry.top1Streak ?? 0) >= 2;
             return (
-              <b className="v3v-player-row" key={entry.playerId}>
+              <b className={`v3v-player-row${hasStreakBadge ? ' has-streak-badge' : ''}`} key={entry.playerId}>
                 <span className="v3v-player-name" style={{ fontSize: `${podiumNameSize(displayName)}px` }}>{displayName}</span>
-                {(entry.top1Streak ?? 0) >= 2 && <span className="v3-top1-badge" data-testid="top1-badge">x{entry.top1Streak}</span>}
+                {hasStreakBadge && <span className="v3-top1-badge" data-testid="top1-badge">x{entry.top1Streak}</span>}
               </b>
             );
           })}
           {slot.entries.length > 2 && <small>+{slot.entries.length - 2} người</small>}
           <i>{lead.score.toLocaleString('vi-VN')} PTS</i>
-          {tied && <strong className="tie-label">ĐỒNG HẠNG</strong>}
         </div>
       </div>
     </div>
@@ -185,11 +179,14 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
     || themeAssetUrl(theme, 'victory.trophyStage', '');
   const [failedSources, setFailedSources] = useState<string[]>([]);
   const backgroundSource = [customBackground, themeBackground, VICTORY_BACKGROUND].find((source) => source && !failedSources.includes(source)) ?? VICTORY_BACKGROUND;
+  const throne = getPublicThrone(snapshot);
+  const holderId = throne?.state === 'HELD' ? publicThroneHolderId(throne.holder) ?? undefined : undefined;
   const podium = positiveScorePodium(snapshot.podium);
+  const podiumSlots = podium ? orderPodiumHolderFirst(podium.slots, holderId) : [];
   const bubbleText = snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble;
   useEffect(() => setFailedSources([]), [customBackground, theme.version, themeBackground]);
   return (
-    <div className="v3-stage v3v" data-scene={snapshot.scene} data-testid="victory-stage">
+    <div className="v3-stage v3v" data-scene={snapshot.scene} data-holder-id={holderId ?? ''} data-testid="victory-stage">
       <img className="v3v-bg-image" src={backgroundSource} alt="" draggable={false} decoding="async" data-testid="victory-background" onError={() => setFailedSources((current) => current.includes(backgroundSource) ? current : [...current, backgroundSource])} />
       <ArenaLoopVideo poster={backgroundSource} className="v3v-bg-video" testId="victory-background-video" />
       <VictoryConfetti />
@@ -198,7 +195,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
       </header>
       {config.texts.victoryTitle && <h1 className="v3v-hud-title" title={config.texts.victoryTitle} style={fitHudTextStyle(config.texts.victoryTitle, 860, 42, 18)}>{config.texts.victoryTitle}</h1>}
       <div className="v3v-podium" style={VICTORY_LAYOUT}>
-        {podium && podiumLeftToRight(podium.slots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} />)}
+        {podium && podiumLeftToRight(podiumSlots).map((slot) => <Slot key={slot.place} slot={slot} tieAcross={podium.tieAcrossCutoff} allowLegacyNames={allowLegacyNames} holderId={holderId} />)}
         {(!podium || podium.slots.length === 0) && <div className="v3v-empty">Chưa có người chơi đạt điểm</div>}
       </div>
       {snapshot.scene !== 'VICTORY' && <McKelly snapshot={snapshot} bubbleOverride={sceneMcBubbleText(snapshot, bubbleText)} hideBubble={snapshot.scene === 'ROUND_WINNER'} />}
