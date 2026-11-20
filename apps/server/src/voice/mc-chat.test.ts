@@ -74,9 +74,14 @@ describe('MC chat', () => {
     const synthesize = vi.fn(async (_request: Parameters<McVoiceProvider['synthesize']>[0]) => ({ bytes: Buffer.from('round-end-audio'), durationMs: 1_200, format: 'mp3' as const }));
     const { runtime } = await makeRuntime({ synthesize });
     const cueTypes: string[] = [];
+    const cueWaiters: Array<(eventType: string) => void> = [];
     Object.defineProperty(runtime, 'scheduleVoiceCue', {
-      value: (eventType: string) => { cueTypes.push(eventType); },
+      value: (eventType: string) => {
+        cueTypes.push(eventType);
+        cueWaiters.shift()?.(eventType);
+      },
     });
+    const nextCue = () => new Promise<string>((resolve) => cueWaiters.push(resolve));
     const questionInstanceIds = Array.from({ length: 15 }, (_, index) => `round-15:q${index + 1}`);
     Object.assign(runtime.engine, {
       state: 'LEADERBOARD', sessionStatus: 'OPEN',
@@ -85,17 +90,19 @@ describe('MC chat', () => {
     const afterCommit = (runtime as unknown as { afterCommit(events: never[], input: never): void }).afterCommit.bind(runtime);
     const enteredLeaderboard = [{ type: 'STATE_CHANGED', from: 'REVEAL', to: 'LEADERBOARD' }] as never[];
 
+    const leaderboardCue = nextCue();
     afterCommit(enteredLeaderboard, null as never);
-    await vi.waitFor(() => expect(synthesize.mock.calls.some(([request]) =>
-      request.text === 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!')).toBe(true));
-    await vi.waitFor(() => expect(cueTypes).toEqual(['LEADERBOARD_GENERIC']));
+    await expect(leaderboardCue).resolves.toBe('LEADERBOARD_GENERIC');
+    expect(synthesize.mock.calls.some(([request]) =>
+      request.text === 'Bảng xếp hạng đã cập nhật. Cùng cố gắng ở câu tiếp theo nhé!')).toBe(true);
     expect(cueTypes).toEqual(['LEADERBOARD_GENERIC']);
 
     runtime.engine.round!.questionIndex = 14;
+    const roundCompleteCue = nextCue();
     afterCommit(enteredLeaderboard, null as never);
-    await vi.waitFor(() => expect(synthesize.mock.calls.some(([request]) =>
-      request.text === 'Đã xong tất cả các câu hỏi! Cùng xem ai là nhà vô địch nhé!')).toBe(true));
-    await vi.waitFor(() => expect(cueTypes).toEqual(['LEADERBOARD_GENERIC', 'ROUND_COMPLETE_GENERIC']));
+    await expect(roundCompleteCue).resolves.toBe('ROUND_COMPLETE_GENERIC');
+    expect(synthesize.mock.calls.some(([request]) =>
+      request.text === 'Đã xong tất cả các câu hỏi! Cùng xem ai là nhà vô địch nhé!')).toBe(true);
     expect(cueTypes).toEqual(['LEADERBOARD_GENERIC', 'ROUND_COMPLETE_GENERIC']);
   });
 

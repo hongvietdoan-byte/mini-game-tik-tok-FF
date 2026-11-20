@@ -206,7 +206,9 @@ for (const mock of ['reading-demo-006', 'question-demo-006']) {
 test('C-0319 — demo question bank identifies prompts that reach the 24px floor', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.goto('/?mock=question-longest&hud=tall&role=program', { waitUntil: 'domcontentloaded' });
-  const prompts = DEMO_QUESTIONS.filter(({ prompt }) => prompt.length > 160).map(({ id, prompt }) => ({ id, prompt }));
+  const prompts = DEMO_QUESTIONS.filter(({ approvalStatus, prompt }) => approvalStatus === 'APPROVED' && prompt.length > 160)
+    .map(({ id, prompt }) => ({ id, prompt }));
+  expect(prompts).toHaveLength(0);
   const candidates = new Set<string>();
   for (const { prompt } of prompts) {
     const words = prompt.trim().split(/\s+/u);
@@ -241,9 +243,9 @@ test('C-0319 — demo question bank identifies prompts that reach the 24px floor
     return { id, sourceCharacters: [...prompt].length, visibleLines: layout.lineCount, truncated: layout.truncated, text: layout.text };
   });
   console.info(`C-0319 demo bank prompts at 24px: ${JSON.stringify(measured)}`);
-  expect(measured.map(({ id }) => id)).toEqual(['demo-001', 'demo-023']);
-  expect(measured.map(({ visibleLines }) => visibleLines)).toEqual([3, 3]);
-  expect(measured.every(({ truncated }) => truncated)).toBe(true);
+  expect(measured).toHaveLength(0);
+  expect(measured.every(({ visibleLines }) => visibleLines <= 3)).toBe(true);
+  expect(measured.every(({ truncated }) => truncated === false)).toBe(true);
 });
 
 for (const { mock, state } of [

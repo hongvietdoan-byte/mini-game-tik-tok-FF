@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { CreateSessionRequestSchema } from '@quiz/contracts';
 import { Store } from '@quiz/persistence';
@@ -37,16 +37,21 @@ describe('lời chào MC ở sảnh', () => {
     }, CreateSessionRequestSchema.parse({ name: 'Welcome test', config: { mode: 'MOCK', allowDemoQuestions: true, mcVoiceEnabled: true } }));
     opened.push({ root, runtime, store });
     const messages: Array<{ eventType?: string }> = [];
+    let resolveWelcomeCue!: () => void;
+    const welcomeCuePublished = new Promise<void>((resolve) => { resolveWelcomeCue = resolve; });
     runtime.subscribe((batch) => {
       for (const item of batch) {
-        if (item.audience === 'public' && item.message.type === 'STATE_SNAPSHOT' && item.message.payload.mcVoiceCue)
+        if (item.audience === 'public' && item.message.type === 'STATE_SNAPSHOT' && item.message.payload.mcVoiceCue) {
           messages.push(item.message.payload.mcVoiceCue);
+          if (item.message.payload.mcVoiceCue.eventType === 'WELCOME') resolveWelcomeCue();
+        }
       }
     });
 
     runtime.dispatch({ commandId: randomUUID(), expectedStateVersion: runtime.engine.stateVersion, operatorId: 'test',
       requestedAtMs: scheduler.now(), command: { type: 'OPEN_LOBBY' } });
-    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    await welcomeCuePublished;
+    expect(messages).toHaveLength(1);
     expect(messages[0]?.eventType).toBe('WELCOME');
   });
 });
