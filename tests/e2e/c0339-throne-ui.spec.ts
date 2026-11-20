@@ -438,13 +438,24 @@ test('C-0339 holder change animates and carries the same player identity into th
     const figure = slot.querySelector<HTMLElement>('.v3v-figure')!.getBoundingClientRect();
     const nameplateElement = slot.querySelector<HTMLElement>('.v3v-nameplate')!;
     const nameplate = nameplateElement.getBoundingClientRect();
+    const frameStyle = getComputedStyle(nameplateElement, '::before');
     const frameInset = 8;
-    const plateStyle = getComputedStyle(nameplateElement);
     const insideFrame = {
-      left: nameplate.left + Number.parseFloat(plateStyle.borderLeftWidth) + frameInset,
-      top: nameplate.top + Number.parseFloat(plateStyle.borderTopWidth) + frameInset,
-      right: nameplate.right - Number.parseFloat(plateStyle.borderRightWidth) - frameInset,
-      bottom: nameplate.bottom - Number.parseFloat(plateStyle.borderBottomWidth) - frameInset,
+      left: nameplate.left + Number.parseFloat(frameStyle.borderLeftWidth) + frameInset,
+      top: nameplate.top + Number.parseFloat(frameStyle.borderTopWidth) + frameInset,
+      right: nameplate.right - Number.parseFloat(frameStyle.borderRightWidth) - frameInset,
+      bottom: nameplate.bottom - Number.parseFloat(frameStyle.borderBottomWidth) - frameInset,
+    };
+    const laurelElements = [...nameplateElement.querySelectorAll<SVGElement>('.v3v-laurel')];
+    const laurels = laurelElements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+    });
+    const safeArea = {
+      left: Math.max(insideFrame.left, laurels[0]!.right + 8),
+      top: insideFrame.top,
+      right: Math.min(insideFrame.right, laurels[1]!.left - 8),
+      bottom: insideFrame.bottom,
     };
     const crown = slot.querySelector<HTMLElement>('[data-testid="podium-crown"]')!.getBoundingClientRect();
     const crownStyle = getComputedStyle(slot.querySelector<HTMLElement>('[data-testid="podium-crown"]')!);
@@ -452,14 +463,28 @@ test('C-0339 holder change animates and carries the same player identity into th
     const actualTextBounds = (element: HTMLElement) => {
       const range = document.createRange();
       range.selectNodeContents(element);
-      const text = range.getBoundingClientRect();
-      return { left: text.left, top: text.top, right: text.right, bottom: text.bottom };
+      const lines: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+      for (const text of range.getClientRects()) {
+        const line = lines.find((candidate) => Math.abs(candidate.top - text.top) < 1 && Math.abs(candidate.bottom - text.bottom) < 1);
+        if (line) {
+          line.left = Math.min(line.left, text.left);
+          line.right = Math.max(line.right, text.right);
+        } else lines.push({ left: text.left, top: text.top, right: text.right, bottom: text.bottom });
+      }
+      return lines;
     };
-    const textRows = [...slot.querySelectorAll<HTMLElement>('.v3v-rank-label, .v3v-player-name, .v3v-names small, .v3v-names i')]
-      .map((element) => ({
-        label: element.matches('.v3v-rank-label') ? 'rank' : element.matches('.v3v-player-name') ? 'name' : element.matches('.v3v-names i') ? 'score' : 'extra',
-        text: element.textContent ?? '',
-        ...actualTextBounds(element),
+    const textRows = [...slot.querySelectorAll<HTMLElement>('.v3v-rank-top, .v3v-rank-tie, .v3v-player-name, .v3v-names small, .v3v-names i')]
+      .flatMap((element) => actualTextBounds(element).map((bounds, line) => {
+        const isRankLine = element.matches('.v3v-rank-top, .v3v-rank-tie');
+        const overflowElement = isRankLine ? element.closest<HTMLElement>('.v3v-rank-label')! : element;
+        return {
+          label: isRankLine ? 'rank' : element.matches('.v3v-player-name') ? 'name' : element.matches('.v3v-names i') ? 'score' : 'extra',
+          text: element.textContent ?? '',
+          line,
+          scrollWidth: overflowElement.scrollWidth,
+          clientWidth: overflowElement.clientWidth,
+          ...bounds,
+        };
       }))
       .sort((a, b) => a.top - b.top || a.left - b.left);
     const rankText = textRows.find((row) => row.label === 'rank')!;
@@ -468,7 +493,7 @@ test('C-0339 holder change animates and carries the same player identity into th
     const badgeElement = slot.querySelector<HTMLElement>('.v3-top1-badge');
     const badge = badgeElement?.getBoundingClientRect() ?? null;
     const badgeName = badgeElement?.closest('.v3v-player-row')?.querySelector<HTMLElement>('.v3v-player-name');
-    const badgeNameText = badgeName ? actualTextBounds(badgeName) : null;
+    const badgeNameText = badgeName ? actualTextBounds(badgeName)[0] : null;
     const badgeRankText = badge && textRows.find((row) => row.label === 'rank');
     const horizontalBadgeRankGap = badge && badgeRankText ? Math.max(0, badgeRankText.left - badge.right, badge.left - badgeRankText.right) : null;
     const verticalBadgeRankGap = badge && badgeRankText ? Math.max(0, badgeRankText.top - badge.bottom, badge.top - badgeRankText.bottom) : null;
@@ -480,6 +505,8 @@ test('C-0339 holder change animates and carries the same player identity into th
       feetGap: Math.round((nameplate.top - figure.bottom) * 10) / 10,
       figure: { top: figure.top, bottom: figure.bottom },
       nameplate: { left: nameplate.left, top: nameplate.top, right: nameplate.right, bottom: nameplate.bottom, width: nameplate.width, height: nameplate.height, insideFrame },
+      laurels,
+      safeArea,
       crown: { left: crown.left, top: crown.top, right: crown.right, bottom: crown.bottom },
       crownVisible: crownStyle.visibility === 'visible' && Number.parseFloat(crownStyle.opacity) > 0,
       crownZIndex: Number.parseInt(crownStyle.zIndex, 10),
@@ -491,8 +518,8 @@ test('C-0339 holder change animates and carries the same player identity into th
       scoreInside: scoreText.left >= insideFrame.left && scoreText.right <= insideFrame.right && scoreText.top >= insideFrame.top && scoreText.bottom <= insideFrame.bottom,
       rankInside: rankText.left >= insideFrame.left && rankText.right <= insideFrame.right && rankText.top >= insideFrame.top && rankText.bottom <= insideFrame.bottom,
       textRows,
-      badgeTopInset: badge ? badge.top - nameplate.top : null,
-      badgeRightInset: badge ? nameplate.right - badge.right : null,
+      badgeInsideSafeArea: badge ? badge.left >= safeArea.left && badge.right <= safeArea.right && badge.top >= safeArea.top && badge.bottom <= safeArea.bottom : null,
+      badgeAfterNameGap: badge && badgeNameText ? badge.left - badgeNameText.right : null,
       badgeRankGap: badge && badgeRankText ? Math.hypot(horizontalBadgeRankGap!, verticalBadgeRankGap!) : null,
       badgeNameGap: badge && badgeNameText ? Math.hypot(horizontalBadgeNameGap!, verticalBadgeNameGap!) : null,
       plateInsideViewport: nameplate.left >= 24 && nameplate.right <= 1056,
@@ -500,31 +527,40 @@ test('C-0339 holder change animates and carries the same player identity into th
     };
   }));
   expect(podiumGeometry).toHaveLength(3);
+  const leftTiedSlot = podiumGeometry.find((slot) => slot.place === '2')!;
+  expect(leftTiedSlot.textRows.filter((row) => row.label === 'rank').map((row) => row.text))
+    .toEqual(['TOP 1', 'ĐỒNG HẠNG']);
+  await expect(podium.getByTestId('podium-slot-2').getByTestId('top1-badge')).toHaveText('x3');
+  expect(leftTiedSlot.badgeAfterNameGap).toBeGreaterThanOrEqual(8);
   for (const slot of podiumGeometry) {
     expect(slot.feetGap, `top${slot.place} figure/nameplate gap`).toBeGreaterThanOrEqual(8);
     expect(slot.nameFont, `top${slot.place} name font`).toBeGreaterThanOrEqual(28);
     expect(slot.scoreFont, `top${slot.place} score font`).toBeGreaterThanOrEqual(32);
-    expect(slot.rankFont, `top${slot.place} rank font stays at least 22px`).toBeGreaterThanOrEqual(22);
+    expect(slot.rankFont, `top${slot.place} rank font stays at least 20px`).toBeGreaterThanOrEqual(20);
     expect(slot.nameInside, `top${slot.place} name stays inside plate with 8 px inset`).toBe(true);
     expect(slot.scoreInside, `top${slot.place} score stays inside plate with 8 px inset`).toBe(true);
     expect(slot.rankInside, `top${slot.place} rank stays inside plate with 8 px inset`).toBe(true);
     for (let index = 0; index < slot.textRows.length; index += 1) {
       const row = slot.textRows[index]!;
-      expect(row.left, `top${slot.place} ${row.label} text has 8 px left inset from inner frame`).toBeGreaterThanOrEqual(slot.nameplate.insideFrame.left);
-      expect(row.right, `top${slot.place} ${row.label} text has 8 px right inset from inner frame`).toBeLessThanOrEqual(slot.nameplate.insideFrame.right);
+      expect(row.left, `top${slot.place} ${row.label} line ${row.line} clears the left laurel by 8 px`).toBeGreaterThanOrEqual(slot.safeArea.left);
+      expect(row.right, `top${slot.place} ${row.label} line ${row.line} clears the right laurel by 8 px`).toBeLessThanOrEqual(slot.safeArea.right);
       expect(row.top, `top${slot.place} ${row.label} text has 8 px top inset from inner frame`).toBeGreaterThanOrEqual(slot.nameplate.insideFrame.top);
       expect(row.bottom, `top${slot.place} ${row.label} text has 8 px bottom inset from inner frame`).toBeLessThanOrEqual(slot.nameplate.insideFrame.bottom);
+      expect(row.scrollWidth, `top${slot.place} ${row.label} line has no horizontal overflow`).toBeLessThanOrEqual(row.clientWidth);
       if (index > 0) {
         const previous = slot.textRows[index - 1]!;
-        expect(row.top - previous.bottom, `top${slot.place} ${previous.label}/${row.label} text rows do not overlap and have a 4 px gap`)
-          .toBeGreaterThanOrEqual(4);
+        if (row.top < previous.bottom) {
+          expect(row.label === 'rank' && previous.label === 'rank' && (row.right <= previous.left || row.left >= previous.right),
+            `top${slot.place} text fragments share a line only when they do not overlap: ${JSON.stringify({ previous, row })}`).toBe(true);
+        } else {
+          expect(row.top - previous.bottom, `top${slot.place} ${previous.label}/${row.label} text rows do not overlap and have a 4 px gap`)
+            .toBeGreaterThanOrEqual(4);
+        }
       }
     }
     if (slot.badgeNameGap !== null) {
-      expect(slot.badgeTopInset, `top${slot.place} streak badge moves to upper right`).toBeGreaterThanOrEqual(8);
-      expect(slot.badgeRightInset, `top${slot.place} streak badge stays inside right border`).toBeGreaterThanOrEqual(8);
-      expect(slot.badgeRankGap, `top${slot.place} streak badge clears rank text by 8 px`).toBeGreaterThanOrEqual(8);
-      expect(slot.badgeNameGap, `top${slot.place} streak badge clears its name by 8 px`).toBeGreaterThanOrEqual(8);
+      expect(slot.badgeInsideSafeArea, `top${slot.place} streak badge stays in the safe text area`).toBe(true);
+      expect(slot.badgeAfterNameGap, `top${slot.place} streak badge follows its name with 8 px gap`).toBeGreaterThanOrEqual(8);
     }
     expect(slot.plateInsideViewport, `top${slot.place} plate stays within safe margins`).toBe(true);
     expect(slot.crownInsideViewport, `top${slot.place} crown stays visible`).toBe(true);

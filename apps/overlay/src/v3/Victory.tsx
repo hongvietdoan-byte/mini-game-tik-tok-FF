@@ -63,7 +63,6 @@ function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPod
   const entries = orderRankOneHolderFirst(slot.entries, holderId);
   const lead = entries[0]!;
   const tied = slot.tied || (tieAcross && slot.entries.length > 1);
-  const hasStreakBadge = entries.slice(0, 2).some((entry) => (entry.top1Streak ?? 0) >= 2);
   return (
     <div className={`v3v-slot v3v-place-${slot.place}${tied ? ' is-tied' : ''}`} data-testid={`podium-slot-${slot.place}`} data-place={slot.place} data-rank={slot.rank} data-score={lead.score}>
       <div className="v3v-figure">
@@ -81,13 +80,17 @@ function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPod
           <svg viewBox="0 0 60 42"><path d="M4 11 15 21 25 5 30 22 41 5 47 21 56 11 52 35 8 35Z" /></svg>
         </span>
         <div className="v3v-names">
-          <span className={`v3v-rank-label${tied && hasStreakBadge ? ' has-streak-badge' : ''}`} data-testid="podium-rank">TOP {slot.rank}{tied ? ' · ĐỒNG HẠNG' : ''}</span>
+          <span className="v3v-rank-label" data-testid="podium-rank">
+            <span className="v3v-rank-top">TOP {slot.rank}</span>
+            {tied && <><span className="v3v-rank-separator"> · </span><span className="v3v-rank-tie">ĐỒNG HẠNG</span></>}
+          </span>
           {entries.slice(0, 2).map((entry, index) => {
             const displayName = shortName(publicPlayerName(entry, `Người chơi hạng ${slot.rank}${slot.entries.length > 1 ? ` · ${index + 1}` : ''}`, allowLegacyNames), 16);
+            const hasStreakBadge = (entry.top1Streak ?? 0) >= 2;
             return (
-              <b className="v3v-player-row" key={entry.playerId}>
+              <b className={`v3v-player-row${hasStreakBadge ? ' has-streak-badge' : ''}`} key={entry.playerId}>
                 <span className="v3v-player-name" style={{ fontSize: `${podiumNameSize(displayName)}px` }}>{displayName}</span>
-                {(entry.top1Streak ?? 0) >= 2 && <span className="v3-top1-badge" data-testid="top1-badge">x{entry.top1Streak}</span>}
+                {hasStreakBadge && <span className="v3-top1-badge" data-testid="top1-badge">x{entry.top1Streak}</span>}
               </b>
             );
           })}
