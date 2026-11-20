@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 377,
-  "heartbeat": "2026-11-20T21:24:55+07:00",
+  "heartbeat": "2026-11-20T21:45:55+07:00",
   "state": "waiting",
   "task": "C-0362",
-  "note": "Đã nhận C-0377: batch đã gộp main, coordinator đã sửa demo-029; inbox trống, chờ brief mới.",
+  "note": "Inbox trống; C-0377 đã xử lý và batch đã gộp main, chờ brief mới.",
   "done": []
 }
