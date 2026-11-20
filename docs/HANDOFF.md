@@ -6,6 +6,7 @@
 - Main `4a72593a`, checkout chính đã ff + build:web. Đã gộp tối nay: C-0361 (preselection + C-0224), C-0335 (chủ đề ưu tiên), C-0374 (Codex 2: dashboard Setup Wizard cổng Vite riêng mỗi worker), batch C-0360+C-0329 (+ coordinator sửa fixtures demo-029 A/B cho khớp v3, `30d88c70`).
 - DB máy người dùng: demo-004/demo-029 A/B rút gọn lên version 3 (người dùng duyệt), sao lưu `backups/quiz-before-c0310-ab-shorten-20261120-190955.db`. Đọc ước lượng còn ~21,5 s (vẫn >20 s). Gợi ý chưa duyệt: demo-029 bỏ chữ "Trong" ở đầu câu hỏi.
 - `apps/overlay/src/mock/snapshots.ts:304` còn text A cũ của demo-029 (chỉ mock xem trước, chưa sửa).
+- 20/11 ~22:00 MOCK 15 câu × 2.000 người trên bản sao dữ liệu: MOCK_ROUND_CHECK_PASSED, Top 1 4235 điểm; event-loop p99 806 ms, max 1,1 s.
 - Codex 1 và Codex 2 đều rảnh, chưa có brief. Việc chặn còn lại: thử live TikTok thật (cần LIVE điện thoại ≥25 phút).
 
 ## Mới nhất 20/11 ~17:15 — đọc khối này trước, các khối dưới đã cũ
@@ -34,7 +35,7 @@
 - **Quy trình gộp:**
   - Làm trong worktree `.claude/worktrees/coord-merge-0293`: `git checkout --detach origin/main`, rồi `git merge origin/<nhánh>`.
   - Kiểm tra: typecheck, privacy, `vitest --project unit --project integration --pool=forks --maxWorkers=2`, Playwright 2 lượt (asset thật, và `QUIZ_ASSETS_DIR=fixtures/assets-placeholder`) với `PLAYWRIGHT_SERVER_PORT=18931 PLAYWRIGHT_OVERLAY_PORT=15331`.
-  - Push bằng `HEAD:main`. Ở checkout chính, khi cổng 8787 không nghe: `git fetch; git merge --ff-only origin/main; corepack pnpm -s build:web`.
+  - Push bằng `HEAD:main`. Ở checkout chính, khi cổng 8787 không nghe: `git fetch; git merge --ff-only origin/main; py -3 tools/web_build.py ensure` (KHÔNG dùng `build:web`: không ghi `.build-commit` → preflight overlayBuild/dashboardBuild FAIL).
   - `mb.py` phải gọi từ checkout chính: `py -X utf8 "E:\Ai\2026\Trend mini game tiktok\tools\mb.py"`.
 - **Test chập chờn đã biết:**
   - mc-voice-preselection;
