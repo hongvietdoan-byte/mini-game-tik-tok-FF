@@ -449,14 +449,24 @@ test('C-0339 holder change animates and carries the same player identity into th
     const laurelElements = [...nameplateElement.querySelectorAll<SVGElement>('.v3v-laurel')];
     const laurels = laurelElements.map((element) => {
       const box = element.getBoundingClientRect();
-      return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+      return { side: element.classList.contains('v3v-laurel-left') ? 'left' : 'right', left: box.left, top: box.top, right: box.right, bottom: box.bottom };
     });
+    const leftLaurel = laurels.find((laurel) => laurel.side === 'left');
+    const rightLaurel = laurels.find((laurel) => laurel.side === 'right');
     const safeArea = {
-      left: Math.max(insideFrame.left, laurels[0]!.right + 8),
+      left: Math.max(insideFrame.left, (leftLaurel?.right ?? insideFrame.left - 8) + 8),
       top: insideFrame.top,
-      right: Math.min(insideFrame.right, laurels[1]!.left - 8),
+      right: Math.min(insideFrame.right, (rightLaurel?.left ?? insideFrame.right + 8) - 8),
       bottom: insideFrame.bottom,
     };
+    const otherBoards = [...root.querySelectorAll<HTMLElement>('.v3v-slot .v3v-nameplate')]
+      .filter((element) => element !== nameplateElement)
+      .map((element) => ({ place: element.closest<HTMLElement>('.v3v-slot')!.getAttribute('data-place'), ...element.getBoundingClientRect().toJSON() }));
+    const laurelBoardGaps = laurels.flatMap((laurel) => otherBoards.map((board) => {
+      const horizontalGap = Math.max(0, board.left - laurel.right, laurel.left - board.right);
+      const verticalGap = Math.max(0, board.top - laurel.bottom, laurel.top - board.bottom);
+      return { side: laurel.side, boardPlace: board.place, distance: Math.hypot(horizontalGap, verticalGap) };
+    }));
     const crown = slot.querySelector<HTMLElement>('[data-testid="podium-crown"]')!.getBoundingClientRect();
     const crownStyle = getComputedStyle(slot.querySelector<HTMLElement>('[data-testid="podium-crown"]')!);
     const image = slot.querySelector<HTMLImageElement>('[data-testid="podium-character"]')!.getBoundingClientRect();
@@ -506,6 +516,7 @@ test('C-0339 holder change animates and carries the same player identity into th
       figure: { top: figure.top, bottom: figure.bottom },
       nameplate: { left: nameplate.left, top: nameplate.top, right: nameplate.right, bottom: nameplate.bottom, width: nameplate.width, height: nameplate.height, insideFrame },
       laurels,
+      laurelBoardGaps,
       safeArea,
       crown: { left: crown.left, top: crown.top, right: crown.right, bottom: crown.bottom },
       crownVisible: crownStyle.visibility === 'visible' && Number.parseFloat(crownStyle.opacity) > 0,
@@ -533,6 +544,8 @@ test('C-0339 holder change animates and carries the same player identity into th
   await expect(podium.getByTestId('podium-slot-2').getByTestId('top1-badge')).toHaveText('x3');
   expect(leftTiedSlot.badgeAfterNameGap).toBeGreaterThanOrEqual(8);
   for (const slot of podiumGeometry) {
+    expect(slot.laurels.map((laurel) => laurel.side), `top${slot.place} keeps only laurels facing away from neighboring boards`)
+      .toEqual(slot.place === '1' ? ['left', 'right'] : slot.place === '2' ? ['left'] : ['right']);
     expect(slot.feetGap, `top${slot.place} figure/nameplate gap`).toBeGreaterThanOrEqual(8);
     expect(slot.nameFont, `top${slot.place} name font`).toBeGreaterThanOrEqual(28);
     expect(slot.scoreFont, `top${slot.place} score font`).toBeGreaterThanOrEqual(32);
@@ -566,6 +579,20 @@ test('C-0339 holder change animates and carries the same player identity into th
     expect(slot.crownInsideViewport, `top${slot.place} crown stays visible`).toBe(true);
     expect(slot.crownVisible, `top${slot.place} crown has visible paint`).toBe(true);
     expect(slot.crownZIndex, `top${slot.place} crown stays above its plate`).toBeGreaterThanOrEqual(5);
+    for (const laurel of slot.laurels) {
+      expect(laurel.left, `top${slot.place} ${laurel.side} laurel stays 16 px from the left screen edge`).toBeGreaterThanOrEqual(16);
+      expect(laurel.right, `top${slot.place} ${laurel.side} laurel stays 16 px from the right screen edge`).toBeLessThanOrEqual(1064);
+    }
+    for (const gap of slot.laurelBoardGaps) {
+      expect(gap.distance, `top${slot.place} ${gap.side} laurel stays 16 px from top${gap.boardPlace} board`).toBeGreaterThanOrEqual(16);
+    }
+  }
+  const allLaurels = podiumGeometry.flatMap((slot) => slot.laurels.map((laurel) => ({ place: slot.place, ...laurel })));
+  for (let left = 0; left < allLaurels.length; left += 1) for (let right = left + 1; right < allLaurels.length; right += 1) {
+    const first = allLaurels[left]!;
+    const second = allLaurels[right]!;
+    const intersects = first.left <= second.right && first.right >= second.left && first.top <= second.bottom && first.bottom >= second.top;
+    expect(intersects, `top${first.place} ${first.side} and top${second.place} ${second.side} laurels do not touch`).toBe(false);
   }
   const winner = podiumGeometry.find((slot) => slot.place === '1')!;
   const runnersUp = podiumGeometry.filter((slot) => slot.place !== '1');

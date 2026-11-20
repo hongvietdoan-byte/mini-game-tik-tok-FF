@@ -70,12 +70,12 @@ function Slot({ slot, tieAcross, allowLegacyNames, holderId }: { slot: PublicPod
         <span className="v3v-shadow" aria-hidden="true" />
       </div>
       <div className={`v3v-nameplate${tied ? ' is-tied' : ''}`} data-testid="podium-nameplate">
-        <svg className="v3v-laurel v3v-laurel-left" viewBox="0 0 64 92" aria-hidden="true">
+        {slot.place !== 3 && <svg className="v3v-laurel v3v-laurel-left" viewBox="0 0 64 92" aria-hidden="true">
           <path d="M55 87C25 72 12 46 17 9M45 72C29 73 20 67 17 56c13 0 22 5 28 16ZM35 54C20 52 14 44 13 33c12 3 19 10 22 21ZM27 35C15 29 12 20 16 10c10 7 14 15 11 25Z" />
-        </svg>
-        <svg className="v3v-laurel v3v-laurel-right" viewBox="0 0 64 92" aria-hidden="true">
+        </svg>}
+        {slot.place !== 2 && <svg className="v3v-laurel v3v-laurel-right" viewBox="0 0 64 92" aria-hidden="true">
           <path d="M55 87C25 72 12 46 17 9M45 72C29 73 20 67 17 56c13 0 22 5 28 16ZM35 54C20 52 14 44 13 33c12 3 19 10 22 21ZM27 35C15 29 12 20 16 10c10 7 14 15 11 25Z" />
-        </svg>
+        </svg>}
         <span className="v3v-rank-crown" data-testid="podium-crown" aria-hidden="true">
           <svg viewBox="0 0 60 42"><path d="M4 11 15 21 25 5 30 22 41 5 47 21 56 11 52 35 8 35Z" /></svg>
         </span>
