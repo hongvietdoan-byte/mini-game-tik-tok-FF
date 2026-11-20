@@ -1,7 +1,7 @@
 {
   "role": "coordinator",
   "last_read": 510,
-  "heartbeat": "2026-11-20T08:53:07+07:00",
+  "heartbeat": "2026-11-20T08:57:50+07:00",
   "state": "working",
   "task": null,
   "note": "",
@@ -81,6 +81,7 @@
     586,
     587,
     588,
-    589
+    589,
+    590
   ]
 }
