@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-20T10:45:32+07:00",
+  "heartbeat": "2026-11-20T11:04:11+07:00",
   "state": "working",
   "task": "C-0347",
-  "note": "C-0349 xác nhận C-0333 đã gộp; đã kiểm tra origin/main chứa merge, bắt đầu preflight 4 ảnh",
+  "note": "Đã bổ sung preflight 4 ảnh, test temp + placeholder; chạy bắt buộc, privacy đang gặp false positive tên report upstream",
   "done": [
     331,
     333,
