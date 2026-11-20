@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-20T14:35:16+07:00",
+  "heartbeat": "2026-11-20T14:48:52+07:00",
   "state": "working",
-  "task": "C-0361",
-  "note": "Đã ack X-0603; tạm lưu C-0335 ở commit 8676b637, đang tạo worktree riêng để tìm nguyên nhân preselection/preflight",
+  "task": "C-0335",
+  "note": "C-0361 đã gửi report X-0604 và đánh dấu done; đã nhập origin/main, hòa giải import trên nhánh C-0335, đang chạy unit/integration",
   "done": [
     331,
     333,
