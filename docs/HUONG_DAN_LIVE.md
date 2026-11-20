@@ -1,4 +1,4 @@
-# Hướng dẫn chạy thử TikTok LIVE Quiz — Bá Vương Đại Chiến
+# Hướng dẫn chạy thử TikTok LIVE Quiz — Nhà Thông Thái Free Fire
 
 ## Đường chạy dùng ngày 12–14/11
 
@@ -27,7 +27,7 @@ Lệnh khôi phục yêu cầu gõ `KHÔI_PHỤC`; chỉ làm sau khi đã đón
 ## 2. Đưa overlay vào TikTok LIVE Studio
 
 1. Chọn bố cục dọc (Portrait 9:16).
-2. Thêm nguồn **Window Capture** và chọn cửa sổ Edge **Bá Vương Đại Chiến · Overlay** do `CHAY_GAME.cmd` mở. Đây đã là overlay `role=program` có âm thanh; không thêm một nguồn Link / Web `role=program` thứ hai.
+2. Thêm nguồn **Window Capture** và chọn cửa sổ Edge **Nhà Thông Thái Free Fire · Overlay** do `CHAY_GAME.cmd` mở. Đây đã là overlay `role=program` có âm thanh; không thêm một nguồn Link / Web `role=program` thứ hai.
 3. Đặt nguồn ở lớp trên cùng và căn phủ khung hình dọc 9:16. Giữ viewport nguồn tại 1080×1920 để capture theo kích thước canvas, không phóng nguồn 540×960 như cấu hình cũ. Dòng xác minh trong console của `CHAY_GAME.cmd` đo vùng trang (không tính viền/thanh tiêu đề); nếu LIVE Studio đưa cả thanh tiêu đề vào nguồn, crop phần khung ngoài trong LIVE Studio rồi căn lại vùng trang vào canvas.
 4. Tạo phiên rồi kiểm tra preflight: `overlayAck` và `overlayAudio` phải PASS. Cửa sổ program dùng profile riêng và cờ autoplay để gửi ACK âm thanh đang chạy; không mở cửa sổ overlay `role=preview`.
 5. Nếu preflight báo `overlayAudio` WARN hoặc không nghe tiếng, kiểm tra cửa sổ program không bị mute, trạng thái audio là `running`, và tùy chọn thu âm thanh ứng dụng của nguồn Window Capture trong LIVE Studio.
