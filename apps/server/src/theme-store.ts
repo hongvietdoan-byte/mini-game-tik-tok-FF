@@ -1,10 +1,11 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
   ACHIEVEMENT_IDS,
   THEME_DEFAULT_ACHIEVEMENTS,
   MAX_THEME_FILE_BYTES,
   THEME_ALLOWED_EXTENSIONS,
+  ThemeAchievementsSchema,
   ThemeManifestSchema,
   ThemeRelativePathSchema,
   type AchievementId,
@@ -12,6 +13,7 @@ import {
   type PublicAchievementSnapshot,
   type ResolvedTheme,
   type ThemeAssetSlot,
+  type ThemeAchievements,
   type ThemeManifest,
 } from '@quiz/contracts';
 
@@ -24,6 +26,13 @@ const STATE_FILE = 'theme-settings.json';
 type ThemeState = { activeThemeId: string | null; version: number };
 type LoadedTheme = { id: string; name: string; manifest: ThemeManifest; directory: string };
 export type ThemeListItem = { id: string; name: string; valid: boolean; error?: string; active: boolean };
+
+export class ThemeStoreError extends Error {
+  constructor(readonly code: string, readonly statusCode: number, message: string) {
+    super(message);
+    this.name = 'ThemeStoreError';
+  }
+}
 
 function isInside(root: string, target: string) {
   const rel = relative(root, target);
@@ -90,9 +99,9 @@ export class ThemeStore {
     }
   }
 
-  private inspectTheme(directory: string, id: string): LoadedTheme {
+  private inspectTheme(directory: string, id: string, source?: unknown): LoadedTheme {
     const manifestFile = join(directory, 'theme.json');
-    const parsed = ThemeManifestSchema.safeParse(JSON.parse(readFileSync(manifestFile, 'utf8')));
+    const parsed = ThemeManifestSchema.safeParse(source ?? JSON.parse(readFileSync(manifestFile, 'utf8')));
     if (!parsed.success) throw new Error(parsed.error.issues.map((issue) => `${issue.path.join('.') || 'theme'}: ${issue.message}`).join('; '));
     const manifest = parsed.data;
     if (manifest.id !== id) throw new Error(`Id trong theme.json (${manifest.id}) phải trùng tên thư mục (${id}).`);
@@ -197,6 +206,78 @@ export class ThemeStore {
 
   get version() { return this.state.version; }
   get activeThemeId() { return this.state.activeThemeId; }
+
+  getAchievements(themeId: string): ThemeAchievements | null {
+    this.scan();
+    const theme = this.valid.get(themeId);
+    return theme ? structuredClone(theme.manifest.achievements ?? {}) : null;
+  }
+
+  getManifest(themeId: string): ThemeManifest | null {
+    this.scan();
+    const theme = this.valid.get(themeId);
+    return theme ? structuredClone(theme.manifest) : null;
+  }
+
+  saveAchievements(themeId: string, rawAchievements: unknown) {
+    if (themeId === 'default')
+      throw new ThemeStoreError('THEME_READ_ONLY', 422, 'Theme mặc định là gói xuất sẵn; hãy nhân bản thành theme mới trước khi chỉnh sửa.');
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(themeId))
+      throw new ThemeStoreError('THEME_ID_INVALID', 400, 'Mã theme không hợp lệ.');
+
+    const parsedAchievements = ThemeAchievementsSchema.safeParse(rawAchievements);
+    if (!parsedAchievements.success) {
+      const message = parsedAchievements.error.issues
+        .map((issue) => `${issue.path.join('.') || 'achievements'}: ${issue.message}`)
+        .join('; ');
+      throw new ThemeStoreError('THEME_ACHIEVEMENTS_INVALID', 400, message);
+    }
+
+    this.scan();
+    const theme = this.valid.get(themeId);
+    if (!theme) {
+      const exists = this.invalid.has(themeId);
+      throw new ThemeStoreError(exists ? 'THEME_INVALID' : 'THEME_NOT_FOUND', exists ? 422 : 404,
+        exists ? 'Theme đang lỗi; hãy sửa gói theme trước khi lưu danh hiệu.' : 'Không tìm thấy theme này.');
+    }
+
+    const rootReal = realpathSync(this.themesDir);
+    const directory = join(this.themesDir, themeId);
+    if (lstatSync(directory).isSymbolicLink() || !isInside(rootReal, realpathSync(directory)))
+      throw new ThemeStoreError('THEME_PATH_INVALID', 422, 'Thư mục theme không an toàn nên không thể ghi.');
+    const target = join(directory, 'theme.json');
+    const targetStat = lstatSync(target);
+    if (targetStat.isSymbolicLink() || !targetStat.isFile())
+      throw new ThemeStoreError('THEME_FILE_INVALID', 422, 'theme.json phải là tệp thường, không phải symlink.');
+
+    const current = ThemeManifestSchema.safeParse(JSON.parse(readFileSync(target, 'utf8')));
+    if (!current.success)
+      throw new ThemeStoreError('THEME_INVALID', 422, 'Theme đang lỗi; hãy sửa manifest trước khi lưu danh hiệu.');
+    const achievements = parsedAchievements.data;
+    const manifest = {
+      ...current.data,
+      achievements: Object.keys(achievements).length ? achievements : undefined,
+    };
+    // Kiểm tra toàn bộ manifest và đường dẫn icon trước khi tạo tệp tạm hoặc backup.
+    this.inspectTheme(directory, themeId, manifest);
+
+    const stamp = new Date().toISOString().replace(/[:.]/gu, '-');
+    let backup = `${target}.bak-${stamp}`;
+    for (let suffix = 1; existsSync(backup); suffix += 1) backup = `${target}.bak-${stamp}-${suffix}`;
+    const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
+    const contents = `${JSON.stringify(manifest, null, 2)}\n`;
+    try {
+      writeFileSync(temporary, contents, { flag: 'wx', mode: 0o600 });
+      copyFileSync(target, backup);
+      renameSync(temporary, target);
+    } catch (error) {
+      if (existsSync(temporary)) rmSync(temporary, { force: true });
+      throw error;
+    }
+
+    this.reload();
+    return { achievements, theme: this.resolve(themeId), themeVersion: this.version, backup: basename(backup) };
+  }
 
   setActive(id: string) {
     this.scan();

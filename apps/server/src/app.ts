@@ -20,6 +20,7 @@ import {
   McVoiceSettingsUpdateSchema,
   McVoiceTestRequestSchema,
   MC_VOICE_POLICY_VERSION,
+  ThemeAchievementsSchema,
   QuestionReviewSchema,
   DEFAULT_DIFFICULTY_TARGETS,
   questionLengthWarnings,
@@ -46,7 +47,7 @@ import type { SessionConfig, SystemCheck } from '@quiz/contracts';
 import { ModeError, SessionRuntime, type Outgoing } from './runtime';
 import { runPipelineSelfTest, type SelfTestResult } from './selftest';
 import { serveAssets, serveSpa } from './static';
-import { ThemeStore } from './theme-store';
+import { ThemeStore, ThemeStoreError } from './theme-store';
 import { McVoiceCache } from './voice/cache';
 import { McVoicePreGenerateManager } from './voice/pre-generate';
 import { EnvironmentMcVoiceCredentialStore, mcVoiceSettingsForEvent, McVoiceProviderError, type McVoiceCredentialStore, type McVoiceProfile } from './voice/types';
@@ -711,6 +712,39 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     const listItem = themeStore.list().find((item) => item.id === req.params.themeId);
     if (!listItem) return reply.code(404).send({ ok: false, code: 'THEME_NOT_FOUND', message: 'Không tìm thấy theme này.' });
     return reply.code(422).send({ ok: false, code: 'THEME_INVALID', message: listItem.error || 'Gói theme không hợp lệ.' });
+  });
+
+  app.get<{ Params: { themeId: string } }>('/api/admin/themes/:themeId/achievements', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const achievements = themeStore.getAchievements(req.params.themeId);
+    if (achievements === null)
+      return reply.code(404).send({ ok: false, code: 'THEME_NOT_FOUND', message: 'Không tìm thấy theme hợp lệ này.' });
+    return { themeId: req.params.themeId, achievements, themeVersion: themeStore.version };
+  });
+
+  app.get<{ Params: { themeId: string } }>('/api/admin/themes/:themeId/manifest', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    const manifest = themeStore.getManifest(req.params.themeId);
+    if (manifest) return manifest;
+    const theme = themeStore.list().find((item) => item.id === req.params.themeId);
+    if (theme?.valid === false)
+      return reply.code(422).send({ ok: false, code: 'THEME_INVALID', message: theme.error || 'Gói theme không hợp lệ.' });
+    return reply.code(404).send({ ok: false, code: 'THEME_NOT_FOUND', message: 'Không tìm thấy theme hợp lệ này.' });
+  });
+
+  app.put<{ Params: { themeId: string } }>('/api/admin/themes/:themeId/achievements', async (req, reply) => {
+    if (!guard(req, reply, true)) return reply;
+    const parsed = z.object({ achievements: ThemeAchievementsSchema }).strict().safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, parsed.error);
+    try {
+      const saved = themeStore.saveAchievements(req.params.themeId, parsed.data.achievements);
+      pushHudSnapshots();
+      return saved;
+    } catch (error) {
+      if (error instanceof ThemeStoreError)
+        return reply.code(error.statusCode).send({ ok: false, code: error.code, message: error.message });
+      throw error;
+    }
   });
 
   app.put('/api/admin/themes/active', async (req, reply) => {

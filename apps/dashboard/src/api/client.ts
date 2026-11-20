@@ -15,6 +15,8 @@ import type {
   ResolvedTheme,
   SimulatorRequest,
   SystemCheck,
+  ThemeManifest,
+  ThemeAchievements,
 } from '@quiz/contracts';
 import { shouldAcceptSnapshotSeq } from '../logic';
 
@@ -47,6 +49,8 @@ export type StreamDelaySnapshot = {
 };
 export type UpdateStreamDelaySettings = { mode: StreamDelayMode; manualDelayMs?: number };
 export type UpdateStreamDelayResponse = { ok: true; streamDelay: StreamDelaySnapshot };
+export type ThemeAchievementsResponse = { themeId: string; achievements: ThemeAchievements; themeVersion: number };
+export type SaveThemeAchievementsResponse = ThemeAchievementsResponse & { theme: ResolvedTheme; backup: string };
 
 export interface DashboardClient {
   getHealth(): Promise<HealthResponse>;
@@ -78,7 +82,10 @@ export interface DashboardClient {
   getActiveTheme(): Promise<ResolvedTheme>;
   reloadThemes(token: string): Promise<AdminThemesResponse>;
   setActiveTheme(token: string, themeId: string): Promise<SetActiveThemeResponse>;
+  getThemeManifest(token: string, themeId: string): Promise<ThemeManifest>;
   updateStreamDelaySettings(token: string, sessionId: string, update: UpdateStreamDelaySettings): Promise<UpdateStreamDelayResponse>;
+  getThemeAchievements(token: string, themeId: string): Promise<ThemeAchievementsResponse>;
+  saveThemeAchievements(token: string, themeId: string, achievements: ThemeAchievements): Promise<SaveThemeAchievementsResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
 }
 
@@ -266,9 +273,23 @@ export const apiClient: DashboardClient = {
     return jsonRequest('/api/admin/themes/active', token, { method: 'PUT', body: JSON.stringify({ themeId }) });
   },
 
+  getThemeManifest(token, themeId) {
+    return jsonRequest(`/api/admin/themes/${encodeURIComponent(themeId)}/manifest`, token);
+  },
+
   updateStreamDelaySettings(token, sessionId, update) {
     return jsonRequest(`/api/sessions/${encodeURIComponent(sessionId)}/stream-delay`, token, {
       method: 'PATCH', body: JSON.stringify(update),
+    });
+  },
+
+  getThemeAchievements(token, themeId) {
+    return jsonRequest(`/api/admin/themes/${encodeURIComponent(themeId)}/achievements`, token);
+  },
+
+  saveThemeAchievements(token, themeId, achievements) {
+    return jsonRequest(`/api/admin/themes/${encodeURIComponent(themeId)}/achievements`, token, {
+      method: 'PUT', body: JSON.stringify({ achievements }),
     });
   },
 

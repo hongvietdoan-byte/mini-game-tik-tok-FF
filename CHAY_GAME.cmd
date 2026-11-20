@@ -1,7 +1,7 @@
 @echo off
 setlocal
 chcp 65001 >nul
-title Ba Vuong Dai Chien - May chu game
+title Nha Thong Thai Free Fire - May chu game
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 cd /d "%ROOT%"
@@ -35,7 +35,7 @@ echo [quiz] CANH BAO: khong co Git/checkout; moi lan khoi dong se build lai web.
 
 :git_ready
 
-echo === Ba Vuong Dai Chien: khoi dong source-run ===
+echo === Nha Thong Thai Free Fire: khoi dong source-run ===
 echo [quiz] Commit: %QUIZ_COMMIT%
 echo [quiz] Database source-run: %QUIZ_DB%
 echo [quiz] Du lieu Electron trong AppData khong duoc dung cho buoi LIVE 12-14/11.
