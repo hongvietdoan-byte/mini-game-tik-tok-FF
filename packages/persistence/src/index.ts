@@ -232,6 +232,24 @@ export class Store {
     return rows as Array<{ id: string; name: string }>;
   }
 
+  listSubtopicsWithApprovedCounts(packId?: string): Array<{ id: string; name: string; approvedCount: number }> {
+    const rows = packId
+      ? this.raw.prepare(
+        `SELECT s.id, s.name, COUNT(q.id) AS approvedCount
+         FROM subtopics s LEFT JOIN questions q ON q.subtopic_id = s.id AND q.approval_status = 'APPROVED'
+         WHERE s.pack_id = ? GROUP BY s.id, s.name ORDER BY s.name COLLATE NOCASE, s.id`,
+      ).all(packId)
+      : this.raw.prepare(
+        `SELECT s.id, s.name, COUNT(q.id) AS approvedCount
+         FROM subtopics s LEFT JOIN questions q ON q.subtopic_id = s.id AND q.approval_status = 'APPROVED'
+         GROUP BY s.id, s.name ORDER BY s.name COLLATE NOCASE, s.id`,
+      ).all();
+    return (rows as Array<{ id: string; name: string; approvedCount: number }>).map((row) => ({
+      ...row,
+      approvedCount: Number(row.approvedCount),
+    }));
+  }
+
   /** Đọc một setting JSON bền; dữ liệu lỗi được trả về undefined để caller dùng default an toàn. */
   getJsonSetting(key: string): unknown {
     const row = this.raw.prepare('SELECT value_json AS valueJson FROM settings WHERE key = ?').get(key) as { valueJson: string } | undefined;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QuestionSchema, SessionConfigSchema } from './index';
+import { DEFAULT_PRIORITY_SHARE, DEFAULT_PRIORITY_TOPIC_NAMES, QuestionSchema, SessionConfigSchema } from './index';
 
 describe('cấu hình chọn câu theo độ khó', () => {
   it('giữ RANDOM làm mặc định và đặt mục tiêu 7/5/3 với độ lệch tối đa 2', () => {
@@ -7,6 +7,8 @@ describe('cấu hình chọn câu theo độ khó', () => {
     expect(config.questionSelectionMode).toBe('RANDOM');
     expect(config.difficultyTargets).toEqual({ EASY: 7, MEDIUM: 5, HARD: 3 });
     expect(config.difficultyTolerance).toBe(2);
+    expect(config.priorityTopicNames).toEqual([...DEFAULT_PRIORITY_TOPIC_NAMES]);
+    expect(config.priorityShare).toBe(DEFAULT_PRIORITY_SHARE);
   });
 
   it('chuẩn hóa câu cũ chưa có độ khó thành mức vừa', () => {

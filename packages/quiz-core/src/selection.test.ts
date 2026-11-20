@@ -112,6 +112,8 @@ describe('selectRound', () => {
         priorityShare: 0.6,
         subtopicNamesById: { event: '\tfFa   2026 ', other: 'Tổng quan' },
       });
+      let priorityReport: { priority: number; total: number; share: number; topics: Array<{ name: string; count: number }> } | undefined;
+      input.onPriorityDistribution = (distribution) => { priorityReport = distribution; };
       const first = selectRound(input);
       const repeated = selectRound(input);
 
@@ -120,9 +122,68 @@ describe('selectRound', () => {
       if (first.ok) {
         expect(first.snapshots.filter((snapshot) => snapshot.subtopicId === 'event')).toHaveLength(9);
         expect(first.snapshots).toHaveLength(15);
+        expect(priorityReport).toMatchObject({ priority: 9, total: 15, topics: [{ name: 'FFA 2026', count: 9 }] });
       }
     },
   );
+
+  it('chuyển quota ưu tiên khỏi mức EASY thiếu câu sang mức còn câu ưu tiên chưa dùng', () => {
+    const pool = [
+      ...Array.from({ length: 30 }, (_, index) => question(index + 1, { difficulty: 'EASY', subtopicId: 'other' })),
+      ...Array.from({ length: 30 }, (_, index) => question(index + 31, { difficulty: 'MEDIUM', subtopicId: index % 2 === 0 ? 'event' : 'other' })),
+      ...Array.from({ length: 30 }, (_, index) => question(index + 61, { difficulty: 'HARD', subtopicId: index % 2 === 0 ? 'event' : 'other' })),
+    ];
+    const result = selectRound(request(pool, {
+      count: 15,
+      selectionMode: 'DIFFICULTY',
+      difficultyTargets: { EASY: 5, MEDIUM: 7, HARD: 3 },
+      difficultyTolerance: 0,
+      priorityTopicNames: ['FFA 2026'],
+      priorityShare: 0.6,
+      subtopicNamesById: { event: 'FFA 2026', other: 'Tổng quan' },
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const priority = result.snapshots.filter((snapshot) => snapshot.subtopicId === 'event');
+      expect(priority).toHaveLength(9);
+      expect(priority.every((snapshot) => snapshot.difficulty !== 'EASY')).toBe(true);
+      expect(result.difficultyCounts).toEqual({ EASY: 5, MEDIUM: 7, HARD: 3 });
+      expect(new Set(result.snapshots.map((snapshot) => snapshot.questionId)).size).toBe(15);
+    }
+  });
+
+  it.each(['RANDOM', 'DIFFICULTY'] as const)('giữ quota 60%% với bảng tồn kho sự kiện đại diện, mode %s', (selectionMode) => {
+    const rows: Array<[string, string, number]> = [
+      ['FFA 2026', 'ffa', 0], ['FFA 2026', 'ffa', 20], ['FFA 2026', 'ffa', 13],
+      ['FFWS', 'ffws', 14], ['FFWS', 'ffws', 16], ['FFWS', 'ffws', 10],
+      ['Đấu Trường Bão Tố', 'storm', 0], ['Đấu Trường Bão Tố', 'storm', 11], ['Đấu Trường Bão Tố', 'storm', 6],
+      ['Bá Vương Đại Chiến', 'bvdc', 14], ['Bá Vương Đại Chiến', 'bvdc', 33], ['Bá Vương Đại Chiến', 'bvdc', 17],
+      ['Kiến thức chung', 'general', 14], ['Kiến thức chung', 'general', 11], ['Kiến thức chung', 'general', 5],
+    ];
+    const difficulties = ['EASY', 'MEDIUM', 'HARD'] as const;
+    let id = 1;
+    const pool = rows.flatMap(([name, topic, count], index) => Array.from({ length: count }, () => question(id++, {
+      difficulty: difficulties[index % 3],
+      subtopicId: topic,
+    })));
+    const result = selectRound(request(pool, {
+      count: 15,
+      selectionMode,
+      priorityTopicNames: ['FFA 2026', 'FFWS', 'Đấu Trường Bão Tố'],
+      priorityShare: 0.6,
+      subtopicNamesById: {
+        ffa: 'FFA 2026', ffws: 'FFWS', storm: 'Đấu Trường Bão Tố',
+        bvdc: 'Bá Vương Đại Chiến', general: 'Kiến thức chung',
+      },
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.snapshots.filter((snapshot) => ['ffa', 'ffws', 'storm'].includes(snapshot.subtopicId))).toHaveLength(9);
+      expect(new Set(result.snapshots.map((snapshot) => snapshot.questionId)).size).toBe(15);
+    }
+  });
 
   it('bù bằng chủ đề thường khi số câu ưu tiên không đủ quota, không lặp câu', () => {
     const pool = [

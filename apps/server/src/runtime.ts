@@ -2119,7 +2119,10 @@ export class SessionRuntime {
     );
     const prioritySettings = storedPrioritySettings.success
       ? storedPrioritySettings.data
-      : { priorityTopicNames: [...DEFAULT_PRIORITY_TOPIC_NAMES], priorityShare: DEFAULT_PRIORITY_SHARE };
+      : {
+        priorityTopicNames: [...(this.config.priorityTopicNames ?? DEFAULT_PRIORITY_TOPIC_NAMES)],
+        priorityShare: this.config.priorityShare ?? DEFAULT_PRIORITY_SHARE,
+      };
     const subtopics = this.store.listSubtopics(this.config.packId);
     const sel = selectRound({
       roundId,
@@ -2139,8 +2142,8 @@ export class SessionRuntime {
       onDistribution: ({ counts, targetCounts, tolerance }) => this.deps.warn?.(
         `[quiz] Phân bố độ khó: ${formatDifficultyCounts(counts)} (mục tiêu ${formatDifficultyCounts(targetCounts)} ±${tolerance}).`,
       ),
-      onPriorityDistribution: ({ priority, total, share }) => this.deps.warn?.(
-        `[quiz] Ưu tiên chủ đề sự kiện: ${priority}/${total} câu (mục tiêu ${Math.round(share * 100)}%).`,
+      onPriorityDistribution: ({ priority, total, share, topics }) => this.deps.warn?.(
+        `[quiz] ưu tiên ${priority}/${total} (mục tiêu ${Math.round(share * 100)}%; ${topics.map(({ name, count }) => `${name}: ${count}`).join(', ')}).`,
       ),
     });
     if (!sel.ok) return { ok: false, eligible: sel.eligible, unused: sel.unused, required: sel.required };

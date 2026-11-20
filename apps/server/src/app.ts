@@ -332,10 +332,10 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
   function priorityTopicSettingsSnapshot() {
     const stored = PriorityTopicSettingsSchema.safeParse(store.getJsonSetting(PRIORITY_TOPIC_SETTINGS_KEY));
     const settings = stored.success ? stored.data : {
-      priorityTopicNames: [...DEFAULT_PRIORITY_TOPIC_NAMES],
-      priorityShare: DEFAULT_PRIORITY_SHARE,
+      priorityTopicNames: [...(rt?.config.priorityTopicNames ?? DEFAULT_PRIORITY_TOPIC_NAMES)],
+      priorityShare: rt?.config.priorityShare ?? DEFAULT_PRIORITY_SHARE,
     };
-    return { ...settings, availableTopics: store.listSubtopics() };
+    return { ...settings, availableTopics: store.listSubtopicsWithApprovedCounts() };
   }
 
   function sessionOr404(id: string, reply: FastifyReply): SessionRuntime | null {

@@ -21,7 +21,6 @@ import type { StreamDelaySnapshot } from './api/client';
 import { createApiNameModerationDataSource, createApiNameModerationPolicyDataSource } from './nameModerationData';
 import { HudSettingsPage } from './HudSettingsPage';
 import { ThemePage } from './ThemePage';
-import { PriorityTopicSettingsPage } from './PriorityTopicSettingsPage';
 import { isSetupComplete, SETUP_DONE_KEY } from './setupWizardLogic';
 import { approvedQuestionCount, buildSessionConfig, canCreateTikTokSession, displayTikTokUsername, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
 import {
@@ -77,7 +76,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [needsSession, setNeedsSession] = useState(isMock);
-  const [page, setPage] = useState<'live' | 'checks' | 'obs' | 'questions' | 'moderation' | 'hud' | 'theme' | 'priority'>('live');
+  const [page, setPage] = useState<'live' | 'checks' | 'obs' | 'questions' | 'moderation' | 'hud' | 'theme'>('live');
   const [createMode, setCreateMode] = useState<'MOCK' | 'TIKTOK'>('MOCK');
   const [questionsPerRound, setQuestionsPerRound] = useState(15);
   const [speedBonusMax, setSpeedBonusMax] = useState(50);
@@ -556,7 +555,6 @@ function App() {
           <button className={page === 'checks' ? 'is-active' : ''} type="button" aria-current={page === 'checks' ? 'page' : undefined} onClick={() => setPage('checks')}>Kiểm tra kết nối</button>
           <button className={page === 'obs' ? 'is-active' : ''} type="button" aria-current={page === 'obs' ? 'page' : undefined} onClick={() => setPage('obs')}>OBS / LIVE Studio</button>
           <button className={page === 'questions' ? 'is-active' : ''} type="button" aria-current={page === 'questions' ? 'page' : undefined} onClick={() => setPage('questions')}>Duyệt câu hỏi</button>
-          <button className={page === 'priority' ? 'is-active' : ''} type="button" aria-current={page === 'priority' ? 'page' : undefined} onClick={() => setPage('priority')}>Ưu tiên câu hỏi</button>
           <button className={page === 'moderation' ? 'is-active' : ''} type="button" aria-current={page === 'moderation' ? 'page' : undefined} onClick={() => setPage('moderation')}>Kiểm duyệt tên</button>
           <button className={page === 'hud' ? 'is-active' : ''} type="button" aria-current={page === 'hud' ? 'page' : undefined} onClick={() => setPage('hud')}>Giao diện HUD</button>
           <button className={page === 'theme' ? 'is-active' : ''} type="button" aria-current={page === 'theme' ? 'page' : undefined} onClick={() => setPage('theme')}>Giao diện / Theme</button>
@@ -601,7 +599,7 @@ function App() {
         </div>
       </section>}
 
-      {page === 'priority' ? <PriorityTopicSettingsPage client={client} token={token.trim()} isMock={isMock} /> : page === 'theme' ? <ThemePage client={client} token={token.trim()} isMock={isMock} /> : page === 'hud' ? <HudSettingsPage client={client} token={token.trim()} overlayUrl={overlayUrl} isMock={isMock} /> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'moderation' ? <NameModerationPage overlayUrl={overlayUrl} isMock={isMock} dataSource={moderationDataSource} policyDataSource={moderationPolicyDataSource} /> : page === 'live' ? sessionEnded ? <section className="page-content closed-session" data-testid="closed-session">
+      {page === 'theme' ? <ThemePage client={client} token={token.trim()} isMock={isMock} /> : page === 'hud' ? <HudSettingsPage client={client} token={token.trim()} overlayUrl={overlayUrl} isMock={isMock} /> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'moderation' ? <NameModerationPage overlayUrl={overlayUrl} isMock={isMock} dataSource={moderationDataSource} policyDataSource={moderationPolicyDataSource} /> : page === 'live' ? sessionEnded ? <section className="page-content closed-session" data-testid="closed-session">
         <div className="page-heading"><div><span className="eyebrow">LIVE CONTROL</span><h2>Phiên đã kết thúc</h2><p>Phiên này đã đóng. Bạn có thể tạo phiên mới với các lựa chọn hiện tại.</p></div></div>
         <button className="primary-button" type="button" onClick={startNewSession}>Tạo phiên mới</button>
       </section> : <div className="dashboard-grid">
@@ -734,7 +732,7 @@ function App() {
       </div> : page === 'checks'
         ? <ConnectionChecksPage client={client} token={token.trim()} />
         : <ObsGuidePage client={client} token={token.trim()} overlayClients={snapshot.overlay.clients} overlayUrl={overlayUrl} programOverlayUrl={programOverlayUrl} desktopInfo={desktopInfo} />}
-    </> : page === 'priority' ? <PriorityTopicSettingsPage client={client} token={token.trim()} isMock={isMock} /> : page === 'theme' ? <ThemePage client={client} token={token.trim()} isMock={isMock} /> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'hud' ? <HudSettingsPage client={client} token={token.trim()} overlayUrl={overlayUrl} isMock={isMock} /> : page === 'moderation' ? <NameModerationPage overlayUrl={overlayUrl} isMock={isMock} dataSource={moderationDataSource} policyDataSource={moderationPolicyDataSource} /> : <section className="entry-layout">
+    </> : page === 'theme' ? <ThemePage client={client} token={token.trim()} isMock={isMock} /> : page === 'questions' ? <QuestionReviewPage client={client} token={token.trim()} questionsPerRound={questionsPerRound} onQuestionsPerRoundChange={setQuestionsPerRound} onQuestionsChanged={() => setQuestionReviewRevision((revision) => revision + 1)} /> : page === 'hud' ? <HudSettingsPage client={client} token={token.trim()} overlayUrl={overlayUrl} isMock={isMock} /> : page === 'moderation' ? <NameModerationPage overlayUrl={overlayUrl} isMock={isMock} dataSource={moderationDataSource} policyDataSource={moderationPolicyDataSource} /> : <section className="entry-layout">
       <div className="entry-card">
         <span className="eyebrow">TIKTOK LIVE QUIZ</span><h1>{needsSession ? (createMode === 'MOCK' ? 'Tạo phiên MOCK' : 'Tạo phiên TikTok LIVE') : 'Kết nối điều khiển'}</h1>
         <p>{isMock ? 'Môi trường thử nghiệm trong trình duyệt. Không cần server.' : 'Kết nối tới server cục bộ để điều khiển phiên quiz.'}</p>

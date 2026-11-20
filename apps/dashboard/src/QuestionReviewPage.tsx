@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Question, QuestionReview } from '@quiz/contracts';
 import type { DashboardClient } from './api/client';
 import { approvedQuestionCount, filterQuestions, questionStatusBucket, type QuestionStatusFilter } from './tiktokSessionLogic';
+import { PriorityTopicSettingsCard } from './PriorityTopicSettingsPage';
 
 type QuestionReviewPageProps = {
   client: DashboardClient;
@@ -131,6 +132,8 @@ export function QuestionReviewPage({ client, token, questionsPerRound, onQuestio
       <div><span className="eyebrow">SẴN SÀNG CHO TIKTOK LIVE</span><strong>Đã duyệt {approvedCount} / cần {questionsPerRound} cho một vòng</strong></div>
       <label>Số câu mỗi vòng<select value={questionsPerRound} onChange={(event) => onQuestionsPerRoundChange(Number(event.target.value))}><option value={10}>10 câu</option><option value={15}>15 câu</option><option value={20}>20 câu</option></select></label>
     </div>
+
+    <PriorityTopicSettingsCard client={client} token={token} />
 
     <div className="review-toolbar panel">
       <label>Trạng thái<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as QuestionStatusFilter)}>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

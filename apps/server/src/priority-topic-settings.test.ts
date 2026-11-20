@@ -38,7 +38,8 @@ describe('admin priority-topic settings', () => {
     const defaults = await first.quiz.app.inject({ method: 'GET', url: '/api/admin/priority-topic-settings', headers });
     expect(defaults.statusCode).toBe(200);
     expect(defaults.json()).toMatchObject({ priorityTopicNames: [...DEFAULT_PRIORITY_TOPIC_NAMES], priorityShare: DEFAULT_PRIORITY_SHARE });
-    expect(defaults.json().availableTopics).toContainEqual(expect.objectContaining({ id: 'ff-che-do' }));
+    expect(defaults.json().availableTopics).toEqual(first.store.listSubtopicsWithApprovedCounts());
+    expect(defaults.json().availableTopics).toContainEqual(expect.objectContaining({ id: 'ff-che-do', approvedCount: expect.any(Number) }));
 
     const saved = await first.quiz.app.inject({
       method: 'PUT', url: '/api/admin/priority-topic-settings', headers,
@@ -64,5 +65,11 @@ describe('admin priority-topic settings', () => {
       payload: { priorityTopicNames: ['FFA 2026'], priorityShare: 1.01 },
     });
     expect(invalid.statusCode).toBe(422);
+
+    const tooManyTopics = await quiz.app.inject({
+      method: 'PUT', url: '/api/admin/priority-topic-settings', headers,
+      payload: { priorityTopicNames: Array.from({ length: 11 }, (_, index) => `Chủ đề ${index}`), priorityShare: 0.6 },
+    });
+    expect(tooManyTopics.statusCode).toBe(422);
   });
 });

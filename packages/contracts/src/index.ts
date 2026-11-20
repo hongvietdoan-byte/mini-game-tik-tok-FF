@@ -525,11 +525,15 @@ export const DEFAULT_PRIORITY_TOPIC_NAMES = ['FFA 2026', 'FFWS', 'Đấu Trườ
 export const DEFAULT_PRIORITY_SHARE = 0.6;
 export const PRIORITY_TOPIC_SETTINGS_KEY = 'round-selection-priority';
 export const PriorityTopicSettingsSchema = z.object({
-  priorityTopicNames: z.array(z.string().trim().min(1).max(80)).max(100),
+  priorityTopicNames: z.array(z.string().trim().min(1).max(60)).max(10),
   priorityShare: z.number().finite().min(0).max(1),
 }).strict();
 export type PriorityTopicSettings = z.infer<typeof PriorityTopicSettingsSchema>;
-export const PriorityTopicOptionSchema = z.object({ id: z.string().min(1).max(64), name: z.string().min(1).max(80) }).strict();
+export const PriorityTopicOptionSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(60),
+  approvedCount: z.number().int().min(0),
+}).strict();
 export type PriorityTopicOption = z.infer<typeof PriorityTopicOptionSchema>;
 export const PriorityTopicSettingsResponseSchema = PriorityTopicSettingsSchema.extend({
   availableTopics: z.array(PriorityTopicOptionSchema),
@@ -546,6 +550,9 @@ export const SessionConfigSchema = z
     questionsPerRound: QuestionsPerRoundSchema.default(15),
     /** RANDOM giữ nguyên mặc định; DIFFICULTY bật phân bổ mục tiêu dễ/vừa/khó. */
     questionSelectionMode: QuestionSelectionModeSchema.default('RANDOM'),
+    /** Ưu tiên chủ đề sự kiện trong mỗi vòng; có thể thay đổi qua cấu hình admin. */
+    priorityTopicNames: z.array(z.string().trim().min(1).max(60)).max(10).default([...DEFAULT_PRIORITY_TOPIC_NAMES]),
+    priorityShare: z.number().finite().min(0).max(1).default(DEFAULT_PRIORITY_SHARE),
     /** Mục tiêu gốc tương ứng 15 câu; được co giãn theo questionsPerRound. */
     difficultyTargets: DifficultyTargetsSchema.default({}),
     /** Cho phép lệch tối đa quanh mục tiêu khi cần; thiếu kho vẫn bù mức gần nhất. */
@@ -611,12 +618,12 @@ type SessionConfigOutput = z.infer<typeof SessionConfigSchema>;
 export type SessionConfig =
   Omit<
     SessionConfigOutput,
-    'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword' | 'streamDelayMode' | 'streamDelayManualMs'
+    'questionSelectionMode' | 'priorityTopicNames' | 'priorityShare' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword' | 'streamDelayMode' | 'streamDelayManualMs'
   > &
   Partial<
     Pick<
       SessionConfigOutput,
-      'questionSelectionMode' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword' | 'streamDelayMode' | 'streamDelayManualMs'
+      'questionSelectionMode' | 'priorityTopicNames' | 'priorityShare' | 'difficultyTargets' | 'difficultyTolerance' | 'spamWarningThreshold' | 'spamWarningWindowMs' | 'mcVoiceStartWaitMs' | 'lobbySeatKeyword' | 'streamDelayMode' | 'streamDelayManualMs'
     >
   >;
 

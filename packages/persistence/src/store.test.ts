@@ -100,6 +100,23 @@ describe('Store: khởi tạo và câu hỏi', () => {
     expect(reopened.listSubtopics(DEMO_PACK.id).length).toBeGreaterThan(0);
   });
 
+  it('đếm đúng câu APPROVED theo từng chủ đề, không tính PENDING/REJECTED', () => {
+    const store = openStore();
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    const topicId = DEMO_QUESTIONS.map((question) => question.subtopicId).find((id) =>
+      DEMO_QUESTIONS.filter((question) => question.subtopicId === id).length >= 2,
+    )!;
+    const topicQuestions = DEMO_QUESTIONS.filter((question) => question.subtopicId === topicId);
+    const approved = topicQuestions[0]!;
+    const rejected = topicQuestions[1]!;
+    store.reviewQuestion(approved.id, 'APPROVE', 'test', 101);
+    store.reviewQuestion(rejected.id, 'REJECT', 'test', 102);
+
+    const count = store.listSubtopicsWithApprovedCounts(DEMO_PACK.id).find((topic) => topic.id === topicId)?.approvedCount;
+    const otherApproved = topicQuestions.slice(2).filter((question) => question.approvalStatus === 'APPROVED').length;
+    expect(count).toBe(otherApproved + 1);
+  });
+
   it('ranking snapshots are idempotent on recovery, append revisions on changed results, and scrub safe names', () => {
     const store = openStore();
     addSession(store);

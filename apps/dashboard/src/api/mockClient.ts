@@ -119,9 +119,10 @@ class MockDashboardClient implements DashboardClient {
     priorityTopicNames: [...DEFAULT_PRIORITY_TOPIC_NAMES],
     priorityShare: DEFAULT_PRIORITY_SHARE,
     availableTopics: [
-      { id: 'ffa-2026', name: 'FFA 2026' },
-      { id: 'ffws', name: 'FFWS' },
-      { id: 'ff-general', name: 'Tổng quan Free Fire' },
+      { id: 'ffa-2026', name: 'FFA 2026', approvedCount: 0 },
+      { id: 'ffws', name: 'FFWS', approvedCount: 0 },
+      { id: 'storm-arena', name: 'Đấu Trường Bão Tố', approvedCount: 0 },
+      { id: 'ff-general', name: 'Tổng quan Free Fire', approvedCount: 0 },
     ],
   };
   private sessionId: string | null = null;
