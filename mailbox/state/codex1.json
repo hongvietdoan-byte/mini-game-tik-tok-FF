@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 308,
-  "heartbeat": "2026-11-20T15:17:51+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-20T16:51:27+07:00",
+  "state": "blocked",
   "task": "C-0362",
-  "note": "Tạm dừng C-0335; bắt đầu đối chiếu test preselection 20 lượt trên main và nhánh C-0361 theo C-0362",
+  "note": "Đang chờ coordinator trả lời X-0611 về quyền sửa test E2E ngoài phạm vi; asset thật có 1 timeout C-0224, chưa báo cáo/push",
   "done": [
     331,
     333,
