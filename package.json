@@ -22,6 +22,8 @@
     "bench:simulator-20k": "tsx scripts/benchmark-scale.ts",
     "bench:v5": "tsx scripts/benchmark-v5.ts",
     "report:session": "tsx tools/report-session.ts",
+    "report:question-length": "tsx tools/report-question-length.ts",
+    "test:question-length": "vitest run --config tools/report-question-length.vitest.config.ts",
     "data:prune": "tsx tools/data-prune.ts",
     "mc-voice:real-check": "tsx tools/mc_voice_real_check.ts",
     "theme:validate": "tsx tools/theme-cli.ts validate",
