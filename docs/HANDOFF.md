@@ -2,6 +2,12 @@
 
 **PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 20/11 ~17:15) — ĐÃ NHẬN 20/11 17:17.**
 
+## Mới nhất 20/11 ~21:40 — hàng đợi code hôm nay XONG
+- Main `4a72593a`, checkout chính đã ff + build:web. Đã gộp tối nay: C-0361 (preselection + C-0224), C-0335 (chủ đề ưu tiên), C-0374 (Codex 2: dashboard Setup Wizard cổng Vite riêng mỗi worker), batch C-0360+C-0329 (+ coordinator sửa fixtures demo-029 A/B cho khớp v3, `30d88c70`).
+- DB máy người dùng: demo-004/demo-029 A/B rút gọn lên version 3 (người dùng duyệt), sao lưu `backups/quiz-before-c0310-ab-shorten-20261120-190955.db`. Đọc ước lượng còn ~21,5 s (vẫn >20 s). Gợi ý chưa duyệt: demo-029 bỏ chữ "Trong" ở đầu câu hỏi.
+- `apps/overlay/src/mock/snapshots.ts:304` còn text A cũ của demo-029 (chỉ mock xem trước, chưa sửa).
+- Codex 1 và Codex 2 đều rảnh, chưa có brief. Việc chặn còn lại: thử live TikTok thật (cần LIVE điện thoại ≥25 phút).
+
 ## Mới nhất 20/11 ~17:15 — đọc khối này trước, các khối dưới đã cũ
 - **Main `ea469287`+.** Hôm nay đã gộp:
   - **C-0339:** ngai vàng và màn vinh danh kiểu B.
