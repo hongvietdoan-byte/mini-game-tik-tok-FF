@@ -120,19 +120,19 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
-  const scenes: { mock: string; file: string; scene: string; expectedLines?: string[] }[] = [
-    { mock: 'lobby', file: 'lobby.png', scene: 'LOBBY', expectedLines: ['CHÀO MỪNG ĐẾN VỚI', 'ĐẤU TRƯỜNG BÃO TỐ!'] },
-    { mock: 'prepare', file: 'prepare.png', scene: 'QUESTION', expectedLines: ['Sẵn sàng nhé!', 'Câu hỏi Free Fire sắp bắt đầu.'] },
-    { mock: 'reading', file: 'reading.png', scene: 'QUESTION' },
-    { mock: 'question', file: 'question.png', scene: 'QUESTION' },
-    { mock: 'reveal', file: 'reveal.png', scene: 'REVEAL', expectedLines: ['Chính xác! Đáp án B.', 'Cùng xem bảng xếp hạng nhé!'] },
-    { mock: 'fastest-a', file: 'fastest.png', scene: 'REVEAL' },
-    { mock: 'fastest-a-long', file: 'fastest-long-name.png', scene: 'REVEAL' },
-    { mock: 'fastest-b', file: 'fastest-b.png', scene: 'REVEAL' },
-    { mock: 'top10', file: 'top10-mid-round.png', scene: 'INTERIM_TOP10' },
-    { mock: 'paused', file: 'paused.png', scene: 'QUESTION' },
+  const scenes: { mock: string; scene: string; expectedLines?: string[] }[] = [
+    { mock: 'lobby', scene: 'LOBBY', expectedLines: ['CHÀO MỪNG ĐẾN VỚI', 'ĐẤU TRƯỜNG BÃO TỐ!'] },
+    { mock: 'prepare', scene: 'QUESTION', expectedLines: ['Sẵn sàng nhé!', 'Câu hỏi Free Fire sắp bắt đầu.'] },
+    { mock: 'reading', scene: 'QUESTION' },
+    { mock: 'question', scene: 'QUESTION' },
+    { mock: 'reveal', scene: 'REVEAL', expectedLines: ['Chính xác! Đáp án B.', 'Cùng xem bảng xếp hạng nhé!'] },
+    { mock: 'fastest-a', scene: 'REVEAL' },
+    { mock: 'fastest-a-long', scene: 'REVEAL' },
+    { mock: 'fastest-b', scene: 'REVEAL' },
+    { mock: 'top10', scene: 'INTERIM_TOP10' },
+    { mock: 'paused', scene: 'QUESTION' },
   ];
-  const captures: { scene: string; bubble: { x: number; y: number; width: number; height: number; fontSize?: string }; image: string }[] = [];
+  const captures: { scene: string; bubble: { x: number; y: number; width: number; height: number; fontSize?: string } }[] = [];
 
   for (const item of scenes) {
     await page.goto(`/?mock=${item.mock}`, { waitUntil: 'domcontentloaded' });
@@ -145,6 +145,7 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
       await document.fonts.ready;
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     });
+    await bubble.scrollIntoViewIfNeeded();
     const box = await bubble.boundingBox();
     expect(box, `${item.mock}: MC bubble has geometry`).not.toBeNull();
     let fontSize: string | undefined;
@@ -163,9 +164,7 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
       }));
       expect(noWrap).toEqual({ playerName: 'nowrap', timeWithUnit: 'nowrap' });
     }
-    const image = join(reviewDirectory, item.file);
-    await page.screenshot({ path: image, animations: 'disabled' });
-    captures.push({ scene: item.mock, bubble: { x: box!.x, y: box!.y, width: box!.width, height: box!.height, fontSize }, image: item.file });
+    captures.push({ scene: item.mock, bubble: { x: box!.x, y: box!.y, width: box!.width, height: box!.height, fontSize } });
   }
 
   const dialogues = allCurrentMcDialogues();
@@ -188,6 +187,13 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
     const bubble = stage.locator('[data-testid="mc-bubble"]');
     const paragraph = bubble.locator('p');
     await expect(paragraph).toBeVisible();
+    await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLImageElement>('[data-testid="mc-bubble"] img')).every((image) => image.complete));
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      const images = Array.from(document.querySelectorAll<HTMLImageElement>('[data-testid="mc-bubble"] img'));
+      await Promise.all(images.filter((image) => image.naturalWidth > 0).map((image) => image.decode()));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
     await paragraph.evaluate((element, size) => {
       const target = element.closest('[data-testid="mc-bubble"]') as HTMLElement;
       target.style.boxSizing = 'border-box';
@@ -226,7 +232,10 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
         expect(lastLineWords.length, `${dialogue.label}: no one-word widow (${lines.join(' / ')})`).toBeGreaterThan(1);
       }
       rendered.push({ label: dialogue.label, text: formatted, lines, layout: layoutName, width: geometry.width, height: geometry.height, fontSize: geometry.fontSize, overflow: geometry.overflow });
-      const clip = await bubble.screenshot({ animations: 'disabled', scale: 'css' });
+      await bubble.scrollIntoViewIfNeeded();
+      const bubbleBox = await bubble.boundingBox();
+      expect(bubbleBox, `${dialogue.label}: bubble has screenshot geometry`).not.toBeNull();
+      const clip = await page.screenshot({ clip: bubbleBox!, animations: 'disabled', scale: 'css' });
       gridClips.push({ label: dialogue.label, src: `data:image/png;base64,${clip.toString('base64')}`, layout: layoutName, width: geometry.width, height: geometry.height, fontSize: geometry.fontSize });
     }
   }
@@ -259,13 +268,13 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
   const report = [
     '# C-0224 · Lời thoại MC',
     '',
-    'Viewport scene: 1080×1920, ảnh sau khi chờ font/ảnh và tắt animation. Cụm Kelly, nền và khung lobby không bị di chuyển.',
+    'Viewport scene: 1080×1920; ghi lại tọa độ bubble sau khi chờ font/ảnh và hai frame layout. Ảnh contact sheet phía dưới chụp bubble thật theo đúng CSS scale.',
     '',
-    '## Ảnh từng scene',
+    '## Tọa độ bubble theo scene',
     '',
-    '| Scene | Hộp bong bóng x/y/w/h | Ảnh |',
-    '|---|---:|---|',
-    ...captures.map((capture) => `| ${capture.scene} | ${capture.bubble.x.toFixed(1)}/${capture.bubble.y.toFixed(1)}/${capture.bubble.width.toFixed(1)}/${capture.bubble.height.toFixed(1)} | ${capture.image} |`),
+    '| Scene | Hộp bong bóng x/y/w/h |',
+    '|---|---:|',
+    ...captures.map((capture) => `| ${capture.scene} | ${capture.bubble.x.toFixed(1)}/${capture.bubble.y.toFixed(1)}/${capture.bubble.width.toFixed(1)}/${capture.bubble.height.toFixed(1)} |`),
     '',
     `Lưới lời thoại (${dialogues.length} mẫu từ mọi trạng thái mcFor, snapshot mock, lời cố định lobby/Top 10/hướng dẫn): dialogue-grid.png. Mỗi ô dùng CSS scale gốc, không kéo giãn; lobby 560×210, question 575×145, Top 10 633×145.`,
     '',

@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_TIMINGS } from '@quiz/contracts';
+import { DEFAULT_TIMINGS, MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { McVoiceCache, McVoiceService, buildApp, type McVoiceAudio, type McVoiceCredentialStore, type McVoiceProvider } from '@quiz/server';
@@ -250,16 +250,32 @@ describe('MC Voice lựa chọn trước trong LOBBY', () => {
 
   it('Auto mode cũng chờ bundle câu 1 trước khi chuyển khỏi LOBBY', async () => {
     const h = await harness();
+    const cache = (h.service as unknown as { cache: McVoiceCache }).cache;
+    vi.spyOn(cache, 'get').mockResolvedValue(null);
+    vi.spyOn(cache, 'put').mockImplementation(async (assetId, audio) => ({
+      assetId,
+      voicePolicyVersion: MC_VOICE_POLICY_VERSION,
+      durationMs: audio.durationMs,
+      format: audio.format,
+      checksum: createHash('sha256').update(audio.bytes).digest('hex'),
+      sizeBytes: audio.bytes.byteLength,
+      bytes: audio.bytes,
+    }));
     let releaseFirstQuestion!: () => void;
+    let markFirstQuestionStarted!: () => void;
+    const firstQuestionStarted = new Promise<void>((resolve) => { markFirstQuestionStarted = resolve; });
     const firstQuestionGate = new Promise<void>((resolve) => { releaseFirstQuestion = resolve; });
     vi.mocked(h.provider.synthesize).mockImplementation(async (request) => {
-      if (request.text.startsWith('Câu hỏi thử nghiệm số')) await firstQuestionGate;
+      if (request.text.startsWith('Câu hỏi thử nghiệm số')) {
+        markFirstQuestionStarted();
+        await firstQuestionGate;
+      }
       return fakeAudio();
     });
     try {
       const { runtime, send } = await createVoiceSession(h, { lobbyMs: 100 });
       await send({ type: 'OPEN_LOBBY' });
-      await vi.waitFor(() => expect(h.provider.synthesize).toHaveBeenCalled());
+      await firstQuestionStarted;
       await send({ type: 'SET_AUTO_MODE', enabled: true });
       h.scheduler.advance(100);
       expect(runtime.engine.state).toBe('LOBBY');
