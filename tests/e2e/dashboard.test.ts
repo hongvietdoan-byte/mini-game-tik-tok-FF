@@ -13,15 +13,16 @@ let dashboardUrl = '';
 const adminToken = 'e2e-admin-token-must-not-appear-in-url';
 let dashboardServer: ViteDevServer | undefined;
 
-test.beforeAll(async () => {
+test.beforeAll(async ({}, workerInfo) => {
   const dashboardRoot = resolve(process.cwd(), 'apps/dashboard');
   const serverPort = Number(process.env.PLAYWRIGHT_SERVER_PORT ?? 18787);
+  const dashboardPort = 20_000 + (process.pid % 10_000) + workerInfo.workerIndex;
   dashboardServer = await createServer({
     root: dashboardRoot,
     configFile: resolve(dashboardRoot, 'vite.config.ts'),
     server: {
       host: '127.0.0.1',
-      port: 0,
+      port: dashboardPort,
       strictPort: true,
       proxy: {
         '/api': { target: `http://127.0.0.1:${serverPort}`, changeOrigin: true },
