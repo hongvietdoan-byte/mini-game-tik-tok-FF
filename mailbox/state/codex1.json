@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 376,
-  "heartbeat": "2026-11-20T21:03:06+07:00",
+  "heartbeat": "2026-11-20T21:04:16+07:00",
   "state": "waiting",
   "task": "C-0362",
-  "note": "Batch đã push và report X-0621; inbox trống, chờ task mới theo lịch check đang bật mỗi 20 phút.",
+  "note": "Inbox kiểm tra lúc này trống; report X-0621 đã gửi, chờ task mới theo lịch 20 phút.",
   "done": []
 }
