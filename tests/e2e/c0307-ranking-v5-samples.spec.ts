@@ -761,7 +761,7 @@ test('C-0307 — capture reveal, 35-seat lobby and tied Victory contexts', async
 
   await page.goto('/?mock=victory-tie&role=program', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('stage')).toHaveAttribute('data-scene', 'VICTORY');
-  await expect(page.locator('.tie-label').first()).toContainText('ĐỒNG HẠNG');
+  await expect(page.locator('.v3v-rank-label').first()).toHaveText('TOP 1 · ĐỒNG HẠNG');
   await page.waitForTimeout(350);
   await page.screenshot({ path: join(outputDirectory, 'victory-tie-context-1080x1920.png'), animations: 'disabled' });
 
