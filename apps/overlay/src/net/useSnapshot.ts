@@ -114,7 +114,8 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
   useEffect(() => {
     if (mockScene) {
       const referenceMock = mockScene.endsWith('-ref');
-      const mock = makeMockSnapshot(referenceMock ? mockScene.slice(0, -4) : mockScene, mockMcState);
+      const transitioningThrone = mockScene === 'throne-change';
+      const mock = makeMockSnapshot(transitioningThrone ? 'throne-held' : referenceMock ? mockScene.slice(0, -4) : mockScene, mockMcState);
       const referenceSnapshot = referenceMock && mock?.timer
         ? { ...mock, timer: { ...mock.timer, remainingMs: 12_000, running: false } }
         : mock;
@@ -125,6 +126,14 @@ export function useSnapshot(mockScene: string | null, overlayRole: OverlayRole, 
       setServerTimeMs(Date.now());
       setClockOffsetMs(0);
       setConnection('connected');
+      if (transitioningThrone) {
+        const timer = window.setTimeout(() => {
+          const next = makeMockSnapshot('throne-change', mockMcState);
+          latest.current = next;
+          setSnapshot(next);
+        }, 900);
+        return () => window.clearTimeout(timer);
+      }
       return;
     }
     let socket: WebSocket | null = null;
