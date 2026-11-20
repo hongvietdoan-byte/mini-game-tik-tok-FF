@@ -206,10 +206,14 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     return Boolean(name && priorityTopicNames.has(normalizeTopicName(name)));
   };
   // Không đổi lựa chọn/seed của phiên cũ, cấu hình rỗng hoặc khi mọi chủ đề cấu hình đều chưa có trong kho.
-  const applyPriority = priorityTopicNames.size > 0 && priorityShare !== undefined &&
+  const hasPrioritySettings = priorityTopicNames.size > 0 && priorityShare !== undefined &&
     Number.isFinite(priorityShare) && priorityShare > 0 && priorityShare <= 1 &&
-    Math.round(req.count * priorityShare) > 0 &&
-    unused.some(priorityMatches);
+    Math.round(req.count * priorityShare) > 0;
+  // Nếu không cần lặp câu, chỉ áp dụng quota khi còn câu ưu tiên chưa dùng để
+  // giữ nguyên chuỗi seed của phiên cũ trong mọi trường hợp không thể ưu tiên.
+  const applyPriority = hasPrioritySettings && (
+    unused.length >= req.count ? unused.some(priorityMatches) : req.allowReuse && eligible.some(priorityMatches)
+  );
 
   let chosen: Question[];
   let reused: Question[] = [];
@@ -242,7 +246,8 @@ export function selectRound(req: SelectionRequest): SelectionResult {
       const reuseCount = req.count - unused.length;
       const reusePlan = planDifficultyCounts(usedByRecency, reuseCount, targets, tolerance);
       targetDifficultyCounts = scaleDifficultyTargets(req.count, targets);
-      chosen = [];
+      const baselineChosen: Question[] = [];
+      const baselineReused: Question[] = [];
       for (const difficulty of DIFFICULTY_ORDER) {
         const unusedInDifficulty = shuffleInPlace(
           unused.filter((question) => questionDifficulty(question) === difficulty), rnd,
@@ -250,9 +255,25 @@ export function selectRound(req: SelectionRequest): SelectionResult {
         const reusedInDifficulty = shuffleInPlace(
           usedByRecency.filter((question) => questionDifficulty(question) === difficulty), rnd,
         ).slice(0, reusePlan.counts[difficulty]);
-        chosen.push(...unusedInDifficulty, ...reusedInDifficulty);
+        baselineChosen.push(...unusedInDifficulty, ...reusedInDifficulty);
+        baselineReused.push(...reusedInDifficulty);
       }
-      reused = chosen.filter((question) => req.usedInSession.has(question.id));
+      if (applyPriority) {
+        const counts = countDifficulties(baselineChosen);
+        const prioritized = pickByPriorityWithReuse(
+          unused,
+          usedByRecency,
+          counts,
+          priorityCounts(counts, priorityShare!, eligible, priorityMatches),
+          priorityMatches,
+          rnd,
+        );
+        chosen = prioritized.chosen;
+        reused = prioritized.reused;
+      } else {
+        chosen = baselineChosen;
+        reused = baselineReused;
+      }
     }
 
     if (chosen.length < req.count) {
@@ -268,8 +289,8 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     const difficultyCounts = emptyDifficultyCounts();
     for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
     req.onDistribution?.({ counts: difficultyCounts, targetCounts: targetDifficultyCounts, tolerance });
-    if (priorityTopicNames.size > 0 && priorityShare !== undefined && Number.isFinite(priorityShare) && priorityShare > 0 && priorityShare <= 1) {
-      req.onPriorityDistribution?.(priorityDistribution(chosen, priorityMatches, req.priorityTopicNames ?? [], req.subtopicNamesById ?? {}, priorityShare));
+    if (applyPriority) {
+      req.onPriorityDistribution?.(priorityDistribution(chosen, priorityMatches, req.priorityTopicNames ?? [], req.subtopicNamesById ?? {}, priorityShare!));
     }
     const snapshots = orderSnapshotsByDifficulty(
       chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd)),
@@ -302,7 +323,22 @@ export function selectRound(req: SelectionRequest): SelectionResult {
     const used = eligible.filter((q) => req.usedInSession.has(q.id));
     // Chỉ câu trong giới hạn hiển thị mới được dùng lại.
     reused = used.sort(compareReuse).slice(0, req.count - unused.length);
-    chosen = shuffleInPlace([...unused, ...reused], rnd);
+    const baseline = shuffleInPlace([...unused, ...reused], rnd);
+    if (applyPriority) {
+      const counts = countDifficulties(baseline);
+      const prioritized = pickByPriorityWithReuse(
+        unused,
+        used,
+        counts,
+        priorityCounts(counts, priorityShare!, eligible, priorityMatches),
+        priorityMatches,
+        rnd,
+      );
+      chosen = prioritized.chosen;
+      reused = prioritized.reused;
+    } else {
+      chosen = baseline;
+    }
   } else {
     return {
       ok: false,
@@ -315,8 +351,8 @@ export function selectRound(req: SelectionRequest): SelectionResult {
 
   const difficultyCounts = emptyDifficultyCounts();
   for (const question of chosen) difficultyCounts[questionDifficulty(question)] += 1;
-  if (priorityTopicNames.size > 0 && priorityShare !== undefined && Number.isFinite(priorityShare) && priorityShare > 0 && priorityShare <= 1) {
-    req.onPriorityDistribution?.(priorityDistribution(chosen, priorityMatches, req.priorityTopicNames ?? [], req.subtopicNamesById ?? {}, priorityShare));
+  if (applyPriority) {
+    req.onPriorityDistribution?.(priorityDistribution(chosen, priorityMatches, req.priorityTopicNames ?? [], req.subtopicNamesById ?? {}, priorityShare!));
   }
   const snapshots = orderSnapshotsByDifficulty(
     chosen.map((q, index) => snapshotQuestion(q, index, req.roundId, rnd)),
@@ -447,6 +483,47 @@ function pickByPriorityAndDifficulty(
     );
   }
   return chosen;
+}
+
+/** Giữ mọi câu chưa dùng; chỉ dùng câu đã dùng để bù thiếu, ưu tiên chúng khi cần đạt quota. */
+function pickByPriorityWithReuse(
+  unused: readonly Question[],
+  usedByRecency: readonly Question[],
+  counts: DifficultyCounts,
+  priorityTargets: DifficultyCounts,
+  isPriority: (question: Question) => boolean,
+  rnd: () => number,
+): { chosen: Question[]; reused: Question[] } {
+  const chosen: Question[] = [];
+  const reused: Question[] = [];
+  for (const difficulty of DIFFICULTY_ORDER) {
+    const unusedInDifficulty = shuffleInPlace(
+      unused.filter((question) => questionDifficulty(question) === difficulty), rnd,
+    );
+    chosen.push(...unusedInDifficulty);
+
+    const repeatSlots = counts[difficulty] - unusedInDifficulty.length;
+    if (repeatSlots <= 0) continue;
+    const usedInDifficulty = usedByRecency.filter((question) => questionDifficulty(question) === difficulty);
+    const unusedPriorityCount = unusedInDifficulty.filter(isPriority).length;
+    const priorityRepeatCount = Math.min(
+      repeatSlots,
+      Math.max(0, priorityTargets[difficulty] - unusedPriorityCount),
+    );
+    const usedPriority = usedInDifficulty.filter(isPriority);
+    const usedOther = usedInDifficulty.filter((question) => !isPriority(question));
+    const selectedPriority = usedPriority.slice(0, priorityRepeatCount);
+    const selectedOther = usedOther.slice(0, repeatSlots - selectedPriority.length);
+    const remainingSlots = repeatSlots - selectedPriority.length - selectedOther.length;
+    const selectedPriorityOverflow = usedPriority.slice(
+      selectedPriority.length,
+      selectedPriority.length + remainingSlots,
+    );
+    const selectedUsed = [...selectedPriority, ...selectedOther, ...selectedPriorityOverflow];
+    chosen.push(...selectedUsed);
+    reused.push(...selectedUsed);
+  }
+  return { chosen, reused };
 }
 
 export function snapshotQuestion(

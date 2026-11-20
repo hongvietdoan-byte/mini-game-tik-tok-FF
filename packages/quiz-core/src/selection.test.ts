@@ -204,6 +204,36 @@ describe('selectRound', () => {
     }
   });
 
+  it.each(['RANDOM', 'DIFFICULTY'] as const)(
+    'dùng câu ưu tiên đã dùng để bù quota khi không còn đủ câu mới, mode %s',
+    (selectionMode) => {
+      const pool = [
+        ...Array.from({ length: 3 }, (_, index) => question(index + 1, { subtopicId: 'other' })),
+        ...Array.from({ length: 3 }, (_, index) => question(index + 4, { subtopicId: 'event', lastUsedAt: index + 1 })),
+        ...Array.from({ length: 4 }, (_, index) => question(index + 7, { subtopicId: 'other', lastUsedAt: index + 4 })),
+      ];
+      const result = selectRound(request(pool, {
+        count: 6,
+        selectionMode,
+        allowReuse: true,
+        usedInSession: new Set(pool.slice(3).map((item) => item.id)),
+        priorityTopicNames: ['FFA 2026'],
+        priorityShare: 0.5,
+        subtopicNamesById: { event: 'FFA 2026', other: 'Tổng quan' },
+      }));
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.snapshots).toHaveLength(6);
+        expect(new Set(result.snapshots.map((snapshot) => snapshot.questionId)).size).toBe(6);
+        expect(result.snapshots.map((snapshot) => snapshot.questionId)).toEqual(expect.arrayContaining(['q001', 'q002', 'q003', 'q004', 'q005', 'q006']));
+        expect(result.snapshots.filter((snapshot) => snapshot.subtopicId === 'event')).toHaveLength(3);
+        expect(result.reusedQuestionIds).toHaveLength(3);
+        expect(result.reusedQuestionIds.every((id) => ['q004', 'q005', 'q006'].includes(id))).toBe(true);
+      }
+    },
+  );
+
   it('bù bằng câu ưu tiên khi chủ đề khác thiếu và bỏ qua tên cấu hình chưa có', () => {
     const priorityPool = Array.from({ length: 12 }, (_, index) => question(index + 1, { subtopicId: 'event' }));
     const filled = selectRound(request(priorityPool, {
