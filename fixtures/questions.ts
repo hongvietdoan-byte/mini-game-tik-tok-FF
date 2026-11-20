@@ -8,11 +8,13 @@ type QuestionRow = {
   answer: string;
   distractors: [string, string, string];
   explanation: string;
+  approvalStatus?: 'APPROVED' | 'ARCHIVED';
 };
 
 const ROWS: QuestionRow[] = [
   {
     subtopicId: 'ff-che-do',
+    approvalStatus: 'ARCHIVED',
     prompt: 'Trong Battle Royale, bạn đang đi cùng đồng đội, nhặt trang bị và theo dõi vùng an toàn đang thu hẹp. Mục tiêu tổng quát nào mô tả đúng điều cần đạt để thắng trận, thay vì chỉ hoàn thành một hành động phụ như nhặt đồ?',
     answer: 'Sinh tồn đến cuối trận để giành Booyah',
     distractors: ['Mua đủ vũ khí trong cửa hàng của mỗi vòng', 'Chiếm một căn cứ cố định và giữ nguyên đến hết trận', 'Hoàn thành mọi bài tập trong khu vực luyện tập'],
@@ -34,9 +36,9 @@ const ROWS: QuestionRow[] = [
   },
   {
     subtopicId: 'ff-che-do',
-    prompt: 'Đặc điểm nào mô tả đúng nhịp trận của Clash Squad trong Free Fire?',
-    answer: 'Các vòng giao tranh nối tiếp nhau giữa hai đội',
-    distractors: ['Một hành trình khám phá không có đối thủ', 'Một trận sinh tồn duy nhất trên bản đồ rộng', 'Một bài tập ngắm bắn không có kết quả thắng thua'],
+    prompt: 'Clash Squad có nhịp trận thế nào?',
+    answer: 'Nhiều vòng giao tranh nối tiếp giữa hai đội',
+    distractors: ['Hành trình khám phá không có đối thủ', 'Một trận sinh tồn trên bản đồ rộng', 'Bài tập ngắm bắn không phân thắng thua'],
     explanation: 'Clash Squad sử dụng cấu trúc thi đấu theo vòng giữa hai đội.',
   },
   {
@@ -167,6 +169,7 @@ const ROWS: QuestionRow[] = [
   },
   {
     subtopicId: 'ff-thuat-ngu',
+    approvalStatus: 'ARCHIVED',
     prompt: 'Trong Battle Royale, bản đồ đánh dấu khu vực an toàn, còn bên ngoài có thể nguy hiểm và vùng này dần thu hẹp. Khi đồng đội nhắc “vào bo”, họ đang nói đến khu vực nào cần tiến vào để tiếp tục sinh tồn?',
     answer: 'Safe Zone',
     distractors: ['Booyah', 'Airdrop', 'Revival Point'],
@@ -209,9 +212,9 @@ const ROWS: QuestionRow[] = [
   },
   {
     subtopicId: 'ff-thuat-ngu',
-    prompt: 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?',
+    prompt: 'Trong Free Fire, “squad” là nhóm người chơi nào trong trận?',
     answer: 'Một nhóm đồng đội phối hợp trong trận',
-    distractors: ['Một nhóm khán giả cùng theo dõi trận đấu', 'Một nhóm vật phẩm được sắp xếp trong hành trang', 'Một nhóm nhân vật được hiển thị trong bộ sưu tập'],
+    distractors: ['Một nhóm khán giả theo dõi trận đấu', 'Nhóm vật phẩm trong hành trang', 'Nhóm nhân vật trong bộ sưu tập'],
     explanation: 'Squad là nhóm người chơi phối hợp cùng nhau.',
   },
   {
@@ -286,7 +289,7 @@ export const DEMO_QUESTIONS: (typeof QuestionSchema)['_input'][] = ROWS.map((row
     difficulty: DIFFICULTIES[index]!,
     tags: ['demo', 'free-fire'],
     verificationStatus: 'DEMO',
-    approvalStatus: 'APPROVED',
+    approvalStatus: row.approvalStatus ?? 'APPROVED',
   };
 });
 

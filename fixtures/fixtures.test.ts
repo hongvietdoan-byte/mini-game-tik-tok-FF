@@ -12,7 +12,9 @@ describe('fixtures DEMO', () => {
     expect(new Set(parsed.map((question) => question.id)).size).toBe(parsed.length);
     expect(new Set(parsed.map((question) => question.prompt.toLocaleLowerCase('vi'))).size).toBe(parsed.length);
     expect(parsed.every((question) => question.verificationStatus === 'DEMO')).toBe(true);
-    expect(parsed.every((question) => question.approvalStatus === 'APPROVED')).toBe(true);
+    expect(parsed.filter((question) => question.approvalStatus === 'APPROVED')).toHaveLength(34);
+    expect(parsed.filter((question) => question.approvalStatus === 'ARCHIVED').map((question) => question.id))
+      .toEqual(['demo-001', 'demo-023']);
     expect(parsed.every((question) => question.tags.includes('demo'))).toBe(true);
     expect(parsed.every((question) => question.tags.includes('free-fire'))).toBe(true);
     expect(parsed.every((question) => question.subtopicId.startsWith('ff-'))).toBe(true);
@@ -28,11 +30,13 @@ describe('fixtures DEMO', () => {
     expect(DEMO_QUESTIONS.flatMap((question) => question.options).filter((option) => option.text.length >= 70 && option.text.length <= 90).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('giữ prompt và đáp án dài trong giới hạn để thử bố cục overlay', () => {
-    const longPromptIds = DEMO_QUESTIONS
-      .filter((question) => question.prompt.length >= 180 && question.prompt.length <= 220)
-      .map((question) => question.id);
-    expect(longPromptIds).toEqual(expect.arrayContaining(['demo-001', 'demo-023']));
+  it('giữ hai prompt dài ở trạng thái ARCHIVED và loại chúng khỏi danh sách APPROVED', () => {
+    const longPrompts = DEMO_QUESTIONS.filter((question) => ['demo-001', 'demo-023'].includes(question.id));
+    expect(longPrompts.map((question) => question.id)).toEqual(['demo-001', 'demo-023']);
+    expect(longPrompts.every((question) => question.approvalStatus === 'ARCHIVED')).toBe(true);
+    expect(longPrompts.every((question) => question.prompt.length >= 180 && question.prompt.length <= 220)).toBe(true);
+    expect(DEMO_QUESTIONS.filter((question) => question.approvalStatus === 'APPROVED')
+      .some((question) => ['demo-001', 'demo-023'].includes(question.id))).toBe(false);
     const correctAnswers = DEMO_QUESTIONS.map((question) => question.options.find((option) => option.id === question.correctOptionId)!.text);
     expect(correctAnswers.filter((answer) => answer.length >= 70 && answer.length <= 90).length).toBeGreaterThanOrEqual(2);
   });
