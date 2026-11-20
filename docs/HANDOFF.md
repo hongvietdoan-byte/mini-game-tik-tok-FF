@@ -1,6 +1,45 @@
-# HANDOFF — phiên coordinator (cập nhật 17/11/2026 chiều)
+# HANDOFF — phiên coordinator (cập nhật 20/11/2026 chiều)
 
-**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 13/11 ~16:00) — ĐÃ NHẬN 13/11 15:57.**
+**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 20/11 ~17:15) — ĐỌC ĐẦU TIÊN.**
+
+## Mới nhất 20/11 ~17:15 — đọc khối này trước, các khối dưới đã cũ
+- **Main `ea469287`+.** Hôm nay đã gộp:
+  - **C-0339:** ngai vàng và màn vinh danh kiểu B.
+  - **C-0290 phase 4b.**
+  - **C-0310:** `pnpm report:question-length` đọc bản sao DB, đo bằng overlay thật và đề xuất rút gọn, không sửa câu.
+  - **C-0324:** `py -3 tools/throne_assets.py check|build` kiểm ảnh `assets-local/throne/`. Kết quả 62 OK, 1 cần xem (Maxim, nhìn vẫn ổn).
+  - Checkout chính đã build C-0339 và C-0290; C-0310 và C-0324 chỉ thêm tools nên không cần build. Người dùng cần mở lại CHAY_GAME để nhận bản mới.
+- **DB máy người dùng 20/11:** rút gọn demo-004 và demo-029 theo C-0310 (người dùng duyệt), version 2, có `question_versions`. Sao lưu ở `backups/quiz-before-c0310-shorten-20261120-165749.db`. Đo lại: 0 đáp án bị cắt, 0 câu bị clamp, 49 câu chữ dưới 30 px, 2 câu (chính 2 câu này) ước lượng đọc khoảng 23 s.
+  - **Đang chờ người dùng trả lời:** có rút gọn tiếp đáp án A/B không? Đề xuất:
+    - demo-029: A "Nhóm đồng đội phối hợp trong trận", B "Nhóm khán giả theo dõi trận đấu".
+    - demo-004: A "Hành trình khám phá không có đối thủ", B "Một trận sinh tồn trên bản đồ rộng".
+  - Nếu người dùng đồng ý: sao lưu DB, sửa như script cũ (version 3 và `question_versions`), rồi báo Codex 1 sửa `fixtures/questions.ts` cho khớp.
+- **Codex 1** đang chạy hàng đợi C-0362 theo thứ tự:
+  1. **C-0361** (nhánh `codex1/c-0361-preselection-preflight`, chứa C-0347 preflight đủ 4 ảnh mỗi nhân vật).
+     - Test `tests/integration/mc-voice-preselection.test.ts` ca "Auto mode cũng chờ bundle câu 1…" **chập chờn ngay trên main** (C-0365).
+     - Đã cho phép sửa riêng ca C-0224 trong `tests/e2e/c0223-mc-dialogue-wrap.spec.ts` (C-0366), với điều kiện không nới timeout và đạt 10/10 với cả hai bộ asset.
+     - Tiêu chí đạt: chạy riêng 20/20, cả bộ 3/3, E2E 2 lượt 0 failed.
+  2. **C-0335** ưu tiên chủ đề sự kiện, theo brief C-0357, nhánh `codex1/c-0335-priority-topic`.
+  3. **Nhánh `codex1/batch-0360-0329`:**
+     - C-0329: ARCHIVED demo-001 và demo-023, sửa `fixtures/fixtures.test.ts:35` và `tests/e2e/c0319-hud-tall.spec.ts:244`.
+     - Fixtures demo-004 và demo-029 theo text mới (C-0367).
+     - C-0360: test chập chờn `mc-chat.test.ts`, `welcome.test.ts` và `dashboard.test.ts:212` Setup Wizard.
+- **Codex 2:** rảnh (C-0368), chưa có task. Giao gì cũng phải đủ brief 6 mục (memory `brief-full-spec-upfront`).
+- **Quy trình gộp:**
+  - Làm trong worktree `.claude/worktrees/coord-merge-0293`: `git checkout --detach origin/main`, rồi `git merge origin/<nhánh>`.
+  - Kiểm tra: typecheck, privacy, `vitest --project unit --project integration --pool=forks --maxWorkers=2`, Playwright 2 lượt (asset thật, và `QUIZ_ASSETS_DIR=fixtures/assets-placeholder`) với `PLAYWRIGHT_SERVER_PORT=18931 PLAYWRIGHT_OVERLAY_PORT=15331`.
+  - Push bằng `HEAD:main`. Ở checkout chính, khi cổng 8787 không nghe: `git fetch; git merge --ff-only origin/main; corepack pnpm -s build:web`.
+  - `mb.py` phải gọi từ checkout chính: `py -X utf8 "E:\Ai\2026\Trend mini game tiktok\tools\mb.py"`.
+- **Test chập chờn đã biết:**
+  - mc-voice-preselection;
+  - welcome.test;
+  - mc-chat.test;
+  - dashboard.test.ts:212 (lượt placeholder);
+  - c0223 C-0224 bubble.screenshot khi máy tải nặng.
+
+  Diff chỉ đụng `tools/` mà hỏng các test này thì không chặn gộp.
+
+**Phiên trước (13/11) — ĐÃ NHẬN 13/11 15:57.**
 
 ## Mới nhất 13/11 ~16:00 — đọc khối này trước, các khối dưới đã cũ
 - **Cập nhật 17/11 chiều (MỚI NHẤT — đọc khối này trước):** main `6117e74`+. Hôm nay đã gộp:
