@@ -36,11 +36,22 @@ async function boot() {
     writeFileSync(join(directory, 'index.html'), '<!doctype html>');
     writeFileSync(join(directory, '.build-commit'), `${commit}\n`);
   }
-  for (const relative of ['brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png']) {
+  const characterId = 'chibi-test';
+  const characterFiles = [
+    `chibi/${characterId}.png`,
+    `throne/ngai-${characterId}.png`,
+    `chibi/dang-top2-top3/top2/top2-${characterId}.png`,
+    `chibi/dang-top2-top3/top3/top3-${characterId}.png`,
+  ];
+  for (const relative of [
+    'brand/logo.png', 'victory/trophy-stage.png', 'victory/bg.jpg', 'chibi/test.png', 'mc/kelly.png',
+    ...characterFiles,
+  ]) {
     const path = join(webRoots.assets, relative);
     mkdirSync(join(path, '..'), { recursive: true });
     writeFileSync(path, 'test asset');
   }
+  writeFileSync(join(webRoots.assets, 'chibi', 'manifest.json'), JSON.stringify({ characters: [{ id: characterId }] }));
   const quiz = await buildApp({
     store,
     scheduler,
