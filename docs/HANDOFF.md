@@ -5,6 +5,9 @@
 ## Mới nhất 21/11 ~17:00
 - Main `6aead045`: gộp C-0378/C-0379/C-0381 (Codex 2, người dùng duyệt ảnh): khung MC REVEAL/LEADERBOARD giữ x 740→998 không đè ngai; Top 3 nhanh nhất mỗi câu (`questionTop3`) chữ nhỏ 20→15 px; ảnh MC hết hở với khung tên (chỉ nới CSS `.v3-mc-figure`). Checkout chính đã ff + `web_build.py ensure`.
 - 21/11 ~17:30 main `dfe79963`: cửa sổ overlay program mặc định `contain` (màn 2560×1440 không chứa nổi 1080×1920, `cover` cắt mất phần dưới); `?fit=cover` vẫn dùng được. Mock 15 câu × 400 người: ngai đổi chủ 6 lần đúng (trùng nhân vật là do luật gán ngẫu nhiên sau 62 người). Game đã mở lại 17:31, preflight build PASS.
+- **Lỗi người dùng báo 21/11, SỬA SAU (chưa giao Codex):**
+  1. Dashboard "MC nói với khán giả": câu "Sắp đủ ghế rùi" bị chặn với từ “đủ”. Nguyên nhân: `runtime.ts:~1196` dùng bộ lọc tên (`nameFilter.findTextMatches`, so khớp bỏ dấu) cho câu MC → "đủ" trùng từ bậy khi bỏ dấu. Hướng sửa đơn giản: câu MC chỉ chặn khi khớp **có dấu** (hoặc danh sách riêng cho câu MC); thêm test "Sắp đủ ghế rùi" được gửi.
+  2. Dashboard "Tự bắt đầu khi đủ ghế": hiện "Đã ngồi 30/35" nhưng đã đếm ngược vào trận. Sảnh chỉ còn 30 ghế (C-0333 bỏ hàng ghế đầu) mà `apps/dashboard/src/main.tsx:679` vẫn ghi cứng 35. Hướng sửa: lấy sức chứa thật (số ghế của audience/server) thay số 35; test hiện "Đã đủ ghế" khi 30/30.
 - Test chập chờn mới gặp: `c0319-hud-tall.spec.ts:206` (lượt placeholder, chạy lại 3/3 đạt), `mc-chat` race QUEUED/GENERATING.
 - Người dùng 21/11: luôn chọn cách sửa đơn giản nhất (memory `simplest-fix-first`).
 
