@@ -1,7 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CreateSessionRequestSchema, type QuestionSnapshot } from '@quiz/contracts';
+import { CreateSessionRequestSchema, McChatRequestSchema, type QuestionSnapshot } from '@quiz/contracts';
 import { ManualScheduler, MockAdapter } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
 import { NameFilterStore } from '../name-filter-store';
@@ -187,13 +187,88 @@ describe('MC chat', () => {
     expect(JSON.stringify(history.actions)).not.toContain('Xin chào mọi người');
   });
 
-  it('đưa câu gặp timeout sang ERROR và chỉ hiện chữ sau khi operator chọn fallback', async () => {
+  it('nhận giới hạn 400 ký tự cho MC chat', async () => {
+    const { runtime } = await makeRuntime();
+    const accepted = 'a'.repeat(400);
+    const rejected = 'a'.repeat(401);
+    expect(McChatRequestSchema.safeParse({ text: accepted, speak: false }).success).toBe(true);
+    expect(runtime.sendMcChat({ text: accepted, speak: false }).status).toBe(202);
+    expect(McChatRequestSchema.safeParse({ text: rejected, speak: false }).success).toBe(false);
+    expect(runtime.sendMcChat({ text: rejected, speak: false })).toMatchObject({ status: 400, result: { code: 'MC_CHAT_INVALID' } });
+  });
+
+  it('cho giọng MC chat sinh trong 30 giây và timeout sau 40 giây', async () => {
+    let resolveSynthesis!: (audio: McVoiceAudio) => void;
+    const synthesize = vi.fn(() => new Promise<McVoiceAudio>((resolve) => { resolveSynthesis = resolve; }));
+    const { runtime, scheduler } = await makeRuntime({ synthesize });
+    runtime.engine.state = 'LOBBY';
+    runtime.sendMcChat({ text: 'Hẹn gặp ở vòng sau', speak: true });
+    await vi.waitFor(() => expect(synthesize).toHaveBeenCalledOnce());
+    scheduler.advance(30_000);
+    expect(runtime.adminSnapshot().mcChatQueue?.[0]?.status).toBe('GENERATING');
+    resolveSynthesis({ bytes: Buffer.from('mock-thirty-second-chat'), durationMs: 30_000, format: 'mp3' });
+    await vi.waitFor(() => expect(runtime.adminSnapshot().mcChatQueue?.[0]?.status).toBe('QUEUED'));
+  });
+
+  it('nhận asset MC chat 34 giây và loại asset 36 giây', async () => {
+    for (const [durationMs, expectedStatus] of [[34_000, 'QUEUED'], [36_000, 'ERROR']] as const) {
+      const { runtime } = await makeRuntime({ synthesize: async () => ({ bytes: Buffer.from(`mock-${durationMs}`), durationMs, format: 'mp3' }) });
+      runtime.engine.state = 'READING';
+      runtime.sendMcChat({ text: `Câu MC ${durationMs}`, speak: true });
+      await vi.waitFor(() => expect(runtime.adminSnapshot().mcChatQueue?.[0]?.status).toBe(expectedStatus));
+    }
+  });
+
+  it('khi VICTORY về LOBBY xoá ngai công khai, không sửa lịch sử DB vòng trước', async () => {
+    const { runtime, store } = await makeRuntime();
+    const historyBefore = store.history(runtime.id);
+    Object.assign(runtime.engine, { state: 'LOBBY', round: null, sessionStatus: 'OPEN' });
+    const runtimeInternals = runtime as unknown as {
+      throne: { unlocked: boolean; holder: unknown; correctElapsedMs: Map<string, number> };
+      throneStreaks: Map<string, number>;
+      afterCommit(events: never[], input: never): void;
+    };
+    runtimeInternals.throne = {
+      unlocked: true,
+      holder: { playerId: 'previous-winner', streak: 5, correctCount: 5, score: 9_000 },
+      correctElapsedMs: new Map([['previous-winner', 500]]),
+    };
+    runtimeInternals.throneStreaks.set('previous-winner', 5);
+    runtimeInternals.afterCommit([{ type: 'STATE_CHANGED', from: 'VICTORY', to: 'LOBBY' }] as never[], null as never);
+
+    expect(runtime.publicSnapshot().throne).toEqual({ state: 'LOCKED', unlockAfterQuestion: 5 });
+    expect(runtimeInternals.throneStreaks.size).toBe(0);
+    expect(store.history(runtime.id)).toEqual(historyBefore);
+  });
+
+  it('public playingCount tính người trả lời ba câu gần nhất và ghế đang có người ở sảnh', async () => {
+    const { runtime, store } = await makeRuntime();
+    const audience = (runtime as unknown as { audience: { openLobby(): void; onLobbyKeyword(id: string, name: string, now: number): boolean } }).audience;
+    audience.openLobby();
+    for (let index = 0; index < 24; index += 1) audience.onLobbyKeyword(`lobby-${index}`, `Lobby ${index}`, index);
+    expect(runtime.publicSnapshot()).toMatchObject({ lobbyRoundNumber: 1, playingCount: 24 });
+
+    const answers = new Map([
+      ['q1', new Map([['p1', 'A'], ['p2', 'B']] )],
+      ['q2', new Map([['p2', 'C'], ['p3', 'D']] )],
+      ['q3', new Map([['p3', 'A']] )],
+    ]);
+    vi.spyOn(store, 'answersForQuestion').mockImplementation((qid) => (answers.get(qid) ?? new Map()) as never);
+    Object.assign(runtime.engine, {
+      state: 'ACCEPTING',
+      round: { roundId: 'round-9', roundNumber: 9, questionIndex: 2, questionInstanceIds: ['q1', 'q2', 'q3'] },
+    });
+    Object.assign(runtime, { participants: 30 });
+    expect(runtime.publicSnapshot()).toMatchObject({ participantCount: 30, playingCount: 3 });
+  });
+
+  it('đưa câu gặp timeout sau 40 giây sang ERROR và chỉ hiện chữ sau khi operator chọn fallback', async () => {
     const { runtime, scheduler } = await makeRuntime({ synthesize: () => new Promise<McVoiceAudio>(() => {}) });
     runtime.engine.state = 'LOBBY';
     const request = runtime.sendMcChat({ text: 'Hẹn gặp ở vòng sau', speak: true });
     const id = (request.result as { item: { id: string } }).item.id;
-    scheduler.advance(10_000);
-    expect(runtime.adminSnapshot().mcChatQueue?.[0]).toMatchObject({ status: 'ERROR', errorMessage: expect.stringContaining('10 giây') });
+    scheduler.advance(40_000);
+    expect(runtime.adminSnapshot().mcChatQueue?.[0]).toMatchObject({ status: 'ERROR', errorMessage: expect.stringContaining('40 giây') });
     expect(runtime.publicSnapshot().mcChatBubble).toBeNull();
     expect(runtime.useMcChatTextFallback(id)).toMatchObject({ status: 202, result: { item: { speak: false, status: 'QUEUED' } } });
     scheduler.advance(80);
