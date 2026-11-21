@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,7 +79,7 @@ const PLACEHOLDER_IMAGE_PATHS = new Set([
   'fixtures/assets-placeholder/victory/trophy-stage.png',
 ].map((path) => path.toLowerCase()));
 
-/** @typedef {{ path: string; content?: string; sizeBytes?: number; isSymlink?: boolean }} PrivacyFile */
+/** @typedef {{ path: string; content?: string; contentHash?: string; sizeBytes?: number; isSymlink?: boolean }} PrivacyFile */
 
 function normalizePath(path) {
   return String(path).replaceAll('\\', '/').replace(/^\.\//, '');
@@ -118,15 +119,38 @@ function isTextScanPath(path) {
   return /^(fixtures|apps|packages)\//.test(normalized) && isTextFile(normalized);
 }
 
-function isAllowedImagePath(path, sizeBytes) {
+function isThemeFixtureAssetImagePath(path) {
+  const parts = lowerPath(path).split('/');
+  return parts.length > 4
+    && parts[0] === 'fixtures'
+    && parts[1] === 'themes'
+    && Boolean(parts[2])
+    && parts[3] === 'assets'
+    && parts.slice(4).every((part) => part && part !== '.' && part !== '..');
+}
+
+function approvedPlaceholderImageHashes(files) {
+  return new Set(files
+    .filter((file) => PLACEHOLDER_IMAGE_PATHS.has(lowerPath(file.path))
+      && IMAGE_EXTENSIONS.has(extname(file.path).toLowerCase())
+      && !file.isSymlink
+      && typeof file.contentHash === 'string')
+    .map((file) => file.contentHash));
+}
+
+function isAllowedImagePath(path, sizeBytes, contentHash, placeholderHashes) {
   const normalized = lowerPath(path);
   const isSmallReviewScreenshot = normalized.startsWith('tests/e2e/__screenshots__/')
     && Number.isInteger(sizeBytes)
     && sizeBytes >= 0
     && sizeBytes < MAX_REVIEW_SCREENSHOT_BYTES;
+  const isMatchingThemeFixtureImage = isThemeFixtureAssetImagePath(normalized)
+    && typeof contentHash === 'string'
+    && placeholderHashes.has(contentHash);
   return normalized.startsWith('assets/')
     || /^apps\/[^/]+\/public\//.test(normalized)
     || isSmallReviewScreenshot
+    || isMatchingThemeFixtureImage
     || PLACEHOLDER_IMAGE_PATHS.has(normalized);
 }
 
@@ -160,6 +184,7 @@ function approvedAssetPaths(files) {
 export function checkFiles(files, extraPatterns = []) {
   const normalizedFiles = files.map((file) => ({ ...file, path: normalizePath(file.path) }));
   const { paths: approvedAssets, error: manifestError } = approvedAssetPaths(normalizedFiles);
+  const placeholderHashes = approvedPlaceholderImageHashes(normalizedFiles);
   const violations = [];
   if (manifestError) violations.push(manifestError);
 
@@ -181,7 +206,7 @@ export function checkFiles(files, extraPatterns = []) {
       violations.push(`${path}: tên tệp có cụm từ bị cấm`);
     }
 
-    if (IMAGE_EXTENSIONS.has(ext) && !isAllowedImagePath(path, file.sizeBytes)) {
+    if (IMAGE_EXTENSIONS.has(ext) && !isAllowedImagePath(path, file.sizeBytes, file.contentHash, placeholderHashes)) {
       violations.push(`${path}: ảnh nằm ngoài thư mục được phép`);
     }
 
@@ -255,6 +280,10 @@ function readTrackedTextFile(repositoryRoot, path) {
 export function readTrackedFiles(repositoryRoot, trackedPaths, readErrors = []) {
   return trackedPaths.map((path) => {
     const isApprovalManifest = lowerPath(path) === ASSET_APPROVALS_PATH.toLowerCase();
+    const normalized = lowerPath(path);
+    const ext = extname(normalized);
+    const isPlaceholderImage = PLACEHOLDER_IMAGE_PATHS.has(normalized) && IMAGE_EXTENSIONS.has(ext);
+    const isThemeFixtureImage = isThemeFixtureAssetImagePath(normalized) && IMAGE_EXTENSIONS.has(ext);
     let metadata;
     try {
       const info = lstatSync(resolve(repositoryRoot, path));
@@ -267,6 +296,16 @@ export function readTrackedFiles(repositoryRoot, trackedPaths, readErrors = []) 
     }
     if (lowerPath(path).startsWith(PLACEHOLDER_ASSET_PREFIX) && metadata.isSymlink) {
       return { path, ...metadata };
+    }
+    if ((isPlaceholderImage || isThemeFixtureImage) && !metadata.isSymlink
+      && Number.isInteger(metadata.sizeBytes) && metadata.sizeBytes <= MAX_PLACEHOLDER_BACKGROUND_BYTES) {
+      try {
+        const bytes = readFileSync(resolve(repositoryRoot, path));
+        return { path, ...metadata, contentHash: createHash('sha256').update(bytes).digest('hex') };
+      } catch {
+        readErrors.push(`${path}: không thể đọc ảnh để kiểm tra hash`);
+        return { path, ...metadata };
+      }
     }
     if (!isApprovalManifest && !isTextFile(path)) return { path, ...metadata };
     try {
