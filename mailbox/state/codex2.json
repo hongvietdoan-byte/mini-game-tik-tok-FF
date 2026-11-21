@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 383,
-  "heartbeat": "2026-11-22T00:19:40+07:00",
+  "heartbeat": "2026-11-22T00:59:24+07:00",
   "state": "waiting",
   "task": "C-0386",
-  "note": "Đã ACK C-0386; chờ coordinator gộp nhánh codex2/c-sau-live-ui vào origin/main. Chưa tạo nhánh theme vì điều kiện phụ thuộc chưa hoàn tất.",
+  "note": "C-0386 đã ACK; origin/main vẫn chưa chứa C-0383. Chờ coordinator gộp trước khi tạo nhánh codex2/c-theme-kit.",
   "done": [
     387
   ]
