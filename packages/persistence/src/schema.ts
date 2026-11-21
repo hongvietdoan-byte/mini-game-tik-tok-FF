@@ -186,6 +186,8 @@ export const players = sqliteTable(
     /** Định danh ổn định do nguồn cấp. Chỉ lưu tối thiểu: id + tên hiển thị đã làm sạch. */
     sourceUserId: text('source_user_id').notNull(),
     displayName: text('display_name').notNull(),
+    /** TikTok handle chỉ dành cho màn hình quản trị đã xác thực; không nằm trong snapshot public. */
+    uniqueId: text('unique_id'),
     firstSeenAtMs: integer('first_seen_at_ms').notNull(),
     lastSeenAtMs: integer('last_seen_at_ms').notNull(),
   },

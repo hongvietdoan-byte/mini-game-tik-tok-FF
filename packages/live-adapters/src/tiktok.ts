@@ -62,13 +62,14 @@ export function normalizeTikTokUsername(input: string): string {
 const str = (v: unknown) => (v === undefined || v === null ? '' : String(v));
 
 /** Ánh xạ sự kiện chat của thư viện (proto v3 hoặc dạng cũ) → RawComment. Trả null nếu thiếu định danh ổn định. */
-export function mapTikTokChat(data: any): (Omit<RawComment, 'source'> & { createTimeMs?: number }) | null {
+export function mapTikTokChat(data: any): (Omit<RawComment, 'source'> & { createTimeMs?: number; uniqueId?: string }) | null {
   const user = data?.user ?? {};
   const userId = str(user.id ?? user.userId);
   if (!userId || userId === '0') return null; // không có mã ổn định → không chấm điểm (V3 §5)
   const text = str(data?.content ?? data?.comment);
   // uniqueId/displayId có thể là @handle; không sử dụng làm tên công khai khi nickname trống.
   const displayName = str(user.nickname).trim();
+  const uniqueId = str(user.uniqueId ?? user.displayId).trim().replace(/^@+/u, '');
   const msgId = str(data?.common?.msgId ?? data?.msgId);
   const rawTime = Number(data?.common?.createTime ?? data?.createTime);
   // createTime có thể là giây hoặc mili-giây tuỳ phiên bản giao thức
@@ -77,6 +78,7 @@ export function mapTikTokChat(data: any): (Omit<RawComment, 'source'> & { create
     userId,
     displayName,
     text,
+    ...(uniqueId ? { uniqueId } : {}),
     ...(msgId && msgId !== '0' ? { eventId: msgId } : {}),
     ...(createTimeMs ? { createTimeMs } : {}),
   };

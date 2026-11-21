@@ -60,15 +60,17 @@ describe('TikTokLiveAdapter (không chính thức, chỉ đọc)', () => {
   });
 
   it('ánh xạ chat proto v3 và dạng cũ; bỏ sự kiện không có mã người dùng ổn định', () => {
-    expect(mapTikTokChat(chat())).toEqual({ userId: '7123', displayName: 'Rồng Lửa', text: 'A', eventId: 'm1', createTimeMs: 1_800_000_000_000 });
+    expect(mapTikTokChat(chat())).toEqual({ userId: '7123', displayName: 'Rồng Lửa', text: 'A', uniqueId: 'rong_lua', eventId: 'm1', createTimeMs: 1_800_000_000_000 });
     expect(mapTikTokChat({ user: { userId: '9', uniqueId: 'x' }, comment: 'b', msgId: 'q', createTime: 1_800_000_000 })).toEqual({
       userId: '9',
       displayName: '',
       text: 'b',
+      uniqueId: 'x',
       eventId: 'q',
       createTimeMs: 1_800_000_000_000,
     });
     expect(mapTikTokChat({ user: { id: '10', nickname: '   ', uniqueId: 'public_handle' }, content: 'A' })?.displayName).toBe('');
+    expect(mapTikTokChat({ user: { id: '11', uniqueId: '@handle.name' }, content: 'A' })?.uniqueId).toBe('handle.name');
     expect(mapTikTokChat({ user: { nickname: 'không id' }, content: 'A' })).toBeNull();
     expect(mapTikTokChat({ user: { id: '0' }, content: 'A' })).toBeNull();
   });
@@ -114,6 +116,7 @@ describe('TikTokLiveAdapter (không chính thức, chỉ đọc)', () => {
     }]);
     expect(JSON.stringify(records)).not.toContain('Rồng Lửa');
     expect(JSON.stringify(records)).not.toContain('7123');
+    expect(JSON.stringify(records)).not.toContain('rong_lua');
   });
 
   it('mất kết nối → RECONNECTING, rớt nhanh chờ tối thiểu 5 giây rồi kết nối lại', async () => {

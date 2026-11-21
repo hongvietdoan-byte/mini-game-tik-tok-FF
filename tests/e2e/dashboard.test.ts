@@ -62,6 +62,24 @@ async function launchDashboard(page: Page, options: { mock?: boolean; mockSeatCa
   await page.goto(`${dashboardUrl}/${query.size ? `?${query.toString()}` : ''}`);
 }
 
+test('C-0383 dashboard shows round winners and TikTok profile fallbacks', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Người thắng' }).click();
+
+  const winners = page.getByTestId('winners-page');
+  await expect(winners.getByRole('heading', { name: 'Người thắng' })).toBeVisible();
+  await expect(winners.getByTestId('winner-row')).toHaveCount(3);
+  await expect(winners).toContainText('Phiên DEMO cũ');
+  await expect(winners).toContainText('@rong_lua');
+  const profileLinks = winners.getByRole('link', { name: 'Mở TikTok ↗' });
+  await expect(profileLinks.nth(0)).toHaveAttribute('href', 'https://www.tiktok.com/@rong_lua');
+  await expect(profileLinks.nth(1)).toHaveAttribute('href', 'https://www.tiktok.com/share/user/demo-tiktok-7124');
+
+  const reviewDir = resolve(process.cwd(), 'assets-local/review/c-sau-live-ui');
+  mkdirSync(reviewDir, { recursive: true });
+  await winners.screenshot({ path: resolve(reviewDir, 'D-winners-dashboard.png') });
+});
+
 async function stopDashboardSession(page: Page) {
   await page.locator('.danger-actions').getByRole('button', { name: 'Dừng phiên' }).click();
   const dialog = page.getByRole('dialog', { name: 'Xác nhận: Dừng phiên' });

@@ -60,6 +60,21 @@ export type RoundQuestionRow = {
 
 export type StoredAnswer = { questionInstanceId: string; playerId: string; option: OptionId; receivedAtMs: number };
 export type QuestionScoringRow = StoredAnswer & PlayerTotals;
+export type RoundWinnerRow = {
+  sessionId: string;
+  sessionName: string;
+  roundId: string;
+  roundNumber: number;
+  roundStatus: string;
+  endedAtMs: number | null;
+  rank: number;
+  source: string;
+  displayName: string;
+  uniqueId: string | null;
+  sourceUserId: string;
+  score: number;
+  correctCount: number;
+};
 
 function collectPlayerNames(value: unknown, playerId: string, names: Set<string>) {
   if (Array.isArray(value)) {
@@ -76,9 +91,9 @@ function prepareStatements(r: Database.Database) {
   return {
     playerGet: r.prepare('SELECT id FROM players WHERE source = ? AND source_user_id = ?'),
     playerInsert: r.prepare(
-      'INSERT INTO players (id, source, source_user_id, display_name, first_seen_at_ms, last_seen_at_ms) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO players (id, source, source_user_id, display_name, unique_id, first_seen_at_ms, last_seen_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ),
-    playerTouch: r.prepare('UPDATE players SET display_name = ?, last_seen_at_ms = ? WHERE id = ?'),
+    playerTouch: r.prepare("UPDATE players SET display_name = ?, last_seen_at_ms = ?, unique_id = COALESCE(NULLIF(?, ''), unique_id) WHERE id = ?"),
     answerInsert: r.prepare(
       `INSERT INTO answers (question_instance_id, round_id, player_id, option_id, received_at_ms, source_event_id)
        VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (question_instance_id, player_id) DO NOTHING`,
@@ -511,11 +526,14 @@ export class Store {
 
   // --- Người chơi & đáp án (đường nóng) -------------------------------------
 
-  resolvePlayer(source: string, sourceUserId: string, displayName: string, now: number): string {
+  resolvePlayer(source: string, sourceUserId: string, displayName: string, now: number, uniqueId?: string | null): string {
     const found = this.stmt.playerGet.get(source, sourceUserId) as { id: string } | undefined;
-    if (found) return found.id;
+    if (found) {
+      if (uniqueId) this.touchPlayer(found.id, displayName, now, uniqueId);
+      return found.id;
+    }
     const id = `${source}:${sourceUserId}`;
-    this.stmt.playerInsert.run(id, source, sourceUserId, displayName, now, now);
+    this.stmt.playerInsert.run(id, source, sourceUserId, displayName, uniqueId?.trim() || null, now, now);
     return id;
   }
 
@@ -557,8 +575,33 @@ export class Store {
     ).all(sessionId) as { playerId: string }[]).map((row) => row.playerId);
   }
 
-  touchPlayer(id: string, displayName: string, now: number) {
-    this.stmt.playerTouch.run(displayName, now, id);
+  touchPlayer(id: string, displayName: string, now: number, uniqueId?: string | null) {
+    this.stmt.playerTouch.run(displayName, now, uniqueId?.trim() || null, id);
+  }
+
+  /** Kết quả top 3 từng vòng của mọi phiên; uniqueId chỉ dùng cho API quản trị. */
+  listRoundWinners(): RoundWinnerRow[] {
+    return this.raw.prepare(`
+      WITH ranked AS (
+        SELECT s.id AS sessionId, s.name AS sessionName,
+               r.id AS roundId, r.round_number AS roundNumber, r.status AS roundStatus, r.ended_at_ms AS endedAtMs,
+               p.source AS source, p.display_name AS displayName, p.unique_id AS uniqueId,
+               p.source_user_id AS sourceUserId, rp.score AS score, rp.correct_count AS correctCount,
+               ROW_NUMBER() OVER (
+                 PARTITION BY r.id
+                 ORDER BY rp.score DESC, rp.correct_count DESC, rp.joined_at_ms ASC, rp.player_id ASC
+               ) AS rank
+        FROM rounds r
+        JOIN live_sessions s ON s.id = r.session_id
+        JOIN round_players rp ON rp.round_id = r.id
+        JOIN players p ON p.id = rp.player_id
+      )
+      SELECT sessionId, sessionName, roundId, roundNumber, roundStatus, endedAtMs,
+             rank, source, displayName, uniqueId, sourceUserId, score, correctCount
+      FROM ranked
+      WHERE rank <= 3
+      ORDER BY endedAtMs DESC, sessionName, roundNumber DESC, rank ASC
+    `).all() as RoundWinnerRow[];
   }
 
   updatePlayerDisplayName(id: string, displayName: string) {

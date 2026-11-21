@@ -21,6 +21,7 @@ import type { StreamDelaySnapshot } from './api/client';
 import { createApiNameModerationDataSource, createApiNameModerationPolicyDataSource } from './nameModerationData';
 import { HudSettingsPage } from './HudSettingsPage';
 import { ThemePage } from './ThemePage';
+import { WinnersPage } from './WinnersPage';
 import { isSetupComplete, SETUP_DONE_KEY } from './setupWizardLogic';
 import { approvedQuestionCount, buildSessionConfig, canCreateTikTokSession, displayTikTokUsername, isValidTikTokUsername, maxRoundScore } from './tiktokSessionLogic';
 import {
@@ -80,7 +81,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [needsSession, setNeedsSession] = useState(isMock);
-  const [page, setPage] = useState<'live' | 'checks' | 'obs' | 'questions' | 'moderation' | 'hud' | 'theme'>('live');
+  const [page, setPage] = useState<'live' | 'checks' | 'obs' | 'questions' | 'moderation' | 'hud' | 'theme' | 'winners'>('live');
   const [createMode, setCreateMode] = useState<'MOCK' | 'TIKTOK'>('MOCK');
   const [questionsPerRound, setQuestionsPerRound] = useState(15);
   const [speedBonusMax, setSpeedBonusMax] = useState(50);
@@ -563,6 +564,7 @@ function App() {
           <button className={page === 'moderation' ? 'is-active' : ''} type="button" aria-current={page === 'moderation' ? 'page' : undefined} onClick={() => setPage('moderation')}>Kiểm duyệt tên</button>
           <button className={page === 'hud' ? 'is-active' : ''} type="button" aria-current={page === 'hud' ? 'page' : undefined} onClick={() => setPage('hud')}>Giao diện HUD</button>
           <button className={page === 'theme' ? 'is-active' : ''} type="button" aria-current={page === 'theme' ? 'page' : undefined} onClick={() => setPage('theme')}>Giao diện / Theme</button>
+          <button className={page === 'winners' ? 'is-active' : ''} type="button" aria-current={page === 'winners' ? 'page' : undefined} onClick={() => setPage('winners')}>Người thắng</button>
         </nav>}
         <span className={`mode-pill ${isMock ? 'mode-mock' : ''}`}>{isMock ? 'MOCK · DEMO' : 'LOCAL SERVER'}</span>
         {sessionId && <span className={`socket-pill socket-${socketStatus}`}><i />{socketLabel(socketStatus)}</span>}
@@ -585,7 +587,7 @@ function App() {
       onConnectToken={connectWizardToken}
       onFinish={completeSetupWizard}
       onDismiss={() => setWizardOpen(false)}
-    /> : snapshot && sessionId ? <>
+    /> : page === 'winners' ? <WinnersPage client={client} token={token.trim()} /> : snapshot && sessionId ? <>
       <section className="session-heading">
         <div><span className="eyebrow">ĐIỀU KHIỂN PHIÊN</span><h1>{snapshot.config.mode === 'MOCK' ? 'Phiên MOCK' : 'Phiên LIVE'}</h1></div>
         <div className="session-meta"><span>ID <b>{sessionId}</b></span><span>Phiên bản <b>{snapshot.public.stateVersion}</b></span><span>Round <b>{snapshot.public.round?.roundNumber ?? '—'}</b></span><span>Điểm tối đa/vòng <b>{maxRoundScore(snapshot.config.questionsPerRound, snapshot.config.speedBonusMax, snapshot.config.scoringMode).toLocaleString('vi-VN')}</b></span></div>
