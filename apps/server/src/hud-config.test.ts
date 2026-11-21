@@ -49,7 +49,8 @@ describe('HudConfigStore', () => {
   it('trim chữ, giới hạn theo grapheme và từ chối nội dung dạng HTML', () => {
     const texts = { ...DEFAULT_HUD_CONFIG.texts, kicker: '  BÃO TỐ  ' };
     expect(HudTextsSchema.parse(texts).kicker).toBe('BÃO TỐ');
-    expect(HudTextsSchema.safeParse({ ...texts, kicker: 'x'.repeat(25) }).success).toBe(false);
+    expect(HudTextsSchema.safeParse({ ...texts, kicker: 'x'.repeat(200) }).success).toBe(true);
+    expect(HudTextsSchema.safeParse({ ...texts, kicker: 'x'.repeat(201) }).success).toBe(false);
     // Một ký tự tiếng Việt có dấu tổ hợp được đếm là một grapheme hiển thị.
     expect(HudTextsSchema.safeParse({ ...texts, kicker: 'a\u0301'.repeat(24) }).success).toBe(true);
     expect(HudTextsSchema.safeParse({ ...texts, arenaTitle: '<b>Không an toàn</b>' }).success).toBe(false);

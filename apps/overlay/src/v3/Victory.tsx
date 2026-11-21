@@ -7,7 +7,7 @@ import { publicPlayerName } from '../publicPlayerName';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle, hudImageUrl } from './hudText';
 import { ArenaLoopVideo } from './ArenaLoopVideo';
-import { themeAssetUrl, useTheme } from '../theme';
+import { themeAssetChildUrl, themeAssetUrl, useTheme } from '../theme';
 import { McKelly, sceneMcBubbleText } from './ArenaStage';
 import { getPublicThrone, orderPodiumHolderFirst, orderRankOneHolderFirst, publicThroneHolderId } from '../throne';
 
@@ -32,26 +32,33 @@ function VictoryLogo() {
   const customLogo = config.images.logo ? hudImageUrl(config.images.logo, '') : null;
   const themeLogo = themeAssetUrl(theme, 'brand.logo', '');
   const fallbackLogo = `${ASSET}/brand/logo.png`;
-  const candidates = [...new Set([customLogo, themeLogo, fallbackLogo].filter((source): source is string => !!source))];
+  const candidates = [...new Set([themeLogo, customLogo, fallbackLogo].filter((source): source is string => !!source))];
   const [failedSources, setFailedSources] = useState<string[]>([]);
   const source = candidates.find((candidate) => !failedSources.includes(candidate));
   useEffect(() => { setFailedSources([]); }, [customLogo, theme.version, themeLogo]);
   return source
-    ? <img className="v3v-event-logo" src={source} alt="Bá Vương Đại Chiến — Ai là nhà vua bá khí" draggable={false} decoding="async" data-testid="v3v-event-logo" onError={() => setFailedSources((current) => current.includes(source) ? current : [...current, source])} />
+    ? <img className="v3v-event-logo" src={source} alt={config.texts.legacyBrandTitle + ' — ' + config.texts.brandTagline} draggable={false} decoding="async" data-testid="v3v-event-logo" onError={() => setFailedSources((current) => current.includes(source) ? current : [...current, source])} />
     : <div className="v3v-logo-fallback"><BrandMark /></div>;
 }
 
 function WinnerFigure({ entry, place }: { entry: PublicLeaderboardEntry; place: 1 | 2 | 3 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const asset = entry.characterId
+  const theme = useTheme();
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const characterId = entry.characterId;
+  const themeDirectory = place === 1 ? theme.assets['throne.bankDir'] : theme.assets['chibi.podiumDir'];
+  const themedAsset = characterId && themeDirectory
+    ? themeAssetChildUrl(themeDirectory, place === 1 ? 'ngai-' + characterId + '.png' : 'top' + place + '/top' + place + '-' + characterId + '.png')
+    : '';
+  const fallbackAsset = characterId
     ? place === 1
-      ? `${ASSET}/throne/ngai-${entry.characterId}.png`
-      : `${ASSET}/chibi/dang-top2-top3/top${place}/top${place}-${entry.characterId}.png`
-    : null;
-  useEffect(() => setImageFailed(false), [asset]);
-  return asset && !imageFailed
-    ? <img src={asset} alt="" draggable={false} decoding="async" data-testid="podium-character" data-character-id={entry.characterId} data-podium-role={`top${place}`} data-asset-src={asset} onError={() => setImageFailed(true)} />
-    : <div className="v3v-chibi-placeholder" data-testid="podium-character-missing" data-podium-role={`top${place}`} aria-label={`Thiếu ảnh dáng top ${place}`} />;
+      ? ASSET + '/throne/ngai-' + characterId + '.png'
+      : ASSET + '/chibi/dang-top2-top3/top' + place + '/top' + place + '-' + characterId + '.png'
+    : '';
+  const asset = [themedAsset, fallbackAsset].find((source) => source && !failedSources.includes(source));
+  useEffect(() => setFailedSources([]), [theme.version, themedAsset, fallbackAsset]);
+  return asset
+    ? <img src={asset} alt="" draggable={false} decoding="async" data-testid="podium-character" data-character-id={entry.characterId} data-podium-role={'top' + place} data-asset-src={asset} onError={() => setFailedSources((current) => current.includes(asset) ? current : [...current, asset])} />
+    : <div className="v3v-chibi-placeholder" data-testid="podium-character-missing" data-podium-role={'top' + place} aria-label={'Thiếu ảnh dáng top ' + place} />;
 }
 
 function podiumNameSize(name: string): number {
@@ -178,7 +185,7 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
   const themeBackground = themeAssetUrl(theme, 'victory.userCover', '') || themeAssetUrl(theme, 'victory.background', '')
     || themeAssetUrl(theme, 'victory.trophyStage', '');
   const [failedSources, setFailedSources] = useState<string[]>([]);
-  const backgroundSource = [customBackground, themeBackground, VICTORY_BACKGROUND].find((source) => source && !failedSources.includes(source)) ?? VICTORY_BACKGROUND;
+  const backgroundSource = [themeBackground, customBackground, VICTORY_BACKGROUND].find((source) => source && !failedSources.includes(source)) ?? VICTORY_BACKGROUND;
   const throne = getPublicThrone(snapshot);
   const holderId = throne?.state === 'HELD' ? publicThroneHolderId(throne.holder) ?? undefined : undefined;
   const podium = positiveScorePodium(snapshot.podium);

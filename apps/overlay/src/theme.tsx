@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { THEME_DEFAULT_TOKENS, type ResolvedTheme, type ThemeAssetSlot, type ThemeFont } from '@quiz/contracts';
+import { ACHIEVEMENT_IDS, AchievementDisplaySlotSchema, THEME_DEFAULT_ACHIEVEMENTS, THEME_DEFAULT_TEXTS, THEME_DEFAULT_TOKENS, ThemeTextsSchema, type AchievementId, type AchievementThemePresentation, type ResolvedTheme, type ThemeAssetSlot, type ThemeFont } from '@quiz/contracts';
 
-const EMPTY_THEME: ResolvedTheme = { id: 'default', name: 'Giao diện mặc định', version: 0, tokens: {}, fonts: [], assets: {} };
+const EMPTY_THEME: ResolvedTheme = { id: 'default', name: 'Giao diện mặc định', version: 0, tokens: {}, fonts: [], assets: {}, texts: { ...THEME_DEFAULT_TEXTS } };
 const ThemeContext = createContext<ResolvedTheme>(EMPTY_THEME);
 
 function isFont(value: unknown): value is ThemeFont {
@@ -25,6 +25,27 @@ function parseResolvedTheme(value: unknown): ResolvedTheme | null {
     if (/^[a-z][a-z0-9-]{0,63}$/u.test(key) && typeof token === 'string' && token.length <= 200
       && !/[;{}<>]/u.test(token) && !/url\s*\(|expression/iu.test(token)) tokens[key] = token;
   }
+  const textsParsed = ThemeTextsSchema.safeParse(row.texts ?? {});
+  if (!textsParsed.success) return null;
+  const rawAchievements = typeof row.achievements === 'object' && row.achievements !== null && !Array.isArray(row.achievements)
+    ? row.achievements as Record<string, unknown> : {};
+  const achievements = Object.fromEntries(ACHIEVEMENT_IDS.map((id) => {
+    const fallback = THEME_DEFAULT_ACHIEVEMENTS[id];
+    const raw = typeof rawAchievements[id] === 'object' && rawAchievements[id] !== null && !Array.isArray(rawAchievements[id])
+      ? rawAchievements[id] as Record<string, unknown> : {};
+    const icon = typeof raw.icon === 'string' && raw.icon.startsWith('/themes/') ? raw.icon : null;
+    const slot = AchievementDisplaySlotSchema.safeParse(raw.displaySlot);
+    return [id, {
+      enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled,
+      title: typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim().slice(0, 100) : fallback.title,
+      subtitle: typeof raw.subtitle === 'string' ? raw.subtitle.trim().slice(0, 160) : fallback.subtitle,
+      icon,
+      accentColor: typeof raw.accentColor === 'string' && /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(raw.accentColor)
+        ? raw.accentColor : fallback.accentColor,
+      maxRows: Number.isInteger(raw.maxRows) && Number(raw.maxRows) >= 0 && Number(raw.maxRows) <= 5 ? Number(raw.maxRows) : fallback.maxRows,
+      displaySlot: slot.success ? slot.data : fallback.displaySlot,
+    } satisfies AchievementThemePresentation];
+  })) as Record<AchievementId, AchievementThemePresentation>;
   const assets: Partial<Record<ThemeAssetSlot, string>> = {};
   for (const [slot, url] of Object.entries(row.assets)) {
     if (typeof url === 'string' && url.startsWith('/themes/')) assets[slot as ThemeAssetSlot] = url;
@@ -36,6 +57,8 @@ function parseResolvedTheme(value: unknown): ResolvedTheme | null {
     tokens,
     fonts: row.fonts,
     assets,
+    texts: { ...THEME_DEFAULT_TEXTS, ...textsParsed.data },
+    achievements,
   };
 }
 

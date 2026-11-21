@@ -10,7 +10,8 @@ import { ConnectionLostStage, IntermissionStage, LeaderboardStage, V3_AUX_SCENES
 import { AudioFxLayer } from './v3/AudioFxLayer';
 import { overlayFitFromSearch, overlayRoleFromSearch, overlayStageScale } from './overlayRole';
 import { publicPlayerName } from './publicPlayerName';
-import { HudConfigProvider, useLiveHudConfig } from './hudConfig';
+import { HudConfigProvider, useHudConfig, useLiveHudConfig } from './hudConfig';
+import { fitHudTextStyle } from './v3/hudText';
 import { ThemeProvider } from './theme';
 import type { AudioEngineState } from './audio/audio-engine';
 import './style.css';
@@ -72,6 +73,7 @@ function Podium({ slots, tied, allowLegacyNames }: { slots: PublicPodiumSlot[]; 
 
 function SceneContent({ snapshot, remainingMs, allowLegacyNames }: { snapshot: PublicSnapshot; remainingMs: number; allowLegacyNames: boolean }) {
   const { scene } = snapshot;
+  const hud = useHudConfig();
   const [page, setPage] = useState(0);
   const entries = positiveScoreEntries(snapshot.leaderboard?.entries ?? []);
   const podium = positiveScorePodium(snapshot.podium);
@@ -85,7 +87,10 @@ function SceneContent({ snapshot, remainingMs, allowLegacyNames }: { snapshot: P
 
   if (scene === 'LOBBY') return <section className="lobby-panel">
     <div className="eyebrow">ĐẤU TRƯỜNG TRỰC TIẾP</div>
-    <h1>BÁ VƯƠNG<br /><span>ĐẠI CHIẾN</span></h1>
+    <h1 aria-label={hud.texts.legacyBrandTitle}>
+      <span style={fitHudTextStyle(hud.texts.brandTitleLine1, 1000, 94, 24)}>{hud.texts.brandTitleLine1}</span><br />
+      <span style={fitHudTextStyle(hud.texts.brandTitleLine2, 1000, 94, 24)}>{hud.texts.brandTitleLine2}</span>
+    </h1>
     <p className="instruction">Bình luận <b>A, B, C hoặc D</b><br />để trả lời câu hỏi</p>
     <div className="participant-pill"><i /> {snapshot.participantCount} chiến binh tham gia</div>
   </section>;
@@ -280,7 +285,12 @@ function App() {
     } as React.CSSProperties}>
       {V3_SCENES.has(snapshot.scene) ? <ArenaStage snapshot={snapshot} remainingMs={remainingMs} debug={debug} allowLegacyNames={allowLegacyNames} overlayRole={overlayRole} /> : V3_VICTORY_SCENES.has(snapshot.scene) ? <VictoryStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : V3_AUX_SCENES.has(snapshot.scene) ? snapshot.scene === 'INTERIM_TOP10' ? <LeaderboardStage snapshot={snapshot} allowLegacyNames={allowLegacyNames} /> : snapshot.scene === 'INTERMISSION' ? <IntermissionStage snapshot={snapshot} remainingMs={remainingMs} /> : <ConnectionLostStage snapshot={snapshot} /> : <>
         <div className="arena-glow" aria-hidden="true" />
-        <div className="brand-lockup"><span className="brand-mark">BV</span><span>BÁ VƯƠNG <b>ĐẠI CHIẾN</b></span></div>
+        <div className="brand-lockup" aria-label={hudConfig.texts.legacyBrandTitle}>
+          <span className="brand-mark">BV</span>
+          <span style={fitHudTextStyle(hudConfig.texts.brandTitleLine1 + ' ' + hudConfig.texts.brandTitleLine2, 780, 24, 12)}>
+            {hudConfig.texts.brandTitleLine1} <b>{hudConfig.texts.brandTitleLine2}</b>
+          </span>
+        </div>
         {snapshot.mc.bubble.trim() && <aside className="mc-bubble" data-testid="mc-bubble" aria-label={`MC Kelly: ${snapshot.mc.bubble}`}><small>MC KELLY · {snapshot.mc.state.toUpperCase()}</small><McBubbleText text={snapshot.mc.bubble} playerNames={snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName)} /></aside>}
         <div className="scene-content"><SceneContent snapshot={snapshot} remainingMs={remainingMs} allowLegacyNames={allowLegacyNames} /></div>
         {snapshot.question?.isDemo && <div className="demo-badge" data-testid="demo-badge">DEMO</div>}

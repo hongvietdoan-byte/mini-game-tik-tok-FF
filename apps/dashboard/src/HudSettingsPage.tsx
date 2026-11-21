@@ -10,12 +10,17 @@ import {
 import { ApiError, type DashboardClient } from './api/client';
 
 const TEXT_FIELDS: Array<{ key: keyof HudTexts; label: string; max: number; hint?: string }> = [
-  { key: 'kicker', label: 'Tên sự kiện góc trái', max: 24 },
-  { key: 'arenaTitle', label: 'Tên giải đấu', max: 28 },
-  { key: 'playingLabel', label: 'Nhãn số người chơi', max: 24 },
-  { key: 'roundLabel', label: 'Nhãn vòng', max: 24 },
-  { key: 'leaderboardTitle', label: 'Tiêu đề bảng xếp hạng', max: 28 },
-  { key: 'victoryTitle', label: 'Tiêu đề Victory', max: 28, hint: 'Để trống nếu không cần thêm tiêu đề.' },
+  { key: 'kicker', label: 'Tên sự kiện góc trái', max: 200 },
+  { key: 'arenaTitle', label: 'Tên giải đấu', max: 200 },
+  { key: 'playingLabel', label: 'Nhãn số người chơi', max: 200 },
+  { key: 'roundLabel', label: 'Nhãn vòng', max: 200 },
+  { key: 'leaderboardTitle', label: 'Tiêu đề bảng xếp hạng', max: 200 },
+  { key: 'victoryTitle', label: 'Tiêu đề Victory', max: 200, hint: 'Để trống nếu không cần thêm tiêu đề.' },
+  { key: 'brandTitleLine1', label: 'Thương hiệu · dòng 1', max: 200 },
+  { key: 'brandTitleLine2', label: 'Thương hiệu · dòng 2', max: 200 },
+  { key: 'brandTagline', label: 'Khẩu hiệu thương hiệu', max: 200 },
+  { key: 'legacyBrandTitle', label: 'Tên thương hiệu đầy đủ', max: 200 },
+  { key: 'arenaWelcome', label: 'Lời chào sảnh', max: 200 },
 ];
 
 const IMAGE_SLOTS: Array<{ slot: HudImageSlot; label: string; hint: string }> = [

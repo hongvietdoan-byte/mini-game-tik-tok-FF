@@ -1,93 +1,83 @@
 # Tạo và đổi giao diện theo sự kiện
 
-Theme là một thư mục chứa `theme.json` và các tệp hình, video, âm thanh hoặc font. Bạn có thể sao chép một theme, thay màu/chữ và thay tệp asset; không cần sửa mã nguồn. Theme chỉ thay diện mạo, không thay vị trí hoặc kích thước các khung trên màn hình.
+Theme chỉ thay diện mạo: asset ảnh/video/âm thanh, màu, font, ảnh MC/chibi, chữ thương hiệu và danh hiệu. Bố cục V3 ngày 14/11 là cố định: theme không được đổi vị trí hoặc kích thước khung. Theme không chứa bộ câu hỏi hay giọng đọc MC.
 
-## Thư mục theme gồm những gì?
+## Tạo theme mới
 
-Mỗi theme nằm trong một thư mục con của `data/themes` (hoặc thư mục đặt ở biến môi trường `QUIZ_THEMES_DIR`):
-
-```text
-data/themes/
-└── tet-2027/
-    ├── theme.json
-    ├── assets/
-    │   ├── arena/
-    │   ├── audio/
-    │   ├── brand/
-    │   ├── chibi/
-    │   ├── mc/
-    │   └── victory/
-    └── fonts/
-```
-
-Repo không chứa asset riêng của người dùng. Mỗi file tối đa 50 MB; hỗ trợ PNG, JPG/JPEG, WebP, GIF, SVG, WebM, MP4, MP3, OGG, WAV và WOFF2. Đường dẫn trong JSON dùng dấu `/`, tương đối từ thư mục theme; không dùng `..`, đường dẫn tuyệt đối hoặc symlink.
-
-## Tạo bản mặc định để làm mẫu
-
-Từ thư mục dự án, chạy:
+Từ thư mục dự án:
 
 ```powershell
 pnpm theme:export-default
+pnpm theme:new tet-2027 --name "Tết 2027"
 ```
 
-Lệnh xuất vào `data/themes/default`, lấy asset từ `QUIZ_ASSETS_DIR` hoặc `assets-local`. Bạn cũng có thể chỉ định thư mục:
+`theme:export-default` tạo `data/themes/default` từ `QUIZ_ASSETS_DIR` hoặc `assets-local`; nó không ghi đè thư mục sẵn có nếu thiếu `--force`. `theme:new` sao chép theme mặc định sang `data/themes/<id>`, cập nhật id/tên và tạo `CAN-CHUAN-BI.md` liệt kê toàn bộ slot cùng thông số. Id chỉ gồm chữ thường, số và dấu gạch ngang; thư mục đích phải chưa tồn tại.
 
-```powershell
-pnpm theme:export-default --out data/themes/default --assets assets-local
+Làm theo thứ tự:
+
+1. Chạy `pnpm theme:new <id> --name "<Tên>"`.
+2. Thay file trong `assets/` theo bảng `CAN-CHUAN-BI.md`, hoặc sửa đường dẫn tương đối trong `theme.json`.
+3. Chạy `pnpm theme:validate data/themes/<id>`.
+4. Mở Dashboard → **Giao diện / Theme** → **Tải lại danh sách theme**.
+5. Kiểm tra ảnh xem trước và chọn **Dùng theme này**. Nếu chữ HUD đã được điều hành viên sửa, Dashboard hỏi **“Dùng chữ của theme mới?”** trước khi ghi đè.
+
+Không cần khởi động lại server. Theme đang dùng được lưu lại sau khi server khởi động lại. Chỉ đổi theme khi phiên ở `IDLE` hoặc `LOBBY`; trong vòng, nút bị khóa và nêu rõ lý do. Theme lỗi hiển thị thông báo tiếng Việt và không thể áp dụng.
+
+## Cấu trúc gói
+
+```text
+data/themes/tet-2027/
+├── theme.json
+├── CAN-CHUAN-BI.md
+├── assets/
+└── fonts/
 ```
 
-Asset đang thiếu sẽ được bỏ qua và có cảnh báo. Lệnh không ghi đè thư mục đã tồn tại; chỉ dùng `--force` khi muốn cập nhật gói tại đúng đường dẫn đó. Sau khi xuất, hãy sao chép thư mục `default`, đổi tên thư mục và trường `id` (chỉ chữ thường, số, dấu gạch ngang), rồi sửa bản sao.
+Mỗi tệp tối đa 50 MB. Định dạng được hỗ trợ: PNG, JPG/JPEG, WebP, GIF, SVG, WebM, MP4, MP3, OGG, WAV và WOFF2. Đường dẫn asset/font trong JSON dùng dấu `/`, tương đối từ thư mục theme; không dùng `..`, đường dẫn tuyệt đối hoặc symlink. Slot bị bỏ trống tiếp tục dùng asset dự phòng hiện có trong ứng dụng.
 
-## Sửa màu và chữ
+## Slot asset đang dùng ở overlay
 
-Trường `tokens` là các biến CSS dạng `--theme-<tên>`. Tên token chỉ gồm chữ thường, số và dấu gạch ngang; tên có sẵn trong giao diện hiện tại:
+Kích thước dưới đây là khung CSS cố định trên stage 1080 × 1920; ảnh `contain`/`cover` có thể có vùng trong suốt hoặc bị crop bên trong khung. Không đổi khung để ép ảnh vừa.
 
-| Token | Dùng cho |
-| --- | --- |
-| `deep` | Nền xanh tím đậm |
-| `violet` | Tím nhấn |
-| `gold` | Vàng nhấn |
-| `sky` | Xanh sáng |
-| `pink` | Hồng |
-| `coral` | San hô |
-| `ink` | Chữ/nền tối |
-| `neon` | Ánh sáng xanh |
-| `paper` | Chữ sáng |
-| `font-body` | Font chữ chung, ví dụ `'Segoe UI', sans-serif` |
+| Slot | Kích thước hiển thị / định dạng | Dùng ở đâu |
+|---|---|---|
+| `arena.background` | 1080 × 1920 px; JPG/PNG/WebP | Nền sảnh và đấu trường, cover toàn stage |
+| `arena.questionBackground` | 1080 × 1920 px; JPG/PNG/WebP | Nền câu hỏi và công bố đáp án, cover toàn stage |
+| `arena.flag.0`…`arena.flag.7` | Rộng 70 px ở cờ 1/8; 58 px ở cờ 2–7, cao theo tỉ lệ ảnh; PNG/JPG/WebP/SVG | Tám cờ hai bên sân khấu |
+| `arena.loopVideoWebm`, `arena.loopVideoMp4` | Vùng 1080 × 1920 px, cover; WebM/MP4 | Video nền lặp ở câu hỏi, REVEAL và Victory; WebM được thử trước MP4 |
+| `brand.logo` | Header 255 × 210 px; header QUESTION/REVEAL 172.8 × 178.5 px; Victory 502.2 × 501.1 px; PNG/WebP/SVG | Logo header và Victory, object-fit contain |
+| `chibi.bankDir` | Khung thường 92 × 104 px; khung có ngai 70 × 78 px; PNG/JPG/WebP/GIF/SVG | Chibi ở các ghế; mỗi file con theo `characterId` |
+| `chibi.podiumDir` | Khung Top 2/3: 240 × 420 px; PNG/JPG/WebP/GIF/SVG | `top2/top2-<characterId>.png` và `top3/top3-<characterId>.png` trong Victory |
+| `throne.bankDir` | Ngai ghế 400 × 400 px; ảnh Top 1 Victory 440 × 520 px; PNG/JPG/WebP/GIF/SVG | Ngai trống và ngai của từng `characterId`; cùng slot chứa dáng Top 1 dùng trên podium Victory |
+| `mc.static` | Khung cơ sở 250 × 290 px; compact 180 × 208 px; question/reveal 280 × 390 px hoặc 205 × 158 px theo bố cục; PNG/JPG/WebP/GIF/SVG | Ảnh tĩnh dự phòng của MC |
+| `mc.sequenceDir` | Cùng khung MC theo cảnh; thư mục ảnh PNG/JPG/WebP/GIF/SVG và `manifest.json` | Pose idle/welcome/ask/react/celebrate; thiếu hoặc lỗi sequence dùng `mc.static` |
+| `victory.background` | 1080 × 1920 px; JPG/PNG/WebP | Nền Victory, cover toàn stage |
+| `victory.userCover` | 1080 × 1920 px; JPG/PNG/WebP | Nền bìa Victory; được ưu tiên hơn `victory.background` |
+| `victory.trophyStage` | 1080 × 1920 px trong lớp nền; JPG/PNG/WebP/SVG | Dự phòng nền Victory khi không có hai slot nền trên |
+| `audio.question-enter`, `audio.countdown-tick`, `audio.timeout`, `audio.correct-answer`, `audio.top10`, `audio.victory`, `audio.transition` | MP3/OGG/WAV, tối đa 50 MB | Hiệu ứng âm thanh theo sự kiện |
+| `audio.victory-music-1`, `audio.victory-music-2` | MP3/OGG/WAV, tối đa 50 MB | Nhạc vinh danh sau jingle Victory; vòng chọn luân phiên, slot 2 tùy chọn |
+| `audio.bgm-lobby`, `audio.bgm-game`, `audio.bgm` | MP3/OGG/WAV, tối đa 50 MB | Nhạc nền sảnh, trong lượt và slot dự phòng |
 
-Theme có thể thêm token mới, nhưng token chỉ có tác dụng khi giao diện sử dụng biến đó. Giá trị tối đa 200 ký tự; không nhập dấu `;`, `{`, `}`, `<`, `url(` hoặc `expression`.
+Ảnh nền phải là **lớp riêng, không có chữ hoặc khung UI**. Không dùng ảnh mẫu đã dựng cả giao diện làm nền. Logo và chibi nên có nền trong suốt. MC/chibi phải có đủ file cho các nhân vật được dùng; sequence MC phải có đủ pose trong `manifest.json`; danh sách chibi Top 2 và Top 3 phải đủ cho từng nhân vật có thể thắng.
 
-## Asset theo slot
+Màu/font khai báo trong `tokens` và `fonts`. `ThemeStore` từ chối token điều khiển vị trí/kích thước (như `width`, `height`, `top`, `left`, `x` hoặc `y`), để giữ nguyên hình học. Logo/nền riêng đã tải lên ở phần HUD vẫn là cấu hình operator; asset cùng slot trong theme được ưu tiên, rồi HUD tùy chỉnh, rồi asset dự phòng của ứng dụng.
 
-Tên slot là cố định. Nếu bỏ một slot, giao diện dùng asset mặc định của ứng dụng.
+## Chữ và danh hiệu
 
-| Slot | Mặc định hiện tại / nội dung |
-| --- | --- |
-| `arena.background` | `assets/arena/bg.jpg`, nền đấu trường dọc (khuyến nghị 1080×1920) |
-| `arena.questionBackground` | `assets/arena/bg-question-user.jpg`, nền khi hiện câu hỏi |
-| `arena.flag.0` … `arena.flag.7` | Cờ đội 1–8; mỗi slot là một ảnh riêng |
-| `arena.loopVideoWebm`, `arena.loopVideoMp4` | Video nền đấu trường lặp |
-| `brand.logo` | Logo thương hiệu |
-| `mc.static` | Ảnh tĩnh dự phòng cho MC |
-| `mc.sequenceDir` | Thư mục sequence ảnh MC; nếu thiếu sequence, ảnh tĩnh được dùng |
-| `chibi.bankDir` | Thư mục ảnh chibi theo mã nhân vật |
-| `victory.background` | `assets/victory/bg.jpg`, nền chiến thắng |
-| `victory.userCover` | `assets/victory/bg-user-cover.jpg`, nền bìa người chơi |
-| `victory.trophyStage` | Ảnh cúp/sân khấu |
-| `audio.question-enter`, `audio.countdown-tick`, `audio.timeout`, `audio.correct-answer`, `audio.top10`, `audio.victory`, `audio.transition` | Hiệu ứng âm thanh từng sự kiện |
-| `audio.bgm-lobby`, `audio.bgm-game`, `audio.bgm` | Nhạc sảnh, nhạc trong lượt và nhạc dự phòng |
-| `audio.victory-music-1`, `audio.victory-music-2` | Nhạc vinh danh phát một lần sau jingle VICTORY; slot thứ 2 là tùy chọn, vòng được chọn luân phiên theo số vòng |
+Trường tùy chọn `texts` trong `theme.json` nhận các giá trị: `brandTitleLine1`, `brandTitleLine2`, `brandTagline`, `legacyBrandTitle`, `arenaWelcome`, `kicker`, `arenaTitle`, `playingLabel`, `roundLabel`, `leaderboardTitle`, `victoryTitle`. Giới hạn 200 ký tự; các chữ khác `victoryTitle` không được để trống. Giá trị mặc định được giữ nguyên để theme mặc định không làm thay đổi bố cục hoặc cỡ chữ. Chữ dài dùng `fitHudTextStyle` trong khung cố định.
 
-Các slot file trỏ tới tệp trong `assets/`; hai slot `chibi.bankDir` và `mc.sequenceDir` trỏ tới thư mục. Font khai báo riêng trong mảng `fonts` và tệp phải là WOFF2. Với `mc.sequenceDir`, server chỉ phục vụ thêm đúng file metadata `manifest.json` trong thư mục sequence để overlay tìm các frame; các JSON khác không được phục vụ.
+Theme có thể khai báo `achievements` để thay nội dung, màu, icon và vị trí danh hiệu; cấu hình event riêng vẫn được ưu tiên hơn. Dashboard cho phép sửa danh hiệu của theme đang chọn, validate, xem trước, lưu hoặc xuất JSON. Không đổi luật/điểm khi đổi theme.
 
-## Kiểm tra và chọn theme
+## Phần cố định và lý do
 
-Trước khi dùng, chạy:
+Các khung, seat, câu hỏi/đáp án, đồng hồ, bảng xếp hạng, podium, nhãn trạng thái, biểu tượng TikTok và hiệu ứng SVG/CSS được vẽ trong ứng dụng. Chúng không có file ảnh riêng để thay; giữ cố định để bảo toàn bố cục đã duyệt và khả năng đọc nội dung. Chữ nội dung câu hỏi, bình luận TikTok và giọng đọc MC không thuộc theme vì theme chỉ là lớp diện mạo.
+
+## Ví dụ và kiểm tra
+
+Manifest mẫu: [`theme.example.json`](./theme.example.json). Kiểm tra theme trước khi dùng:
 
 ```powershell
 pnpm theme:validate data/themes/tet-2027
 ```
 
-Nếu có lỗi, lệnh sẽ chỉ rõ trường/path cần sửa bằng tiếng Việt. Khởi động lại server (hoặc dùng chức năng tải lại theme) sau khi chép theme mới. Mở Dashboard → phần **Theme** → chọn theme hợp lệ. Theme đang dùng được lưu lại khi server khởi động lại; theme thiếu hoặc hỏng sẽ tạm dùng giao diện mặc định.
-
-Ví dụ cấu trúc JSON nằm tại [`theme.example.json`](./theme.example.json).
+Lỗi sẽ nêu slot/path cần sửa bằng tiếng Việt. Theme không hợp lệ không thể áp dụng; theme hợp lệ được tải lại từ Dashboard và áp dụng trực tiếp mà không reload overlay.

@@ -9,9 +9,11 @@ export const AchievementDisplaySettingsSchema = z.object({ enabled: z.boolean() 
 export type AchievementDisplaySettings = z.infer<typeof AchievementDisplaySettingsSchema>;
 export const AchievementDisplayUpdateSchema = AchievementDisplaySettingsSchema;
 import type { AchievementId, AchievementThemePresentation } from './theme';
+import { THEME_DEFAULT_TEXTS } from './theme';
 
 export {
   THEME_ASSET_SLOTS,
+  THEME_ASSET_DIRECTORY_SLOTS,
   THEME_ALLOWED_EXTENSIONS,
   THEME_TOKEN_KEY,
   THEME_GEOMETRY_TOKEN,
@@ -24,6 +26,8 @@ export {
   AchievementIdSchema,
   AchievementDisplaySlotSchema,
   ThemeAchievementsSchema,
+  ThemeTextsSchema,
+  THEME_DEFAULT_TEXTS,
   THEME_DEFAULT_ACHIEVEMENTS,
   type AchievementId,
   type AchievementDisplaySlot,
@@ -31,6 +35,7 @@ export {
   type AchievementThemeOverride,
   type AchievementThemeOverrides,
   type ThemeAchievements,
+  type ThemeTexts,
   ThemeManifestSchema,
   ThemeRelativePathSchema,
   type ResolvedTheme,
@@ -52,7 +57,7 @@ export type HudImageSlot = z.infer<typeof HudImageSlotSchema>;
 export const HudImageIdSchema = z.string().regex(/^[a-f0-9]{64}\.(png|jpg|webp)$/, 'Id ảnh HUD không hợp lệ.');
 
 function hudText(maxGraphemes: number, allowEmpty = false) {
-  return z.string().trim().max(maxGraphemes * 16).superRefine((value, ctx) => {
+  return z.string().trim().max(3_200).superRefine((value, ctx) => {
     if (!allowEmpty && value.length === 0) {
       ctx.addIssue({ code: 'custom', message: 'Không được để trống.' });
       return;
@@ -68,12 +73,17 @@ function hudText(maxGraphemes: number, allowEmpty = false) {
 }
 
 export const HudTextsSchema = z.object({
-  kicker: hudText(24),
-  arenaTitle: hudText(28),
-  playingLabel: hudText(24),
-  roundLabel: hudText(24),
-  leaderboardTitle: hudText(28),
-  victoryTitle: hudText(28, true),
+  kicker: hudText(200),
+  arenaTitle: hudText(200),
+  playingLabel: hudText(200),
+  roundLabel: hudText(200),
+  leaderboardTitle: hudText(200),
+  victoryTitle: hudText(200, true),
+  brandTitleLine1: hudText(200).default(THEME_DEFAULT_TEXTS.brandTitleLine1),
+  brandTitleLine2: hudText(200).default(THEME_DEFAULT_TEXTS.brandTitleLine2),
+  brandTagline: hudText(200).default(THEME_DEFAULT_TEXTS.brandTagline),
+  legacyBrandTitle: hudText(200).default(THEME_DEFAULT_TEXTS.legacyBrandTitle),
+  arenaWelcome: hudText(200).default(THEME_DEFAULT_TEXTS.arenaWelcome),
 }).strict();
 export type HudTexts = z.infer<typeof HudTextsSchema>;
 
@@ -97,13 +107,18 @@ export type HudConfigUpdate = z.infer<typeof HudConfigUpdateSchema>;
 
 export const DEFAULT_HUD_CONFIG: HudConfig = {
   texts: {
-    kicker: 'STORM ARENA',
-    arenaTitle: 'ĐẤU TRƯỜNG BÃO TỐ',
-    playingLabel: 'ĐANG CHƠI',
-    roundLabel: 'VÒNG',
-    leaderboardTitle: 'BXH TRỰC TIẾP',
+    kicker: THEME_DEFAULT_TEXTS.kicker,
+    arenaTitle: THEME_DEFAULT_TEXTS.arenaTitle,
+    playingLabel: THEME_DEFAULT_TEXTS.playingLabel,
+    roundLabel: THEME_DEFAULT_TEXTS.roundLabel,
+    leaderboardTitle: THEME_DEFAULT_TEXTS.leaderboardTitle,
     // Bố cục Victory hiện không có tiêu đề riêng; để rỗng giữ nguyên mockup.
-    victoryTitle: '',
+    victoryTitle: THEME_DEFAULT_TEXTS.victoryTitle,
+    brandTitleLine1: THEME_DEFAULT_TEXTS.brandTitleLine1,
+    brandTitleLine2: THEME_DEFAULT_TEXTS.brandTitleLine2,
+    brandTagline: THEME_DEFAULT_TEXTS.brandTagline,
+    legacyBrandTitle: THEME_DEFAULT_TEXTS.legacyBrandTitle,
+    arenaWelcome: THEME_DEFAULT_TEXTS.arenaWelcome,
   },
   images: { logo: null, bgQuestion: null, bgLobby: null, bgVictory: null },
   version: 0,

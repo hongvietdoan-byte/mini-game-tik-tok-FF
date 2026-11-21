@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { DEFAULT_HUD_CONFIG, THEME_DEFAULT_TOKENS, type HudConfig, type ResolvedTheme } from '@quiz/contracts';
+import { DEFAULT_HUD_CONFIG, THEME_DEFAULT_TEXTS, THEME_DEFAULT_TOKENS, ThemeManifestSchema, type HudConfig, type ResolvedTheme, type ThemeAssetSlot } from '@quiz/contracts';
 import { getE2eAssetDirectory, getE2eTempDirectory } from './assets';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
 
@@ -31,6 +31,7 @@ mkdirSync(screenshotDirectory, { recursive: true });
 const roundCardMinimums = { title: 26, count: 44 };
 const roundCardHeight = 95;
 const localAssetDirectory = getE2eAssetDirectory();
+const c0386ReviewDirectory = resolve(process.cwd(), 'assets-local/review/c-theme-kit');
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
 const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
@@ -68,9 +69,9 @@ function watchPageErrors(page: Page) {
   return errors;
 }
 
-async function openScene(page: Page, sceneName: string, expectedScene: string) {
+async function openScene(page: Page, sceneName: string, expectedScene: string, role: 'preview' | 'program' = 'preview') {
   const errors = watchPageErrors(page);
-  const query = new URLSearchParams({ mock: sceneName });
+  const query = new URLSearchParams({ mock: sceneName, role });
   await page.goto(`/?${query.toString()}`, { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveTitle('Nhà Thông Thái Free Fire · Overlay');
   const stage = page.locator(`[data-testid="stage"][data-scene="${expectedScene}"]`);
@@ -120,6 +121,47 @@ async function captureThemeFrameStyles(stage: Locator) {
   });
 }
 
+async function captureThemeFrameBoxes(stage: Locator) {
+  const selectors = [
+    '.v3-header', '.v3-title', '.v3-logo-frame', '.v3-event-mark', '.v3-round-card',
+    '.v3-board', '.v3-question', '.v3-options', '.v3-option', '.v3-top10', '.v3-leaderboard-full',
+    '.v3-full-row', '.v3v-header', '.v3v-trophy', '.v3v-podium', '.v3v-nameplate',
+  ];
+  return stage.evaluate((root, frameSelectors) => frameSelectors.flatMap((selector) =>
+    Array.from(root.querySelectorAll<HTMLElement>(selector)).map((element, index) => {
+      const bounds = element.getBoundingClientRect();
+      return { selector: `${selector}[${index}]`, bounds: [bounds.x, bounds.y, bounds.width, bounds.height] };
+    })), selectors);
+}
+
+function readThemeFixture(id: string) {
+  const manifestPath = resolve(process.cwd(), 'fixtures/themes', id, 'theme.json');
+  return ThemeManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8')));
+}
+
+function resolvedFixtureTheme(id: string, version: number): ResolvedTheme {
+  const manifest = readThemeFixture(id);
+  const assets: Partial<Record<ThemeAssetSlot, string>> = {};
+  for (const [slot, path] of Object.entries(manifest.assets)) {
+    if (path) assets[slot as ThemeAssetSlot] = `/themes/${encodeURIComponent(id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${version}`;
+  }
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    version,
+    tokens: manifest.tokens,
+    fonts: manifest.fonts.map((font) => ({
+      family: font.family,
+      weight: font.weight,
+      style: font.style,
+      url: `/themes/${encodeURIComponent(id)}/${font.file.split('/').map(encodeURIComponent).join('/')}?v=${version}`,
+    })),
+    assets,
+    texts: { ...THEME_DEFAULT_TEXTS, ...(manifest.texts ?? {}) },
+    achievements: manifest.achievements as ResolvedTheme['achievements'],
+  };
+}
+
 test('theme mặc định giữ phong cách CSS fallback trên sáu cảnh', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
@@ -167,6 +209,157 @@ test('theme mặc định giữ phong cách CSS fallback trên sáu cảnh', asy
     expect(defaultStyles, `${entry.mock}: default tokens must preserve the fallback frame styles`).toEqual(fallbackStyles);
     await page.screenshot({ ...screenshotOptions, path: join(screenshotDirectory, `theme-default-${entry.mock}.png`) });
   }
+});
+
+test('C-0386: đổi theme trên overlay program và preview không tải lại trang, giữ nguyên bbox', async ({ page }) => {
+  await page.setViewportSize({ width: 1080, height: 1920 });
+  await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
+  await page.addInitScript(() => {
+    let state = 0x0279;
+    Math.random = () => {
+      state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+      return state / 0x1_0000_0000;
+    };
+  });
+  const defaultTheme = resolvedFixtureTheme('default', 1);
+  const sampleTheme = resolvedFixtureTheme('mau-kiem-tra', 2);
+  let activeTheme = defaultTheme;
+  let activeHud: HudConfig = structuredClone(DEFAULT_HUD_CONFIG);
+  let failBrandLogos = false;
+  const defaultAsset = '<svg xmlns="http://www.w3.org/2000/svg" width="440" height="350"><rect width="440" height="350" fill="#2D387F"/><circle cx="220" cy="170" r="120" fill="#FFCC58"/></svg>';
+  const sampleAsset = '<svg xmlns="http://www.w3.org/2000/svg" width="440" height="350"><rect width="440" height="350" fill="#32104D"/><path d="M40 300 220 30 400 300Z" fill="#53D8C7"/></svg>';
+  await page.route('**/api/theme', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeTheme) }));
+  await page.route('**/api/hud', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeHud) }));
+  await page.route('**/themes/**', (route) => {
+    const url = route.request().url();
+    if (failBrandLogos && /\/brand\/logo\.(?:svg|png)(?:\?|$)/u.test(url)) return route.fulfill({ status: 404, body: '' });
+    return route.fulfill({
+      status: 200,
+      contentType: 'image/svg+xml',
+      body: url.includes('/mau-kiem-tra/') ? sampleAsset : defaultAsset,
+    });
+  });
+  await page.route('**/assets/brand/logo.png', (route) => failBrandLogos
+    ? route.fulfill({ status: 404, body: '' })
+    : route.continue());
+  mkdirSync(c0386ReviewDirectory, { recursive: true });
+
+  const scenesToCompare = [
+    { mock: 'lobby', scene: 'LOBBY', state: 'LOBBY', name: 'lobby' },
+    { mock: 'question', scene: 'QUESTION', state: 'ACCEPTING', name: 'question' },
+    { mock: 'top3-throne-empty-short-reveal', scene: 'REVEAL', state: 'REVEAL', name: 'reveal' },
+    { mock: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD', name: 'leaderboard' },
+    { mock: 'victory', scene: 'VICTORY', state: 'VICTORY', name: 'victory' },
+  ];
+
+  for (const role of ['preview', 'program'] as const) {
+    for (const entry of scenesToCompare) {
+      activeTheme = resolvedFixtureTheme('default', 1);
+      activeHud = structuredClone(DEFAULT_HUD_CONFIG);
+      const { stage } = await openScene(page, entry.mock, entry.scene, role);
+      await expect(page.locator('html')).toHaveAttribute('data-theme-version', '1');
+      const logo = entry.name === 'victory' ? page.locator('.v3v-event-logo') : page.locator('.v3-brand-logo').first();
+      await expect(logo).toBeVisible();
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+      await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important}' });
+      const defaultBoxes = await captureThemeFrameBoxes(stage);
+      expect(defaultBoxes.length, `${entry.name} must include measurable fixed frames`).toBeGreaterThan(0);
+      let navigations = 0;
+      const countNavigation = (frame: import('@playwright/test').Frame) => { if (frame === page.mainFrame()) navigations += 1; };
+      page.on('framenavigated', countNavigation);
+      const navigationCountBeforeSwitch = navigations;
+      if (role === 'preview') {
+        await page.screenshot({ path: join(c0386ReviewDirectory, `default-before-${entry.name}.png`), animations: 'disabled' });
+      }
+
+      activeTheme = sampleTheme;
+      activeHud = {
+        ...DEFAULT_HUD_CONFIG,
+        texts: { ...DEFAULT_HUD_CONFIG.texts, ...(sampleTheme.texts ?? {}) },
+        version: 2,
+      };
+      await page.clock.fastForward(2_500);
+      await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
+      if (entry.name === 'victory') {
+        await expect(logo).toHaveAttribute('alt', `${sampleTheme.texts!.legacyBrandTitle} — ${sampleTheme.texts!.brandTagline}`);
+      } else {
+        await expect.poll(() => page.locator('.v3-title').first().getAttribute('aria-label'))
+          .toBe(`${sampleTheme.texts?.kicker} · ${sampleTheme.texts?.arenaTitle}`);
+        await expect(page.locator('.v3-title-ribbon').first()).toContainText(sampleTheme.texts!.arenaTitle);
+        await expect(logo).toHaveAttribute('alt', `${sampleTheme.texts!.legacyBrandTitle} — ${sampleTheme.texts!.brandTagline}`);
+      }
+      await expect(logo).toHaveAttribute('src', /\/themes\/mau-kiem-tra\/assets\/brand\/logo\.svg\?v=2/u);
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-gold').trim()))
+        .toBe(sampleTheme.tokens.gold);
+      if (entry.name === 'victory') await expect(page.locator('.v3v-hud-title')).toHaveText(sampleTheme.texts!.victoryTitle);
+      if (entry.name === 'reveal') await expect(page.getByTestId('question-top3')).toContainText('TỐC ĐỘ SẮC MÀU');
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+      expect(await captureThemeFrameBoxes(stage), `${entry.name}/${role}: theme must not move or resize a frame`).toEqual(defaultBoxes);
+      if (role === 'preview') await page.screenshot({ path: join(c0386ReviewDirectory, `mau-kiem-tra-${entry.name}.png`), animations: 'disabled' });
+
+      activeTheme = resolvedFixtureTheme('default', 3);
+      activeHud = structuredClone(DEFAULT_HUD_CONFIG);
+      await page.clock.fastForward(2_500);
+      await expect(page.locator('html')).toHaveAttribute('data-theme-version', '3');
+      if (entry.name !== 'victory') await expect.poll(() => page.locator('.v3-title').first().getAttribute('aria-label'))
+        .toBe(`${THEME_DEFAULT_TEXTS.kicker} · ${THEME_DEFAULT_TEXTS.arenaTitle}`);
+      await expect(logo).toHaveAttribute('src', /\/themes\/default\/assets\/brand\/logo\.png\?v=3/u);
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-gold').trim()))
+        .toBe('');
+      if (entry.name === 'victory') await expect(page.locator('.v3v-hud-title')).toHaveCount(0);
+      if (entry.name === 'reveal') await expect(page.getByTestId('question-top3')).toContainText('TOP 3 NHANH NHẤT');
+      await expect(page.locator('html')).toHaveAttribute('data-theme-version', '3');
+      expect(navigations).toBe(navigationCountBeforeSwitch);
+      expect(await captureThemeFrameBoxes(stage), `${entry.name}/${role}: restored default must keep fixed frame bounds`).toEqual(defaultBoxes);
+      if (role === 'preview') await page.screenshot({ path: join(c0386ReviewDirectory, `default-after-${entry.name}.png`), animations: 'disabled' });
+      page.off('framenavigated', countNavigation);
+    }
+  }
+
+  failBrandLogos = true;
+  activeTheme = sampleTheme;
+  activeHud = {
+    ...DEFAULT_HUD_CONFIG,
+    texts: { ...DEFAULT_HUD_CONFIG.texts, ...(sampleTheme.texts ?? {}) },
+    version: 2,
+  };
+  expect(sampleTheme.texts!.brandTitleLine1.trim().split(/\s+/u)).toHaveLength(1);
+  expect([...new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(sampleTheme.texts!.brandTitleLine2)]).toHaveLength(24);
+  expect([...new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(sampleTheme.texts!.brandTagline)]).toHaveLength(40);
+  const assertBrandTextFits = async (stage: Locator) => {
+    const brandTitle = stage.locator('.v3-title-main span');
+    const brandLine1 = brandTitle.nth(0);
+    const brandLine2 = brandTitle.nth(1);
+    const brandTagline = stage.locator('.v3-title-tagline');
+    await expect(brandLine1).toHaveText(sampleTheme.texts!.brandTitleLine1);
+    await expect(brandLine2).toHaveText(sampleTheme.texts!.brandTitleLine2);
+    await expect(brandTagline).toHaveText(sampleTheme.texts!.brandTagline);
+    const frameWidth = await stage.locator('.v3-logo-frame').evaluate((frame) => frame.clientWidth);
+    for (const [textLocator, minFontSize, maxFontSize] of [
+      [brandLine1, 8, 61],
+      [brandLine2, 8, 61],
+      [brandTagline, 5, 11],
+    ] as const) {
+      const layout = await textLocator.evaluate((element) => ({
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+        maxWidth: getComputedStyle(element).maxWidth,
+        whiteSpace: getComputedStyle(element).whiteSpace,
+      }));
+      expect(layout.maxWidth).toBe(`${frameWidth}px`);
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+      expect(layout.whiteSpace).toBe('nowrap');
+      expect(layout.fontSize).toBeGreaterThanOrEqual(minFontSize);
+      expect(layout.fontSize).toBeLessThanOrEqual(maxFontSize);
+    }
+  };
+  const { stage: longTextLobby } = await openScene(page, 'lobby', 'LOBBY', 'preview');
+  await assertBrandTextFits(longTextLobby);
+  await page.screenshot({ path: join(c0386ReviewDirectory, 'mau-kiem-tra-long-text.png'), animations: 'disabled' });
+  const { stage: longTextQuestion } = await openScene(page, 'question', 'QUESTION', 'preview');
+  await assertBrandTextFits(longTextQuestion);
+  await page.screenshot({ path: join(c0386ReviewDirectory, 'mau-kiem-tra-long-text-question.png'), animations: 'disabled' });
 });
 
 test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái ghế', async ({ page }) => {

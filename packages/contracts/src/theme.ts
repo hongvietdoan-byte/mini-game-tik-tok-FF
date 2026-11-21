@@ -5,13 +5,15 @@ export const THEME_ASSET_SLOTS = [
   'arena.flag.0', 'arena.flag.1', 'arena.flag.2', 'arena.flag.3',
   'arena.flag.4', 'arena.flag.5', 'arena.flag.6', 'arena.flag.7',
   'arena.loopVideoWebm', 'arena.loopVideoMp4', 'brand.logo',
-  'chibi.bankDir', 'mc.static', 'mc.sequenceDir',
+  'chibi.bankDir', 'chibi.podiumDir', 'mc.static', 'mc.sequenceDir', 'throne.bankDir',
   'victory.background', 'victory.userCover', 'victory.trophyStage',
   'audio.question-enter', 'audio.countdown-tick', 'audio.timeout',
   'audio.correct-answer', 'audio.top10', 'audio.victory', 'audio.transition',
   'audio.victory-music-1', 'audio.victory-music-2',
   'audio.bgm-lobby', 'audio.bgm-game', 'audio.bgm',
 ] as const;
+
+export const THEME_ASSET_DIRECTORY_SLOTS = ['chibi.bankDir', 'chibi.podiumDir', 'mc.sequenceDir', 'throne.bankDir'] as const;
 
 export const ThemeAssetSlotSchema = z.enum(THEME_ASSET_SLOTS);
 export const ThemeAssetSlot = ThemeAssetSlotSchema;
@@ -156,7 +158,9 @@ const ThemeAssetsSchema = z.object({
   'arena.flag.6': ThemeRelativePathSchema.optional(), 'arena.flag.7': ThemeRelativePathSchema.optional(),
   'arena.loopVideoWebm': ThemeRelativePathSchema.optional(), 'arena.loopVideoMp4': ThemeRelativePathSchema.optional(),
   'brand.logo': ThemeRelativePathSchema.optional(), 'chibi.bankDir': ThemeRelativePathSchema.optional(),
+  'chibi.podiumDir': ThemeRelativePathSchema.optional(),
   'mc.static': ThemeRelativePathSchema.optional(), 'mc.sequenceDir': ThemeRelativePathSchema.optional(),
+  'throne.bankDir': ThemeRelativePathSchema.optional(),
   'victory.background': ThemeRelativePathSchema.optional(), 'victory.userCover': ThemeRelativePathSchema.optional(),
   'victory.trophyStage': ThemeRelativePathSchema.optional(),
   'audio.question-enter': ThemeRelativePathSchema.optional(), 'audio.countdown-tick': ThemeRelativePathSchema.optional(),
@@ -166,6 +170,44 @@ const ThemeAssetsSchema = z.object({
   'audio.transition': ThemeRelativePathSchema.optional(), 'audio.bgm-lobby': ThemeRelativePathSchema.optional(),
   'audio.bgm-game': ThemeRelativePathSchema.optional(), 'audio.bgm': ThemeRelativePathSchema.optional(),
 }).strict();
+
+const ThemeTextValueSchema = z.string().trim().max(200).superRefine((value, ctx) => {
+  if (/[<>]/u.test(value))
+    ctx.addIssue({ code: 'custom', message: 'Chữ theme không được chứa ký tự HTML.' });
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value))
+    ctx.addIssue({ code: 'custom', message: 'Chữ theme không được chứa ký tự điều khiển.' });
+});
+const ThemeRequiredTextValueSchema = ThemeTextValueSchema.refine((value) => value.length > 0, 'Chữ theme không được để trống.');
+
+/** Chữ thương hiệu theo theme; trường vắng dùng nguyên chữ HUD mặc định. */
+export const ThemeTextsSchema = z.object({
+  brandTitleLine1: ThemeRequiredTextValueSchema.optional(),
+  brandTitleLine2: ThemeRequiredTextValueSchema.optional(),
+  brandTagline: ThemeRequiredTextValueSchema.optional(),
+  legacyBrandTitle: ThemeRequiredTextValueSchema.optional(),
+  arenaWelcome: ThemeRequiredTextValueSchema.optional(),
+  kicker: ThemeRequiredTextValueSchema.optional(),
+  arenaTitle: ThemeRequiredTextValueSchema.optional(),
+  playingLabel: ThemeRequiredTextValueSchema.optional(),
+  roundLabel: ThemeRequiredTextValueSchema.optional(),
+  leaderboardTitle: ThemeRequiredTextValueSchema.optional(),
+  victoryTitle: ThemeTextValueSchema.optional(),
+}).strict();
+export type ThemeTexts = z.infer<typeof ThemeTextsSchema>;
+
+export const THEME_DEFAULT_TEXTS: Readonly<Record<keyof ThemeTexts, string>> = {
+  brandTitleLine1: 'BÁ VƯƠNG',
+  brandTitleLine2: 'ĐẠI CHIẾN',
+  brandTagline: 'AI LÀ NHÀ VUA BÁ KHÍ',
+  legacyBrandTitle: 'BÁ VƯƠNG ĐẠI CHIẾN',
+  arenaWelcome: 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!',
+  kicker: 'STORM ARENA',
+  arenaTitle: 'ĐẤU TRƯỜNG BÃO TỐ',
+  playingLabel: 'ĐANG CHƠI',
+  roundLabel: 'VÒNG',
+  leaderboardTitle: 'BXH TRỰC TIẾP',
+  victoryTitle: '',
+};
 
 export const ThemeManifestSchema = z.object({
   schemaVersion: z.literal(1),
@@ -183,6 +225,7 @@ export const ThemeManifestSchema = z.object({
   tokenDescriptions: z.record(z.string(), z.string().trim().max(200)).optional(),
   fonts: z.array(ThemeFontSchema).max(32).default([]),
   assets: ThemeAssetsSchema.default({}),
+  texts: ThemeTextsSchema.optional(),
   achievements: ThemeAchievementsSchema.optional(),
 }).strict();
 
@@ -195,6 +238,8 @@ export type ResolvedTheme = {
   tokens: Record<string, string>;
   fonts: ThemeFont[];
   assets: Partial<Record<ThemeAssetSlot, string>>;
+  /** Complete, merged text values; old manifests resolve to THEME_DEFAULT_TEXTS. */
+  texts?: Record<keyof ThemeTexts, string>;
   /** Luôn có ở theme resolved mới; optional để tương thích client/theme fixture cũ. */
   achievements?: Record<AchievementId, AchievementThemePresentation>;
 };

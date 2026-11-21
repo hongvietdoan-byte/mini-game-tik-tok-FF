@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  DEFAULT_HUD_CONFIG,
+  THEME_DEFAULT_TEXTS,
   ACHIEVEMENT_DISPLAY_SLOTS,
   ACHIEVEMENT_IDS,
   ACHIEVEMENT_MAX_ROWS,
@@ -11,9 +13,11 @@ import {
   type ThemeAchievements,
   type ThemeAssetSlot,
   type ResolvedTheme,
+  type GameState,
+  type ThemeTexts,
 } from '@quiz/contracts';
 import type { AdminThemeItem, AdminThemesResponse, DashboardClient } from './api/client';
-import { canApplyTheme, initialThemeSelection, themeStatusLabel } from './themeManagement';
+import { canApplyTheme, initialThemeSelection, themeApplyBlockReason, themeStatusLabel } from './themeManagement';
 
 const IMAGE_PREVIEW_SLOTS: Array<{ label: string; slot: ThemeAssetSlot }> = [
   { label: 'Nền đấu trường', slot: 'arena.background' },
@@ -53,10 +57,11 @@ function achievementIconUrl(themeId: string, icon: string, version: number) {
   return `/themes/${encodeURIComponent(themeId)}/${path}?v=${version}`;
 }
 
-export function ThemePage({ client, token, isMock }: { client: DashboardClient; token: string; isMock: boolean }) {
+export function ThemePage({ client, token, isMock, gameState = null }: { client: DashboardClient; token: string; isMock: boolean; gameState?: GameState | null }) {
   const [list, setList] = useState<AdminThemesResponse | null>(null);
   const [activeTheme, setActiveTheme] = useState<ResolvedTheme | null>(null);
   const [previewTheme, setPreviewTheme] = useState<ResolvedTheme | null>(null);
+  const [themePreviews, setThemePreviews] = useState<Record<string, ResolvedTheme>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,12 +89,27 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    if (!list) return;
+    let cancelled = false;
+    const validThemes = list.themes.filter((theme) => theme.valid);
+    void Promise.all(validThemes.map(async (theme) => {
+      try { return [theme.id, await client.getResolvedTheme(token, theme.id)] as const; }
+      catch { return null; }
+    })).then((items) => {
+      if (cancelled) return;
+      setThemePreviews(Object.fromEntries(items.filter((item): item is readonly [string, ResolvedTheme] => item !== null)));
+    });
+    return () => { cancelled = true; };
+  }, [client, list, token]);
+
   const selectedTheme = useMemo(
     () => list?.themes.find((theme) => theme.id === selectedThemeId),
     [list?.themes, selectedThemeId],
   );
-  const applyEnabled = canApplyTheme(selectedTheme, list?.activeThemeId ?? null,
-    loading || operation !== null || achievementLoading || achievementOperation !== null);
+  const operationBusy = loading || operation !== null || achievementLoading || achievementOperation !== null;
+  const applyEnabled = canApplyTheme(selectedTheme, list?.activeThemeId ?? null, operationBusy, gameState);
+  const applyReason = themeApplyBlockReason(gameState);
 
   useEffect(() => {
     if (!selectedThemeId || !selectedTheme?.valid) {
@@ -148,7 +168,7 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
       setActiveTheme(themeForList(nextTheme, nextList));
       setSelectedThemeId((current) => current && nextList.themes.some((theme) => theme.id === current)
         ? current : initialThemeSelection(nextList.themes, nextList.activeThemeId));
-      setNotice('Đã quét lại thư mục theme.');
+      setNotice('Đã tải lại danh sách theme.');
     } catch (cause) {
       setError(`Quét theme thất bại: ${errorText(cause)}`);
     } finally {
@@ -156,23 +176,48 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
     }
   }
 
-  async function applyTheme() {
-    if (!selectedTheme || !canApplyTheme(selectedTheme, list?.activeThemeId ?? null, loading || operation !== null)) return;
+  async function applyTheme(themeId = selectedThemeId) {
+    const targetTheme = list?.themes.find((theme) => theme.id === themeId);
+    if (!targetTheme || !canApplyTheme(targetTheme, list?.activeThemeId ?? null, operationBusy, gameState)) return;
     setOperation('apply');
     setError('');
     setNotice('');
+    let previousHud: Awaited<ReturnType<DashboardClient['getHud']>> | null = null;
+    let hudWasUpdated = false;
+    let restoreFailed = false;
     try {
-      const result = await client.setActiveTheme(token, selectedTheme.id);
+      const resolved = themePreviews[targetTheme.id] ?? await client.getResolvedTheme(token, targetTheme.id);
+      previousHud = await client.getHud();
+      const themeTexts = { ...THEME_DEFAULT_TEXTS, ...(resolved.texts ?? {}) } as Record<keyof ThemeTexts, string>;
+      const changesText = Object.keys(themeTexts).some((key) => previousHud!.texts[key as keyof ThemeTexts] !== themeTexts[key as keyof ThemeTexts]);
+      const hasCustomizedText = Object.keys(previousHud.texts).some((key) =>
+        previousHud!.texts[key as keyof ThemeTexts] !== DEFAULT_HUD_CONFIG.texts[key as keyof ThemeTexts]);
+      const overwriteText = !changesText || !hasCustomizedText || window.confirm('Dùng chữ của theme mới?');
+      if (changesText && overwriteText) {
+        await client.saveHud(token, { texts: themeTexts, images: previousHud.images });
+        hudWasUpdated = true;
+      }
+      const result = await client.setActiveTheme(token, targetTheme.id);
       setList((current) => current ? {
         ...current,
         activeThemeId: result.activeThemeId,
         themeVersion: result.themeVersion,
         themes: current.themes.map((theme) => ({ ...theme, active: theme.id === result.activeThemeId })),
       } : current);
+      setSelectedThemeId(targetTheme.id);
       setActiveTheme(result.theme);
-      setNotice(`Đã áp dụng theme “${selectedTheme.name}”.`);
+      setNotice(hudWasUpdated
+        ? 'Đã áp dụng theme “' + targetTheme.name + '” và cập nhật chữ tiêu đề.'
+        : 'Đã áp dụng theme “' + targetTheme.name + '”.' + (changesText ? ' Giữ nguyên chữ HUD đã tùy chỉnh.' : ''));
     } catch (cause) {
-      setError(`Áp dụng theme thất bại: ${errorText(cause)}`);
+      if (hudWasUpdated && previousHud) {
+        try { await client.saveHud(token, { texts: previousHud.texts, images: previousHud.images }); }
+        catch {
+          restoreFailed = true;
+          setError('Không áp dụng được theme và cũng không khôi phục được chữ HUD; hãy kiểm tra trang HUD.');
+        }
+      }
+      if (!restoreFailed) setError('Áp dụng theme thất bại: ' + errorText(cause));
     } finally {
       setOperation(null);
     }
@@ -264,11 +309,8 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
         <p>Chọn gói màu, font và asset cho phiên; vị trí và kích thước khung luôn giữ nguyên.</p>
       </div>
       <div className="theme-actions">
-        <button className="secondary-button" type="button" onClick={() => void reloadThemes()} disabled={loading || operation !== null || achievementLoading || achievementOperation !== null}>
-          {operation === 'reload' ? 'Đang quét…' : 'Quét lại thư mục'}
-        </button>
-        <button className="primary-button" type="button" onClick={() => void applyTheme()} disabled={!applyEnabled}>
-          {operation === 'apply' ? 'Đang áp dụng…' : 'Áp dụng'}
+        <button className="secondary-button" type="button" onClick={() => void reloadThemes()} disabled={operationBusy}>
+          {operation === 'reload' ? 'Đang tải…' : 'Tải lại danh sách theme'}
         </button>
       </div>
     </div>
@@ -283,8 +325,12 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
         {list && <span className="muted">{list.themes.length} theme · v{list.themeVersion}</span>}
         </div>
         {loading && !list ? <p className="theme-empty" role="status">Đang tải danh sách theme…</p> : list?.themes.length ? <div className="theme-list" role="radiogroup" aria-label="Danh sách theme">
-          {list.themes.map((theme) => <ThemeChoice key={theme.id} theme={theme} selected={theme.id === selectedThemeId}
-            disabled={achievementLoading || achievementOperation !== null || operation !== null} onSelect={() => setSelectedThemeId(theme.id)} />)}
+          {list.themes.map((theme) => <ThemeChoice key={theme.id} theme={theme} preview={themePreviews[theme.id]}
+            selected={theme.id === selectedThemeId}
+            applyDisabled={!canApplyTheme(theme, list.activeThemeId, operationBusy, gameState)}
+            applyReason={themeApplyBlockReason(gameState)}
+            disabled={achievementLoading || achievementOperation !== null || operation !== null}
+            onSelect={() => setSelectedThemeId(theme.id)} onApply={() => void applyTheme(theme.id)} />)}
         </div> : <p className="theme-empty">Chưa có theme trong thư mục. Giao diện mặc định vẫn đang được dùng.</p>}
       </section>
 
@@ -293,10 +339,12 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
           {selectedTheme?.active && <span className="theme-badge is-active">Đang dùng</span>}
         </div>
         {selectedTheme && <p className={`theme-status ${selectedTheme.valid ? 'is-valid' : 'is-invalid'}`}>{themeStatusLabel(selectedTheme)}</p>}
-        {selectedTheme && !selectedTheme.valid && <p className="theme-preview-message">Sửa lỗi trong gói theme rồi chọn “Quét lại thư mục”. Theme lỗi không thể áp dụng.</p>}
+        {selectedTheme && !selectedTheme.valid && <p className="theme-preview-message">Sửa lỗi trong gói theme rồi chọn “Tải lại danh sách theme”. Theme lỗi không thể áp dụng.</p>}
         {selectedTheme?.valid && previewLoading && <p className="theme-preview-message" role="status">Đang tải bản xem thử…</p>}
         {selectedTheme?.valid && !previewLoading && !previewTheme && <p className="theme-preview-message" role="status">Chưa có dữ liệu xem thử cho theme này.</p>}
         {previewTheme && <>
+          <ThemeComposite theme={previewTheme} large />
+          {applyReason && <p className="theme-apply-reason" role="note">{applyReason}</p>}
           <div className="theme-token-section"><h3>Màu và token</h3>
             {Object.keys(previewTheme.tokens).length ? <div className="theme-token-list">
               {Object.entries(previewTheme.tokens).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => <div className="theme-token-row" key={key}>
@@ -385,13 +433,40 @@ export function ThemePage({ client, token, isMock }: { client: DashboardClient; 
   </section>;
 }
 
-function ThemeChoice({ theme, selected, disabled, onSelect }: { theme: AdminThemeItem; selected: boolean; disabled: boolean; onSelect: () => void }) {
-  return <button className={`theme-choice ${selected ? 'is-selected' : ''} ${!theme.valid ? 'has-error' : ''}`} type="button" role="radio" aria-checked={selected} disabled={disabled} onClick={onSelect}>
-    <span className="theme-choice-copy"><b>{theme.name}</b><small><code>{theme.id}</code></small></span>
-    <span className={`theme-badge ${theme.valid ? 'is-valid' : 'is-invalid'}`}>{theme.valid ? 'Hợp lệ' : 'Lỗi'}</span>
-    {theme.active && <span className="theme-badge is-active">Đang dùng</span>}
-    {!theme.valid && <span className="theme-choice-error">{theme.error || 'Gói theme không hợp lệ.'}</span>}
-  </button>;
+function ThemeChoice({ theme, preview, selected, disabled, applyDisabled, applyReason, onSelect, onApply }: {
+  theme: AdminThemeItem;
+  preview?: ResolvedTheme;
+  selected: boolean;
+  disabled: boolean;
+  applyDisabled: boolean;
+  applyReason: string;
+  onSelect: () => void;
+  onApply: () => void;
+}) {
+  return <article className={`theme-choice ${selected ? 'is-selected' : ''} ${!theme.valid ? 'has-error' : ''}`} data-testid={`theme-choice-${theme.id}`}>
+    <button className="theme-choice-select" type="button" role="radio" aria-checked={selected} disabled={disabled} onClick={onSelect}>
+      <span className="theme-choice-copy"><b>{theme.name}</b><small><code>{theme.id}</code></small></span>
+      <span className={`theme-badge ${theme.valid ? 'is-valid' : 'is-invalid'}`}>{theme.valid ? 'Hợp lệ' : 'Lỗi'}</span>
+      {theme.active && <span className="theme-badge is-active">Đang dùng</span>}
+      {!theme.valid && <span className="theme-choice-error">{theme.error || 'Gói theme không hợp lệ.'}</span>}
+    </button>
+    {preview ? <ThemeComposite theme={preview} /> : <div className="theme-composite theme-composite-empty" aria-label="Chưa có ảnh xem trước"><span>Chưa có ảnh xem trước</span></div>}
+    <button className="primary-button theme-apply-button" type="button" disabled={!theme.valid || applyDisabled || disabled}
+      title={applyReason || undefined} onClick={onApply}>
+      {theme.active ? 'Đang dùng' : 'Dùng theme này'}
+    </button>
+    {applyReason && <small className="theme-apply-reason">{applyReason}</small>}
+  </article>;
+}
+
+function ThemeComposite({ theme, large = false }: { theme: ResolvedTheme; large?: boolean }) {
+  const background = theme.assets['arena.background'] ?? theme.assets['victory.userCover'] ?? theme.assets['arena.questionBackground'];
+  const logo = theme.assets['brand.logo'];
+  return <div className={`theme-composite ${large ? 'is-large' : ''}`} data-testid={large ? 'theme-composite-preview' : undefined}>
+    {background ? <img className="theme-composite-background" src={background} alt="" loading="lazy" /> : <div className="theme-composite-background is-empty" />}
+    {logo ? <img className="theme-composite-logo" src={logo} alt={theme.name + ' · logo'} loading="lazy" /> : <span className="theme-composite-logo-fallback">{theme.name}</span>}
+    <span className="theme-composite-label">{theme.name}</span>
+  </div>;
 }
 
 function ThemeImage({ label, slot, src }: { label: string; slot: ThemeAssetSlot; src?: string }) {

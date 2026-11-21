@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot, QuestionTop3View } from '@quiz/contracts';
+import { THEME_DEFAULT_ACHIEVEMENTS, THEME_DEFAULT_TEXTS, type AudienceSeatView, type PublicLeaderboardEntry, type PublicSnapshot, type QuestionTop3View } from '@quiz/contracts';
 import { positiveScoreEntries } from '../overlayLogic';
 import { answerPercentages, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText, wrapPromptToLines } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
@@ -192,11 +192,16 @@ function Top3Name({ name }: { name: string }) {
 }
 
 function QuestionTop3({ ranking }: { ranking: QuestionTop3View }) {
+  const theme = useTheme();
   const presentation = questionTop3Presentation(ranking);
+  const configuredTitle = theme.achievements?.FASTEST_CORRECT.title;
+  const title = configuredTitle && configuredTitle !== THEME_DEFAULT_ACHIEVEMENTS.FASTEST_CORRECT.title
+    ? configuredTitle
+    : 'TOP 3 NHANH NHẤT';
   const hasLongName = presentation.entries.some((entry) =>
     Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(entry.safeDisplayName)).length > 12);
   return <div className={'v3-question-top3' + (hasLongName ? ' has-long-name' : '')} data-testid="question-top3" data-empty={presentation.empty}>
-    <strong className="v3-question-top3-title">TOP 3 NHANH NHẤT</strong>
+    <strong className="v3-question-top3-title">{title}</strong>
     {presentation.empty
       ? <p className="v3-question-top3-empty">Chưa có người trả lời đúng</p>
       : <div className="v3-question-top3-rows" data-testid="top3-rows">
@@ -506,11 +511,12 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
   );
 }
 
-export function McBubbleText({ text, playerNames = [], as = 'span', highlight = false }: {
+export function McBubbleText({ text, playerNames = [], as = 'span', highlight = false, style }: {
   text: string;
   playerNames?: readonly string[];
   as?: 'p' | 'span';
   highlight?: boolean;
+  style?: React.CSSProperties;
 }) {
   const textElement = useRef<HTMLElement | null>(null);
   const namesKey = playerNames.join('\u0000');
@@ -546,7 +552,7 @@ export function McBubbleText({ text, playerNames = [], as = 'span', highlight = 
       : <React.Fragment key={index}>{part.text}</React.Fragment>)
     : formatted;
   const setElement = (element: HTMLElement | null) => { textElement.current = element; };
-  return as === 'p' ? <p ref={setElement}>{content}</p> : <span ref={setElement}>{content}</span>;
+  return as === 'p' ? <p ref={setElement} style={style}>{content}</p> : <span ref={setElement} style={style}>{content}</span>;
 }
 
 const questionCallToAction = /(?:comment|bình luận)\s+A\s*,\s*B\s*,\s*C\s+hoặc\s+D/iu;
@@ -562,7 +568,7 @@ export function sceneMcBubbleText(snapshot: PublicSnapshot, text: string): strin
   return text;
 }
 
-export function McKelly({ snapshot, bubbleOverride, fastest, questionTop3, fastestVariant, hideBubble = false, throneLayout = false }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; questionTop3?: QuestionTop3View | null; fastestVariant?: 'a' | 'b'; hideBubble?: boolean; throneLayout?: boolean }) {
+export function McKelly({ snapshot, bubbleOverride, fastest, questionTop3, fastestVariant, hideBubble = false, throneLayout = false, fitBubble = false }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; questionTop3?: QuestionTop3View | null; fastestVariant?: 'a' | 'b'; hideBubble?: boolean; throneLayout?: boolean; fitBubble?: boolean }) {
   const playerNames = snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName) ?? [];
   const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
@@ -591,7 +597,7 @@ export function McKelly({ snapshot, bubbleOverride, fastest, questionTop3, faste
             : <b className="v3-fastest-name">{fastest.safeDisplayName}</b>}
           <span>{fastestSeconds(fastest.responseMs)} giây</span>
         </div> :
-        <McBubbleText as="p" text={bubble} playerNames={playerNames} highlight />}
+        <McBubbleText as="p" text={bubble} playerNames={playerNames} highlight style={fitBubble ? fitHudTextStyle(bubble, 520, 24, 12) : undefined} />}
       </div>}
     </section>
   );
@@ -622,12 +628,13 @@ function audiencePosition(seat: AudienceSeatView, compactQuestion: boolean, user
 }
 
 function ThronePanel({ throne }: { throne: PublicThrone }) {
-  const [imageFailed, setImageFailed] = useState(false);
   const [changing, setChanging] = useState(false);
+  const [failedSources, setFailedSources] = useState<string[]>([]);
   const previousHolder = useRef<string | null>(null);
+  const theme = useTheme();
   const holderId = throne.state === 'HELD' ? publicThroneHolderId(throne.holder) : null;
   useEffect(() => {
-    setImageFailed(false);
+    setFailedSources([]);
     if (!holderId) {
       previousHolder.current = null;
       setChanging(false);
@@ -639,15 +646,17 @@ function ThronePanel({ throne }: { throne: PublicThrone }) {
     setChanging(true);
     const timer = window.setTimeout(() => setChanging(false), 850);
     return () => window.clearTimeout(timer);
-  }, [holderId]);
+  }, [holderId, theme.version]);
 
   const holder = throne.state === 'HELD' ? throne.holder : null;
-  const image = holder ? `${ASSET_BASE}/throne/ngai-${holder.characterId}.png` : `${ASSET_BASE}/throne/ngai-trong.png`;
-  useEffect(() => setImageFailed(false), [image]);
+  const bank = theme.assets['throne.bankDir'];
+  const themedImage = bank ? themeAssetChildUrl(bank, holder ? 'ngai-' + holder.characterId + '.png' : 'ngai-trong.png') : '';
+  const fallbackImage = holder ? ASSET_BASE + '/throne/ngai-' + holder.characterId + '.png' : ASSET_BASE + '/throne/ngai-trong.png';
+  const image = [themedImage, fallbackImage].find((source) => source && !failedSources.includes(source));
   return <section className={`v3-throne v3-throne-${throne.state.toLowerCase()}${changing ? ' is-changing' : ''}`} data-testid="throne-panel" data-throne-state={throne.state} data-holder-id={holderId ?? ''} data-score={holder?.score ?? ''} data-visible-art="372,837,706,1176" aria-label={holder ? `Ngai vàng, ${holder.safeDisplayName}, ${holder.score.toLocaleString('vi-VN')} điểm` : throne.state === 'LOCKED' ? 'Ngai vàng đang khoá' : 'Ngai vàng đang trống'}>
     <div className="v3-throne-art" aria-hidden="true">
-      {!imageFailed
-        ? <img src={image} alt="" draggable={false} decoding="async" data-testid="throne-art" onError={() => setImageFailed(true)} />
+      {image
+        ? <img src={image} alt="" draggable={false} decoding="async" data-testid="throne-art" onError={() => setFailedSources((current) => current.includes(image) ? current : [...current, image])} />
         : <svg className="v3-throne-emblem" viewBox="0 0 800 800" aria-label="Ngai vàng trống">
             <path d="M64 744V80h146v270h380V80h146v664M64 744h672M210 350v220h380V350M280 465h240v190H280z" />
             <path d="m64 80 73 100 73-100m380 0 73 100 73-100" />
@@ -817,8 +826,11 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
   const questionBubbleSource = snapshot.scene === 'LOBBY'
-    ? (voiceBubble?.text ?? snapshot.mcChatBubble?.text ?? snapshot.lobbyMessage ?? (throne ? 'Vào sảnh nhé!' : 'CHÀO MỪNG ĐẾN VỚI\nĐẤU TRƯỜNG BÃO TỐ!'))
+    ? (voiceBubble?.text ?? snapshot.mcChatBubble?.text ?? snapshot.lobbyMessage ?? (throne ? 'Vào sảnh nhé!' : config.texts.arenaWelcome))
     : questionBackground ? (voiceBubble?.text ?? snapshot.mcChatBubble?.text ?? snapshot.mc.bubble) : undefined;
+  const fitLobbyWelcome = snapshot.scene === 'LOBBY'
+    && questionBubbleSource === config.texts.arenaWelcome
+    && config.texts.arenaWelcome !== THEME_DEFAULT_TEXTS.arenaWelcome;
   const questionBubble = questionBubbleSource !== undefined && throne ? throneMcBubbleText(questionBubbleSource) : questionBubbleSource;
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
@@ -924,7 +936,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
       <BrandHeader snapshot={snapshot} />
       <Top10 entries={orderRankOneHolderFirst(positiveScoreEntries(snapshot.leaderboard?.entries ?? []), holderId)} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} overlayRole={overlayRole} />
-      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={questionTop3 ? null : fastest} questionTop3={questionTop3} fastestVariant={fastestVariant} throneLayout={!!throne} />
+      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={questionTop3 ? null : fastest} questionTop3={questionTop3} fastestVariant={fastestVariant} throneLayout={!!throne} fitBubble={fitLobbyWelcome} />
       {throne && questionBackground && <ThronePanel throne={throne} />}
       <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} hasThrone={!!throne} />
     </div>
