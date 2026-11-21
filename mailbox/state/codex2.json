@@ -1,7 +1,7 @@
 {
   "role": "codex2",
-  "last_read": 375,
-  "heartbeat": "2026-11-21T06:59:04+07:00",
+  "last_read": 378,
+  "heartbeat": "2026-11-21T08:34:55+07:00",
   "state": "working",
   "task": "C-0378",
   "note": "Đã ACK; tạo worktree riêng, đang kiểm tra render và E2E của bong bóng MC",
