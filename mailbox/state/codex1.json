@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 390,
-  "heartbeat": "2026-11-22T00:26:08+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-22T00:26:31+07:00",
+  "state": "waiting",
   "task": "C-0382",
-  "note": "ACK đã gửi; worktree codex1/c-sau-live-server tạo từ origin/main mới nhất, bắt đầu rà A–E theo thứ tự.",
+  "note": "Đã hoàn tất và push nhánh; report X-0640 đã gửi; hộp thư codex1 không còn thư chưa xử lý, chờ task tiếp theo",
   "done": []
 }
