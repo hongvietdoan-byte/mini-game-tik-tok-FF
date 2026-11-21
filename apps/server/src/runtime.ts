@@ -740,6 +740,8 @@ export class SessionRuntime {
             this.audienceChanged = this.audience.reorderByRank(scores) || this.audienceChanged;
           }
           if (e.to === 'LOBBY') {
+            this.throne = { unlocked: false, holder: null, correctElapsedMs: new Map() };
+            this.throneStreaks.clear();
             this.audience.openLobby();
             this.lobbyOpenedAtMs = now;
             this.lobbyCountdownEndsAtMs = null;
@@ -3179,6 +3181,7 @@ export class SessionRuntime {
       round: e.round
         ? { roundNumber: e.round.roundNumber, questionIndex: e.round.questionIndex, questionCount: e.round.questionInstanceIds.length }
         : null,
+      ...(e.state === 'LOBBY' ? { lobbyRoundNumber: this.store.nextRoundNumber(this.id) } : {}),
       // PublicQuestion dựng tường minh: KHÔNG có correctOptionId / originalOptionId.
       question: showQuestion
         ? {
