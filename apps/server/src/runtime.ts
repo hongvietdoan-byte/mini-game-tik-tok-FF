@@ -1188,13 +1188,14 @@ export class SessionRuntime {
 
   private mcChatSafetyFailure(text: string): { code: string; message: string } | null {
     const spoken = this.deps.mcVoice?.service.prepareSynthesisText(text) ?? text;
-    if (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(spoken)) {
-      this.telemetry('UNSAFE_PLAYER_IDENTITY', 'OPERATOR_CHAT');
-      return { code: 'MC_CHAT_UNSAFE_PLAYER_IDENTITY', message: 'Câu MC chứa tên hoặc ID người chơi nên đã bị từ chối.' };
-    }
     const filter = this.deps.nameFilter;
     if (filter) {
-      const matches = [text, spoken].flatMap((value) => filter.findTextMatches(value));
+      const matches = [text, spoken].flatMap((value) => filter.findTextMatches(value)).filter((match) => {
+        const termHasVietnameseAccent = /\p{M}/u.test(match.term.normalize('NFD'));
+        if (!termHasVietnameseAccent) return true;
+        const foldPunctuation = (value: string) => value.normalize('NFD').toLocaleLowerCase('vi').replace(/[^\p{L}\p{M}]/gu, '');
+        return foldPunctuation(match.term) === foldPunctuation(match.matchedText);
+      });
       const blockedTerms = [...new Set(matches.map((match) => match.matchedText))];
       if (blockedTerms.length) {
         return {
@@ -1593,6 +1594,11 @@ export class SessionRuntime {
     const parsed = McVoiceEventSchema.safeParse(event);
     if (!this.voiceEnabled() || !parsed.success) return Promise.resolve(null);
     const speechText = this.deps.mcVoice!.service.prepareSynthesisText(text);
+    if (event.type !== 'OPERATOR_CHAT' &&
+      (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(speechText))) {
+      this.telemetry('UNSAFE_PLAYER_IDENTITY', event.type);
+      return Promise.resolve(null);
+    }
     const { service, profile } = this.deps.mcVoice!;
     const voiceSettings = mcVoiceSettingsForEvent(profile, event.type);
     const key = `${event.type}\u0000${speechText.normalize('NFC').trim().replace(/\s+/gu, ' ')}\u0000${JSON.stringify(Object.fromEntries(Object.entries(voiceSettings).sort(([a], [b]) => a.localeCompare(b))))}`;

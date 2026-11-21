@@ -43,7 +43,7 @@ async function makeRuntime(provider?: McVoiceProvider) {
 }
 
 describe('MC chat', () => {
-  it('câu đã duyệt có từ trùng tên người chơi vẫn được chuẩn bị; MC chat động vẫn bị chặn', async () => {
+  it('câu đã duyệt không đọc tên; MC chat operator được nhắc tên nhưng MC tự động vẫn giữ luật an toàn', async () => {
     const synthesize = vi.fn(async (_request: Parameters<McVoiceProvider['synthesize']>[0]) => ({ bytes: Buffer.from('approved-question-audio'), durationMs: 1_200, format: 'mp3' as const }));
     const { runtime } = await makeRuntime({ synthesize });
     Object.defineProperty(runtime, 'voiceIdentityValues', { value: () => ['Trang'] });
@@ -64,10 +64,13 @@ describe('MC chat', () => {
 
     await expect(prepareQuestionVoice(snapshot)).resolves.toMatchObject({ ok: true });
     expect(synthesize.mock.calls.some(([request]) => request.text.includes('hành trang'))).toBe(true);
-    expect(runtime.sendMcChat({ text: 'Chào Trang, chúc bạn may mắn!', speak: false })).toMatchObject({
-      status: 422, result: { code: 'MC_CHAT_UNSAFE_PLAYER_IDENTITY' },
-    });
+    expect(runtime.sendMcChat({ text: 'Chào Trang, chúc bạn may mắn!', speak: false }).status).toBe(202);
     expect(synthesize.mock.calls.some(([request]) => request.text.includes('Chào Trang'))).toBe(false);
+    synthesize.mockClear();
+    await expect((runtime as unknown as {
+      voiceAsset(event: { type: 'WELCOME'; scriptId: string }, text: string): Promise<unknown>;
+    }).voiceAsset({ type: 'WELCOME', scriptId: 'lobby-v1' }, 'Chào Trang')).resolves.toBeNull();
+    expect(synthesize).not.toHaveBeenCalled();
   });
 
   it('giữa vòng giữ câu BXH cũ; sau câu 15 phát câu kết riêng thay vì hẹn câu tiếp theo', async () => {
@@ -142,7 +145,7 @@ describe('MC chat', () => {
     expect(runtime.publicSnapshot().mcChatBubble).toBeNull();
   });
 
-  it('chỉ hiện chữ khi speak=false; chặn danh tính, từ bị name-filter đánh dấu và giới hạn hàng chờ', async () => {
+  it('chỉ hiện chữ khi speak=false; cho phép tên operator, bỏ alias không dấu và chặn nội dung có dấu', async () => {
     const { runtime, scheduler, nameFilter } = await makeRuntime();
     runtime.engine.state = 'LOBBY';
     const textOnly = runtime.sendMcChat({ text: 'Xin chào mọi người', speak: false });
@@ -151,12 +154,18 @@ describe('MC chat', () => {
     expect(runtime.publicSnapshot().mcChatBubble?.text).toBe('Xin chào mọi người');
     expect(runtime.publicSnapshot().mcVoiceCue).toBeNull();
 
-    Object.defineProperty(runtime, 'voiceIdentityValues', { value: () => ['player-0001', 'Minh Anh'] });
-    expect(runtime.sendMcChat({ text: 'Chúc Minh Anh nhé', speak: false })).toMatchObject({
-      status: 422, result: { code: 'MC_CHAT_UNSAFE_PLAYER_IDENTITY' },
-    });
+    Object.defineProperty(runtime, 'voiceIdentityValues', { value: () => ['player-0001', 'Tiên'] });
+    for (const text of [
+      'Sắp đủ ghế rùi',
+      'xe lại đi anh em',
+      'chỉ tính câu trả lời đầu tiên thui đó anh em',
+      'các bạn lớn tuổi dù sao cũng vui',
+    ]) expect(runtime.sendMcChat({ text, speak: false }).status, text).toBe(202);
     expect(runtime.sendMcChat({ text: 'Câu này địt tục quá', speak: false })).toMatchObject({
       status: 422, result: { code: 'MC_CHAT_UNSAFE_CONTENT', message: expect.stringContaining('“địt”') },
+    });
+    expect(runtime.sendMcChat({ text: 'dm', speak: false })).toMatchObject({
+      status: 422, result: { code: 'MC_CHAT_UNSAFE_CONTENT' },
     });
     nameFilter.addRule({ term: 'từ cấm operator', aliases: [], match: 'word', group: 'PROFANITY', severity: 'HIGH' });
     expect(runtime.sendMcChat({ text: 'Câu chúc mừng này có từ cấm operator ở cuối', speak: false })).toMatchObject({
