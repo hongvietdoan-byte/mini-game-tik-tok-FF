@@ -4,6 +4,7 @@
 
 ## Mới nhất 21/11 ~17:00
 - Main `6aead045`: gộp C-0378/C-0379/C-0381 (Codex 2, người dùng duyệt ảnh): khung MC REVEAL/LEADERBOARD giữ x 740→998 không đè ngai; Top 3 nhanh nhất mỗi câu (`questionTop3`) chữ nhỏ 20→15 px; ảnh MC hết hở với khung tên (chỉ nới CSS `.v3-mc-figure`). Checkout chính đã ff + `web_build.py ensure`.
+- 21/11 ~17:30 main `dfe79963`: cửa sổ overlay program mặc định `contain` (màn 2560×1440 không chứa nổi 1080×1920, `cover` cắt mất phần dưới); `?fit=cover` vẫn dùng được. Mock 15 câu × 400 người: ngai đổi chủ 6 lần đúng (trùng nhân vật là do luật gán ngẫu nhiên sau 62 người). Game đã mở lại 17:31, preflight build PASS.
 - Test chập chờn mới gặp: `c0319-hud-tall.spec.ts:206` (lượt placeholder, chạy lại 3/3 đạt), `mc-chat` race QUEUED/GENERATING.
 - Người dùng 21/11: luôn chọn cách sửa đơn giản nhất (memory `simplest-fix-first`).
 
