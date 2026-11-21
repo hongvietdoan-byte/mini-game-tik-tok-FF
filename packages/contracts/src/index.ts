@@ -1141,9 +1141,13 @@ export type PublicSnapshot = {
   mode: LiveSource;
   timer: TimerView | null;
   round: { roundNumber: number; questionIndex: number; questionCount: number } | null;
+  /** Vòng kế tiếp ở sảnh; vắng khi đang ở trong vòng. */
+  lobbyRoundNumber?: number;
   question: PublicQuestion | null;
   answerCount: number;
   participantCount: number;
+  /** Số người đã trả lời trong tối đa ba câu gần nhất, hoặc số ghế đang có người ở sảnh. */
+  playingCount?: number;
   /** Present only while publishing a question result or its following leaderboard. */
   fastestCorrectAnswer: FastestCorrectAnswer | null;
   /** Tối đa ba đáp án đúng nhanh nhất, chỉ hiện ở REVEAL/LEADERBOARD của câu. */

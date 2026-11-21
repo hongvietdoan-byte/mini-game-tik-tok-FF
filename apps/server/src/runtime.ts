@@ -696,6 +696,7 @@ export class SessionRuntime {
           this.store.markQuestion(e.questionInstanceId, 'CLOSED', now);
           this.updateCachedQuestion(e.questionInstanceId, { status: 'CLOSED', closedAtMs: now });
           this.counts = this.store.optionCounts(e.questionInstanceId);
+          this.audience.recordClosedQuestion(this.store.answersForQuestion(e.questionInstanceId).keys());
           integrity = this.scoreRound(now, 'AFTER_QUESTION', e.questionInstanceId) ?? integrity;
           this.rememberClosedQuestionDelaySample(e.questionInstanceId);
           break;
@@ -752,7 +753,7 @@ export class SessionRuntime {
           const qi = this.engine.round?.questionIndex ?? 0;
           if (e.to === 'PREPARE' && (e.from === 'REVEAL' || e.from === 'LEADERBOARD') && every > 0 && qi > 0 && qi % every === 0) {
             const top = this.ranked.slice(0, this.config.audiencePinTop ?? 3).map((x) => x.playerId);
-            this.audience.rotateBetweenQuestions(now, top);
+            this.audience.rotateBetweenQuestions(now, top, this.throne.holder?.playerId ?? null);
           }
           break;
         }
@@ -2716,6 +2717,17 @@ export class SessionRuntime {
     return this.counts.A + this.counts.B + this.counts.C + this.counts.D;
   }
 
+  private playingCountForPublic() {
+    const round = this.engine.round;
+    if (this.engine.state === 'LOBBY' || !round) return this.audience.occupiedSeats;
+    const end = Math.min(round.questionIndex, round.questionInstanceIds.length - 1);
+    const start = Math.max(0, end - 2);
+    const players = new Set<string>();
+    for (const questionInstanceId of round.questionInstanceIds.slice(start, end + 1))
+      for (const playerId of this.store.answersForQuestion(questionInstanceId).keys()) players.add(playerId);
+    return players.size;
+  }
+
   private publicPlayerIdFor(playerId: string) {
     let publicPlayerId = this.publicPlayerIds.get(playerId);
     if (!publicPlayerId) {
@@ -3180,6 +3192,7 @@ export class SessionRuntime {
         : null,
       answerCount: showOptions ? this.answerCount() : 0,
       participantCount: e.round ? this.participants : 0,
+      playingCount: this.playingCountForPublic(),
       fastestCorrectAnswer,
       questionTop3,
       stageTop3,

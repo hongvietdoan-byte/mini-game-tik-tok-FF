@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { PublicSnapshot } from '@quiz/contracts';
+import type { PublicSnapshot, SessionConfig } from '@quiz/contracts';
 import { ManualScheduler } from '@quiz/live-adapters';
 import { boot, command, createSession, rt, runUntil, tempDbPath, type Harness } from './helpers';
 
@@ -11,8 +11,8 @@ afterEach(async () => {
   }
 });
 
-async function session(dbPath: string) {
-  const harness = await createSession(await boot({ dbPath, questions: 40 }));
+async function session(dbPath: string, config: Partial<SessionConfig> = {}) {
+  const harness = await createSession(await boot({ dbPath, questions: 40 }), config);
   open.push(harness);
   return harness;
 }
@@ -64,6 +64,39 @@ async function restart(harness: Harness, dbPath: string) {
 }
 
 describe('ngai server-side và liên kết nhân vật', () => {
+  it('thay ngai ở lượt xoay gần nhất bằng người đầu hàng chờ, không trùng ngai và ghế', async () => {
+    const harness = await session(tempDbPath(), { audienceRotateEvery: 6 });
+    await command(harness, { type: 'OPEN_LOBBY' });
+    const runtime = rt(harness);
+    for (let index = 0; index < 35; index += 1) {
+      runtime.ingest({
+        source: 'MOCK', userId: `throne-player-${index}`, displayName: `Người ${index}`,
+        text: 'Comment Free Fire', eventId: `lobby-throne-${index}`,
+      });
+    }
+    expect(runtime.publicSnapshot().audience).toMatchObject({ queued: 5, total: 35 });
+    await command(harness, { type: 'START_ROUND' });
+
+    for (let questionIndex = 0; questionIndex <= 5; questionIndex += 1)
+      await answerCurrent(harness, questionIndex);
+
+    const before = runtime.publicSnapshot();
+    expect(before.throne.state).toBe('HELD');
+    if (before.throne.state !== 'HELD') throw new Error('Ngai chưa có chủ sau câu 6');
+    const oldHolderName = before.throne.holder.safeDisplayName;
+    const oldHolderSeat = before.audience!.seats.find((seat) => seat.occupant === null)?.slotId;
+    expect(oldHolderSeat).toBeDefined();
+    expect(before.audience!.seats.filter((seat) => seat.occupant === null)).toHaveLength(1);
+
+    runUntil(harness, () => runtime.engine.state === 'PREPARE' && runtime.engine.round?.questionIndex === 6);
+    const after = runtime.publicSnapshot();
+    const names = after.audience!.seats.flatMap((seat) => seat.occupant ? [seat.occupant.safeDisplayName] : []);
+    expect(after.audience!.seats.find((seat) => seat.slotId === oldHolderSeat)?.occupant?.safeDisplayName).toBe('Người 30');
+    expect(names).not.toContain(oldHolderName);
+    expect(new Set(names).size).toBe(30);
+    expect(after.audience!.queued).toBe(0);
+  });
+
   it('giữ cùng public playerId/characterId qua Top 10, Top 3, ngai, ghế, podium và restart sau câu 7/9', async () => {
     const dbPath = tempDbPath();
     let harness = await session(dbPath);
