@@ -134,6 +134,38 @@ async function captureThemeFrameBoxes(stage: Locator) {
     })), selectors);
 }
 
+async function countChangedPixels(page: Page, before: Buffer, after: Buffer, clip: { x: number; y: number; width: number; height: number }) {
+  return page.evaluate(async ({ beforePng, afterPng, sourceClip }) => {
+    const decode = (base64: string) => new Promise<HTMLImageElement>((resolveImage, rejectImage) => {
+      const image = new Image();
+      image.onload = () => resolveImage(image);
+      image.onerror = rejectImage;
+      image.src = `data:image/png;base64,${base64}`;
+    });
+    const [beforeImage, afterImage] = await Promise.all([decode(beforePng), decode(afterPng)]);
+    const x = Math.floor(sourceClip.x);
+    const y = Math.floor(sourceClip.y);
+    const width = Math.ceil(sourceClip.x + sourceClip.width) - x;
+    const height = Math.ceil(sourceClip.y + sourceClip.height) - y;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Không tạo được canvas để so pixel ribbon.');
+    context.drawImage(beforeImage, -x, -y);
+    const beforePixels = context.getImageData(0, 0, width, height).data;
+    context.clearRect(0, 0, width, height);
+    context.drawImage(afterImage, -x, -y);
+    const afterPixels = context.getImageData(0, 0, width, height).data;
+    let changed = 0;
+    for (let index = 0; index < beforePixels.length; index += 4) {
+      if (beforePixels[index] !== afterPixels[index] || beforePixels[index + 1] !== afterPixels[index + 1] ||
+          beforePixels[index + 2] !== afterPixels[index + 2] || beforePixels[index + 3] !== afterPixels[index + 3]) changed += 1;
+    }
+    return { changed, total: width * height };
+  }, { beforePng: before.toString('base64'), afterPng: after.toString('base64'), sourceClip: clip });
+}
+
 function readThemeFixture(id: string) {
   const manifestPath = resolve(process.cwd(), 'fixtures/themes', id, 'theme.json');
   return ThemeManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8')));
@@ -254,6 +286,7 @@ test('C-0386: đổi theme trên overlay program và preview không tải lại 
 
   for (const role of ['preview', 'program'] as const) {
     for (const entry of scenesToCompare) {
+      let defaultRibbonBefore: Buffer | undefined;
       activeTheme = resolvedFixtureTheme('default', 1);
       activeHud = structuredClone(DEFAULT_HUD_CONFIG);
       const { stage } = await openScene(page, entry.mock, entry.scene, role);
@@ -269,7 +302,8 @@ test('C-0386: đổi theme trên overlay program và preview không tải lại 
       page.on('framenavigated', countNavigation);
       const navigationCountBeforeSwitch = navigations;
       if (role === 'preview') {
-        await page.screenshot({ path: join(c0386ReviewDirectory, `default-before-${entry.name}.png`), animations: 'disabled' });
+        const screenshot = await page.screenshot({ path: join(c0386ReviewDirectory, `default-before-${entry.name}.png`), animations: 'disabled' });
+        if (entry.name !== 'victory') defaultRibbonBefore = screenshot;
       }
 
       activeTheme = sampleTheme;
@@ -311,7 +345,18 @@ test('C-0386: đổi theme trên overlay program và preview không tải lại 
       await expect(page.locator('html')).toHaveAttribute('data-theme-version', '3');
       expect(navigations).toBe(navigationCountBeforeSwitch);
       expect(await captureThemeFrameBoxes(stage), `${entry.name}/${role}: restored default must keep fixed frame bounds`).toEqual(defaultBoxes);
-      if (role === 'preview') await page.screenshot({ path: join(c0386ReviewDirectory, `default-after-${entry.name}.png`), animations: 'disabled' });
+      if (role === 'preview') {
+        const screenshot = await page.screenshot({ path: join(c0386ReviewDirectory, `default-after-${entry.name}.png`), animations: 'disabled' });
+        if (['lobby', 'question', 'reveal', 'leaderboard'].includes(entry.name)) {
+          expect(defaultRibbonBefore, `${entry.name}: expected a captured default ribbon before switching themes`).toBeDefined();
+          const ribbonBounds = await page.locator('.v3-title-ribbon').first().boundingBox();
+          expect(ribbonBounds, `${entry.name}: ribbon should have measurable bounds`).not.toBeNull();
+          const diff = await countChangedPixels(page, defaultRibbonBefore!, screenshot, ribbonBounds!);
+          console.log(`C-0394 default ribbon ${entry.name}: ${diff.changed}/${diff.total} changed pixels (timer excluded).`);
+          expect(diff.changed, `${entry.name}: default ribbon pixels must match before and after theme switching`).toBe(0);
+          await expect(page.locator('.v3-title-ribbon').first()).toHaveCSS('font-size', '38px');
+        }
+      }
       page.off('framenavigated', countNavigation);
     }
   }
@@ -360,6 +405,53 @@ test('C-0386: đổi theme trên overlay program và preview không tải lại 
   const { stage: longTextQuestion } = await openScene(page, 'question', 'QUESTION', 'preview');
   await assertBrandTextFits(longTextQuestion);
   await page.screenshot({ path: join(c0386ReviewDirectory, 'mau-kiem-tra-long-text-question.png'), animations: 'disabled' });
+
+  const kickerCases = [
+    { name: 'one-word', text: 'ARENA', graphemes: 5 },
+    { name: '24-chars', text: 'A'.repeat(24), graphemes: 24 },
+    { name: '40-chars', text: 'B'.repeat(40), graphemes: 40 },
+  ];
+  const { stage: kickerStage } = await openScene(page, 'lobby', 'LOBBY', 'preview');
+  for (const entry of kickerCases) {
+    expect([...new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(entry.text)]).toHaveLength(entry.graphemes);
+    activeHud = {
+      ...activeHud,
+      version: activeHud.version + 1,
+      texts: { ...activeHud.texts, kicker: entry.text },
+    };
+    await page.clock.fastForward(2_500);
+    const mark = kickerStage.getByTestId('event-mark');
+    await expect(mark).toHaveAttribute('aria-label', entry.text);
+    const layout = await mark.evaluate((frame) => {
+      const bounds = frame.getBoundingClientRect();
+      const textRects = Array.from(frame.querySelectorAll<HTMLElement>('span, b')).flatMap((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return Array.from(range.getClientRects()).map((rect) => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }));
+      });
+      return {
+        bounds: { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom },
+        textRects,
+        lines: Array.from(frame.querySelectorAll<HTMLElement>('span, b')).map((element) => ({
+          text: element.textContent,
+          textOverflow: getComputedStyle(element).textOverflow,
+          whiteSpace: getComputedStyle(element).whiteSpace,
+        })),
+      };
+    });
+    expect(layout.textRects.length, `${entry.name}: text should render all glyph rows`).toBeGreaterThan(0);
+    for (const rect of layout.textRects) {
+      expect(rect.left, `${entry.name}: left edge stays inside kicker`).toBeGreaterThanOrEqual(layout.bounds.left);
+      expect(rect.right, `${entry.name}: right edge stays inside kicker`).toBeLessThanOrEqual(layout.bounds.right);
+      expect(rect.top, `${entry.name}: top stays inside kicker`).toBeGreaterThanOrEqual(layout.bounds.top);
+      expect(rect.bottom, `${entry.name}: bottom stays inside kicker`).toBeLessThanOrEqual(layout.bounds.bottom);
+    }
+    expect(layout.lines.every((line) => line.textOverflow === 'clip'), `${entry.name}: kicker must not add ellipses`).toBe(true);
+    if (entry.name === '40-chars') {
+      expect(layout.textRects.length).toBeGreaterThan(1);
+      await page.screenshot({ path: join(c0386ReviewDirectory, 'mau-kiem-tra-long-kicker.png'), animations: 'disabled' });
+    }
+  }
 });
 
 test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái ghế', async ({ page }) => {

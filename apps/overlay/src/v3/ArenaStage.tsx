@@ -220,13 +220,78 @@ function formatTime(ms: number) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
+function FittedKickerLine({ tag, text, baseSize, minSize = 12 }: { tag: 'span' | 'b'; text: string; baseSize: number; minSize?: number }) {
+  const ref = useRef<HTMLElement | null>(null);
+  const [style, setStyle] = useState<React.CSSProperties>({ maxWidth: '178px', textOverflow: 'clip' });
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const fit = () => {
+      const previous = {
+        fontSize: element.style.fontSize,
+        whiteSpace: element.style.whiteSpace,
+        overflow: element.style.overflow,
+        overflowWrap: element.style.overflowWrap,
+        textOverflow: element.style.textOverflow,
+      };
+      // Measure the text at its authored size first, regardless of a prior
+      // fitted state. Keep the approved default size whenever it fits.
+      element.style.fontSize = '';
+      element.style.whiteSpace = 'nowrap';
+      element.style.overflow = 'hidden';
+      element.style.overflowWrap = 'normal';
+      element.style.textOverflow = 'clip';
+      const authoredSize = Number.parseFloat(getComputedStyle(element).fontSize) || baseSize;
+      const availableWidth = Math.min(178, element.clientWidth || 178);
+      let size = authoredSize;
+      while (size > minSize && element.scrollWidth > availableWidth) {
+        size = Math.max(minSize, size - 0.5);
+        element.style.fontSize = `${size}px`;
+      }
+      const stillOverflows = element.scrollWidth > availableWidth;
+      const nextStyle: React.CSSProperties = stillOverflows
+        ? { maxWidth: '178px', fontSize: `${minSize}px`, whiteSpace: 'normal', overflowWrap: 'anywhere', overflow: 'visible', textOverflow: 'clip' }
+        : {
+            maxWidth: '178px',
+            ...(size < authoredSize ? { fontSize: `${size}px` } : {}),
+            whiteSpace: 'nowrap',
+            textOverflow: 'clip',
+          };
+
+      element.style.fontSize = previous.fontSize;
+      element.style.whiteSpace = previous.whiteSpace;
+      element.style.overflow = previous.overflow;
+      element.style.overflowWrap = previous.overflowWrap;
+      element.style.textOverflow = previous.textOverflow;
+      setStyle((current) => JSON.stringify(current) === JSON.stringify(nextStyle) ? current : nextStyle);
+    };
+
+    fit();
+    void document.fonts?.ready.then(fit);
+    const observer = new ResizeObserver(fit);
+    observer.observe(element.parentElement ?? element);
+    window.addEventListener('resize', fit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, [baseSize, minSize, text]);
+
+  const setElement = (element: HTMLElement | null) => { ref.current = element; };
+  return tag === 'span'
+    ? <span ref={setElement} title={text} style={style}>{text}</span>
+    : <b ref={setElement} title={text} style={style}>{text}</b>;
+}
+
 export function BrandEventMark() {
   const config = useHudConfig();
   const [first = '', ...rest] = config.texts.kicker.trim().split(/\s+/u);
   const second = rest.join(' ');
   return <div className="v3-event-mark" data-testid="event-mark" aria-label={config.texts.kicker}>
-    <span title={config.texts.kicker} style={fitHudTextStyle(first, 178, 31, 12)}>{first}</span>
-    {second && <b title={config.texts.kicker} style={fitHudTextStyle(second, 178, 34, 12)}>{second}</b>}
+    <FittedKickerLine tag="span" text={first} baseSize={31} />
+    {second && <FittedKickerLine tag="b" text={second} baseSize={34} />}
   </div>;
 }
 

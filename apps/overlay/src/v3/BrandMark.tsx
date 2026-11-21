@@ -39,25 +39,21 @@ export function BrandMark({ ribbon, wide = false }: { ribbon?: string; wide?: bo
     if (!element) return;
 
     const fit = () => {
-      const computed = getComputedStyle(element);
-      const maximumWidth = element.clientWidth || (wide ? 560 : 252);
-      const horizontalPadding = Number.parseFloat(computed.paddingLeft) + Number.parseFloat(computed.paddingRight);
-      const textWidth = Math.max(1, maximumWidth - horizontalPadding);
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      let size = Number.parseFloat(computed.fontSize) || (wide ? 38 : 16);
+      // Always measure from the stylesheet's original size. A previous theme may
+      // have left an inline size behind, and that must not become the next base.
+      element.style.fontSize = '';
       element.style.whiteSpace = 'nowrap';
       element.style.overflow = 'hidden';
       element.style.textOverflow = 'ellipsis';
-      const fits = (fontSize: number) => {
-        if (!context) return true;
-        context.font = `${computed.fontWeight} ${fontSize}px ${computed.fontFamily}`;
-        return context.measureText(ribbonText).width <= textWidth;
-      };
-      while (size > 9 && !fits(size)) {
+      let size = Number.parseFloat(getComputedStyle(element).fontSize) || (wide ? 38 : 16);
+
+      // scrollWidth uses the loaded browser font and letter spacing, unlike an
+      // average-glyph estimate. Keep the default typography untouched whenever
+      // the rendered text actually fits its fixed ribbon.
+      while (size > 9 && element.scrollWidth > element.clientWidth) {
         size = Math.max(9, size - 0.5);
+        element.style.fontSize = `${size}px`;
       }
-      element.style.fontSize = `${size}px`;
     };
 
     fit();
