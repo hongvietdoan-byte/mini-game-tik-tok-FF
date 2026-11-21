@@ -3,6 +3,8 @@ import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'nod
 import {
   ACHIEVEMENT_IDS,
   THEME_DEFAULT_ACHIEVEMENTS,
+  THEME_DEFAULT_TEXTS,
+  THEME_ASSET_DIRECTORY_SLOTS,
   MAX_THEME_FILE_BYTES,
   THEME_ALLOWED_EXTENSIONS,
   ThemeAchievementsSchema,
@@ -17,7 +19,7 @@ import {
   type ThemeManifest,
 } from '@quiz/contracts';
 
-const DIRECTORY_SLOTS = new Set<ThemeAssetSlot>(['chibi.bankDir', 'mc.sequenceDir']);
+const DIRECTORY_SLOTS = new Set<ThemeAssetSlot>(THEME_ASSET_DIRECTORY_SLOTS);
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.ogg', '.wav']);
 const VIDEO_EXTENSIONS = new Set(['.webm', '.mp4']);
@@ -293,6 +295,7 @@ export class ThemeStore {
     const theme = this.state.activeThemeId ? this.valid.get(this.state.activeThemeId) : undefined;
     if (!theme) return {
       id: 'default', name: 'Giao diện mặc định', version: this.state.version, tokens: {}, fonts: [], assets: {},
+      texts: { ...THEME_DEFAULT_TEXTS },
       achievements: this.mergeAchievementPresentations(undefined, eventId, () => ''),
     };
     return this.resolveTheme(theme, eventId);
@@ -348,6 +351,7 @@ export class ThemeStore {
     return {
       id: theme.id, name: theme.name, version: this.state.version, tokens: theme.manifest.tokens,
       fonts: theme.manifest.fonts.map((font) => ({ family: font.family, url: url(font.file), weight: font.weight, style: font.style })), assets,
+      texts: { ...THEME_DEFAULT_TEXTS, ...(theme.manifest.texts ?? {}) },
       achievements: this.mergeAchievementPresentations(theme, eventId, url),
     };
   }

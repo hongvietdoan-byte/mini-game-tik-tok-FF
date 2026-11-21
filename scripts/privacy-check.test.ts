@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 // @ts-expect-error Dự án tắt allowJs nên TS không nạp JSDoc của .mjs; hàm pure được định kiểu tại đây.
 import { checkFiles as untypedCheckFiles, parseExtraPatterns as untypedParseExtraPatterns, readTrackedFiles as untypedReadTrackedFiles } from './privacy-check.mjs';
 import { removeTestTempRoot, testTempRoot } from '../tests/support/tempRoot';
 
-const checkFiles: (files: { path: string; content?: string; sizeBytes?: number; isSymlink?: boolean }[], extraPatterns?: string[]) => string[] = untypedCheckFiles;
+const checkFiles: (files: { path: string; content?: string; contentHash?: string; sizeBytes?: number; isSymlink?: boolean }[], extraPatterns?: string[]) => string[] = untypedCheckFiles;
 const parseExtraPatterns: (environmentValue?: string, localFileContent?: string) => string[] = untypedParseExtraPatterns;
-const readTrackedFiles: (root: string, paths: string[], errors?: string[]) => { path: string; content?: string }[] = untypedReadTrackedFiles;
+const readTrackedFiles: (root: string, paths: string[], errors?: string[]) => { path: string; content?: string; contentHash?: string }[] = untypedReadTrackedFiles;
 
 describe('checkFiles', () => {
   it('chặn bảng tính ở mọi nơi và ảnh ngoài các thư mục cho phép', () => {
@@ -73,6 +75,31 @@ describe('checkFiles', () => {
     expect(checkFiles([
       { path: 'fixtures/assets-placeholder/chibi/new-small-image.png', sizeBytes: 12 },
     ])).toContain('fixtures/assets-placeholder/chibi/new-small-image.png: ảnh nằm ngoài thư mục được phép');
+  });
+
+  it('chỉ cho ảnh fixture theme khi byte trùng một ảnh giữ chỗ', () => {
+    const root = testTempRoot('quiz-privacy-theme-assets-');
+    const placeholderPath = 'fixtures/assets-placeholder/brand/logo.png';
+    const themePath = 'fixtures/themes/mau-kiem-tra/assets/brand/logo.png';
+    const paths = [placeholderPath, themePath];
+    const placeholderBytes = Buffer.from('placeholder fixture image');
+
+    try {
+      for (const path of paths) {
+        const absolutePath = resolve(root, path);
+        mkdirSync(dirname(absolutePath), { recursive: true });
+        writeFileSync(absolutePath, placeholderBytes);
+      }
+
+      const matchingFiles = readTrackedFiles(root, paths);
+      expect(checkFiles(matchingFiles)).toEqual([]);
+
+      writeFileSync(resolve(root, themePath), Buffer.from('different image bytes'));
+      const mismatchingFiles = readTrackedFiles(root, paths);
+      expect(checkFiles(mismatchingFiles)).toContain(`${themePath}: ảnh nằm ngoài thư mục được phép`);
+    } finally {
+      removeTestTempRoot(root);
+    }
   });
 
   it('chỉ cho phép đúng các ảnh giữ chỗ top2/top3/ngai mới của C-0339', () => {

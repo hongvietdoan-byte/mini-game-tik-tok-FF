@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="182" viewBox="0 0 440 182" role="img" aria-label="Logo placeholder Màu Kiểm Tra">
+  <rect x="4" y="4" width="432" height="174" rx="34" fill="#32104D" stroke="#FF8F3D" stroke-width="8"/>
+  <path d="M62 128 92 48l30 80m-45-25h30" fill="none" stroke="#53D8C7" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="155" y="83" fill="#FFF4D6" font-family="sans-serif" font-size="30" font-weight="800">MÀU KIỂM TRA</text>
+  <text x="155" y="122" fill="#FF8F3D" font-family="sans-serif" font-size="18">ASSET PLACEHOLDER</text>
+</svg>

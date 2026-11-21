@@ -890,8 +890,8 @@ test('Giao diện HUD đếm grapheme, lưu chữ, tải/reset ảnh và đổi 
   await expect(kicker).toHaveValue('STORM ARENA');
   await waitForPreview();
   await page.screenshot({ path: join(reviewDirectory, 'dashboard-default.png'), fullPage: true, animations: 'disabled' });
-  await kicker.fill('A'.repeat(25));
-  await expect(settings.locator('.hud-text-field').filter({ has: kicker }).locator('em')).toHaveText('Tối đa 24 ký tự hiển thị.');
+  await kicker.fill('A'.repeat(201));
+  await expect(settings.locator('.hud-text-field').filter({ has: kicker }).locator('em')).toHaveText('Tối đa 200 ký tự hiển thị.');
   await expect(settings.getByRole('button', { name: 'Lưu giao diện' })).toBeDisabled();
   await page.screenshot({ path: join(reviewDirectory, 'dashboard-edit-validation.png'), fullPage: true, animations: 'disabled' });
 
@@ -969,7 +969,7 @@ test('Theme mock có theme demo, preview token/ảnh và vô hiệu hóa theme l
   await expect(themePage.getByText('--theme-gold')).toBeVisible();
   await expect(themePage.locator('.theme-image-card img').first()).toBeVisible();
   await themePage.getByRole('radio', { name: /Gói theme lỗi/ }).click();
-  await expect(themePage.getByRole('button', { name: 'Áp dụng', exact: true })).toBeDisabled();
+  await expect(themePage.getByRole('button', { name: 'Dùng theme này', exact: true })).toBeDisabled();
   await expect(themePage).toContainText('tokens.width');
 });
 
