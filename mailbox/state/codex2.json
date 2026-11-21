@@ -1,7 +1,7 @@
 {
   "role": "codex2",
-  "last_read": 378,
-  "heartbeat": "2026-11-21T11:57:43+07:00",
+  "last_read": 380,
+  "heartbeat": "2026-11-21T14:06:55+07:00",
   "state": "working",
   "task": "C-0379",
   "note": "Đã ACK; đang tiếp tục trên worktree C-0378, kiểm tra hợp đồng Top 3 và DOM ảnh MC trước khi sửa",
