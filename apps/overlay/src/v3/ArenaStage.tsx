@@ -152,7 +152,7 @@ function Top3Name({ name }: { name: string }) {
     const fit = () => {
       let size = 20;
       element.style.fontSize = size + 'px';
-      while (size > 15 && !fits()) {
+      while (size > 12 && !fits()) {
         size -= 1;
         element.style.fontSize = size + 'px';
       }
@@ -192,7 +192,9 @@ function Top3Name({ name }: { name: string }) {
 
 function QuestionTop3({ ranking }: { ranking: QuestionTop3View }) {
   const presentation = questionTop3Presentation(ranking);
-  return <div className="v3-question-top3" data-testid="question-top3" data-empty={presentation.empty}>
+  const hasLongName = presentation.entries.some((entry) =>
+    Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(entry.safeDisplayName)).length > 12);
+  return <div className={'v3-question-top3' + (hasLongName ? ' has-long-name' : '')} data-testid="question-top3" data-empty={presentation.empty}>
     <strong className="v3-question-top3-title">TOP 3 NHANH NHẤT</strong>
     {presentation.empty
       ? <p className="v3-question-top3-empty">Chưa có người trả lời đúng</p>

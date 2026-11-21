@@ -25,6 +25,12 @@ async function readTop3Layout(page: import('@playwright/test').Page) {
       const rect = element.getBoundingClientRect();
       return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
     };
+    const textBox = (element: Element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rect = range.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+    };
     let art: ReturnType<typeof box> | null = null;
     if (artImage?.complete && artImage.naturalWidth > 0) {
       try {
@@ -63,6 +69,7 @@ async function readTop3Layout(page: import('@playwright/test').Page) {
       const lines = [...name.querySelectorAll<HTMLElement>('[data-top3-name-line]')].map((line) => ({
         text: line.innerText,
         ...box(line),
+        textBox: textBox(line),
         scrollWidth: line.scrollWidth,
         clientWidth: line.clientWidth,
         scrollHeight: line.scrollHeight,
@@ -73,12 +80,15 @@ async function readTop3Layout(page: import('@playwright/test').Page) {
         ...box(row),
         rank: row.dataset.rank,
         tied: row.dataset.tied === 'true',
+        nameBox: box(name),
         name: name.textContent ?? '',
         graphemes: Number(name.dataset.graphemes),
         nameFontSize: getComputedStyle(name).fontSize,
         nameLineCount: lines.length,
         lines,
         time: time.innerText,
+        timeTextBox: textBox(time),
+        padding: [getComputedStyle(row).paddingTop, getComputedStyle(row).paddingRight, getComputedStyle(row).paddingBottom, getComputedStyle(row).paddingLeft].map(Number.parseFloat),
         timeFontVariantNumeric: getComputedStyle(time).fontVariantNumeric,
         scrollWidth: row.scrollWidth,
         clientWidth: row.clientWidth,
@@ -157,15 +167,21 @@ for (const example of rankingCases) {
     expect(layout.empty).toBe(example.rows === 0);
     expect(layout.rows.map((row) => row.name)).toEqual(example.names);
     for (const row of layout.rows) {
-      expect(row.height).toBeCloseTo(30, 0);
+      expect(row.height).toBeCloseTo(row.nameLineCount > 1 ? 42 : 30, 0);
+      expect(row.padding).toEqual([3, 8, 3, 8]);
+      expect(row.right - row.timeTextBox.right).toBeGreaterThanOrEqual(8);
+      expect(row.nameBox.top - row.top).toBeGreaterThanOrEqual(2);
+      expect(row.bottom - row.nameBox.bottom).toBeGreaterThanOrEqual(2);
       expect(row.timeFontVariantNumeric).toContain('tabular-nums');
       expect(row.graphemes).toBe([...new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(row.name)].length);
       expect(row.nameLineCount).toBeLessThanOrEqual(2);
-      expect(Number.parseFloat(row.nameFontSize)).toBeGreaterThanOrEqual(15);
+      expect(Number.parseFloat(row.nameFontSize)).toBeGreaterThanOrEqual(12);
       expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
       expect(row.scrollHeight).toBeLessThanOrEqual(row.clientHeight);
       for (const line of row.lines) {
         expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth);
+        expect(line.textBox.top - row.top).toBeGreaterThanOrEqual(2);
+        expect(row.bottom - line.textBox.bottom).toBeGreaterThanOrEqual(2);
       }
     }
     if ((example.names as readonly string[]).includes(longName)) {
@@ -225,7 +241,7 @@ test('C-0379 long Top 3 names fit with an alternate font theme', async ({ page }
   expect(layout.rows.map((row) => row.name)).toEqual([longName, longName, longName]);
   expect(await page.locator('.v3-top3-name').first().evaluate((element) => getComputedStyle(element).fontFamily)).toContain('Georgia');
   for (const row of layout.rows) {
-    expect(Number.parseFloat(row.nameFontSize)).toBeGreaterThanOrEqual(15);
+    expect(Number.parseFloat(row.nameFontSize)).toBeGreaterThanOrEqual(12);
     expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
     expect(row.scrollHeight).toBeLessThanOrEqual(row.clientHeight);
     for (const line of row.lines) {
