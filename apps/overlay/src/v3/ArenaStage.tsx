@@ -151,8 +151,9 @@ function Top3Name({ name }: { name: string }) {
     };
     const fit = () => {
       let size = 20;
+      const minimumSize = splitAt === null && graphemes.length > 12 ? 15 : 12;
       element.style.fontSize = size + 'px';
-      while (size > 12 && !fits()) {
+      while (size > minimumSize && !fits()) {
         size -= 1;
         element.style.fontSize = size + 'px';
       }
@@ -392,6 +393,41 @@ function QuestionBoard({ snapshot, remainingMs, debug, overlayRole }: { snapshot
     observer?.observe(element);
     return () => observer?.disconnect();
   }, [isLobby, promptText]);
+
+  useLayoutEffect(() => {
+    const frame = promptRef.current;
+    const copy = frame?.querySelector<HTMLElement>('[data-testid="question-prompt-copy"]');
+    if (!frame || !copy || isLobby) return;
+
+    const centerRange = () => {
+      const rects: DOMRect[] = [];
+      const walker = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        rects.push(...[...range.getClientRects()].filter((rect) => rect.width > 0.5 && rect.height > 0.5));
+        node = walker.nextNode();
+      }
+      if (!rects.length) return;
+      const frameRect = frame.getBoundingClientRect();
+      const topGap = Math.min(...rects.map((rect) => rect.top)) - frameRect.top;
+      const bottomGap = frameRect.bottom - Math.max(...rects.map((rect) => rect.bottom));
+      const currentOffset = Number(copy.style.transform.match(/translateY\((-?[\d.]+)px\)/u)?.[1] ?? 0);
+      const offset = currentOffset + (bottomGap - topGap) / 2;
+      copy.style.transform = Math.abs(offset) > 0.25 ? `translateY(${offset}px)` : '';
+    };
+
+    centerRange();
+    const frameId = requestAnimationFrame(centerRange);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(centerRange);
+    observer?.observe(frame);
+    observer?.observe(copy);
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer?.disconnect();
+    };
+  }, [isLobby, promptFit.fontSize, promptFit.text, promptText]);
 
   return (
     <section className="v3-board" data-layer="quiz-hud">

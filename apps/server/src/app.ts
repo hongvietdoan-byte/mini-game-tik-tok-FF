@@ -347,6 +347,11 @@ export async function buildApp(opts: AppOptions): Promise<QuizApp> {
     return rt;
   }
 
+  app.get('/api/admin/winners', async (req, reply) => {
+    if (!guard(req, reply, false)) return reply;
+    return { winners: store.listRoundWinners() };
+  });
+
   app.get('/api/admin/name-filter', async (req, reply) => {
     if (!guard(req, reply, false)) return reply;
     return nameFilter.getAdminSettings();

@@ -380,6 +380,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--violet); box-sha
 .safe-values span { padding: 6px 8px; border-radius: 5px; background: rgba(255,255,255,.035); color: var(--muted); font-size: 9px; }
 .safe-values b { margin-left: 3px; color: #e7e8f1; }
 .page-content { max-width: 1120px; margin: 22px auto 0; padding: 0 24px; display: grid; gap: 14px; }
+.winners-table-wrap { overflow-x: auto; border: 1px solid rgba(176,188,230,.1); border-radius: 8px; }
+.winners-table { width: 100%; min-width: 980px; border-collapse: collapse; text-align: left; }
+.winners-table th { height: 34px; padding: 8px 9px; color: #8f96ae; background: rgba(12,15,28,.42); font-size: 8px; font-weight: 900; letter-spacing: .6px; text-transform: uppercase; white-space: nowrap; }
+.winners-table td { padding: 9px; border-top: 1px solid rgba(176,188,230,.08); color: #e7e9f3; font-size: 10px; vertical-align: middle; white-space: nowrap; }
+.winners-table tbody tr:hover { background: rgba(140,200,251,.025); }
+.winners-table td:first-child b, .winners-table td:first-child small { display: block; }
+.winners-table td:first-child small { margin-top: 4px; color: var(--muted); font-size: 8px; }
+.winners-table a { color: var(--blue); font-weight: 800; text-decoration: none; }
+.winners-table a:hover { text-decoration: underline; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .page-heading h2 { margin-top: 4px; font-size: 22px; }
 .page-heading p { margin-top: 6px; color: var(--muted); font-size: 11px; }

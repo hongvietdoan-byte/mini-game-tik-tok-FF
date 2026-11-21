@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 import { QuestionSchema, SessionConfigSchema, type LeaderboardEntry, type QuestionSnapshot } from '@quiz/contracts';
 import { computeRoundScores, createInitialState, createPrng, estimateStreamDelayMs, snapshotQuestion } from '@quiz/quiz-core';
 import { DEMO_PACK, DEMO_QUESTIONS, makeSimPlayers } from '../../../fixtures';
@@ -81,6 +82,25 @@ describe('Store: khởi tạo và câu hỏi', () => {
     const second = openStore(path);
     expect(second.raw.pragma('journal_mode', { simple: true })).toBe('wal');
     expect(second.raw.pragma('foreign_keys', { simple: true })).toBe(1);
+  });
+
+  it('nâng DB cũ thêm unique_id nullable mà giữ nguyên người chơi hiện có', () => {
+    const path = tempDbPath();
+    const before = openStore(path);
+    const legacyPlayerId = before.resolvePlayer('TIKTOK', 'legacy-user', 'Người xem cũ', 100);
+    before.close();
+
+    const legacy = new Database(path);
+    legacy.exec('ALTER TABLE players DROP COLUMN unique_id');
+    legacy.prepare('DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)').run();
+    legacy.close();
+
+    const migrated = openStore(path);
+    const columns = migrated.raw.pragma('table_info(players)') as { name: string; notnull: number }[];
+    expect(columns.find((column) => column.name === 'unique_id')).toMatchObject({ notnull: 0 });
+    expect(migrated.raw.prepare('SELECT unique_id FROM players WHERE id = ?').get(legacyPlayerId)).toEqual({ unique_id: null });
+    migrated.touchPlayer(legacyPlayerId, 'Người xem cũ', 200, 'viewers.handle');
+    expect(migrated.raw.prepare('SELECT unique_id FROM players WHERE id = ?').get(legacyPlayerId)).toEqual({ unique_id: 'viewers.handle' });
   });
 
   it('lưu bền settings JSON và cung cấp tên subtopic cho bộ chọn câu', () => {
@@ -346,6 +366,44 @@ describe('Store: người chơi và đáp án', () => {
     expect(store.resolvePlayer('MOCK', player!.userId, 'Tên hiển thị mới', 20)).toBe(mock);
     expect(store.resolvePlayer('TIKTOK', player!.userId, player!.displayName, 30)).not.toBe(mock);
     expect(store.raw.prepare('SELECT COUNT(*) AS n FROM players').get()).toMatchObject({ n: 2 });
+  });
+
+  it('cập nhật TikTok uniqueId của người chơi cũ khi tài khoản đổi handle', () => {
+    const store = openStore();
+    const playerId = store.resolvePlayer('TIKTOK', '7123', 'Rồng Lửa', 10, 'rong_lua');
+    expect(store.raw.prepare('SELECT unique_id FROM players WHERE id = ?').get(playerId)).toEqual({ unique_id: 'rong_lua' });
+    store.touchPlayer(playerId, 'Rồng Lửa', 20, 'rong_lua_moi');
+    expect(store.raw.prepare('SELECT unique_id FROM players WHERE id = ?').get(playerId)).toEqual({ unique_id: 'rong_lua_moi' });
+    store.touchPlayer(playerId, 'Rồng Lửa', 30);
+    expect(store.raw.prepare('SELECT unique_id FROM players WHERE id = ?').get(playerId)).toEqual({ unique_id: 'rong_lua_moi' });
+  });
+
+  it('liệt kê top 3 từng vòng từ mọi phiên, gồm handle hoặc mã dự phòng', () => {
+    const store = openStore();
+    store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, 100);
+    addSession(store, 'session-current', 100);
+    addRound(store, 'session-current', 'round-current', 1, 1);
+    addSession(store, 'session-old', 200);
+    addRound(store, 'session-old', 'round-old', 1, 1);
+    const addPlayer = (roundId: string, number: number, score: number, uniqueId: string | null) => {
+      const playerId = store.resolvePlayer('TIKTOK', `u${number}`, `Người ${number}`, number, uniqueId);
+      store.raw.prepare('INSERT INTO round_players (round_id, player_id, score, correct_count, streak, joined_at_ms) VALUES (?, ?, ?, ?, 0, ?)')
+        .run(roundId, playerId, score, number, number);
+    };
+    addPlayer('round-current', 1, 300, 'winner.one');
+    addPlayer('round-current', 2, 200, null);
+    addPlayer('round-current', 3, 100, 'winner.three');
+    addPlayer('round-current', 4, 50, 'not.in.top3');
+    addPlayer('round-old', 5, 500, null);
+    store.setRoundStatus('round-current', 'COMPLETED', 1_000);
+    store.setRoundStatus('round-old', 'COMPLETED', 2_000);
+
+    expect(store.listRoundWinners()).toEqual([
+      { sessionId: 'session-old', sessionName: 'Phiên session-old', roundId: 'round-old', roundNumber: 1, roundStatus: 'COMPLETED', endedAtMs: 2_000, rank: 1, source: 'TIKTOK', displayName: 'Người 5', uniqueId: null, sourceUserId: 'u5', score: 500, correctCount: 5 },
+      { sessionId: 'session-current', sessionName: 'Phiên session-current', roundId: 'round-current', roundNumber: 1, roundStatus: 'COMPLETED', endedAtMs: 1_000, rank: 1, source: 'TIKTOK', displayName: 'Người 1', uniqueId: 'winner.one', sourceUserId: 'u1', score: 300, correctCount: 1 },
+      { sessionId: 'session-current', sessionName: 'Phiên session-current', roundId: 'round-current', roundNumber: 1, roundStatus: 'COMPLETED', endedAtMs: 1_000, rank: 2, source: 'TIKTOK', displayName: 'Người 2', uniqueId: null, sourceUserId: 'u2', score: 200, correctCount: 2 },
+      { sessionId: 'session-current', sessionName: 'Phiên session-current', roundId: 'round-current', roundNumber: 1, roundStatus: 'COMPLETED', endedAtMs: 1_000, rank: 3, source: 'TIKTOK', displayName: 'Người 3', uniqueId: 'winner.three', sourceUserId: 'u3', score: 100, correctCount: 3 },
+    ]);
   });
 
   it('insertAnswer chỉ nhận đáp án đầu, đếm người tham gia và phân bố A/B/C/D', () => {

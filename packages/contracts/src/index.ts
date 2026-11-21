@@ -303,6 +303,7 @@ export const CommentEventSchema = z.object({
   source: LiveSourceSchema,
   eventId: z.string().min(1).max(200).optional(),
   userId: z.string().min(1).max(200),
+  uniqueId: z.string().trim().max(200).optional(),
   displayName: z.string().max(400),
   text: z.string().max(2000),
   receivedAtMs: z.number().finite(),

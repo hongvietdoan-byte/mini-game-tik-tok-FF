@@ -37,6 +37,9 @@ type TextMetric = {
   lineBoxOverflowPx: number;
   overflowX: string;
   overflowY: string;
+  centered?: boolean | null;
+  topGapPx?: number | null;
+  bottomGapPx?: number | null;
 };
 type GlyphAudit = {
   questionId: string;
@@ -146,6 +149,7 @@ export function proposeShortenedPrompt(prompt: string): string {
 
 function rowGroups(item: QuestionResult): string[] {
   const groups: string[] = [];
+  if (item.metrics.question.centered === false) groups.push('Prompt chưa căn giữa');
   if ([item.metrics.question, item.metrics.reveal].some(hasClamp)) groups.push('Prompt bị clamp');
   if (Object.values(item.metrics.answers).some((entry) => isOptionCut(entry.question) || isOptionCut(entry.reveal))) groups.push('Đáp án bị cắt');
   if ([item.metrics.question, item.metrics.reveal].some((entry) => entry.fontPx < 30)) groups.push('Cỡ chữ dưới 30 px');
@@ -184,14 +188,26 @@ async function captureScene(page: Page, question: Question, scene: 'question' | 
   const collectMetrics = new Function(`
     function readMetric(element, visibleText) {
       visibleText = visibleText ?? element.textContent ?? '';
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0.5 && rect.height > 0.5);
-      const lines = new Set(rects.map((rect) => Math.round(rect.top * 10) / 10)).size;
-      const fullText = element.getAttribute('title') ?? visibleText;
       const isPrompt = element.matches('[data-testid="question-prompt"]');
+      const textSource = isPrompt ? element.querySelector('[data-testid="question-prompt-copy"]') ?? element : element;
+      const walker = document.createTreeWalker(textSource, NodeFilter.SHOW_TEXT);
+      const rects = [];
+      let textNode = walker.nextNode();
+      while (textNode) {
+        const range = document.createRange();
+        range.selectNodeContents(textNode);
+        rects.push(...Array.from(range.getClientRects()).filter((rect) => rect.width > 0.5 && rect.height > 0.5));
+        textNode = walker.nextNode();
+      }
+      const lines = new Set(rects.map((rect) => Math.round(rect.top * 10) / 10)).size;
+      const frame = element.getBoundingClientRect();
+      const fullText = element.getAttribute('title') ?? visibleText;
       const style = getComputedStyle(element);
       const clamp = Number.parseInt(style.getPropertyValue('-webkit-line-clamp') || style.webkitLineClamp, 10);
+      const topGapPx = isPrompt && rects.length ? Math.min(...rects.map((rect) => rect.top)) - frame.top : null;
+      const bottomGapPx = isPrompt && rects.length ? frame.bottom - Math.max(...rects.map((rect) => rect.bottom)) : null;
+      const centered = isPrompt && topGapPx !== null && bottomGapPx !== null && topGapPx >= 8 && bottomGapPx >= 8 &&
+        Math.abs(topGapPx - bottomGapPx) <= 4 && element.scrollHeight <= element.clientHeight;
       const contentCut = visibleText.includes('…') || visibleText !== fullText || (!isPrompt && lines > clamp && Number.isFinite(clamp)) ||
         (!isPrompt && element.scrollWidth > element.clientWidth);
       return {
@@ -211,6 +227,9 @@ async function captureScene(page: Page, question: Question, scene: 'question' | 
         lineBoxOverflowPx: Math.max(0, element.scrollHeight - element.clientHeight),
         overflowX: style.overflowX,
         overflowY: style.overflowY,
+        centered: isPrompt ? centered : null,
+        topGapPx,
+        bottomGapPx,
       };
     }
     const prompt = document.querySelector('[data-testid="question-prompt"]');
@@ -445,9 +464,18 @@ function summaryMetric(item: QuestionResult): string {
   return `${a.fontPx}px/${a.lines} dòng · ${b.fontPx}px/${b.lines} dòng`;
 }
 
+function promptCentering(item: QuestionResult): string {
+  const metric = item.metrics.question;
+  if (metric.centered === undefined || metric.centered === null || metric.topGapPx === undefined || metric.topGapPx === null ||
+    metric.bottomGapPx === undefined || metric.bottomGapPx === null) return 'Không đo được';
+  return `${metric.centered ? 'Đạt' : 'Không'} (${metric.topGapPx.toFixed(1)} / ${metric.bottomGapPx.toFixed(1)} px)`;
+}
+
 export function renderMarkdown(results: readonly QuestionResult[], totals: { approved: number; clamp: number; small: number; slow: number; answerCuts: number }, suggestions: Suggestions = {}, medianCps: number | null = null): string {
   const sorted = rankQuestions(results);
   const affected = sorted.filter((item) => item.groups.length > 0);
+  const centeringMeasured = results.filter((item) => item.metrics.question.centered !== undefined && item.metrics.question.centered !== null);
+  const centeringPassed = centeringMeasured.filter((item) => item.metrics.question.centered === true).length;
   const rows = affected.map((item) => {
     const generated = proposeShortenedPrompt(item.prompt);
     const proposals = suggestions[item.id]?.length ? suggestions[item.id]!.slice(0, 2) : generated !== item.prompt ? [generated] : [];
@@ -463,7 +491,7 @@ export function renderMarkdown(results: readonly QuestionResult[], totals: { app
         return `${index + 1}. **ĐỀ XUẤT — chờ người dùng duyệt:** ${text}; giữ nguyên đáp án đúng.`;
       }).join('<br>')
       : 'Chưa tìm được cách rút gọn an toàn tự động; cần biên tập thủ công.';
-    return `| ${item.groups.join(', ')} | ${item.id} | ${item.topic} | ${item.promptChars} | ${summaryMetric(item)} | ${optionSummary} | ${duration} | ${item.prompt.replaceAll('|', '\\|')} | ${details} |`;
+    return `| ${item.groups.join(', ')} | ${item.id} | ${item.topic} | ${item.promptChars} | ${promptCentering(item)} | ${summaryMetric(item)} | ${optionSummary} | ${duration} | ${item.prompt.replaceAll('|', '\\|')} | ${details} |`;
   });
   const worst = sorted.slice(0, 5).map((item) => `- **${item.id} · ${item.topic}** — ${item.groups.join(', ') || 'không nằm trong nhóm cảnh báo'}; ${item.promptChars} ký tự, ${summaryMetric(item)}, ${item.durationMs === null ? 'chưa có ước lượng' : `${(item.durationMs / 1_000).toFixed(1)} s`}. Gốc: “${item.prompt}”`).join('\n');
   const answerSlots = results.flatMap((item) => QUESTION_IDS.map((letter, index) => ({
@@ -500,6 +528,7 @@ export function renderMarkdown(results: readonly QuestionResult[], totals: { app
     `- Tổng câu APPROVED: **${totals.approved}**`,
     `- Prompt bị clamp ở QUESTION hoặc REVEAL: **${totals.clamp}**`,
     `- Prompt có cỡ chữ dưới 30 px: **${totals.small}**`,
+    `- Prompt căn giữa dọc đạt: **${centeringPassed}/${centeringMeasured.length}**; không đạt: **${centeringMeasured.length - centeringPassed}**.`,
     `- Thời lượng đọc ước lượng trên 20 giây: **${totals.slow}**`,
     `- Đáp án bị cắt (tính theo đáp án duy nhất, cắt ở ít nhất một cảnh): **${totals.answerCuts}**`,
     `- Trung vị tốc độ đọc từ dòng cache hiện có: **${medianCps === null ? 'không có mẫu khớp cache' : `${medianCps.toFixed(2)} ký tự/giây`}**`,
@@ -519,8 +548,8 @@ export function renderMarkdown(results: readonly QuestionResult[], totals: { app
     '',
     '## Các câu cần xem (xếp theo clamp → đáp án bị cắt → chữ dưới 30 px → trên 20 giây)',
     '',
-    '| Nhóm | ID | Chủ đề | Ký tự prompt | Prompt (QUESTION / REVEAL) | Đáp án | Thời lượng | Text gốc | Phương án rút gọn |',
-    '|---|---|---|---:|---|---|---:|---|---|',
+    '| Nhóm | ID | Chủ đề | Ký tự prompt | Căn giữa QUESTION (đạt / không; mép trên / dưới) | Prompt (QUESTION / REVEAL) | Đáp án | Thời lượng | Text gốc | Phương án rút gọn |',
+    '|---|---|---|---:|---|---|---|---:|---|---|',
     ...rows,
     '',
     '## Năm câu có điểm ưu tiên cao nhất',
@@ -530,7 +559,7 @@ export function renderMarkdown(results: readonly QuestionResult[], totals: { app
     '## Phương pháp',
     '',
     '- Đo trên overlay thật ở viewport 1080×1920 qua WebSocket snapshot mock; nội dung từng câu lấy từ bản sao chỉ đọc và chỉ gồm câu APPROVED.',
-    '- Số dòng đo bằng `Range.getClientRects()` trên text node. Prompt bị clamp khi overlay báo clamp, có dấu `…`, hoặc phần hiển thị khác text gốc. Đáp án bị cắt nội dung chỉ khi có `…`, text hiển thị khác text gốc, số dòng Range vượt `-webkit-line-clamp`, hoặc `scrollWidth > clientWidth`; `scrollHeight > clientHeight + 1` được thống kê riêng như tràn line-box chung.',
+    '- Số dòng và bbox đo bằng `Range.getClientRects()` trên text node. Cột căn giữa đạt khi khoảng cách trên/dưới đều ít nhất 8 px, chênh không quá 4 px và `scrollHeight <= clientHeight`. Prompt bị clamp khi overlay báo clamp, có dấu `…`, hoặc phần hiển thị khác text gốc. Đáp án bị cắt nội dung chỉ khi có `…`, text hiển thị khác text gốc, số dòng Range vượt `-webkit-line-clamp`, hoặc `scrollWidth > clientWidth`; `scrollHeight > clientHeight + 1` được thống kê riêng như tràn line-box chung.',
     '- Chỉ đọc `durationMs` và `assetId` trong metadata cache. Cache đủ 5 dòng cho một câu thì dùng tổng chính xác; thiếu dòng thì ước lượng dòng thiếu theo trung vị ký tự/giây của các dòng cache khớp. Không phát sinh giọng đọc.',
     '',
   ].join('\n');

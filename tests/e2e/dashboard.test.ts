@@ -42,8 +42,8 @@ test.afterAll(async () => {
   await dashboardServer?.close();
 });
 
-async function launchDashboard(page: Page, options: { mock?: boolean; setupDone?: boolean; overlayUrl?: string } = {}) {
-  const { mock = true, setupDone = true, overlayUrl } = options;
+async function launchDashboard(page: Page, options: { mock?: boolean; mockSeatCapacity?: number; setupDone?: boolean; overlayUrl?: string } = {}) {
+  const { mock = true, mockSeatCapacity, setupDone = true, overlayUrl } = options;
   await page.addInitScript(({ completed, token, previewOverlayUrl }) => {
     localStorage.clear();
     sessionStorage.clear();
@@ -56,8 +56,29 @@ async function launchDashboard(page: Page, options: { mock?: boolean; setupDone?
       };
     }
   }, { completed: setupDone, token: adminToken, previewOverlayUrl: overlayUrl });
-  await page.goto(`${dashboardUrl}/${mock ? '?mock=1' : ''}`);
+  const query = new URLSearchParams();
+  if (mock) query.set('mock', '1');
+  if (mockSeatCapacity !== undefined) query.set('mockSeatCapacity', String(mockSeatCapacity));
+  await page.goto(`${dashboardUrl}/${query.size ? `?${query.toString()}` : ''}`);
 }
+
+test('C-0383 dashboard shows round winners and TikTok profile fallbacks', async ({ page }) => {
+  await launchDashboard(page);
+  await page.getByRole('button', { name: 'Người thắng' }).click();
+
+  const winners = page.getByTestId('winners-page');
+  await expect(winners.getByRole('heading', { name: 'Người thắng' })).toBeVisible();
+  await expect(winners.getByTestId('winner-row')).toHaveCount(3);
+  await expect(winners).toContainText('Phiên DEMO cũ');
+  await expect(winners).toContainText('@rong_lua');
+  const profileLinks = winners.getByRole('link', { name: 'Mở TikTok ↗' });
+  await expect(profileLinks.nth(0)).toHaveAttribute('href', 'https://www.tiktok.com/@rong_lua');
+  await expect(profileLinks.nth(1)).toHaveAttribute('href', 'https://www.tiktok.com/share/user/demo-tiktok-7124');
+
+  const reviewDir = resolve(process.cwd(), 'assets-local/review/c-sau-live-ui');
+  mkdirSync(reviewDir, { recursive: true });
+  await winners.screenshot({ path: resolve(reviewDir, 'D-winners-dashboard.png') });
+});
 
 async function stopDashboardSession(page: Page) {
   await page.locator('.danger-actions').getByRole('button', { name: 'Dừng phiên' }).click();
@@ -372,22 +393,26 @@ test('MC chat hoạt động trong MOCK và câu mẫu gửi lại được', as
 test('C-0283: MOCK bình luận giành ghế, huỷ đếm ngược rồi tự vào vòng sau 10 giây', async ({ page }) => {
   test.setTimeout(60_000);
   await page.clock.install({ time: new Date('2026-11-18T10:00:00.000Z') });
-  await launchDashboard(page);
+  await launchDashboard(page, { mockSeatCapacity: 30 });
   await page.getByRole('button', { name: 'Tạo phiên và mở Live Control' }).click();
   await page.getByRole('button', { name: 'Mở sảnh' }).click();
 
   const autoStart = page.getByRole('checkbox', { name: 'Tự bắt đầu khi đủ ghế' });
   await expect(autoStart).not.toBeChecked();
-  await expect(page.getByTestId('lobby-seat-status')).toHaveText('Đã ngồi 0/35');
+  await expect(page.getByTestId('lobby-seat-status')).toHaveText('Đã ngồi 0/30');
   const commentForm = page.locator('.comment-form');
-  for (let index = 1; index <= 35; index += 1) {
+  for (let index = 1; index <= 30; index += 1) {
     await commentForm.locator('input[name="userId"]').fill(`c0283-viewer-${index}`);
     await commentForm.locator('input[name="displayName"]').fill(`Người xem ${index}`);
     await commentForm.locator('input[name="text"]').fill('FF FREE FIRE!!!');
     await commentForm.getByRole('button', { name: 'Gửi bình luận' }).click();
-    await expect(page.getByTestId('lobby-seat-status')).toHaveText(index === 35 ? 'Đã đủ ghế' : `Đã ngồi ${index}/35`);
+    await expect(page.getByTestId('lobby-seat-status')).toHaveText(index === 30 ? 'Đã đủ ghế' : `Đã ngồi ${index}/30`);
+    if (index === 24) await expect(page.getByTestId('lobby-seat-status')).toHaveText('Đã ngồi 24/30');
   }
   await expect(page.getByTestId('lobby-auto-start-countdown')).toHaveCount(0);
+  const reviewDirectory = resolve(process.cwd(), 'assets-local/review/c-sau-live-ui');
+  mkdirSync(reviewDirectory, { recursive: true });
+  await page.getByTestId('lobby-seat-status').screenshot({ path: resolve(reviewDirectory, 'A-lobby-seat-30-of-30.png') });
 
   await autoStart.check();
   const countdown = page.getByTestId('lobby-auto-start-countdown');

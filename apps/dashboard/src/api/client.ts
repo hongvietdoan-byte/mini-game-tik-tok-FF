@@ -53,6 +53,22 @@ export type UpdateStreamDelaySettings = { mode: StreamDelayMode; manualDelayMs?:
 export type UpdateStreamDelayResponse = { ok: true; streamDelay: StreamDelaySnapshot };
 export type ThemeAchievementsResponse = { themeId: string; achievements: ThemeAchievements; themeVersion: number };
 export type SaveThemeAchievementsResponse = ThemeAchievementsResponse & { theme: ResolvedTheme; backup: string };
+export type AdminRoundWinner = {
+  sessionId: string;
+  sessionName: string;
+  roundId: string;
+  roundNumber: number;
+  roundStatus: string;
+  endedAtMs: number | null;
+  rank: number;
+  source: string;
+  displayName: string;
+  uniqueId: string | null;
+  sourceUserId: string;
+  score: number;
+  correctCount: number;
+};
+export type AdminWinnersResponse = { winners: AdminRoundWinner[] };
 
 export interface DashboardClient {
   getHealth(): Promise<HealthResponse>;
@@ -90,6 +106,7 @@ export interface DashboardClient {
   updateStreamDelaySettings(token: string, sessionId: string, update: UpdateStreamDelaySettings): Promise<UpdateStreamDelayResponse>;
   getThemeAchievements(token: string, themeId: string): Promise<ThemeAchievementsResponse>;
   saveThemeAchievements(token: string, themeId: string, achievements: ThemeAchievements): Promise<SaveThemeAchievementsResponse>;
+  getRoundWinners(token: string): Promise<AdminWinnersResponse>;
   subscribe(token: string, onSnapshot: (snapshot: AdminSnapshot, serverTimeMs: number) => void, onStatus: (status: SocketStatus) => void): () => void;
 }
 
@@ -297,6 +314,10 @@ export const apiClient: DashboardClient = {
 
   getThemeAchievements(token, themeId) {
     return jsonRequest(`/api/admin/themes/${encodeURIComponent(themeId)}/achievements`, token);
+  },
+
+  getRoundWinners(token) {
+    return jsonRequest('/api/admin/winners', token);
   },
 
   saveThemeAchievements(token, themeId, achievements) {

@@ -38,7 +38,7 @@ import {
   type SystemCheck,
   type ThemeAchievements,
 } from '@quiz/contracts';
-import { ApiError, type AdminThemeItem, type AdminThemesResponse, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SaveThemeAchievementsResponse, type SelfTestResponse, type SetActiveThemeResponse, type SocketStatus, type SourceControlAction, type StreamDelayMode, type StreamDelaySnapshot, type SystemChecksResponse, type ThemeAchievementsResponse, type UpdateStreamDelaySettings } from './client';
+import { ApiError, type AdminThemeItem, type AdminThemesResponse, type AdminWinnersResponse, type CommandResponse, type DashboardClient, type HudImageUploadResponse, type SaveThemeAchievementsResponse, type SelfTestResponse, type SetActiveThemeResponse, type SocketStatus, type SourceControlAction, type StreamDelayMode, type StreamDelaySnapshot, type SystemChecksResponse, type ThemeAchievementsResponse, type UpdateStreamDelaySettings } from './client';
 
 const mockThemeImage = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g"><stop stop-color="#161b4e"/><stop offset="1" stop-color="#7049f5"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><circle cx="500" cy="80" r="42" fill="#ffcc58"/></svg>')}`;
 const mockThemeDefinitions: Array<{ item: Omit<AdminThemeItem, 'active'>; tokens: Record<string, string>; assets: ResolvedTheme['assets'] }> = [
@@ -140,6 +140,7 @@ class MockDashboardClient implements DashboardClient {
   private autoMode = false;
   private autoStartWhenAudienceFull = false;
   private lobbyDisplayNames = new Map<string, string>();
+  private lobbySeatCapacity = 35;
   private lobbyCountdownEndsAtMs: number | null = null;
   private lobbyCountdownTimeoutId: number | null = null;
   private lobbyCountdownIntervalId: number | null = null;
@@ -235,6 +236,14 @@ class MockDashboardClient implements DashboardClient {
     const theme = mockThemeDefinitions.find((item) => item.item.id === themeId && item.item.valid);
     if (!theme) throw new ApiError('Theme không tồn tại hoặc có lỗi; hãy kiểm tra danh sách theme.', 422, 'THEME_INVALID');
     return { themeId, achievements: structuredClone(this.themeAchievements.get(themeId) ?? {}), themeVersion: this.themeVersion };
+  }
+
+  async getRoundWinners(_token: string): Promise<AdminWinnersResponse> {
+    return { winners: [
+      { sessionId: 'mock-session-current', sessionName: 'Phiên DEMO hiện tại', roundId: 'mock-round-02', roundNumber: 2, roundStatus: 'COMPLETED', endedAtMs: Date.now(), rank: 1, source: 'TIKTOK', displayName: 'Rồng Lửa', uniqueId: 'rong_lua', sourceUserId: 'demo-tiktok-7123', score: 900, correctCount: 9 },
+      { sessionId: 'mock-session-current', sessionName: 'Phiên DEMO hiện tại', roundId: 'mock-round-02', roundNumber: 2, roundStatus: 'COMPLETED', endedAtMs: Date.now(), rank: 2, source: 'TIKTOK', displayName: 'Chiến binh DEMO', uniqueId: null, sourceUserId: 'demo-tiktok-7124', score: 700, correctCount: 7 },
+      { sessionId: 'mock-session-old', sessionName: 'Phiên DEMO cũ', roundId: 'mock-round-01', roundNumber: 1, roundStatus: 'COMPLETED', endedAtMs: Date.now() - 60_000, rank: 1, source: 'TIKTOK', displayName: 'Người xem DEMO', uniqueId: null, sourceUserId: 'demo-tiktok-7125', score: 500, correctCount: 5 },
+    ] };
   }
 
   async saveThemeAchievements(_token: string, themeId: string, achievements: ThemeAchievements): Promise<SaveThemeAchievementsResponse> {
@@ -643,8 +652,12 @@ class MockDashboardClient implements DashboardClient {
     }
   }
 
+  setLobbySeatCapacity(capacity: number) {
+    if (Number.isInteger(capacity) && capacity > 0 && capacity <= 35) this.lobbySeatCapacity = capacity;
+  }
+
   private lobbyAudience(): NonNullable<PublicSnapshot['audience']> {
-    const slots = Array.from({ length: 35 }, (_, index) => {
+    const slots = Array.from({ length: this.lobbySeatCapacity }, (_, index) => {
       const rowIndex = Math.floor(index / 5);
       const seatIndex = index % 5;
       return {
@@ -688,14 +701,14 @@ class MockDashboardClient implements DashboardClient {
   }
 
   private maybeStartLobbyCountdown() {
-    const occupied = Math.min(this.lobbyDisplayNames.size, 35);
-    if (this.state !== 'LOBBY' || !this.autoStartWhenAudienceFull || occupied !== 35 || this.lobbyCountdownEndsAtMs !== null) return;
+    const occupied = Math.min(this.lobbyDisplayNames.size, this.lobbySeatCapacity);
+    if (this.state !== 'LOBBY' || !this.autoStartWhenAudienceFull || occupied !== this.lobbySeatCapacity || this.lobbyCountdownEndsAtMs !== null) return;
     this.lobbyCountdownEndsAtMs = Date.now() + 10_000;
     this.lobbyCountdownIntervalId = window.setInterval(() => this.emit(), 1_000);
     this.lobbyCountdownTimeoutId = window.setTimeout(() => {
       this.lobbyCountdownTimeoutId = null;
       const stillEligible = this.state === 'LOBBY' && this.autoStartWhenAudienceFull
-        && this.lobbyDisplayNames.size >= 35;
+        && this.lobbyDisplayNames.size >= this.lobbySeatCapacity;
       if (stillEligible) {
         this.applyCommand({ type: 'START_ROUND' });
         this.stateVersion += 1;
