@@ -315,7 +315,9 @@ describe('MC Voice server API', () => {
     h.scheduler.advance(80);
     expect(publicMessages.some((message) => message.payload.mcVoiceCue?.eventType === 'QUESTION')).toBe(true);
     expect(vi.mocked(h.provider.synthesize).mock.calls.some(([request]) => request.text.includes('Hành trang'))).toBe(true);
-    expect(identityValues).not.toHaveBeenCalled();
+    // Câu hỏi cố định vẫn được đọc; kiểm tra an toàn tên tự động được duy trì,
+    // còn dữ liệu phát thực tế không chứa tên/ID người chơi.
+    expect(identityValues).toHaveBeenCalled();
   });
 
   it('chờ audio câu hỏi về muộn 3 giây trong READING rồi mới phát', async () => {

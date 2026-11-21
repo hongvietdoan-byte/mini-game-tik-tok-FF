@@ -1154,6 +1154,7 @@ export class SessionRuntime {
   }
 
   private telemetry(reason: string, eventType: McVoiceEvent['type'], detail?: { timerLatenessMs?: number }) {
+    if (this.disposed) return;
     // Chỉ ghi loại sự kiện và mã lý do; tuyệt đối không ghi text, tên, token hay chi tiết provider.
     const safeReason = MC_VOICE_TELEMETRY_REASONS.has(reason) ? reason : 'FAILED';
     const timerLateness = detail?.timerLatenessMs;

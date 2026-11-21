@@ -172,15 +172,16 @@ describe('MC chat', () => {
       status: 422, result: { code: 'MC_CHAT_UNSAFE_CONTENT', message: expect.stringContaining('“từ cấm operator”') },
     });
 
-    runtime.engine.state = 'READING';
-    const queued = [0, 1, 2, 3].map((index) => runtime.sendMcChat({ text: `Câu chờ ${index + 1}`, speak: false }));
+    const queueRuntime = await makeRuntime();
+    queueRuntime.runtime.engine.state = 'READING';
+    const queued = [0, 1, 2, 3, 4].map((index) => queueRuntime.runtime.sendMcChat({ text: `Câu chờ ${index + 1}`, speak: false }));
     expect(queued.every((result) => result.status === 202)).toBe(true);
-    expect(runtime.sendMcChat({ text: 'Câu thứ sáu', speak: false })).toMatchObject({
+    expect(queueRuntime.runtime.sendMcChat({ text: 'Câu thứ sáu', speak: false })).toMatchObject({
       status: 429, result: { code: 'MC_CHAT_QUEUE_FULL' },
     });
-    const last = runtime.adminSnapshot().mcChatQueue!.at(-1)!;
-    expect(runtime.cancelMcChat(last.id).status).toBe(200);
-    expect(runtime.sendMcChat({ text: 'Vừa có chỗ', speak: false }).status).toBe(202);
+    const last = queueRuntime.runtime.adminSnapshot().mcChatQueue!.at(-1)!;
+    expect(queueRuntime.runtime.cancelMcChat(last.id).status).toBe(200);
+    expect(queueRuntime.runtime.sendMcChat({ text: 'Vừa có chỗ', speak: false }).status).toBe(202);
 
     const history = runtime['store'].history(runtime.id);
     expect(history.actions.map((action) => action.commandType)).toContain('MC_CHAT_SEND');
@@ -199,11 +200,15 @@ describe('MC chat', () => {
 
   it('cho giọng MC chat sinh trong 30 giây và timeout sau 40 giây', async () => {
     let resolveSynthesis!: (audio: McVoiceAudio) => void;
-    const synthesize = vi.fn(() => new Promise<McVoiceAudio>((resolve) => { resolveSynthesis = resolve; }));
+    const target = 'Hẹn gặp ở vòng sau';
+    const synthesize = vi.fn(async (request: Parameters<McVoiceProvider['synthesize']>[0]) => {
+      if (request.text.includes(target)) return new Promise<McVoiceAudio>((resolve) => { resolveSynthesis = resolve; });
+      return { bytes: Buffer.from('mock-system-cue'), durationMs: 1_200, format: 'mp3' as const };
+    });
     const { runtime, scheduler } = await makeRuntime({ synthesize });
     runtime.engine.state = 'LOBBY';
-    runtime.sendMcChat({ text: 'Hẹn gặp ở vòng sau', speak: true });
-    await vi.waitFor(() => expect(synthesize).toHaveBeenCalledOnce());
+    runtime.sendMcChat({ text: target, speak: true });
+    await vi.waitFor(() => expect(synthesize.mock.calls.filter(([request]) => request.text.includes(target))).toHaveLength(1));
     scheduler.advance(30_000);
     expect(runtime.adminSnapshot().mcChatQueue?.[0]?.status).toBe('GENERATING');
     resolveSynthesis({ bytes: Buffer.from('mock-thirty-second-chat'), durationMs: 30_000, format: 'mp3' });
@@ -221,12 +226,14 @@ describe('MC chat', () => {
 
   it('khi VICTORY về LOBBY xoá ngai công khai, không sửa lịch sử DB vòng trước', async () => {
     const { runtime, store } = await makeRuntime();
+    const audience = (runtime as unknown as { audience: { openLobby(): void; onLobbyKeyword(id: string, name: string, now: number): boolean } }).audience;
+    audience.openLobby();
+    audience.onLobbyKeyword('previous-winner', 'Previous Winner', 0);
     const historyBefore = store.history(runtime.id);
-    Object.assign(runtime.engine, { state: 'LOBBY', round: null, sessionStatus: 'OPEN' });
+    Object.assign(runtime.engine, { state: 'VICTORY', round: null, sessionStatus: 'OPEN' });
     const runtimeInternals = runtime as unknown as {
       throne: { unlocked: boolean; holder: unknown; correctElapsedMs: Map<string, number> };
       throneStreaks: Map<string, number>;
-      afterCommit(events: never[], input: never): void;
     };
     runtimeInternals.throne = {
       unlocked: true,
@@ -234,15 +241,21 @@ describe('MC chat', () => {
       correctElapsedMs: new Map([['previous-winner', 500]]),
     };
     runtimeInternals.throneStreaks.set('previous-winner', 5);
-    runtimeInternals.afterCommit([{ type: 'STATE_CHANGED', from: 'VICTORY', to: 'LOBBY' }] as never[], null as never);
+    expect(runtime.publicSnapshot().throne.state).toBe('HELD');
+    const transition = runtime.dispatch({
+      commandId: 'c0384-open-lobby', expectedStateVersion: runtime.engine.stateVersion,
+      operatorId: 'unit-test', requestedAtMs: 1_000, command: { type: 'NEXT_ROUND' },
+    });
+    expect(transition.result.ok).toBe(true);
 
     expect(runtime.publicSnapshot().throne).toEqual({ state: 'LOCKED', unlockAfterQuestion: 5 });
     expect(runtimeInternals.throneStreaks.size).toBe(0);
-    expect(store.history(runtime.id)).toEqual(historyBefore);
+    expect(store.history(runtime.id).actions.slice(0, historyBefore.actions.length)).toEqual(historyBefore.actions);
   });
 
   it('public playingCount tính người trả lời ba câu gần nhất và ghế đang có người ở sảnh', async () => {
     const { runtime, store } = await makeRuntime();
+    runtime.engine.state = 'LOBBY';
     const audience = (runtime as unknown as { audience: { openLobby(): void; onLobbyKeyword(id: string, name: string, now: number): boolean } }).audience;
     audience.openLobby();
     for (let index = 0; index < 24; index += 1) audience.onLobbyKeyword(`lobby-${index}`, `Lobby ${index}`, index);

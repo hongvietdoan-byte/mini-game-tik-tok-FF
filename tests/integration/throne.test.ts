@@ -94,7 +94,8 @@ describe('ngai server-side và liên kết nhân vật', () => {
     expect(after.audience!.seats.find((seat) => seat.slotId === oldHolderSeat)?.occupant?.safeDisplayName).toBe('Người 30');
     expect(names).not.toContain(oldHolderName);
     expect(new Set(names).size).toBe(30);
-    expect(after.audience!.queued).toBe(0);
+    // 35 người vẫn chia thành 30 ghế + 5 chờ; chủ ngai cũ trở lại hàng chờ khi mất ngai.
+    expect(after.audience!.queued).toBe(before.audience!.queued);
   });
 
   it('giữ cùng public playerId/characterId qua Top 10, Top 3, ngai, ghế, podium và restart sau câu 7/9', async () => {
