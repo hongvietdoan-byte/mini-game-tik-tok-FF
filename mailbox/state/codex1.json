@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 377,
-  "heartbeat": "2026-11-21T10:22:46+07:00",
+  "heartbeat": "2026-11-21T10:42:43+07:00",
   "state": "waiting",
   "task": "C-0362",
-  "note": "Inbox trống, BOARD không ghi task mới hoặc việc dự phòng khả thi cho codex1; chờ coordinator.",
+  "note": "Inbox trống; BOARD không có task mới được giao cho codex1. C-0005 đang CHỜ, không có chỉ thị tiếp tục; chờ coordinator.",
   "done": []
 }
