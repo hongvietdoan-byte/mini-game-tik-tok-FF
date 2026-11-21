@@ -2210,11 +2210,11 @@ export class SessionRuntime {
           checkedAt: now,
           reasonCategory: null,
         };
-        const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.safeDisplayName, now);
+        const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.safeDisplayName, now, ev.uniqueId);
         const filtered = this.deps.nameFilter?.evaluate(originalName, playerId) ?? firstPass;
         if (filtered.flagged && existingId && this.playerNames.get(existingId)?.originalName !== originalName)
           this.store.scrubPlayerNameHistory(playerId, [originalName], filtered.safeDisplayName);
-        this.store.touchPlayer(playerId, filtered.safeDisplayName, now);
+        this.store.touchPlayer(playerId, filtered.safeDisplayName, now, ev.uniqueId);
         return { playerId, filtered };
       });
       if (joined.filtered.flagged) {
@@ -2271,11 +2271,11 @@ export class SessionRuntime {
         reasonCategory: null,
       };
       // resolvePlayer chỉ nhận tên đã che. Tên gốc flagged không bao giờ chạm SQLite.
-      const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.safeDisplayName, now);
+      const playerId = existingId ?? this.store.resolvePlayer(ev.source, ev.userId, firstPass.safeDisplayName, now, ev.uniqueId);
       const filtered = this.deps.nameFilter?.evaluate(originalName, playerId) ?? firstPass;
       if (filtered.flagged && existingId && this.playerNames.get(existingId)?.originalName !== originalName)
         this.store.scrubPlayerNameHistory(playerId, [originalName], filtered.safeDisplayName);
-      this.store.touchPlayer(playerId, filtered.safeDisplayName, now);
+      this.store.touchPlayer(playerId, filtered.safeDisplayName, now, ev.uniqueId);
       const outcome = this.store.insertAnswerWithJoin({
         questionInstanceId: qid,
         roundId,
