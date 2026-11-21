@@ -428,7 +428,7 @@ test('preview fits the full 9:16 stage in landscape and portrait, while program 
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.goto('/?mock=question&role=program', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('stage')).toBeVisible();
-  await expect(viewport).toHaveAttribute('data-fit', 'cover');
+  await expect(viewport).toHaveAttribute('data-fit', 'contain');
   await expect(viewport).toHaveAttribute('data-role', 'program');
   await expect(viewport).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   const programBox = await page.getByTestId('stage').boundingBox();

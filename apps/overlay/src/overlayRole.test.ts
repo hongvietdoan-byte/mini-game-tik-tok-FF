@@ -14,14 +14,14 @@ describe('overlay fit', () => {
   it('defaults preview and unspecified role to contain, program to cover', () => {
     expect(overlayFitFromSearch('')).toBe('contain');
     expect(overlayFitFromSearch('?role=preview')).toBe('contain');
-    expect(overlayFitFromSearch('?role=program')).toBe('cover');
+    expect(overlayFitFromSearch('?role=program')).toBe('contain');
   });
 
   it('allows only the supported fit query values to override the role default', () => {
     expect(overlayFitFromSearch('?fit=cover')).toBe('cover');
     expect(overlayFitFromSearch('?role=program&fit=contain')).toBe('contain');
     expect(overlayFitFromSearch('?role=preview&fit=cover')).toBe('cover');
-    expect(overlayFitFromSearch('?role=program&fit=invalid')).toBe('cover');
+    expect(overlayFitFromSearch('?role=program&fit=invalid')).toBe('contain');
   });
 
   it('contains the entire 9:16 stage at landscape and portrait viewport sizes', () => {

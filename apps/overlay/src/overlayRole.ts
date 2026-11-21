@@ -11,7 +11,7 @@ export function overlayRoleFromSearch(search: string): OverlayRole {
 export function overlayFitFromSearch(search: string, role = overlayRoleFromSearch(search)): OverlayFit {
   const requested = new URLSearchParams(search).get('fit');
   if (requested === 'contain' || requested === 'cover') return requested;
-  return role === 'program' ? 'cover' : 'contain';
+  return 'contain';
 }
 
 export function overlayStageScale(width: number, height: number, fit: OverlayFit): number {
