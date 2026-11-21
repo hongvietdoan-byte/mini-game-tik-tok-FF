@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 393,
-  "heartbeat": "2026-11-22T03:50:13+07:00",
-  "state": "working",
+  "heartbeat": "2026-11-22T03:52:36+07:00",
+  "state": "waiting",
   "task": "C-0386",
-  "note": "Đã xác nhận C-0383 đã gộp main; tạo worktree codex2/c-theme-kit. Đang kiểm kê asset/theme và thực hiện A–F; đã hỏi coordinator về các file ngoài lane.",
+  "note": "C-0386 đã hoàn tất và push codex2/c-theme-kit; đã gửi report/rảnh cho coordinator. Inbox trống, chờ task mới; không tự nhận DP cũ theo BOARD.",
   "done": []
 }
