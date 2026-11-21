@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot } from '@quiz/contracts';
+import type { AudienceSeatView, PublicLeaderboardEntry, PublicSnapshot, QuestionTop3View } from '@quiz/contracts';
 import { positiveScoreEntries } from '../overlayLogic';
 import { answerPercentages, shortName, splitBubble, truncateGraphemeText, wrapMcBubbleText, wrapPromptToLines } from './arenaLogic';
 import { formatParticipantCount } from './participantCount';
@@ -11,6 +11,7 @@ import { ArenaBackdrop } from './ArenaBackdrop';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle } from './hudText';
 import { getPublicThrone, orderRankOneHolderFirst, publicThroneHolderId, type PublicThrone } from '../throne';
+import { activeQuestionTop3, questionTop3Presentation } from './questionTop3Presentation';
 import './arena.css';
 
 /**
@@ -86,6 +87,124 @@ function FastestName({ name }: { name: string }) {
   return <b ref={nameRef} className="v3-fastest-name"><span className="v3-fastest-name-content">
     {lines.map((line, index) => <span key={index}>{line}</span>)}
   </span></b>;
+}
+
+function splitTop3Name(name: string, maxWidth: number, font: string, letterSpacing: number): [string, string] {
+  const graphemes = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name), (part) => part.segment);
+  const midpoint = Math.ceil(graphemes.length / 2);
+  const preferred = graphemes.flatMap((part, index) => {
+    return index > 0 && (/\s/u.test(graphemes[index - 1]!) || /^\p{Lu}/u.test(part)) ? [index] : [];
+  });
+  const candidates = Array.from({ length: Math.max(0, graphemes.length - 1) }, (_, index) => index + 1);
+  const context = document.createElement('canvas').getContext('2d');
+  if (context) context.font = font;
+  const width = (text: string) => (context?.measureText(text).width ?? text.length * 9) + Math.max(0, Array.from(text).length - 1) * letterSpacing;
+  const fits = (index: number) => width(graphemes.slice(0, index).join('')) <= maxWidth && width(graphemes.slice(index).join('')) <= maxWidth;
+  const feasible = candidates.filter(fits);
+  const choices = feasible.length ? feasible : candidates;
+  const preferredChoices = choices.filter((index) => preferred.includes(index));
+  const splitAt = (preferredChoices.length ? preferredChoices : choices)
+    .sort((a, b) => Math.max(width(graphemes.slice(0, a).join('')), width(graphemes.slice(a).join(''))) -
+      Math.max(width(graphemes.slice(0, b).join('')), width(graphemes.slice(b).join(''))) ||
+      Math.abs(a - midpoint) - Math.abs(b - midpoint))[0] ?? midpoint;
+  return [graphemes.slice(0, splitAt).join(''), graphemes.slice(splitAt).join('')];
+}
+
+function fittingTop3Split(element: HTMLElement, name: string): number | null {
+  const lines = [...element.querySelectorAll<HTMLElement>('[data-top3-name-line]')];
+  if (lines.length !== 2) return null;
+  const graphemes = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name), (part) => part.segment);
+  const midpoint = Math.ceil(graphemes.length / 2);
+  const preferred = new Set(graphemes.flatMap((part, index) => {
+    return index > 0 && (/\s/u.test(graphemes[index - 1]!) || /^\p{Lu}/u.test(part)) ? [index] : [];
+  }));
+  const candidates = Array.from({ length: Math.max(0, graphemes.length - 1) }, (_, index) => index + 1)
+    .sort((a, b) => Number(!preferred.has(a)) - Number(!preferred.has(b)) || Math.abs(a - midpoint) - Math.abs(b - midpoint));
+  const original = lines.map((line) => line.textContent ?? '');
+  let result: number | null = null;
+  for (const index of candidates) {
+    lines[0]!.textContent = graphemes.slice(0, index).join('');
+    lines[1]!.textContent = graphemes.slice(index).join('');
+    if (lines.every((line) => line.scrollWidth <= element.clientWidth)) {
+      result = index;
+      break;
+    }
+  }
+  lines[0]!.textContent = original[0]!;
+  lines[1]!.textContent = original[1]!;
+  return result;
+}
+
+function Top3Name({ name }: { name: string }) {
+  const nameRef = useRef<HTMLElement>(null);
+  const [splitAt, setSplitAt] = useState<number | null>(null);
+  const graphemes = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name), (part) => part.segment);
+  const lines = splitAt === null ? [name] : [graphemes.slice(0, splitAt).join(''), graphemes.slice(splitAt).join('')];
+
+  useLayoutEffect(() => {
+    const element = nameRef.current;
+    if (!element) return;
+    const fits = () => {
+      const lineElements = [...element.querySelectorAll<HTMLElement>('[data-top3-name-line]')];
+      return element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight &&
+        lineElements.every((line) => line.scrollWidth <= line.clientWidth && line.scrollHeight <= line.clientHeight);
+    };
+    const fit = () => {
+      let size = 20;
+      element.style.fontSize = size + 'px';
+      while (size > 15 && !fits()) {
+        size -= 1;
+        element.style.fontSize = size + 'px';
+      }
+      if (splitAt === null && !fits()) {
+        const style = window.getComputedStyle(element);
+        const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+        const split = splitTop3Name(name, element.clientWidth, style.fontWeight + ' ' + style.fontSize + ' ' + style.fontFamily, letterSpacing);
+        setSplitAt(Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(split[0])).length);
+        return;
+      }
+      if (splitAt !== null) {
+        const lines = [...element.querySelectorAll<HTMLElement>('[data-top3-name-line]')];
+        if (lines.some((line) => line.scrollWidth > element.clientWidth)) {
+          const nextSplitAt = fittingTop3Split(element, name);
+          if (nextSplitAt !== null && nextSplitAt !== splitAt) setSplitAt(nextSplitAt);
+        }
+      }
+    };
+    const resizeObserver = new ResizeObserver(fit);
+    resizeObserver.observe(element.parentElement ?? element);
+    const themeObserver = new MutationObserver(fit);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-theme-id'] });
+    document.fonts.addEventListener('loadingdone', fit);
+    fit();
+    void document.fonts.ready.then(fit);
+    return () => {
+      resizeObserver.disconnect();
+      themeObserver.disconnect();
+      document.fonts.removeEventListener('loadingdone', fit);
+    };
+  }, [name, splitAt]);
+
+  return <b ref={nameRef} className={'v3-top3-name' + (splitAt !== null ? ' is-wrapped' : '')} data-testid="top3-name" data-graphemes={graphemes.length}>
+    {lines.map((line, index) => <span key={index} data-top3-name-line>{line}</span>)}
+  </b>;
+}
+
+function QuestionTop3({ ranking }: { ranking: QuestionTop3View }) {
+  const presentation = questionTop3Presentation(ranking);
+  return <div className="v3-question-top3" data-testid="question-top3" data-empty={presentation.empty}>
+    <strong className="v3-question-top3-title">TOP 3 NHANH NHẤT</strong>
+    {presentation.empty
+      ? <p className="v3-question-top3-empty">Chưa có người trả lời đúng</p>
+      : <div className="v3-question-top3-rows" data-testid="top3-rows">
+        {presentation.entries.map((entry) => <div className={'v3-top3-row' + (entry.tied ? ' is-tied' : '')} key={entry.playerId} data-testid="top3-row" data-rank={entry.rank} data-tied={entry.tied}>
+          <b className="v3-top3-rank">#{entry.rank}</b>
+          <Top3Name name={entry.safeDisplayName} />
+          <span className="v3-top3-time" data-testid="top3-time">{fastestSeconds(entry.metricValue)} giây</span>
+        </div>)}
+      </div>}
+    {presentation.tiedOverflowCount > 0 && <small className="v3-top3-overflow" data-testid="top3-overflow">+{presentation.tiedOverflowCount.toLocaleString('vi-VN')} người đồng hạng</small>}
+  </div>;
 }
 
 function formatTime(ms: number) {
@@ -405,7 +524,7 @@ export function sceneMcBubbleText(snapshot: PublicSnapshot, text: string): strin
   return text;
 }
 
-export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant, hideBubble = false, throneLayout = false }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; fastestVariant?: 'a' | 'b'; hideBubble?: boolean; throneLayout?: boolean }) {
+export function McKelly({ snapshot, bubbleOverride, fastest, questionTop3, fastestVariant, hideBubble = false, throneLayout = false }: { snapshot: PublicSnapshot; bubbleOverride?: string; fastest?: FastestCorrectAnswerView | null; questionTop3?: QuestionTop3View | null; fastestVariant?: 'a' | 'b'; hideBubble?: boolean; throneLayout?: boolean }) {
   const playerNames = snapshot.leaderboard?.entries.map((entry) => entry.safeDisplayName) ?? [];
   const bubble = (bubbleOverride ?? '').replace(
     /^Bình luận A, B, C hoặc D để tham gia\.?$/,
@@ -425,9 +544,9 @@ export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant, hid
         </svg>
         MC KELLY
       </div>
-      {!hideBubble && bubbleOverride !== undefined && <div className={`v3-bubble ${fastest ? `v3-fastest-callout v3-fastest-callout-${fastestVariant ?? 'a'}` : ''}`} data-testid="mc-bubble">
+      {!hideBubble && bubbleOverride !== undefined && <div className={`v3-bubble ${fastest || questionTop3 ? `v3-fastest-callout v3-fastest-callout-${fastestVariant ?? 'a'}` : ''}`} data-testid="mc-bubble">
         {throneLayout && <strong className="v3-throne-bubble-label">MC KELLY</strong>}
-        {fastest ? <div className="v3-fastest-copy" data-testid="fastest-callout">
+        {questionTop3 ? <QuestionTop3 ranking={questionTop3} /> : fastest ? <div className="v3-fastest-copy" data-testid="fastest-callout">
           <strong>{fastestVariant === 'b' ? '⚡ NHANH NHẤT' : 'NHANH NHẤT'}</strong>
           {throneLayout
             ? <FastestName name={fastest.safeDisplayName} />
@@ -654,6 +773,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
     return () => window.clearTimeout(timeout);
   }, [voiceBubble?.cueId]);
   const fastest = fastestCorrectFor(snapshot);
+  const questionTop3 = activeQuestionTop3(snapshot);
   const throne = getPublicThrone(snapshot);
   const holderId = throne?.state === 'HELD' ? publicThroneHolderId(throne.holder) ?? undefined : undefined;
   const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
@@ -665,7 +785,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   const hasLongPrompt = promptSize(snapshot.question?.prompt) === 'is-xlong';
   const hasLongOptions = snapshot.question?.options.some((option) => option.text.length > 45) ?? false;
   const userQuestionLayout = snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';
-  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', userQuestionLayout && 'v3-stage--user-question-layout', throne && 'v3-stage--has-throne', fastest && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
+  const stageClasses = ['v3-stage', questionBackground && 'v3-stage--question-user', userQuestionLayout && 'v3-stage--user-question-layout', throne && 'v3-stage--has-throne', (fastest || questionTop3) && 'has-fastest-callout', hasLongPrompt && 'has-long-prompt', hasLongOptions && 'has-long-options'].filter(Boolean).join(' ');
   return (
     <div className={stageClasses} data-scene={snapshot.scene}>
       <ArenaBackdrop arena questionBackground={questionBackground} loopVideo={snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL'} showFlags={!questionBackground} backgroundId={snapshot.scene === 'LOBBY' ? config.images.bgLobby : config.images.bgQuestion} />
@@ -766,7 +886,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
       <BrandHeader snapshot={snapshot} />
       <Top10 entries={orderRankOneHolderFirst(positiveScoreEntries(snapshot.leaderboard?.entries ?? []), holderId)} allowLegacyNames={allowLegacyNames} fastestPublicPlayerId={fastest?.publicPlayerId} showFastestBadge={fastestVariant === 'b'} />
       <QuestionBoard snapshot={snapshot} remainingMs={remainingMs} debug={debug} overlayRole={overlayRole} />
-      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={fastest} fastestVariant={fastestVariant} throneLayout={!!throne} />
+      <McKelly snapshot={snapshot} bubbleOverride={questionBubble} fastest={questionTop3 ? null : fastest} questionTop3={questionTop3} fastestVariant={fastestVariant} throneLayout={!!throne} />
       {throne && questionBackground && <ThronePanel throne={throne} />}
       <Audience snapshot={snapshot} allowLegacyNames={allowLegacyNames} hasThrone={!!throne} />
     </div>

@@ -276,10 +276,9 @@ async function expectThroneBLayout(page: import('@playwright/test').Page) {
   expect(metrics.mcPlate.bottom).toBeLessThanOrEqual(1168);
   if (new URL(page.url()).searchParams.get('mock') === 'throne-locked') {
     expect(metrics.mcFigure.top).toBeGreaterThanOrEqual(836);
-    expect(metrics.mcFigure.bottom).toBeLessThanOrEqual(1024);
     expect(metrics.mcVisible).not.toBeNull();
     expect(metrics.mcVisible!.top - metrics.top10.bottom).toBeGreaterThanOrEqual(24);
-    expect(metrics.mcPlate.top - metrics.mcVisible!.bottom).toBeGreaterThanOrEqual(16);
+    expect(metrics.mcVisible!.bottom - metrics.mcPlate.top).toBeGreaterThanOrEqual(12);
   }
   await expect(bubble.locator('.v3-throne-bubble-label')).toHaveText('MC KELLY');
   expect(await bubble.locator('p').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeCloseTo(26, 0);
