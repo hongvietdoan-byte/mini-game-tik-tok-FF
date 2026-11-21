@@ -2645,7 +2645,7 @@
 .v3-question-top3.has-long-name .v3-question-top3-rows { grid-auto-rows: 42px; gap: 0; }
 .v3-top3-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 64px;
+  grid-template-columns: 24px minmax(0, 1fr) 68px;
   align-items: center;
   gap: 3px;
   box-sizing: border-box;
@@ -2705,7 +2705,7 @@
 .v3-top3-time {
   overflow: hidden;
   color: var(--theme-gold, #ffe18a);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
   text-align: right;

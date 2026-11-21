@@ -111,6 +111,8 @@ const fastestThroneMocks = Object.fromEntries(
 const questionTop3Mocks: Record<string, { scene: Scene; state: GameState }> = {
   'top3-throne-empty-short-reveal': { scene: 'REVEAL', state: 'REVEAL' },
   'top3-throne-held-short-reveal': { scene: 'REVEAL', state: 'REVEAL' },
+  'top3-throne-held-times-short-leaderboard': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'top3-throne-held-times-long-leaderboard': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'top3-throne-empty-long-reveal': { scene: 'REVEAL', state: 'REVEAL' },
   'top3-throne-held-long-leaderboard': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'top3-throne-empty-tie-reveal': { scene: 'REVEAL', state: 'REVEAL' },
@@ -123,6 +125,8 @@ const questionTop3Mocks: Record<string, { scene: Scene; state: GameState }> = {
 
 function questionTop3ForMock(name: string): QuestionTop3View | null {
   if (name.endsWith('-cancelled')) return null;
+  const timesLongSample = name.includes('-times-long-');
+  const timesShortSample = name.includes('-times-short-');
   const rowsByCase: Record<string, { names: string[]; tied: boolean; overflow: number }> = {
     short: { names: ['StormKing', 'FFVN.Kelly', 'BVD.Champion'], tied: false, overflow: 0 },
     long: { names: ['Đỗ_Nguyễn⚡TốcĐộ_2026🔥ABC', 'Đỗ_Nguyễn⚡TốcĐộ_2026🔥ABC', 'Đỗ_Nguyễn⚡TốcĐộ_2026🔥ABC'], tied: false, overflow: 0 },
@@ -136,7 +140,7 @@ function questionTop3ForMock(name: string): QuestionTop3View | null {
     playerId: 'top3-player-' + (index + 1),
     safeDisplayName,
     rank: selected.tied ? 1 : index + 1,
-    metricValue: selected.tied ? 1_240 : [1_240, 2_180, 3_450][index] ?? 1_240,
+    metricValue: selected.tied ? 1_240 : timesLongSample ? 19_900 : timesShortSample ? [10_300, 15_000, 19_900][index] ?? 19_900 : [1_240, 2_180, 3_450][index] ?? 1_240,
     metricUnit: 'ms',
     tied: selected.tied,
   }));

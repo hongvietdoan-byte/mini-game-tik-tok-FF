@@ -151,8 +151,9 @@ function Top3Name({ name }: { name: string }) {
     };
     const fit = () => {
       let size = 20;
+      const minimumSize = splitAt === null && graphemes.length > 12 ? 15 : 12;
       element.style.fontSize = size + 'px';
-      while (size > 12 && !fits()) {
+      while (size > minimumSize && !fits()) {
         size -= 1;
         element.style.fontSize = size + 'px';
       }
