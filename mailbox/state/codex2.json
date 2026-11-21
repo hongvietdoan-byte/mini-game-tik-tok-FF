@@ -1,9 +1,11 @@
 {
   "role": "codex2",
   "last_read": 381,
-  "heartbeat": "2026-11-21T22:00:54+07:00",
+  "heartbeat": "2026-11-21T23:29:14+07:00",
   "state": "working",
   "task": "C-0383",
   "note": "Đã ACK C-0383; chuẩn bị worktree codex2/c-sau-live-ui từ origin/main",
-  "done": []
+  "done": [
+    387
+  ]
 }
