@@ -41,6 +41,53 @@ function fastestSeconds(ms: number) {
   return new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(ms / 1000);
 }
 
+function FastestName({ name }: { name: string }) {
+  const nameRef = useRef<HTMLElement>(null);
+  const graphemes = Array.from(new Intl.Segmenter('vi', { granularity: 'grapheme' }).segment(name), (part) => part.segment);
+  const midpoint = Math.ceil(graphemes.length / 2);
+  const breakCandidates = graphemes.flatMap((part, index) => index > 0 &&
+    (/[\s._-]$/u.test(graphemes[index - 1]!) || /^\p{Lu}/u.test(part)) ? [index] : []);
+  const splitAt = breakCandidates.sort((a, b) => Math.abs(a - midpoint) - Math.abs(b - midpoint))[0] ?? midpoint;
+  const lines = graphemes.length > 12
+    ? [graphemes.slice(0, splitAt).join(''), graphemes.slice(splitAt).join('')]
+    : [name];
+
+  useLayoutEffect(() => {
+    const element = nameRef.current;
+    if (!element) return;
+
+    const fit = () => {
+      if (nameRef.current !== element) return;
+      const nameLines = [...element.querySelectorAll<HTMLElement>('.v3-fastest-name-content > span')];
+      const nameLineOverflows = () => nameLines.some((line) =>
+        line.scrollWidth > line.clientWidth || line.scrollHeight > line.clientHeight);
+      let fontSize = 34;
+      element.style.fontSize = `${fontSize}px`;
+      while (fontSize > 10 && (element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight || nameLineOverflows())) {
+        fontSize -= 1;
+        element.style.fontSize = `${fontSize}px`;
+      }
+    };
+
+    const observer = new ResizeObserver(fit);
+    observer.observe(element.parentElement ?? element);
+    const themeObserver = new MutationObserver(fit);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'data-theme-id'] });
+    document.fonts.addEventListener('loadingdone', fit);
+    fit();
+    void document.fonts.ready.then(fit);
+    return () => {
+      observer.disconnect();
+      themeObserver.disconnect();
+      document.fonts.removeEventListener('loadingdone', fit);
+    };
+  }, [name]);
+
+  return <b ref={nameRef} className="v3-fastest-name"><span className="v3-fastest-name-content">
+    {lines.map((line, index) => <span key={index}>{line}</span>)}
+  </span></b>;
+}
+
 function formatTime(ms: number) {
   const s = Math.ceil(ms / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -382,7 +429,9 @@ export function McKelly({ snapshot, bubbleOverride, fastest, fastestVariant, hid
         {throneLayout && <strong className="v3-throne-bubble-label">MC KELLY</strong>}
         {fastest ? <div className="v3-fastest-copy" data-testid="fastest-callout">
           <strong>{fastestVariant === 'b' ? '⚡ NHANH NHẤT' : 'NHANH NHẤT'}</strong>
-          <b className="v3-fastest-name">{fastest.safeDisplayName}</b>
+          {throneLayout
+            ? <FastestName name={fastest.safeDisplayName} />
+            : <b className="v3-fastest-name">{fastest.safeDisplayName}</b>}
           <span>{fastestSeconds(fastest.responseMs)} giây</span>
         </div> :
         <McBubbleText as="p" text={bubble} playerNames={playerNames} highlight />}

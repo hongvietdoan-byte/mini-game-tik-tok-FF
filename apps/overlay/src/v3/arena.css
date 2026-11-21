@@ -2526,3 +2526,80 @@
   .v3v .v3v-player-row.has-streak-badge .v3v-player-name { max-width: 100%; text-align: center; }
   .v3v .v3v-player-row.has-streak-badge .v3-top1-badge { position: absolute; top: 12px; right: 24px; }
 }
+
+/* C-0378: keep the fastest-correct card in the existing right-side slot, clear of the throne and its title. */
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout {
+  left: 740px;
+  right: auto;
+  top: 30px;
+  width: 258px;
+  height: 154px !important;
+  min-height: 154px;
+  max-height: 154px;
+  box-sizing: border-box;
+  padding: 8px;
+  gap: 4px;
+  overflow: visible;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout::before,
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout::after,
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-throne-bubble-label { display: none; }
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-copy > strong {
+  flex: 0 0 auto;
+  font-size: 20px;
+  min-height: 24px;
+  line-height: 1.1;
+  letter-spacing: .08em;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-name {
+  display: flex;
+  flex: 0 0 2.5em;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  height: 2.5em;
+  min-height: 2.5em;
+  max-height: 2.5em;
+  overflow: hidden;
+  font-size: 34px;
+  line-height: 1;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-name > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  line-height: 1;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-name-content > span {
+  display: block;
+  max-width: 100%;
+  min-height: 1.25em;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-copy > span {
+  flex: 0 0 auto;
+  font-size: 20px;
+  min-height: 24px;
+  line-height: 1.1;
+}
