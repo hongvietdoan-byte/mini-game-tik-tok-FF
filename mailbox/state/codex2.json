@@ -1,11 +1,12 @@
 {
   "role": "codex2",
   "last_read": 383,
-  "heartbeat": "2026-11-22T00:59:24+07:00",
+  "heartbeat": "2026-11-22T01:19:54+07:00",
   "state": "waiting",
   "task": "C-0386",
   "note": "C-0386 đã ACK; origin/main vẫn chưa chứa C-0383. Chờ coordinator gộp trước khi tạo nhánh codex2/c-theme-kit.",
   "done": [
-    387
+    387,
+    391
   ]
 }
