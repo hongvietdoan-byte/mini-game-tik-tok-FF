@@ -2,6 +2,11 @@
 
 **PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 20/11 ~17:15) — ĐÃ NHẬN 20/11 17:17.**
 
+## Mới nhất 21/11 ~17:00
+- Main `6aead045`: gộp C-0378/C-0379/C-0381 (Codex 2, người dùng duyệt ảnh): khung MC REVEAL/LEADERBOARD giữ x 740→998 không đè ngai; Top 3 nhanh nhất mỗi câu (`questionTop3`) chữ nhỏ 20→15 px; ảnh MC hết hở với khung tên (chỉ nới CSS `.v3-mc-figure`). Checkout chính đã ff + `web_build.py ensure`.
+- Test chập chờn mới gặp: `c0319-hud-tall.spec.ts:206` (lượt placeholder, chạy lại 3/3 đạt), `mc-chat` race QUEUED/GENERATING.
+- Người dùng 21/11: luôn chọn cách sửa đơn giản nhất (memory `simplest-fix-first`).
+
 ## Mới nhất 20/11 ~21:40 — hàng đợi code hôm nay XONG
 - Main `4a72593a`, checkout chính đã ff + build:web. Đã gộp tối nay: C-0361 (preselection + C-0224), C-0335 (chủ đề ưu tiên), C-0374 (Codex 2: dashboard Setup Wizard cổng Vite riêng mỗi worker), batch C-0360+C-0329 (+ coordinator sửa fixtures demo-029 A/B cho khớp v3, `30d88c70`).
 - DB máy người dùng: demo-004/demo-029 A/B rút gọn lên version 3 (người dùng duyệt), sao lưu `backups/quiz-before-c0310-ab-shorten-20261120-190955.db`. Đọc ước lượng còn ~21,5 s (vẫn >20 s). Gợi ý chưa duyệt: demo-029 bỏ chữ "Trong" ở đầu câu hỏi.
