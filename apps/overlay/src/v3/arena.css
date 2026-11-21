@@ -2177,7 +2177,7 @@
   letter-spacing: .35px;
 }
 .v3-question.is-prompt-truncated { white-space: pre-line; line-height: 1.08; }
-.v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-question.is-long:not(.is-prompt-truncated) { top: 148px; height: 128px; line-height: 1; padding-top: 0; }
+.v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-question.is-long:not(.is-prompt-truncated) { top: 148px; height: 128px; line-height: .88; padding-top: 0; }
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout .v3-options .v3-option-meter,
 .v3-stage.v3-stage--question-user.v3-stage--user-question-layout.has-long-options .v3-options.has-long-option.has-long-label.is-revealed .v3-option-meter {
   position: absolute;

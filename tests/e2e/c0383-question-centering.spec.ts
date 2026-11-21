@@ -33,13 +33,13 @@ test('C-0383 B — mọi câu APPROVED trong fixtures được căn giữa dọc
     reveal: null,
   } as PublicSnapshot);
   let nextSnapshot: PublicSnapshot | null = snapshotFor(approvedQuestions[0]!);
-  let publish: ((snapshot: PublicSnapshot) => void) | null = null;
+  const publisher: { current?: (snapshot: PublicSnapshot) => void } = {};
   await page.routeWebSocket('/ws', (socket) => {
     socket.onMessage((raw) => {
       const message = JSON.parse(String(raw)) as { type?: string };
-      if (message.type === 'HELLO' && nextSnapshot) publish?.(nextSnapshot);
+      if (message.type === 'HELLO' && nextSnapshot) publisher.current?.(nextSnapshot);
     });
-    publish = (snapshot) => socket.send(JSON.stringify({
+    publisher.current = (snapshot) => socket.send(JSON.stringify({
       v: 1,
       type: 'STATE_SNAPSHOT',
       seq: snapshot.stateVersion,
@@ -56,9 +56,9 @@ test('C-0383 B — mọi câu APPROVED trong fixtures được căn giữa dọc
   const frame = page.getByTestId('question-prompt');
 
   for (const question of approvedQuestions) {
-    const snapshot = question.id === approvedQuestions[0]!.id ? nextSnapshot! : snapshotFor(question);
-    nextSnapshot = snapshot;
-    publish?.(snapshot);
+    const questionSnapshot: PublicSnapshot = question.id === approvedQuestions[0]!.id ? nextSnapshot! : snapshotFor(question);
+    nextSnapshot = questionSnapshot;
+    publisher.current?.(questionSnapshot);
     await page.waitForFunction((prompt) => {
       const element = document.querySelector<HTMLElement>('[data-testid="question-prompt"]');
       return element?.getAttribute('title') === prompt && element.style.fontSize !== '';
