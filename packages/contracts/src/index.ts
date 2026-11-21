@@ -502,9 +502,9 @@ export type McView = { state: McState; bubble: string };
 
 export const TimingsSchema = z.object({
   lobbyMs: z.number().int().min(0).max(600_000).default(30_000),
-  prepareMs: z.number().int().min(500).max(60_000).default(8_000),
+  prepareMs: z.number().int().min(500).max(60_000).default(6_000),
   answerMs: z.number().int().min(3_000).max(120_000).default(20_000),
-  revealMs: z.number().int().min(500).max(60_000).default(9_000),
+  revealMs: z.number().int().min(500).max(60_000).default(7_000),
   leaderboardMs: z.number().int().min(500).max(60_000).default(9_000),
   /** BXH lớn ở mốc (mỗi leaderboardInterval câu + câu cuối) — V3: 5–8 s. Thiếu → 6 s. */
   bigLeaderboardMs: z.number().int().min(500).max(60_000).optional(),
