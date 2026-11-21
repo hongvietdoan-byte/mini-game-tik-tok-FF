@@ -221,6 +221,9 @@ export type McVoicePreGenerateProgress = z.infer<typeof McVoicePreGenerateProgre
 
 /** Trần một asset/cue; tổng bundle đọc câu hỏi có trần riêng dài hơn. */
 export const MAX_MC_VOICE_ASSET_MS = 20_000;
+/** Voice asset dài hơn chỉ được phép cho nội dung MC do operator tự nhập. */
+export const MAX_MC_CHAT_VOICE_ASSET_MS = 35_000;
+export const MAX_MC_CHAT_TEXT_CHARS = 400;
 /** Một câu hỏi đã duyệt luôn đọc đủ đề và bốn đáp án, kể cả bundle dài hơn 20 giây. */
 export const MAX_MC_READING_MS = 120_000;
 /** Thời lượng dự phòng khi không có bundle audio MC hợp lệ. */
@@ -236,13 +239,17 @@ export const McVoiceCueSchema = z.object({
   cueId: z.string().uuid(),
   eventType: McVoiceCueEventTypeSchema,
   assetUrl: z.string().regex(/^\/api\/mc-voice\/assets\/[a-f0-9]{64}$/),
-  durationMs: z.number().int().min(1).max(MAX_MC_VOICE_ASSET_MS),
+  durationMs: z.number().int().min(1).max(MAX_MC_CHAT_VOICE_ASSET_MS),
   startsAtServerMs: z.number().finite().nonnegative(),
   bubbleText: z.string().trim().min(1).max(300).optional(),
-}).strict();
+}).strict().superRefine((cue, context) => {
+  if (cue.eventType !== 'OPERATOR_CHAT' && cue.durationMs > MAX_MC_VOICE_ASSET_MS) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['durationMs'], message: 'Voice cue hệ thống tối đa 20 giây.' });
+  }
+});
 export type McVoiceCue = z.infer<typeof McVoiceCueSchema>;
 
-export const McChatTextSchema = z.string().trim().min(1).max(120);
+export const McChatTextSchema = z.string().trim().min(1).max(MAX_MC_CHAT_TEXT_CHARS);
 export const McChatRequestSchema = z.object({ text: McChatTextSchema, speak: z.boolean().default(true) }).strict();
 export const McChatPresetRequestSchema = z.object({ text: McChatTextSchema }).strict();
 export const McChatPresetSchema = z.object({ id: z.string().uuid(), text: McChatTextSchema }).strict();

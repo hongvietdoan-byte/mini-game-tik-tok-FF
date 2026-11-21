@@ -7,6 +7,8 @@ import {
   DEFAULT_MC_READING_MS,
   INITIAL_TEST_SAFE_ZONE,
   MAX_MC_READING_MS,
+  MAX_MC_CHAT_TEXT_CHARS,
+  MAX_MC_CHAT_VOICE_ASSET_MS,
   McChatRequestSchema,
   MC_VOICE_POLICY_VERSION,
   DEFAULT_PRIORITY_SHARE,
@@ -111,7 +113,7 @@ const COUNTDOWN_SCRIPT: Readonly<Record<number, string>> = {
 const SPAM_REMINDER_TEXT = 'Nhắc nhẹ nè: mỗi người chỉ một đáp án, bình luận đầu tiên mới được tính nhé!';
 const COUNTDOWN_SECONDS = [10, 5, 4, 3, 2, 1] as const;
 const MC_CHAT_QUEUE_LIMIT = 5;
-const MC_CHAT_GENERATION_TIMEOUT_MS = 10_000;
+const MC_CHAT_GENERATION_TIMEOUT_MS = 40_000;
 const MC_CHAT_TEXT_DURATION_MS = 5_000;
 const STAGE_ACHIEVEMENT_IDS = ACHIEVEMENT_REGISTRY
   .filter((definition) => definition.scope === 'STAGE' && definition.policy !== 'REUSE_PHASE1')
@@ -1234,7 +1236,7 @@ export class SessionRuntime {
 
   sendMcChat(input: unknown, operatorId = 'operator') {
     const parsed = McChatRequestSchema.safeParse(input);
-    if (!parsed.success) return { status: 400, result: { ok: false, code: 'MC_CHAT_INVALID', message: 'Câu MC phải có từ 1 đến 120 ký tự.' } };
+    if (!parsed.success) return { status: 400, result: { ok: false, code: 'MC_CHAT_INVALID', message: `Câu MC phải có từ 1 đến ${MAX_MC_CHAT_TEXT_CHARS} ký tự.` } };
     if (this.engine.sessionStatus !== 'OPEN')
       return { status: 409, result: { ok: false, code: 'SESSION_CLOSED', message: 'Phiên đã đóng, không thể gửi câu MC.' } };
     const { text } = parsed.data;
@@ -1262,7 +1264,7 @@ export class SessionRuntime {
       item.generationTimeout = this.scheduler.setTimeout(() => this.safe(() => {
         if (item.status !== 'GENERATING') return;
         item.generationTimeout = null;
-        this.updateMcChat(item, 'ERROR', 'Tạo giọng quá 10 giây. Chọn “Chỉ hiện chữ” hoặc huỷ câu.');
+        this.updateMcChat(item, 'ERROR', 'Tạo giọng quá 40 giây. Chọn “Chỉ hiện chữ” hoặc huỷ câu.');
         this.emitAdmin();
       }), MC_CHAT_GENERATION_TIMEOUT_MS);
       void this.voiceAsset({ type: 'OPERATOR_CHAT', chatId: item.id }, text).then((asset) => {
@@ -1609,7 +1611,8 @@ export class SessionRuntime {
       model: profile.model, voiceSettings, rate: profile.rate, format: 'mp3' as const,
     };
     const request = { text, voiceKey: profile.voiceKey, voiceSettings, rate: profile.rate, format: 'mp3' as const };
-    const pending = service.getOrCreate(descriptor, request).then(({ asset }) => ({ assetId: asset.assetId, durationMs: asset.durationMs })).catch((error: unknown) => {
+    const maxDurationMs = event.type === 'OPERATOR_CHAT' ? MAX_MC_CHAT_VOICE_ASSET_MS : undefined;
+    const pending = service.getOrCreate(descriptor, request, undefined, maxDurationMs).then(({ asset }) => ({ assetId: asset.assetId, durationMs: asset.durationMs })).catch((error: unknown) => {
       this.telemetry(error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'FAILED', event.type);
       return null;
     });

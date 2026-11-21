@@ -43,7 +43,7 @@ export class McVoiceProviderError extends Error {
 }
 
 export interface McVoiceProvider {
-  synthesize(input: McVoiceSynthesisRequest, token: string, signal?: AbortSignal): Promise<McVoiceAudio>;
+  synthesize(input: McVoiceSynthesisRequest, token: string, signal?: AbortSignal, maxDurationMs?: number): Promise<McVoiceAudio>;
 }
 
 export type McVoiceCacheDescriptor = {

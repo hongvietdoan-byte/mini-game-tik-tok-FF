@@ -70,7 +70,7 @@ export class ClipAiMcVoiceProvider implements McVoiceProvider {
     private readonly options: { clock?: McVoiceClock; timeoutMs?: number; pollIntervalMs?: number } = {},
   ) {}
 
-  async synthesize(input: McVoiceSynthesisRequest, token: string, signal?: AbortSignal): Promise<McVoiceAudio> {
+  async synthesize(input: McVoiceSynthesisRequest, token: string, signal?: AbortSignal, maxDurationMs = MAX_MC_VOICE_ASSET_MS): Promise<McVoiceAudio> {
     if (!token.trim()) throw new McVoiceProviderError('AUTH', 'Chưa cấu hình thông tin xác thực MC Voice.');
     if (!input.text.trim() || input.text.length > 1_000 || !input.voiceKey.trim() || !Number.isFinite(input.rate) || input.rate <= 0 || input.format !== 'mp3')
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Yêu cầu tạo audio MC Voice không hợp lệ.');
@@ -128,8 +128,8 @@ export class ClipAiMcVoiceProvider implements McVoiceProvider {
     const audioItem = items.find((item) => typeof item.assetRef === 'string' && item.assetRef.length > 0);
     if (!audioItem || !Number.isSafeInteger(audioItem.durationMs) || audioItem.durationMs <= 0)
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Không có audio hợp lệ cho tác vụ MC Voice.');
-    if (audioItem.durationMs > MAX_MC_VOICE_ASSET_MS)
-      throw new McVoiceProviderError('TOO_LONG', 'Audio MC Voice vượt trần 20 giây.');
+    if (audioItem.durationMs > maxDurationMs)
+      throw new McVoiceProviderError('TOO_LONG', `Audio MC Voice vượt trần ${maxDurationMs / 1_000} giây.`);
 
     let bytes: Uint8Array;
     try {
