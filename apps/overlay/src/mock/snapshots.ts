@@ -1,4 +1,4 @@
-import type { GameState, McState, PublicLeaderboardEntry, PublicPodium, PublicSnapshot, Scene } from '@quiz/contracts';
+import type { GameState, McState, PublicLeaderboardEntry, PublicPodium, PublicSnapshot, QuestionTop3View, RankedEntry, Scene } from '@quiz/contracts';
 import { INITIAL_TEST_SAFE_ZONE, type AudienceView } from '@quiz/contracts';
 import { createAudienceState, createSlots, onPlayerJoined } from '@quiz/audience-engine';
 import type { PublicThrone, SnapshotWithThrone } from '../throne';
@@ -99,6 +99,56 @@ const options = [
   { id: 'D' as const, text: '5 người' },
 ];
 
+const fastestThroneMocks = Object.fromEntries(
+  (['empty', 'held'] as const).flatMap((throne) => [1, 12, 24].flatMap((length) =>
+    (['reveal', 'leaderboard'] as const).map((phase) => [
+      `fastest-throne-${throne}-${length}-${phase}`,
+      { scene: 'REVEAL' as Scene, state: phase === 'reveal' ? 'REVEAL' as GameState : 'LEADERBOARD' as GameState },
+    ]),
+  )),
+) as Record<string, { scene: Scene; state: GameState }>;
+
+const questionTop3Mocks: Record<string, { scene: Scene; state: GameState }> = {
+  'top3-throne-empty-short-reveal': { scene: 'REVEAL', state: 'REVEAL' },
+  'top3-throne-held-short-reveal': { scene: 'REVEAL', state: 'REVEAL' },
+  'top3-throne-empty-long-reveal': { scene: 'REVEAL', state: 'REVEAL' },
+  'top3-throne-held-long-leaderboard': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'top3-throne-empty-tie-reveal': { scene: 'REVEAL', state: 'REVEAL' },
+  'top3-throne-empty-zero-reveal': { scene: 'REVEAL', state: 'REVEAL' },
+  'top3-throne-held-one-reveal': { scene: 'REVEAL', state: 'REVEAL' },
+  'top3-throne-held-two-leaderboard': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'top3-throne-held-short-leaderboard': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'top3-throne-held-cancelled': { scene: 'REVEAL', state: 'LEADERBOARD' },
+};
+
+function questionTop3ForMock(name: string): QuestionTop3View | null {
+  if (name.endsWith('-cancelled')) return null;
+  const rowsByCase: Record<string, { names: string[]; tied: boolean; overflow: number }> = {
+    short: { names: ['StormKing', 'FFVN.Kelly', 'BVD.Champion'], tied: false, overflow: 0 },
+    long: { names: ['Đỗ_Nguyễn⚡TốcĐộ_2026🔥ABC', 'Đỗ_Nguyễn⚡TốcĐộ_2026🔥ABC', 'Đỗ_Nguyễn⚡TốcĐộ_2026🔥ABC'], tied: false, overflow: 0 },
+    tie: { names: ['StormKing', 'FFVN.Kelly', 'BVD.Champion'], tied: true, overflow: 3 },
+    zero: { names: [], tied: false, overflow: 0 },
+    one: { names: ['Ấ'], tied: false, overflow: 0 },
+    two: { names: ['Ấ', 'ĐỗNguyễn⚡Tốc'], tied: false, overflow: 0 },
+  };
+  const selected = Object.entries(rowsByCase).find(([key]) => name.includes('-' + key + '-'))?.[1] ?? rowsByCase.short!;
+  const entries: RankedEntry[] = selected.names.map((safeDisplayName, index) => ({
+    playerId: 'top3-player-' + (index + 1),
+    safeDisplayName,
+    rank: selected.tied ? 1 : index + 1,
+    metricValue: selected.tied ? 1_240 : [1_240, 2_180, 3_450][index] ?? 1_240,
+    metricUnit: 'ms',
+    tied: selected.tied,
+  }));
+  return {
+    questionInstanceId: 'demo-question-5',
+    entries,
+    totalQualified: entries.length + selected.overflow,
+    tiedOverflowCount: selected.overflow,
+    revision: 1,
+  };
+}
+
 const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   lobby: { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-0': { scene: 'LOBBY', state: 'LOBBY' },
@@ -132,6 +182,8 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'fastest-a': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-a-long': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'fastest-b': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'reveal-throne-empty': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  'reveal-throne-held': { scene: 'REVEAL', state: 'LEADERBOARD' },
   top10: { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-zero-score': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
   'top10-zero-score-empty': { scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
@@ -149,6 +201,7 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'victory-name-test': { scene: 'VICTORY', state: 'VICTORY' },
   'victory-score-width': { scene: 'VICTORY', state: 'VICTORY' },
   'fastest-score-width': { scene: 'REVEAL', state: 'LEADERBOARD' },
+  ...questionTop3Mocks,
   intermission: { scene: 'INTERMISSION', state: 'INTERMISSION' },
   'connection-lost': { scene: 'CONNECTION_LOST', state: 'CONNECTION_INTERRUPTED' },
   paused: { scene: 'QUESTION', state: 'PAUSED' },
@@ -159,6 +212,7 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'throne-empty': { scene: 'QUESTION', state: 'ACCEPTING' },
   'throne-tie-top10': { scene: 'REVEAL', state: 'LEADERBOARD' },
   'throne-tie': { scene: 'VICTORY', state: 'VICTORY' },
+  ...fastestThroneMocks,
 };
 
 function podium(tied: boolean): PublicPodium {
@@ -257,12 +311,14 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
   const lobbySeatCount = /^lobby-(\d+)/u.exec(name)?.[1]
     ? Number(/^lobby-(\d+)/u.exec(name)![1])
     : name === 'throne-locked' ? 18 : 0;
-  const throneScene = name.startsWith('throne-');
+  const throneScene = name.startsWith('throne-') || name.startsWith('fastest-throne-') || name.startsWith('reveal-throne-') || name.startsWith('top3-throne-');
   const audienceSeatCount = /^(?:question|reveal)-audience-(\d+)/u.exec(name)?.[1]
     ? Number(/^(?:question|reveal)-audience-(\d+)/u.exec(name)![1])
     : throneScene ? 30 : 35;
   const short = name === 'top10-short';
-  const isFastestMock = name === 'fastest-a' || name === 'fastest-a-long' || name === 'fastest-b' || name === 'fastest-score-width';
+  const isFastestThroneMock = name.startsWith('fastest-throne-');
+  const isFastestMock = name === 'fastest-a' || name === 'fastest-a-long' || name === 'fastest-b' || name === 'fastest-score-width' || isFastestThroneMock;
+  const isQuestionTop3Mock = name.startsWith('top3-throne-');
   const isZeroScoreMock = name.includes('zero-score');
   const isScoreWidthMock = name === 'top10-score-width' || name === 'fastest-score-width';
   const emptyZeroScoreMock = name.endsWith('-zero-score-empty');
@@ -282,12 +338,12 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
     score: rankTie || name === 'throne-change' ? 1_500 : holderEntry.score,
     streak: holderEntry.top1Streak ?? (name === 'throne-change' ? 2 : 3),
   };
-  const throne: PublicThrone = name === 'throne-empty'
+  const throne: PublicThrone = name === 'throne-empty' || name.includes('-empty-') || name === 'reveal-throne-empty'
     ? { state: 'EMPTY', unlockAfterQuestion: 5 }
     : name === 'throne-locked' || name === 'throne-locked-question'
       ? { state: 'LOCKED', unlockAfterQuestion: 5 }
       : { state: 'HELD', unlockAfterQuestion: 5, holder };
-  const question = ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused', 'throne-locked-question', 'throne-held', 'throne-change', 'throne-empty', 'throne-tie-top10'].includes(name);
+  const question = ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused', 'throne-locked-question', 'throne-held', 'throne-change', 'throne-empty', 'throne-tie-top10', 'reveal-throne-empty', 'reveal-throne-held'].includes(name) || isFastestThroneMock || isQuestionTop3Mock;
   const longestPrompt = 'Trong Free Fire, tên tiếng Anh của thể thức sinh tồn nơi nhiều người chơi chiến đấu trên đảo, tìm trang bị, theo dõi vòng bo đang thu hẹp và phối hợp với đồng đội để sống sót đến cuối trận là gì: Battle Royale?';
   const demo006Prompt = 'Trong Clash Squad, người chơi dùng khu vực mua sắm trong trận để chọn vũ khí và trang bị cho vòng đấu. Khu vực đó thường được gọi là gì?';
   const squadPrompt = 'Trong giao tiếp của trò chơi, từ “squad” thường chỉ điều gì khi người chơi cùng nhau tham gia một trận?';
@@ -319,7 +375,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
     { id: 'D' as const, text: 'Bỏ qua vùng an toàn để tiếp tục nhặt thêm trang bị.' },
   ];
   const optionsVisible = name !== 'prepare';
-  const isReveal = name === 'reveal' || name === 'reveal-grid-balance' || name === 'reveal-zero-score' || name === 'reveal-clamp-text' || name === 'reveal-live-long' || isFastestMock || name === 'throne-change' || name === 'throne-tie-top10';
+  const isReveal = name === 'reveal' || name === 'reveal-grid-balance' || name === 'reveal-zero-score' || name === 'reveal-clamp-text' || name === 'reveal-live-long' || name.startsWith('reveal-throne-') || isFastestMock || isQuestionTop3Mock || name === 'throne-change' || name === 'throne-tie-top10';
   const visibleLeaderboard = name === 'question-long-name' || name === 'top10-long-name'
     ? mockLeaderboard.map((entry, index) => index === 0
       ? { ...entry, safeDisplayName: name === 'top10-long-name' ? 'StormKingAlpha' : 'FFVN.Kelly · Nhà vô địch Bá Vương Đại Chiến' }
@@ -392,10 +448,12 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
       questionInstanceId: 'demo-question-5',
       publicPlayerId: leaderboard[1]!.playerId,
       seatId: mockAudience(true).seats.find((seat) => seat.occupant?.safeDisplayName === 'StormKing')?.slotId ?? null,
-      safeDisplayName: name === 'fastest-a-long' ? 'StormKingChampion123456' : 'StormKing',
+      safeDisplayName: isFastestThroneMock
+        ? name.includes('-1-') ? 'Ấ' : name.includes('-12-') ? 'ĐỗNguyễn⚡Tốc' : 'Đỗ_Nguyễn⚡TốcĐộ_2026🔥ABC'
+        : name === 'fastest-a-long' ? 'StormKingChampion123456' : 'StormKing',
       responseMs: name === 'fastest-a-long' ? 12_300 : 1_240,
     } : null,
-    questionTop3: null,
+    questionTop3: isQuestionTop3Mock ? questionTop3ForMock(name) : null,
     stageTop3: null,
     reveal: isReveal ? {
       questionInstanceId: 'demo-question-5',
@@ -436,8 +494,8 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
     },
     audience: mapped.scene === 'LOBBY'
       ? mockLobbyAudience(lobbySeatCount, throneScene ? 30 : 35)
-      : ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused', 'throne-locked-question', 'throne-held', 'throne-change', 'throne-empty', 'throne-tie-top10'].includes(name)
-        ? mockAudience(isReveal, audienceSeatCount, name === 'throne-held' || name === 'throne-change' || name === 'throne-tie-top10' ? holder.safeDisplayName : undefined, throneScene ? 30 : 35) : null,
+      : ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused', 'throne-locked-question', 'throne-held', 'throne-change', 'throne-empty', 'throne-tie-top10', 'reveal-throne-empty', 'reveal-throne-held'].includes(name) || isFastestThroneMock || isQuestionTop3Mock
+        ? mockAudience(isReveal, audienceSeatCount, name === 'throne-held' || name === 'throne-change' || name === 'throne-tie-top10' || name === 'reveal-throne-held' || name.includes('-held-') ? holder.safeDisplayName : undefined, throneScene ? 30 : 35) : null,
     ...(throneScene ? { throne: throne as PublicThrone } : {}),
     safeZone: INITIAL_TEST_SAFE_ZONE,
   } as SnapshotWithThrone;

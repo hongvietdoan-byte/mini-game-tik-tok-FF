@@ -310,9 +310,16 @@ test('C-0203: fastestCorrectAnswer từ server MOCK hiện trên overlay; mcVoic
 
   const fastest = runtime.adminSnapshot().public.fastestCorrectAnswer;
   expect(fastest).toMatchObject({ safeDisplayName: 'StormKing', responseMs: expect.any(Number) });
-  const callout = stage.getByTestId('fastest-callout');
-  await expect(callout).toContainText('StormKing');
-  await expect(callout).toContainText('NHANH NHẤT');
+  const questionTop3 = runtime.adminSnapshot().public.questionTop3;
+  if (questionTop3) {
+    const callout = stage.getByTestId('question-top3');
+    await expect(callout).toContainText('StormKing');
+    await expect(callout).toContainText('TOP 3 NHANH NHẤT');
+  } else {
+    const callout = stage.getByTestId('fastest-callout');
+    await expect(callout).toContainText('StormKing');
+    await expect(callout).toContainText('NHANH NHẤT');
+  }
   await expect(stage.locator('.v3-seat-name.is-fastest')).toHaveCount(1);
   expect(JSON.stringify(runtime.adminSnapshot().public.fastestCorrectAnswer)).not.toContain('c0203-synthetic-player');
 

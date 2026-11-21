@@ -241,7 +241,8 @@ function App() {
     // snapshots addressable by URL, but out of the cycle so audio cues fire
     // once per phase instead of replaying as the mock IDs alternate.
     const available = MOCK_SCENES.filter((scene) =>
-      scene !== 'paused' && scene !== 'reading-demo-006' && scene !== 'question-demo-006',
+      scene !== 'paused' && scene !== 'reading-demo-006' && scene !== 'question-demo-006' &&
+      !scene.startsWith('fastest-throne-') && !scene.startsWith('reveal-throne-'),
     );
     const timer = window.setInterval(() => setCycleScene((current) => {
       const index = available.indexOf(current);

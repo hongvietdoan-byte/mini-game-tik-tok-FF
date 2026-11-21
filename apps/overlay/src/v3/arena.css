@@ -2526,3 +2526,216 @@
   .v3v .v3v-player-row.has-streak-badge .v3v-player-name { max-width: 100%; text-align: center; }
   .v3v .v3v-player-row.has-streak-badge .v3-top1-badge { position: absolute; top: 12px; right: 24px; }
 }
+
+/* C-0378: keep the fastest-correct card in the existing right-side slot, clear of the throne and its title. */
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout {
+  left: 740px;
+  right: auto;
+  top: 30px;
+  width: 258px;
+  height: 154px !important;
+  min-height: 154px;
+  max-height: 154px;
+  box-sizing: border-box;
+  padding: 8px;
+  gap: 4px;
+  overflow: visible;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout::before,
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout::after,
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-throne-bubble-label { display: none; }
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  overflow: hidden;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-copy > strong {
+  flex: 0 0 auto;
+  font-size: 20px;
+  min-height: 24px;
+  line-height: 1.1;
+  letter-spacing: .08em;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-name {
+  display: flex;
+  flex: 0 0 2.5em;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  height: 2.5em;
+  min-height: 2.5em;
+  max-height: 2.5em;
+  overflow: hidden;
+  font-size: 34px;
+  line-height: 1;
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-name > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  line-height: 1;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-name-content > span {
+  display: block;
+  max-width: 100%;
+  min-height: 1.25em;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-copy > span {
+  flex: 0 0 auto;
+  font-size: 20px;
+  min-height: 24px;
+  line-height: 1.1;
+}
+
+/* C-0379: reuse the C-0378 right-side MC slot for the question Top 3. */
+.v3-stage--has-throne.v3-stage--user-question-layout.has-fastest-callout .v3-mc .v3-fastest-callout {
+  top: 10px;
+  height: 168px !important;
+  min-height: 168px;
+  max-height: 168px;
+}
+.v3-question-top3 {
+  display: grid;
+  grid-template-rows: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  align-content: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  color: var(--theme-text-primary, #fff);
+}
+.v3-question-top3.has-long-name { gap: 0; }
+.v3-question-top3-title {
+  display: block;
+  color: var(--theme-gold, #ffe18a);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 20px;
+  letter-spacing: .025em;
+  text-align: center;
+  white-space: nowrap;
+}
+.v3-question-top3-rows {
+  display: grid;
+  grid-auto-rows: 30px;
+  align-content: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.v3-question-top3.has-long-name .v3-question-top3-rows { grid-auto-rows: 42px; gap: 0; }
+.v3-top3-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 3px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  overflow: hidden;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px var(--theme-accent-soft, rgba(255, 255, 255, .18));
+  background: linear-gradient(90deg, var(--theme-violet-soft, rgba(123, 92, 255, .2)), var(--theme-ink-soft, rgba(123, 92, 255, .05)));
+  font-size: 20px;
+  line-height: 1;
+}
+.v3-question-top3.has-long-name .v3-top3-row { height: 42px; }
+.v3-top3-row.is-tied {
+  border-color: var(--theme-gold-soft, rgba(255, 210, 110, .75));
+  background: linear-gradient(90deg, var(--theme-gold-soft, rgba(255, 190, 60, .3)), var(--theme-violet-soft, rgba(123, 92, 255, .12)));
+}
+.v3-top3-rank {
+  overflow: hidden;
+  color: var(--theme-gold, #ffe18a);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+.v3-top3-name {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--theme-text-primary, #fff);
+  font-size: 20px;
+  font-weight: 850;
+  line-height: 24px;
+  text-align: left;
+  white-space: nowrap;
+}
+.v3-top3-name > span {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  line-height: 24px;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.v3-top3-name.is-wrapped {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 16px;
+}
+.v3-top3-name.is-wrapped > span { line-height: 16px; }
+.v3-top3-time {
+  overflow: hidden;
+  color: var(--theme-gold, #ffe18a);
+  font-size: 16px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.v3-top3-overflow {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--theme-gold, #ffe18a);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.v3-top3-overflow:empty { display: none; }
+.v3-question-top3-empty {
+  margin: 0;
+  color: var(--theme-text-primary, #fff);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.1;
+  text-align: center;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout .v3-mc .v3-mc-figure {
+  height: 210px;
+  overflow: hidden;
+  z-index: 0;
+}
+.v3-stage--has-throne.v3-stage--user-question-layout .v3-mc .v3-mc-figure img { max-height: none; }
+.v3-stage--has-throne[data-scene="LOBBY"] .v3-mc .v3-mc-figure { height: 218px; z-index: 0; }
+.v3-stage--has-throne .v3-mc .v3-mc-plate { z-index: 1; }
