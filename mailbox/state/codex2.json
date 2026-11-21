@@ -1,7 +1,7 @@
 {
   "role": "codex2",
-  "last_read": 380,
-  "heartbeat": "2026-11-21T14:08:10+07:00",
+  "last_read": 381,
+  "heartbeat": "2026-11-21T14:39:07+07:00",
   "state": "waiting",
   "task": "C-0379",
   "note": "C-0379/C-0380 hoàn tất, đã report Y-0628, push nhánh; chờ task mới",
