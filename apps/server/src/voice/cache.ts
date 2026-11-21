@@ -65,7 +65,7 @@ export class McVoiceCache {
     if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('Thư mục cache MC Voice không hợp lệ.');
   }
 
-  async get(assetId: string): Promise<CachedMcVoiceAudio | null> {
+  async get(assetId: string, maxDurationMs = MAX_MC_VOICE_ASSET_MS): Promise<CachedMcVoiceAudio | null> {
     if (!HASH_RE.test(assetId)) return null;
     await this.ensureDirectory();
     const entryDir = join(this.directory, assetId);
@@ -78,7 +78,7 @@ export class McVoiceCache {
       const [bytes, rawMetadata] = await Promise.all([readFile(audioPath), readFile(metaPath, 'utf8')]);
       const metadata = JSON.parse(rawMetadata) as CacheMetadata;
       if (metadata.assetId !== assetId || metadata.voicePolicyVersion !== MC_VOICE_POLICY_VERSION || metadata.format !== 'mp3' || metadata.sizeBytes !== bytes.byteLength ||
-        !Number.isSafeInteger(metadata.durationMs) || metadata.durationMs <= 0 || metadata.durationMs > MAX_MC_VOICE_ASSET_MS ||
+        !Number.isSafeInteger(metadata.durationMs) || metadata.durationMs <= 0 || metadata.durationMs > maxDurationMs ||
         !HASH_RE.test(metadata.checksum) || checksum(bytes) !== metadata.checksum) return null;
       return { ...metadata, bytes };
     } catch (error) {
@@ -88,11 +88,11 @@ export class McVoiceCache {
     }
   }
 
-  async put(assetId: string, audio: McVoiceAudio): Promise<CachedMcVoiceAudio> {
+  async put(assetId: string, audio: McVoiceAudio, maxDurationMs = MAX_MC_VOICE_ASSET_MS): Promise<CachedMcVoiceAudio> {
     if (!HASH_RE.test(assetId)) throw new Error('Cache key MC Voice không hợp lệ.');
     if (!(audio.bytes instanceof Uint8Array) || audio.bytes.byteLength === 0 || audio.bytes.byteLength > MAX_AUDIO_BYTES)
       throw new Error('Kích thước audio MC Voice không hợp lệ.');
-    if (audio.format !== 'mp3' || !Number.isSafeInteger(audio.durationMs) || audio.durationMs <= 0 || audio.durationMs > MAX_MC_VOICE_ASSET_MS)
+    if (audio.format !== 'mp3' || !Number.isSafeInteger(audio.durationMs) || audio.durationMs <= 0 || audio.durationMs > maxDurationMs)
       throw new Error('Audio vượt giới hạn thời lượng hoặc định dạng MC Voice.');
 
     const pending = this.pendingWrites.get(assetId);
@@ -109,7 +109,7 @@ export class McVoiceCache {
   private async writeEntry(assetId: string, audio: McVoiceAudio): Promise<CachedMcVoiceAudio> {
     await this.ensureDirectory();
     const entryDir = join(this.directory, assetId);
-    const existing = await this.get(assetId);
+    const existing = await this.get(assetId, audio.durationMs);
     if (existing) return existing;
 
     const metadata: CacheMetadata = {
@@ -133,7 +133,7 @@ export class McVoiceCache {
     } finally {
       await Promise.all([rm(tempAudio, { force: true }), rm(tempMetadata, { force: true })]);
     }
-    const written = await this.get(assetId);
+    const written = await this.get(assetId, audio.durationMs);
     if (!written) throw new Error('Không xác minh được audio sau khi ghi cache.');
     return written;
   }

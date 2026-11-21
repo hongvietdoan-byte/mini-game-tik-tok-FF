@@ -7,6 +7,8 @@ import {
   DEFAULT_MC_READING_MS,
   INITIAL_TEST_SAFE_ZONE,
   MAX_MC_READING_MS,
+  MAX_MC_CHAT_TEXT_CHARS,
+  MAX_MC_CHAT_VOICE_ASSET_MS,
   McChatRequestSchema,
   MC_VOICE_POLICY_VERSION,
   DEFAULT_PRIORITY_SHARE,
@@ -111,7 +113,7 @@ const COUNTDOWN_SCRIPT: Readonly<Record<number, string>> = {
 const SPAM_REMINDER_TEXT = 'Nhắc nhẹ nè: mỗi người chỉ một đáp án, bình luận đầu tiên mới được tính nhé!';
 const COUNTDOWN_SECONDS = [10, 5, 4, 3, 2, 1] as const;
 const MC_CHAT_QUEUE_LIMIT = 5;
-const MC_CHAT_GENERATION_TIMEOUT_MS = 10_000;
+const MC_CHAT_GENERATION_TIMEOUT_MS = 40_000;
 const MC_CHAT_TEXT_DURATION_MS = 5_000;
 const STAGE_ACHIEVEMENT_IDS = ACHIEVEMENT_REGISTRY
   .filter((definition) => definition.scope === 'STAGE' && definition.policy !== 'REUSE_PHASE1')
@@ -694,6 +696,7 @@ export class SessionRuntime {
           this.store.markQuestion(e.questionInstanceId, 'CLOSED', now);
           this.updateCachedQuestion(e.questionInstanceId, { status: 'CLOSED', closedAtMs: now });
           this.counts = this.store.optionCounts(e.questionInstanceId);
+          this.audience.recordClosedQuestion(this.store.answersForQuestion(e.questionInstanceId).keys());
           integrity = this.scoreRound(now, 'AFTER_QUESTION', e.questionInstanceId) ?? integrity;
           this.rememberClosedQuestionDelaySample(e.questionInstanceId);
           break;
@@ -737,6 +740,8 @@ export class SessionRuntime {
             this.audienceChanged = this.audience.reorderByRank(scores) || this.audienceChanged;
           }
           if (e.to === 'LOBBY') {
+            this.throne = { unlocked: false, holder: null, correctElapsedMs: new Map() };
+            this.throneStreaks.clear();
             this.audience.openLobby();
             this.lobbyOpenedAtMs = now;
             this.lobbyCountdownEndsAtMs = null;
@@ -750,7 +755,7 @@ export class SessionRuntime {
           const qi = this.engine.round?.questionIndex ?? 0;
           if (e.to === 'PREPARE' && (e.from === 'REVEAL' || e.from === 'LEADERBOARD') && every > 0 && qi > 0 && qi % every === 0) {
             const top = this.ranked.slice(0, this.config.audiencePinTop ?? 3).map((x) => x.playerId);
-            this.audience.rotateBetweenQuestions(now, top);
+            this.audience.rotateBetweenQuestions(now, top, this.throne.holder?.playerId ?? null);
           }
           break;
         }
@@ -1149,6 +1154,7 @@ export class SessionRuntime {
   }
 
   private telemetry(reason: string, eventType: McVoiceEvent['type'], detail?: { timerLatenessMs?: number }) {
+    if (this.disposed) return;
     // Chỉ ghi loại sự kiện và mã lý do; tuyệt đối không ghi text, tên, token hay chi tiết provider.
     const safeReason = MC_VOICE_TELEMETRY_REASONS.has(reason) ? reason : 'FAILED';
     const timerLateness = detail?.timerLatenessMs;
@@ -1188,13 +1194,14 @@ export class SessionRuntime {
 
   private mcChatSafetyFailure(text: string): { code: string; message: string } | null {
     const spoken = this.deps.mcVoice?.service.prepareSynthesisText(text) ?? text;
-    if (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(spoken)) {
-      this.telemetry('UNSAFE_PLAYER_IDENTITY', 'OPERATOR_CHAT');
-      return { code: 'MC_CHAT_UNSAFE_PLAYER_IDENTITY', message: 'Câu MC chứa tên hoặc ID người chơi nên đã bị từ chối.' };
-    }
     const filter = this.deps.nameFilter;
     if (filter) {
-      const matches = [text, spoken].flatMap((value) => filter.findTextMatches(value));
+      const matches = [text, spoken].flatMap((value) => filter.findTextMatches(value)).filter((match) => {
+        const termHasVietnameseAccent = /\p{M}/u.test(match.term.normalize('NFD'));
+        if (!termHasVietnameseAccent) return true;
+        const foldPunctuation = (value: string) => value.normalize('NFD').toLocaleLowerCase('vi').replace(/[^\p{L}\p{M}]/gu, '');
+        return foldPunctuation(match.term) === foldPunctuation(match.matchedText);
+      });
       const blockedTerms = [...new Set(matches.map((match) => match.matchedText))];
       if (blockedTerms.length) {
         return {
@@ -1233,7 +1240,7 @@ export class SessionRuntime {
 
   sendMcChat(input: unknown, operatorId = 'operator') {
     const parsed = McChatRequestSchema.safeParse(input);
-    if (!parsed.success) return { status: 400, result: { ok: false, code: 'MC_CHAT_INVALID', message: 'Câu MC phải có từ 1 đến 120 ký tự.' } };
+    if (!parsed.success) return { status: 400, result: { ok: false, code: 'MC_CHAT_INVALID', message: `Câu MC phải có từ 1 đến ${MAX_MC_CHAT_TEXT_CHARS} ký tự.` } };
     if (this.engine.sessionStatus !== 'OPEN')
       return { status: 409, result: { ok: false, code: 'SESSION_CLOSED', message: 'Phiên đã đóng, không thể gửi câu MC.' } };
     const { text } = parsed.data;
@@ -1261,7 +1268,7 @@ export class SessionRuntime {
       item.generationTimeout = this.scheduler.setTimeout(() => this.safe(() => {
         if (item.status !== 'GENERATING') return;
         item.generationTimeout = null;
-        this.updateMcChat(item, 'ERROR', 'Tạo giọng quá 10 giây. Chọn “Chỉ hiện chữ” hoặc huỷ câu.');
+        this.updateMcChat(item, 'ERROR', 'Tạo giọng quá 40 giây. Chọn “Chỉ hiện chữ” hoặc huỷ câu.');
         this.emitAdmin();
       }), MC_CHAT_GENERATION_TIMEOUT_MS);
       void this.voiceAsset({ type: 'OPERATOR_CHAT', chatId: item.id }, text).then((asset) => {
@@ -1593,6 +1600,11 @@ export class SessionRuntime {
     const parsed = McVoiceEventSchema.safeParse(event);
     if (!this.voiceEnabled() || !parsed.success) return Promise.resolve(null);
     const speechText = this.deps.mcVoice!.service.prepareSynthesisText(text);
+    if (event.type !== 'OPERATOR_CHAT' &&
+      (this.speechContainsPlayerIdentity(text) || this.speechContainsPlayerIdentity(speechText))) {
+      this.telemetry('UNSAFE_PLAYER_IDENTITY', event.type);
+      return Promise.resolve(null);
+    }
     const { service, profile } = this.deps.mcVoice!;
     const voiceSettings = mcVoiceSettingsForEvent(profile, event.type);
     const key = `${event.type}\u0000${speechText.normalize('NFC').trim().replace(/\s+/gu, ' ')}\u0000${JSON.stringify(Object.fromEntries(Object.entries(voiceSettings).sort(([a], [b]) => a.localeCompare(b))))}`;
@@ -1603,7 +1615,8 @@ export class SessionRuntime {
       model: profile.model, voiceSettings, rate: profile.rate, format: 'mp3' as const,
     };
     const request = { text, voiceKey: profile.voiceKey, voiceSettings, rate: profile.rate, format: 'mp3' as const };
-    const pending = service.getOrCreate(descriptor, request).then(({ asset }) => ({ assetId: asset.assetId, durationMs: asset.durationMs })).catch((error: unknown) => {
+    const maxDurationMs = event.type === 'OPERATOR_CHAT' ? MAX_MC_CHAT_VOICE_ASSET_MS : undefined;
+    const pending = service.getOrCreate(descriptor, request, undefined, maxDurationMs).then(({ asset }) => ({ assetId: asset.assetId, durationMs: asset.durationMs })).catch((error: unknown) => {
       this.telemetry(error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'FAILED', event.type);
       return null;
     });
@@ -2707,6 +2720,17 @@ export class SessionRuntime {
     return this.counts.A + this.counts.B + this.counts.C + this.counts.D;
   }
 
+  private playingCountForPublic() {
+    const round = this.engine.round;
+    if (this.engine.state === 'LOBBY' || !round) return this.audience.occupiedSeats;
+    const end = Math.min(round.questionIndex, round.questionInstanceIds.length - 1);
+    const start = Math.max(0, end - 2);
+    const players = new Set<string>();
+    for (const questionInstanceId of round.questionInstanceIds.slice(start, end + 1))
+      for (const playerId of this.store.answersForQuestion(questionInstanceId).keys()) players.add(playerId);
+    return players.size;
+  }
+
   private publicPlayerIdFor(playerId: string) {
     let publicPlayerId = this.publicPlayerIds.get(playerId);
     if (!publicPlayerId) {
@@ -3158,6 +3182,7 @@ export class SessionRuntime {
       round: e.round
         ? { roundNumber: e.round.roundNumber, questionIndex: e.round.questionIndex, questionCount: e.round.questionInstanceIds.length }
         : null,
+      ...(e.state === 'LOBBY' ? { lobbyRoundNumber: this.store.nextRoundNumber(this.id) } : {}),
       // PublicQuestion dựng tường minh: KHÔNG có correctOptionId / originalOptionId.
       question: showQuestion
         ? {
@@ -3171,6 +3196,7 @@ export class SessionRuntime {
         : null,
       answerCount: showOptions ? this.answerCount() : 0,
       participantCount: e.round ? this.participants : 0,
+      playingCount: this.playingCountForPublic(),
       fastestCorrectAnswer,
       questionTop3,
       stageTop3,

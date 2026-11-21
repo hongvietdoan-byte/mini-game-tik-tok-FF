@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AdminSnapshot, McChatPreset, McChatQueueItem } from '@quiz/contracts';
+import { MAX_MC_CHAT_TEXT_CHARS, type AdminSnapshot, type McChatPreset, type McChatQueueItem } from '@quiz/contracts';
 import { ApiError, type DashboardClient } from './api/client';
 import './mcChatPanel.css';
 
@@ -85,7 +85,7 @@ export function McChatPanel({ client, token, snapshot, isMock }: {
       <span className="mc-chat-queue-count">{queue.filter((item) => !['DONE', 'CANCELLED'].includes(item.status)).length}/5</span>
     </div>
     <label className="mc-chat-input-label" htmlFor="mc-chat-text">Câu muốn gửi</label>
-    <textarea id="mc-chat-text" data-testid="mc-chat-input" maxLength={120} rows={2} value={text}
+    <textarea id="mc-chat-text" data-testid="mc-chat-input" maxLength={MAX_MC_CHAT_TEXT_CHARS} rows={2} value={text}
       onChange={(event) => setText(event.target.value)} placeholder="Nhập tối đa 120 ký tự…" />
     <div className="mc-chat-controls">
       <span data-testid="mc-chat-character-count">{text.length}/120</span>

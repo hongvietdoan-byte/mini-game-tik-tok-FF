@@ -23,6 +23,24 @@ const seatedKey = (h: Harness) =>
     .join(',');
 
 describe('V3 §6 — 30 ghế khán giả', () => {
+  it('header công khai đếm ghế đã vào sảnh rồi đếm đúng người trả lời trong câu', async () => {
+    const h = await session();
+    await command(h, { type: 'OPEN_LOBBY' });
+    const r = rt(h);
+    for (let index = 0; index < 30; index += 1) {
+      r.ingest({ source: 'MOCK', userId: `lobby-${index}`, displayName: `Lobby ${index}`, text: 'Comment Free Fire', eventId: `lobby-${index}` });
+    }
+    expect(r.publicSnapshot()).toMatchObject({ state: 'LOBBY', playingCount: 30 });
+
+    await command(h, { type: 'START_ROUND' });
+    runUntil(h, () => r.engine.state === 'ACCEPTING');
+    const correct = r.adminSnapshot().current!.correctOptionId;
+    for (let index = 0; index < 3; index += 1) {
+      r.ingest({ source: 'MOCK', userId: `lobby-${index}`, displayName: `Lobby ${index}`, text: correct, eventId: `answer-${index}` });
+    }
+    expect(r.publicSnapshot()).toMatchObject({ playingCount: 3 });
+  });
+
   it('500 người tham gia: đủ 500 trong bảng điểm, đúng 30 ghế, 470 hàng chờ; overlay không lộ ID; đúng/sai sau công bố', async () => {
     const h = await session();
     await command(h, { type: 'OPEN_LOBBY' });

@@ -23,7 +23,7 @@ export class FfmpegMcVoiceAudioNormalizer implements McVoiceAudioNormalizer {
     run?: AudioCommandRunner;
   } = {}) {}
 
-  async normalize(audio: McVoiceAudio, signal?: AbortSignal): Promise<McVoiceAudio> {
+  async normalize(audio: McVoiceAudio, signal?: AbortSignal, maxDurationMs = MAX_MC_VOICE_ASSET_MS): Promise<McVoiceAudio> {
     if (audio.format !== 'mp3' || audio.bytes.byteLength === 0 || audio.bytes.byteLength > 12 * 1024 * 1024)
       throw new McVoiceProviderError('INVALID_RESPONSE', 'Audio đầu vào không hợp lệ để chuẩn hoá.');
     const tempParent = resolve(this.options.tempDirectory ?? tmpdir());
@@ -50,8 +50,8 @@ export class FfmpegMcVoiceAudioNormalizer implements McVoiceAudioNormalizer {
       const durationMs = Math.round(Number(durationText.trim()) * 1_000);
       if (!Number.isSafeInteger(durationMs) || durationMs <= 0)
         throw new McVoiceProviderError('INVALID_RESPONSE', 'Không xác định được thời lượng audio đã chuẩn hoá.');
-      if (durationMs > MAX_MC_VOICE_ASSET_MS)
-        throw new McVoiceProviderError('TOO_LONG', 'Audio MC Voice vượt trần 20 giây.');
+      if (durationMs > maxDurationMs)
+        throw new McVoiceProviderError('TOO_LONG', `Audio MC Voice vượt trần ${maxDurationMs / 1_000} giây.`);
       return { bytes: await readFile(outputPath), durationMs, format: 'mp3' };
     } catch (error) {
       if (error instanceof McVoiceProviderError) throw error;

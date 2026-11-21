@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { McVoiceCache, mcVoiceCacheKey } from './cache';
 import type { McVoiceAudio, McVoiceCacheDescriptor } from './types';
-import { MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
+import { MAX_MC_CHAT_VOICE_ASSET_MS, MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
 import { testTempRootAsync } from '../../../../tests/support/tempRoot';
 
 const directories: string[] = [];
@@ -76,6 +76,16 @@ describe('McVoiceCache', () => {
     await expect(store.get('../escape')).resolves.toBeNull();
     await expect(store.put('../escape', audio())).rejects.toThrow('Cache key MC Voice không hợp lệ');
     await expect(store.put(mcVoiceCacheKey(descriptor()), audio(20_001))).rejects.toThrow('Audio vượt giới hạn');
+  });
+
+  it('chỉ nhận asset MC chat dài tối đa 35 giây khi truyền trần riêng', async () => {
+    const { cache: store } = await cache();
+    const key = mcVoiceCacheKey(descriptor());
+    await expect(store.put(key, audio(34_000), MAX_MC_CHAT_VOICE_ASSET_MS)).resolves.toMatchObject({ durationMs: 34_000 });
+    await expect(store.get(key, MAX_MC_CHAT_VOICE_ASSET_MS)).resolves.toMatchObject({ durationMs: 34_000 });
+    await expect(store.get(key)).resolves.toBeNull();
+    await expect(store.put(mcVoiceCacheKey(descriptor({ text: 'MC quá dài' })), audio(36_000), MAX_MC_CHAT_VOICE_ASSET_MS))
+      .rejects.toThrow('Audio vượt giới hạn');
   });
 
   it('bỏ qua cache cũ thiếu voicePolicyVersion để không phát lại audio theo policy cũ', async () => {

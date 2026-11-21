@@ -5,7 +5,7 @@ import { McVoiceCache, mcVoiceCacheKey } from './cache';
 import { McVoiceService, type McVoiceReadingLine } from './service';
 import { type McVoiceAudio, type McVoiceCredentialStore, type McVoiceProvider } from './types';
 import { testTempRootAsync } from '../../../../tests/support/tempRoot';
-import { MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
+import { MAX_MC_CHAT_VOICE_ASSET_MS, MC_VOICE_POLICY_VERSION } from '@quiz/contracts';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -98,6 +98,19 @@ describe('McVoiceService', () => {
       expect(result.lines).toHaveLength(5);
       expect(result.lines.every((item) => !('bytes' in item.asset))).toBe(true);
     }
+  });
+
+  it('áp trần 35 giây riêng cho MC chat, vẫn từ chối asset 36 giây', async () => {
+    const provider = { synthesize: vi.fn().mockResolvedValueOnce(audio(34_000)).mockResolvedValue(audio(36_000)) };
+    const { service } = await makeService(provider);
+    const accepted = line(1);
+    await expect(service.getOrCreate(accepted.descriptor, accepted.request, undefined, MAX_MC_CHAT_VOICE_ASSET_MS))
+      .resolves.toMatchObject({ cacheHit: false, asset: { durationMs: 34_000 } });
+
+    const rejected = line(2);
+    await expect(service.getOrCreate(rejected.descriptor, rejected.request, undefined, MAX_MC_CHAT_VOICE_ASSET_MS))
+      .rejects.toMatchObject({ code: 'TOO_LONG' });
+    expect(provider.synthesize).toHaveBeenCalledTimes(2);
   });
 
   it('thiếu token dừng trước khi gọi provider', async () => {
