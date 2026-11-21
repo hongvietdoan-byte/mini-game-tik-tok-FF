@@ -47,6 +47,10 @@ const TOKEN_KEY = 'quiz.adminToken';
 const TIKTOK_USERNAME_KEY = 'quiz.tiktokUsername';
 const isMock = new URLSearchParams(location.search).get('mock') === '1';
 const client: DashboardClient = isMock ? mockClient : apiClient;
+if (isMock) {
+  const seatCapacity = Number(new URLSearchParams(location.search).get('mockSeatCapacity'));
+  mockClient.setLobbySeatCapacity(Number.isInteger(seatCapacity) && seatCapacity > 0 && seatCapacity <= 35 ? seatCapacity : 35);
+}
 
 type RecoveryDecision = 'RESUME' | 'VOID' | 'STOP';
 type PendingDanger = { action: DashboardAction; decision?: RecoveryDecision };
@@ -526,6 +530,7 @@ function App() {
 
   const actions = useMemo(() => snapshot ? actionsFor(snapshot) : [], [snapshot]);
   const lobbyOccupiedSeats = snapshot?.public.audience?.seats.filter((seat) => seat.occupant !== null).length ?? 0;
+  const lobbySeatCapacity = snapshot?.public.audience?.seats.length ?? 0;
   const recoveryPending = snapshot?.recoveryPending ?? false;
   const timerRemainingMs = snapshot?.public.timer
     ? Math.max(0, snapshot.public.timer.remainingMs - Math.max(0, now + timerAnchor.offsetMs - timerAnchor.serverTimeMs))
@@ -676,7 +681,7 @@ function App() {
             </div>
             {snapshot.public.state === 'LOBBY' && <div className="lobby-auto-start" data-testid="lobby-auto-start-control">
               <label><input type="checkbox" aria-label="Tự bắt đầu khi đủ ghế" checked={snapshot.autoStartWhenAudienceFull} disabled={busy || snapshot.sessionStatus !== 'OPEN'} onChange={(event) => setLobbyAutoStart(event.currentTarget.checked)} /> Tự bắt đầu khi đủ ghế</label>
-              <span role="status" data-testid="lobby-seat-status">{lobbyOccupiedSeats === 35 ? 'Đã đủ ghế' : `Đã ngồi ${lobbyOccupiedSeats}/35`}</span>
+              <span role="status" data-testid="lobby-seat-status">{lobbySeatCapacity > 0 && lobbyOccupiedSeats >= lobbySeatCapacity ? 'Đã đủ ghế' : `Đã ngồi ${lobbyOccupiedSeats}/${lobbySeatCapacity}`}</span>
               {snapshot.public.lobbyCountdown && <div className="lobby-auto-start-countdown" role="status" data-testid="lobby-auto-start-countdown">Vào trận sau {Math.ceil(snapshot.public.lobbyCountdown.remainingMs / 1_000)}… <button type="button" className="secondary-button" disabled={busy} onClick={() => setLobbyAutoStart(false)}>Huỷ đếm ngược</button></div>}
             </div>}
             {snapshot.roundStartWait && roundStartWaitRemainingMs !== null && <div className="round-start-wait" role="status" data-testid="round-start-voice-wait">

@@ -140,6 +140,7 @@ class MockDashboardClient implements DashboardClient {
   private autoMode = false;
   private autoStartWhenAudienceFull = false;
   private lobbyDisplayNames = new Map<string, string>();
+  private lobbySeatCapacity = 35;
   private lobbyCountdownEndsAtMs: number | null = null;
   private lobbyCountdownTimeoutId: number | null = null;
   private lobbyCountdownIntervalId: number | null = null;
@@ -643,8 +644,12 @@ class MockDashboardClient implements DashboardClient {
     }
   }
 
+  setLobbySeatCapacity(capacity: number) {
+    if (Number.isInteger(capacity) && capacity > 0 && capacity <= 35) this.lobbySeatCapacity = capacity;
+  }
+
   private lobbyAudience(): NonNullable<PublicSnapshot['audience']> {
-    const slots = Array.from({ length: 35 }, (_, index) => {
+    const slots = Array.from({ length: this.lobbySeatCapacity }, (_, index) => {
       const rowIndex = Math.floor(index / 5);
       const seatIndex = index % 5;
       return {
@@ -688,14 +693,14 @@ class MockDashboardClient implements DashboardClient {
   }
 
   private maybeStartLobbyCountdown() {
-    const occupied = Math.min(this.lobbyDisplayNames.size, 35);
-    if (this.state !== 'LOBBY' || !this.autoStartWhenAudienceFull || occupied !== 35 || this.lobbyCountdownEndsAtMs !== null) return;
+    const occupied = Math.min(this.lobbyDisplayNames.size, this.lobbySeatCapacity);
+    if (this.state !== 'LOBBY' || !this.autoStartWhenAudienceFull || occupied !== this.lobbySeatCapacity || this.lobbyCountdownEndsAtMs !== null) return;
     this.lobbyCountdownEndsAtMs = Date.now() + 10_000;
     this.lobbyCountdownIntervalId = window.setInterval(() => this.emit(), 1_000);
     this.lobbyCountdownTimeoutId = window.setTimeout(() => {
       this.lobbyCountdownTimeoutId = null;
       const stillEligible = this.state === 'LOBBY' && this.autoStartWhenAudienceFull
-        && this.lobbyDisplayNames.size >= 35;
+        && this.lobbyDisplayNames.size >= this.lobbySeatCapacity;
       if (stillEligible) {
         this.applyCommand({ type: 'START_ROUND' });
         this.stateVersion += 1;
