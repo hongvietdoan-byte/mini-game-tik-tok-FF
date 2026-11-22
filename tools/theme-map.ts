@@ -342,6 +342,7 @@ function docForSlot(target: (typeof THEME_SKIN_TARGETS)[number], size: { width: 
     ...(target.variants
       ? [`File bắt buộc: ${target.variants.map((variant) => `${variant.file} (CO_SAN)`).join(', ')}; default.png (${fileStatus}) là ảnh dự phòng.`]
       : [`File bắt buộc: default.png (${fileStatus}).`]),
+    ...(target.defaultEmptyReason ? [target.defaultEmptyReason] : []),
     `Màn: ${target.scenes.join(', ')}.`,
     `Soi: soi/${target.id}.png. ${target.ghiChu}`,
     ...(activation ? [activation] : []),
@@ -367,32 +368,99 @@ function removeStaleGeneratedFolders(groupDirectory: string, target: ThemeSkinTa
 }
 
 async function captureSkinElement(page: Page, capture: Locator, target: ThemeSkinTarget) {
-  const keepChildren = target.keepChildren ?? (target.id === 'K12' || target.id === 'K13' ? ['svg'] : []);
+  const isolatedEffect = ['H04', 'H05', 'H07', 'H08'].includes(target.id);
+  const viewport = page.viewportSize() ?? { width: 1080, height: 1920 };
+  const keepChildren = target.content === 'icon' ? ['*'] : target.keepChildren ?? (target.id === 'K12' || target.id === 'K13' ? ['svg'] : []);
   await capture.evaluate((element, preserved) => {
-    const stage = element.closest<HTMLElement>('#stage');
     for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
-      ancestor.dataset.themeCaptureAncestor = 'true';
+      ancestor.setAttribute('data-theme-capture-ancestor', 'true');
     }
-    for (const node of stage?.querySelectorAll<HTMLElement>('*') ?? []) {
+    for (const node of document.body.querySelectorAll('*')) {
       if (node === element || node.contains(element) || element.contains(node)) continue;
-      node.dataset.themeMapHidden = 'true';
+      node.setAttribute('data-theme-map-hidden', 'true');
     }
-    for (const node of element.querySelectorAll<HTMLElement>('*')) {
+    for (const node of element.querySelectorAll('*')) {
       if (!preserved.some((selector) => node.matches(selector) || node.closest(selector)))
-        node.dataset.themeCaptureContentHidden = 'true';
+        node.setAttribute('data-theme-capture-content-hidden', 'true');
     }
   }, keepChildren);
+  const effectCaptureStyle = target.id === 'H04'
+    ? `${target.selector}{top:35%!important;left:45%!important;transform:rotate(24deg)!important;opacity:.9!important;animation:none!important}`
+    : target.id === 'H05'
+      ? `${target.selector}{left:33vw!important;width:34vw!important;opacity:.85!important;transform:skewX(-22deg)!important;animation:none!important}`
+      : target.id === 'H07'
+        ? `${target.selector}{opacity:.82!important;animation:none!important}`
+        : target.id === 'H08'
+          ? `${target.selector}{opacity:.38!important;animation:none!important}`
+          : '';
   const isolationStyle = await page.addStyleTag({ content: [
-    '#stage [data-theme-map-hidden="true"],#stage [data-theme-capture-content-hidden="true"]{visibility:hidden!important}',
-    '[data-theme-capture-ancestor="true"]{background:transparent!important;background-image:none!important;box-shadow:none!important;border-color:transparent!important;outline:none!important;filter:none!important}',
+    '[data-theme-map-hidden="true"],[data-theme-capture-content-hidden="true"]{visibility:hidden!important}',
+    '[data-theme-capture-ancestor="true"]{visibility:visible!important;background:transparent!important;background-image:none!important;box-shadow:none!important;border-color:transparent!important;outline:none!important;filter:none!important}',
     '[data-theme-capture-ancestor="true"]::before,[data-theme-capture-ancestor="true"]::after{content:none!important;display:none!important}',
     'html,body,#root,#stage,#stage .v3-stage,#stage .v3-bg{background:transparent!important;background-image:none!important;box-shadow:none!important}',
     '#stage::before,#stage::after,#stage .v3-stage::before,#stage .v3-stage::after,#stage .v3-bg::before,#stage .v3-bg::after{content:none!important;display:none!important}',
     target.nhom === 'K' || target.content === 'label' ? `${target.selector}{color:transparent!important;text-shadow:none!important}` : '',
-    target.nhom === 'H' && !target.defaultHidden ? `${target.selector}{opacity:1!important;visibility:visible!important;animation:none!important}` : '',
+    target.nhom === 'H' ? `${target.selector}{display:block!important;opacity:1!important;visibility:visible!important;animation:none!important}` : '',
+    effectCaptureStyle,
   ].filter(Boolean).join('\n') });
   try {
-    const image = await capture.screenshot({ animations: 'disabled', omitBackground: true });
+    let image: Buffer;
+    if (isolatedEffect) {
+      const markup = await capture.evaluate((element, dimensions) => {
+        const clone = element.cloneNode(true) as Element;
+        clone.setAttribute('data-theme-capture-effect', 'true');
+        const originals = [element, ...element.querySelectorAll('*')];
+        const copies = [clone, ...clone.querySelectorAll('*')];
+        originals.forEach((original, index) => {
+          const styles = getComputedStyle(original);
+          const inline = Array.from(styles, (property) => `${property}:${styles.getPropertyValue(property)}${styles.getPropertyPriority(property) ? ' !important' : ''}`).join(';');
+          copies[index]?.setAttribute('style', inline);
+        });
+        const style = (clone as HTMLElement).style;
+        const bounds = element.getBoundingClientRect();
+        style.setProperty('position', 'relative', 'important');
+        style.setProperty('top', '0', 'important');
+        style.setProperty('right', 'auto', 'important');
+        style.setProperty('bottom', 'auto', 'important');
+        style.setProperty('left', '0', 'important');
+        style.setProperty('margin', '0', 'important');
+        style.setProperty('width', `${Math.max(1, Math.round(dimensions.targetId === 'H05' ? dimensions.width * 0.34 : bounds.width))}px`, 'important');
+        style.setProperty('height', `${Math.max(1, Math.round(dimensions.targetId === 'H05' || dimensions.targetId === 'H08' ? dimensions.height : bounds.height))}px`, 'important');
+        if (dimensions.targetId === 'H04') {
+          const hue = getComputedStyle(element).getPropertyValue('--confetti-hue').trim() || '0deg';
+          style.setProperty('--confetti-hue', hue, 'important');
+          style.setProperty('background-color', `hsl(${hue} 92% 66%)`, 'important');
+          style.setProperty('box-shadow', `0 0 8px hsla(${hue},92%,66%,.7)`, 'important');
+          style.setProperty('transform', 'rotate(24deg)', 'important');
+          style.setProperty('opacity', '.9', 'important');
+        } else if (dimensions.targetId === 'H05') {
+          style.setProperty('transform', 'skewX(-22deg)', 'important');
+          style.setProperty('opacity', '.85', 'important');
+        } else if (dimensions.targetId === 'H07') {
+          style.setProperty('opacity', '.82', 'important');
+        } else if (dimensions.targetId === 'H08') {
+          style.setProperty('opacity', '.38', 'important');
+        } else {
+          style.setProperty('transform', 'rotate(24deg)', 'important');
+          style.setProperty('opacity', '.9', 'important');
+        }
+        return clone.outerHTML;
+      }, { width: viewport.width, height: viewport.height, targetId: target.id });
+      const browser = page.context().browser();
+      if (!browser) throw new Error('Không lấy được browser để cô lập lớp FX khỏi màn game.');
+      const isolatedContext = await browser.newContext({ viewport });
+      const isolatedPage = await isolatedContext.newPage();
+      try {
+        await isolatedPage.setContent(`<!doctype html><html><meta charset="utf-8"><style>html,body{margin:0;padding:0;background:transparent;overflow:visible}body{width:${viewport.width}px;height:${viewport.height}px}*{box-sizing:border-box}</style><body>${markup}</body></html>`);
+        const isolatedTarget = isolatedPage.locator('[data-theme-capture-effect="true"]');
+        if (!await isolatedTarget.boundingBox()) throw new Error(`Không dựng được lớp FX ${target.id} trên nền trong suốt.`);
+        image = await isolatedTarget.screenshot({ animations: 'disabled', omitBackground: true });
+      } finally {
+        await isolatedContext.close();
+      }
+    } else {
+      image = await capture.screenshot({ animations: 'disabled', omitBackground: true });
+    }
     const rgbaBase64 = await page.evaluate(async (base64) => {
       const source = new Image();
       source.src = `data:image/png;base64,${base64}`;
@@ -414,13 +482,39 @@ async function captureSkinElement(page: Page, capture: Locator, target: ThemeSki
   } finally {
     await isolationStyle.evaluate((node) => node.parentNode?.removeChild(node));
     await capture.evaluate((element) => {
-      const stage = element.closest<HTMLElement>('#stage');
-      stage?.querySelectorAll<HTMLElement>('[data-theme-map-hidden="true"]').forEach((node) => delete node.dataset.themeMapHidden);
-      element.querySelectorAll<HTMLElement>('[data-theme-capture-content-hidden="true"]').forEach((node) => delete node.dataset.themeCaptureContentHidden);
+      document.body.querySelectorAll('[data-theme-map-hidden="true"]').forEach((node) => node.removeAttribute('data-theme-map-hidden'));
+      element.querySelectorAll('[data-theme-capture-content-hidden="true"]').forEach((node) => node.removeAttribute('data-theme-capture-content-hidden'));
       for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement)
-        delete ancestor.dataset.themeCaptureAncestor;
+        ancestor.removeAttribute('data-theme-capture-ancestor');
     });
   }
+}
+
+async function transparentPng(page: Page, width: number, height: number) {
+  const base64 = await page.evaluate(({ imageWidth, imageHeight }) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = imageWidth;
+    canvas.height = imageHeight;
+    return canvas.toDataURL('image/png').split(',')[1] ?? '';
+  }, { imageWidth: width, imageHeight: height });
+  return Buffer.from(base64, 'base64');
+}
+
+async function pngHasVisiblePixels(page: Page, image: Buffer) {
+  return page.evaluate(async (base64) => {
+    const source = new Image();
+    source.src = `data:image/png;base64,${base64}`;
+    await source.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = source.naturalWidth;
+    canvas.height = source.naturalHeight;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Không tạo được canvas để kiểm tra ảnh default.');
+    context.drawImage(source, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let alpha = 3; alpha < pixels.length; alpha += 4) if (pixels[alpha]! > 8) return true;
+    return false;
+  }, image.toString('base64'));
 }
 
 function fitNineSlice(slice: (typeof THEME_SKIN_TARGETS)[number]['nineSlice'], size: { width: number; height: number }) {
@@ -539,13 +633,9 @@ export async function createThemeReviewArtifacts(
           measurements.set(target.id, slots);
           layerRows.push({ id: target.id, lop: target.lop, ...position });
           const preferredCaptureScene = !['K22', 'K33'].includes(target.id) || scene.mock === 'throne-locked';
-          if (!captureBuffers.has(`${target.id}:default.png`) && options.captureDefaultSkins && target.defaultHidden) {
-            const transparentBase64 = await page.evaluate(({ width, height }) => {
-              const canvas = document.createElement('canvas');
-              canvas.width = width; canvas.height = height;
-              return canvas.toDataURL('image/png').split(',')[1] ?? '';
-            }, { width: position.rong, height: position.cao });
-            captureBuffers.set(`${target.id}:default.png`, Buffer.from(transparentBase64, 'base64'));
+          if (!captureBuffers.has(`${target.id}:default.png`) && options.captureDefaultSkins
+            && (target.defaultEmptyReason || (target.defaultHidden && !target.captureDefaultHidden))) {
+            captureBuffers.set(`${target.id}:default.png`, await transparentPng(page, position.rong, position.cao));
           }
           const defaultKey = `${target.id}:default.png`;
           if (preferredCaptureScene && !captureBuffers.has(defaultKey) && options.captureDefaultSkins) {
@@ -607,7 +697,7 @@ export async function createThemeReviewArtifacts(
 
     const skinAssets: Record<string, string> = {};
     const slotRows: Array<Record<string, unknown>> = [];
-    const contactCards: Array<{ id: string; name: string; image: Buffer }> = [];
+    const contactCards: Array<{ id: string; name: string; image?: Buffer; emptyReason?: string }> = [];
     for (const target of THEME_SKIN_TARGETS) {
       const places = measurements.get(target.id) ?? [];
       if (!places.length) { missingSlots.add(target.id); continue; }
@@ -634,6 +724,7 @@ export async function createThemeReviewArtifacts(
         }
       }
       const image = slotImages.get('default.png') ?? slotImages.values().next().value as Buffer | undefined;
+      const defaultImage = slotImages.get('default.png');
       const imageSize = image && image.length >= 24 && image.toString('ascii', 1, 4) === 'PNG'
         ? { width: image.readUInt32BE(16), height: image.readUInt32BE(20) }
         : { width: places[0]!.rong, height: places[0]!.cao };
@@ -643,7 +734,18 @@ export async function createThemeReviewArtifacts(
         writeFileSync(join(absoluteFolder, 'DOC-TOI.txt'), docForSlot(target, imageSize, slotImages.has('default.png') ? 'CO_SAN' : 'THIEU', places), 'utf8');
       }
       if (slotImages.size) skinAssets[target.id] = folder;
-      if (image) contactCards.push({ id: target.id, name: target.ghiChu.replace(/[.]+$/u, ''), image });
+      if (defaultImage) {
+        const hasPixels = await pngHasVisiblePixels(page, defaultImage);
+        if (!hasPixels && !target.defaultEmptyReason)
+          throw new Error(`default.png của ${target.id} trống nhưng chưa khai báo defaultEmptyReason; kiểm tra selector/capture hoặc ghi rõ vùng chứa trong theme-skins.ts.`);
+        if (hasPixels && target.defaultEmptyReason)
+          throw new Error(`default.png của ${target.id} có pixel nhìn thấy nhưng được khai báo trống: ${target.defaultEmptyReason}`);
+        contactCards.push({
+          id: target.id,
+          name: target.ghiChu.replace(/[.]+$/u, ''),
+          ...(hasPixels ? { image: defaultImage } : { emptyReason: target.defaultEmptyReason }),
+        });
+      }
       const fileStatus = slotImages.has('default.png') ? 'CO_SAN' : 'CAN_CHUAN_BI';
       const allRects = places.map((position) => ({ ...position, right: position.x + position.rong, bottom: position.y + position.cao }));
       const activation = target.defaultHidden
@@ -663,13 +765,15 @@ export async function createThemeReviewArtifacts(
         files: fileRows,
         kichThuoc: { rong: imageSize.width, cao: imageSize.height, tiLe: imageSize.width / imageSize.height, saiSoPx: 0 },
         nineSlice: fitNineSlice(target.nineSlice, imageSize), dinhDang: ['PNG'], nenTrongSuot: true, dungLuongToiDa: 50 * 1024 * 1024,
-        viTri: places, nam_tren: above, nam_duoi: below, ghiChu: `${target.selector}. ${target.ghiChu}${activation}`,
+        viTri: places, nam_tren: above, nam_duoi: below, ghiChu: `${target.selector}. ${target.ghiChu}${target.defaultEmptyReason ? ` ${target.defaultEmptyReason}` : ''}${activation}`,
       });
     }
     const contactPage = await browser.newPage({ viewport: { width: 1780, height: 1200 }, deviceScaleFactor: 1 });
     const contactHtml = `<!doctype html><html lang="vi"><meta charset="utf-8"><style>
-      *{box-sizing:border-box}html,body{margin:0;background:#d1d3d8;color:#171923;font-family:"Segoe UI",Arial,sans-serif}body{width:1780px;padding:24px}h1{font-size:30px;margin:0 0 8px}p{font-size:15px;margin:0 0 20px}.grid{display:grid;grid-template-columns:repeat(8,1fr);gap:10px}.card{height:168px;background:#b8bac0;border:1px solid #6b6e78;border-radius:6px;padding:7px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:space-between}.card img{width:100%;height:126px;object-fit:contain;background:#b8bac0}.card strong{font-size:14px}.card span{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-      </style><body><h1>DEFAULT-CONTACT · SKIN RGBA</h1><p>Ảnh xem trên nền xám trung tính. ${contactCards.length} khung/biểu tượng/hiệu ứng; nền trong suốt được giữ nguyên.</p><div class="grid">${contactCards.map((card) => `<article class="card"><img src="data:image/png;base64,${card.image.toString('base64')}" alt=""><strong>${card.id}</strong><span>${ESCAPE(card.name)}</span></article>`).join('')}</div></body></html>`;
+      *{box-sizing:border-box}html,body{margin:0;background:#d1d3d8;color:#171923;font-family:"Segoe UI",Arial,sans-serif}body{width:1780px;padding:24px}h1{font-size:30px;margin:0 0 8px}p{font-size:15px;margin:0 0 20px}.grid{display:grid;grid-template-columns:repeat(8,1fr);gap:10px}.card{height:168px;background:#b8bac0;border:1px solid #6b6e78;border-radius:6px;padding:7px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:space-between}.card img,.empty{width:100%;height:126px;object-fit:contain;background:#b8bac0}.empty{display:flex;flex-direction:column;justify-content:center;gap:7px;padding:8px;color:#4d315c}.empty b{font-size:15px}.empty span{font-size:10px;white-space:normal;overflow-wrap:anywhere}.card strong{font-size:14px}.card>span{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      </style><body><h1>DEFAULT-CONTACT · SKIN RGBA</h1><p>Ảnh xem trên nền xám trung tính. ${contactCards.length} khung/biểu tượng/hiệu ứng; nền trong suốt được giữ nguyên.</p><div class="grid">${contactCards.map((card) => `<article class="card">${card.image
+        ? `<img src="data:image/png;base64,${card.image.toString('base64')}" alt="">`
+        : `<div class="empty"><b>TRỐNG (cố ý)</b><span>${ESCAPE(card.emptyReason ?? '')}</span></div>`}<strong>${card.id}</strong><span>${ESCAPE(card.name)}</span></article>`).join('')}</div></body></html>`;
     await contactPage.setContent(contactHtml, { waitUntil: 'load' });
     writeFileSync(join(reviewRoot, 'default-contact.png'), await contactPage.screenshot({ fullPage: true }));
     await contactPage.close();
