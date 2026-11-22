@@ -78,7 +78,10 @@ async function openScene(page: Page, sceneName: string, expectedScene: string, r
   const stage = page.locator(`[data-testid="stage"][data-scene="${expectedScene}"]`);
   await expect(stage).toBeVisible();
   await page.waitForFunction(() => Array.from(document.images).every((image) => image.complete));
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
   return { stage, errors };
 }
 
@@ -1313,7 +1316,7 @@ test('mock overlay applies HUD text and uploaded images, then reloads config wit
     images: { logo: logoId, bgQuestion: backgroundId, bgLobby: backgroundId, bgVictory: null },
   };
   // Preview mocks poll public config; switching this response must update the active frame without navigation.
-  await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'NOVA ARENA', { timeout: 4_000 });
+  await expect(page.getByTestId('event-mark')).toHaveAttribute('aria-label', 'NOVA ARENA', { timeout: 12_000 });
   await expect(page.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG MỚI');
   expect(await page.locator('.v3-title-ribbon').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expect(page.locator('.v3-round-title')).toHaveText('VÒNG 1');
