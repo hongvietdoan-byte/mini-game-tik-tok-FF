@@ -1,8 +1,27 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
-import { ACHIEVEMENT_IDS, AchievementDisplaySlotSchema, THEME_DEFAULT_ACHIEVEMENTS, THEME_DEFAULT_TEXTS, THEME_DEFAULT_TOKENS, ThemeTextsSchema, type AchievementId, type AchievementThemePresentation, type ResolvedTheme, type ThemeAssetSlot, type ThemeFont } from '@quiz/contracts';
+import { ACHIEVEMENT_IDS, AchievementDisplaySlotSchema, THEME_DEFAULT_ACHIEVEMENTS, THEME_DEFAULT_TEXTS, THEME_DEFAULT_TOKENS, ThemeSlotRegistrySchema, ThemeTextsSchema, type AchievementId, type AchievementThemePresentation, type ResolvedTheme, type ThemeAssetSlot, type ThemeFont } from '@quiz/contracts';
+import { THEME_SKIN_TARGETS, skinAssetUrl } from './theme-skins';
 
 const EMPTY_THEME: ResolvedTheme = { id: 'default', name: 'Giao diện mặc định', version: 0, tokens: {}, fonts: [], assets: {}, texts: { ...THEME_DEFAULT_TEXTS } };
 const ThemeContext = createContext<ResolvedTheme>(EMPTY_THEME);
+
+function imageHasVisiblePixels(image: HTMLImageElement) {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context || !canvas.width || !canvas.height) return true;
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let alpha = 3; alpha < pixels.length; alpha += 4) if (pixels[alpha] !== 0) return true;
+    return false;
+  } catch {
+    // A tainted or unsupported image must remain usable; only a verified fully
+    // transparent PNG is treated as an unconfigured optional effect.
+    return true;
+  }
+}
 
 function isFont(value: unknown): value is ThemeFont {
   if (typeof value !== 'object' || value === null) return false;
@@ -50,6 +69,11 @@ function parseResolvedTheme(value: unknown): ResolvedTheme | null {
   for (const [slot, url] of Object.entries(row.assets)) {
     if (typeof url === 'string' && url.startsWith('/themes/')) assets[slot as ThemeAssetSlot] = url;
   }
+  const skinAssets: Record<string, string> = {};
+  for (const [slot, directoryUrl] of Object.entries(row.skinAssets ?? {})) {
+    if (/^[KIH]\d{2,3}$/u.test(slot) && typeof directoryUrl === 'string' && directoryUrl.startsWith('/themes/')) skinAssets[slot] = directoryUrl;
+  }
+  const skinSlotsParsed = ThemeSlotRegistrySchema.safeParse(row.skinSlots);
   return {
     id: row.id,
     name: row.name,
@@ -57,6 +81,8 @@ function parseResolvedTheme(value: unknown): ResolvedTheme | null {
     tokens,
     fonts: row.fonts,
     assets,
+    skinAssets,
+    ...(skinSlotsParsed.success ? { skinSlots: skinSlotsParsed.data } : {}),
     texts: { ...THEME_DEFAULT_TEXTS, ...textsParsed.data },
     achievements,
   };
@@ -88,7 +114,12 @@ export function ThemeProvider({ themeVersion, mock = false, children }: { themeV
         const response = await fetch('/api/theme', { cache: 'no-store' });
         if (!response.ok) return;
         const next = parseResolvedTheme(await response.json());
-        if (active && next) setTheme((current) => current.id === next.id && current.version === next.version ? current : next);
+        if (active && next) {
+          // The exported `default` pack is an editable reference. Runtime still
+          // uses shipped assets so its first render stays pixel-identical.
+          const runtimeTheme = next.id === 'default' ? { ...next, assets: {} } : next;
+          setTheme((current) => current.id === runtimeTheme.id && current.version === runtimeTheme.version ? current : runtimeTheme);
+        }
       } catch {
         // Theme là tuỳ chọn; nếu API đang vắng thì giữ giao diện gốc.
       }
@@ -106,16 +137,47 @@ export function ThemeProvider({ themeVersion, mock = false, children }: { themeV
     const root = document.documentElement;
     const appliedKeys = new Set<string>();
     for (const [key, token] of Object.entries(theme.tokens)) {
-      // Giá trị mặc định dùng nguyên fallback trong CSS để đảm bảo pixel cũ.
-      if (THEME_DEFAULT_TOKENS[key as keyof typeof THEME_DEFAULT_TOKENS] === token) continue;
+      // Gói `default` chỉ là bản chụp/tham chiếu; giữ nguyên toàn bộ fallback CSS để không đổi pixel.
+      if (theme.id === 'default' || THEME_DEFAULT_TOKENS[key as keyof typeof THEME_DEFAULT_TOKENS] === token) continue;
       const variable = `--theme-${key}`;
       root.style.setProperty(variable, token);
       appliedKeys.add(variable);
     }
-    root.dataset.themeId = theme.id;
-    root.dataset.themeVersion = String(theme.version);
+    if (root.dataset.themeId !== theme.id) root.dataset.themeId = theme.id;
+    if (root.dataset.themeVersion !== String(theme.version)) root.dataset.themeVersion = String(theme.version);
+
+    const skinTargets = theme.id === 'default' ? [] : THEME_SKIN_TARGETS.flatMap((target) => {
+      const directory = theme.skinAssets?.[target.id];
+      if (!directory) return [];
+      const image = encodeURI(skinAssetUrl(directory));
+      const slot = theme.skinSlots?.slots.find((entry) => entry.id === target.id);
+      // The default pack captures the exact CSS pixels at the reference size;
+      // custom themes use 9-slice so only the measured edge guides stay fixed.
+      const nineSlice = theme.id === 'default' ? null : slot ? slot.nineSlice : target.nineSlice;
+      return [{ target, image, nineSlice }];
+    });
+    const skinStyle = document.createElement('style');
+    skinStyle.dataset.themeSkins = 'true';
+    document.head.append(skinStyle);
 
     let active = true;
+    const loadSkinImages = async () => {
+      const loaded = await Promise.all(skinTargets.map(({ target, image, nineSlice }) => new Promise<string | null>((resolveImage) => {
+        const probe = new Image();
+        probe.onload = () => {
+          if (target.defaultHidden && !imageHasVisiblePixels(probe)) return resolveImage(null);
+          const selector = target.selector.split(',').map((part) => `#stage ${part.trim()}`).join(',');
+          const enableEffect = target.defaultHidden ? `${selector}{display:block!important;visibility:visible!important;opacity:1!important}` : '';
+          resolveImage(`${enableEffect}${target.selector}{${nineSlice
+          ? `background-image:none!important;border-image-source:url("${image}")!important;border-image-slice:${nineSlice.tren} ${nineSlice.phai} ${nineSlice.duoi} ${nineSlice.trai} fill!important;border-image-width:${nineSlice.tren}px ${nineSlice.phai}px ${nineSlice.duoi}px ${nineSlice.trai}px!important;border-image-repeat:stretch!important;border-image-outset:0!important`
+          : `background-image:url("${image}")!important;background-size:100% 100%!important;background-position:center!important;background-repeat:no-repeat!important;background-origin:border-box!important`};background-color:transparent!important;border-color:transparent!important}${target.content === 'icon' ? `${target.selector}>*{visibility:hidden!important}` : ''}`);
+        };
+        probe.onerror = () => resolveImage(null);
+        probe.src = image;
+      })));
+      if (active) skinStyle.textContent = loaded.filter((rule): rule is string => rule !== null).join('\n');
+    };
+    void loadSkinImages();
     const faces: FontFace[] = [];
     const loadFonts = async () => {
       for (const font of theme.fonts) {
@@ -135,6 +197,7 @@ export function ThemeProvider({ themeVersion, mock = false, children }: { themeV
     void loadFonts();
     return () => {
       active = false;
+      skinStyle.remove();
       for (const variable of appliedKeys) root.style.removeProperty(variable);
       for (const face of faces) document.fonts.delete(face);
     };

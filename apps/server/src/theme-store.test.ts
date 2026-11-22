@@ -318,6 +318,32 @@ describe('ThemeStore', () => {
     expect(store.resolveFile('halloween', 'assets/sequence/extra.json')).toBeNull();
   });
 
+  it('phục vụ slots.json và chỉ công bố skin slot đã được khai báo trong registry', () => {
+    const root = temp();
+    const themes = join(root, 'themes');
+    const slotDirectory = 'assets/K-khung/K07-o-dap-an';
+    const directory = writeTheme(themes, 'halloween', { skinAssets: { K07: slotDirectory } });
+    mkdirSync(join(directory, ...slotDirectory.split('/')), { recursive: true });
+    writeFileSync(join(directory, ...slotDirectory.split('/'), 'default.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL+nAAAAABJRU5ErkJggg==', 'base64'));
+    writeFileSync(join(directory, 'slots.json'), JSON.stringify({
+      schemaVersion: 1,
+      slots: [{
+        id: 'K07', nhom: 'K', lop: 1, thuMuc: slotDirectory,
+        files: [{ ten: 'default.png', batBuoc: true, trangThai: 'CO_SAN' }],
+        kichThuoc: { rong: 1, cao: 1, tiLe: 1, saiSoPx: 0 }, nineSlice: null,
+        dinhDang: ['PNG'], nenTrongSuot: true, dungLuongToiDa: 1_000_000,
+        viTri: [{ man: 'QUESTION', x: 10, y: 20, rong: 1, cao: 1 }],
+        nam_tren: [], nam_duoi: [], ghiChu: 'Khung đáp án.',
+      }],
+    }));
+
+    const store = new ThemeStore(themes, root);
+    expect(store.resolve('halloween')?.skinAssets).toEqual({ K07: `/themes/halloween/${slotDirectory}?v=1` });
+    expect(store.resolveFile('halloween', 'slots.json')?.mimeType).toBe('application/json; charset=utf-8');
+    expect(store.resolveFile('halloween', 'assets/K-khung/K07-o-dap-an/default.png')?.mimeType).toBe('image/png');
+    expect(store.resolveFile('halloween', 'theme.json')).toBeNull();
+  });
+
   it('API admin đổi theme/reload tăng phiên bản, snapshot có themeVersion, static trả MIME đúng', async () => {
     const root = temp();
     const themesDir = join(root, 'themes');

@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { createThemeMapPng } from './theme-map';
+import { createThemeMapPng, createThemeReviewArtifacts } from './theme-map';
 import { importThemeArchive, packTheme } from './theme-archive';
 import { fileURLToPath } from 'node:url';
 import {
@@ -83,7 +83,9 @@ function copyTree(source: string, destination: string, root: string, copied: str
     const relative = source.slice(root.length + 1);
     if (stat.size > 50 * 1024 * 1024) throw new Error(`Asset ${relative} lớn hơn 50 MB.`);
     const extension = extname(source).toLowerCase();
-    if (!EXPORTABLE_ASSET_EXTENSIONS.has(extension)) {
+    const normalizedRelative = relative.split(sep).join('/');
+    const isSlotGuide = /^assets\/[KIH]-[a-z-]+\/[KIH]\d{2,3}-[a-z0-9-]+\/DOC-TOI\.txt$/iu.test(normalizedRelative);
+    if (!EXPORTABLE_ASSET_EXTENSIONS.has(extension) && !isSlotGuide) {
       const marker = `(đuôi ${extension || 'không có'})`;
       if (!warnings.some((warning) => warning.includes(marker)))
         warnings.push(`Bỏ qua tệp không hỗ trợ ${relative} ${marker}; các tệp cùng loại khác cũng bị bỏ qua.`);
@@ -139,7 +141,7 @@ export function validateThemeDirectory(directory: string) {
   return ThemeStore.validateDirectory(directory);
 }
 
-export async function exportDefaultTheme(options: { out: string; assets: string; force?: boolean; createMap?: boolean }) {
+export async function exportDefaultTheme(options: { out: string; assets: string; force?: boolean; createMap?: boolean; createSkinAssets?: boolean }) {
   const out = resolve(options.out);
   const assetsRoot = resolve(options.assets);
   if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(basename(out)))
@@ -202,12 +204,21 @@ export async function exportDefaultTheme(options: { out: string; assets: string;
       tokenDescriptions: THEME_DEFAULT_TOKEN_DESCRIPTIONS,
       fonts,
       assets: manifestAssets,
+      skinAssets: {},
       texts: THEME_DEFAULT_TEXTS,
       achievements: Object.fromEntries(ACHIEVEMENT_IDS.map((id) => [id, THEME_DEFAULT_ACHIEVEMENTS[id]])),
     };
-    writeFileSync(join(staging, 'theme.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8' });
-    writeFileSync(join(staging, 'CAN-CHUAN-BI.md'), createPreparationGuide(manifest, manifestAssets, staging), 'utf8');
-    const parsedManifest = ThemeManifestSchema.parse(manifest);
+    const baseManifest = ThemeManifestSchema.parse(manifest);
+    let parsedManifest = baseManifest;
+    if (options.createSkinAssets) {
+      const initialReview = await createThemeReviewArtifacts(baseManifest, { themeDirectory: staging, fallbackAssets: assetsRoot, captureDefaultSkins: true });
+      if (initialReview.missingSlots.length) throw new Error(`Không thể xuất theme default: chưa đo được bbox cho ${initialReview.missingSlots.join(', ')}.`);
+      parsedManifest = ThemeManifestSchema.parse({ ...manifest, skinAssets: initialReview.skinAssets });
+      const finalReview = await createThemeReviewArtifacts(parsedManifest, { themeDirectory: staging, fallbackAssets: assetsRoot });
+      if (finalReview.missingSlots.length) throw new Error(`Không thể xuất theme default: registry còn slot chưa khớp DOM ${finalReview.missingSlots.join(', ')}.`);
+    }
+    writeFileSync(join(staging, 'theme.json'), `${JSON.stringify(parsedManifest, null, 2)}\n`, { encoding: 'utf8' });
+    writeFileSync(join(staging, 'CAN-CHUAN-BI.md'), createPreparationGuide(parsedManifest, manifestAssets, staging), 'utf8');
     if (options.createMap !== false)
       writeFileSync(join(staging, 'SO-DO.png'), await createThemeMapPng(parsedManifest, { themeDirectory: staging, fallbackAssets: assetsRoot }));
 
@@ -230,7 +241,7 @@ export async function exportDefaultTheme(options: { out: string; assets: string;
       catch { warnings.push(`Không dọn được bản theme cũ: ${backup}`); }
       backup = null;
     }
-    return { directory: out, manifest, warnings, copied };
+    return { directory: out, manifest: parsedManifest, warnings, copied };
   } catch (error) {
     if (backup && !existsSync(out)) {
       try { renameSync(backup, out); backup = null; }
@@ -347,6 +358,18 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
     return '| ' + slot + ' | ' + path + ' | ' + info.size + ' | ' + format + '; chấp nhận ' + info.formats
       + ' | ' + info.alpha + ' | ' + info.scene + ' | ' + fileCount + ' | [ ] |';
   });
+  const slotRegistry = readJsonFile<{ slots?: Array<{
+    id: string; nhom: string; lop: number; thuMuc: string; files: Array<{ ten: string; batBuoc: boolean; trangThai: string }>;
+    kichThuoc: { rong: number; cao: number; tiLe: number; saiSoPx: number };
+    nineSlice: { tren: number; phai: number; duoi: number; trai: number } | null; viTri: Array<{ man: string }>;
+    nenTrongSuot: boolean; dungLuongToiDa: number; ghiChu: string;
+  }> }>(join(themeDirectory, 'slots.json'));
+  const skinRows = (slotRegistry?.slots ?? []).map((slot) => {
+    const states = slot.files.map((file) => `${file.ten}: ${file.trangThai}${file.batBuoc ? ' (bắt buộc)' : ''}`).join('<br>');
+    const nineSlice = slot.nineSlice ? `${slot.nineSlice.tren}/${slot.nineSlice.phai}/${slot.nineSlice.duoi}/${slot.nineSlice.trai}px` : 'Không';
+    const scenes = [...new Set(slot.viTri.map((position) => position.man))].join(', ');
+    return `| ${slot.id} | ${slot.nhom} | ${slot.lop} | \`${slot.thuMuc}\` | ${slot.kichThuoc.rong}×${slot.kichThuoc.cao}px (${slot.kichThuoc.tiLe.toFixed(3)}) ±${slot.kichThuoc.saiSoPx}px | ${nineSlice} | ${slot.nenTrongSuot ? 'Có' : 'Không'} | ${slot.dungLuongToiDa} byte | ${states} | ${scenes} | ${slot.ghiChu} |`;
+  });
   const tokens = (manifest.tokens ?? {}) as Record<string, string>;
   const tokenDescriptions = (manifest.tokenDescriptions ?? {}) as Record<string, string>;
   const usedTokens = new Set<string>();
@@ -414,6 +437,7 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
     '',
     'ID trong sơ đồ `SO-DO.png` trùng mã ở bảng asset (`01`–`33`) và bảng chữ (`T01`–`T11`). Mẫu màu là ô tham khảo; hãy đối chiếu giá trị hex/RGBA/gradient bên cạnh.',
     'Thay asset trong `assets/`, màu/chữ trong `theme.json`. Mỗi tệp tối đa 50 MB. Không đổi bố cục hoặc hình học khung.',
+    ...(manifest.id === 'default' ? ['Gói `default` giữ CSS đang có để bảo đảm hình ảnh 0 px lệch; `default.png` của K/I/H là ảnh tham chiếu để vẽ theme mới. Theme khác bật ảnh skin khi ảnh hợp lệ tải xong.'] : []),
     '',
     'Ảnh nền là lớp riêng, không dính chữ/khung UI. Số lượng asset đã xuất: **' + assetFileTotal + ' tệp**; asset ảnh trong kho chibi: **' + characterAssets.length + '**; chibi Top 2/3: **' + podiumCount + '**; frame/ảnh MC: **' + mcCount + '**; ngai: **' + throneCount + '**.',
     '',
@@ -422,6 +446,12 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
     '| ID | Slot | Tệp hiện tại / dự phòng | Kích thước px đang hiển thị | Định dạng | Trong suốt | Màn hình / khung | Số file | Đã thay? |',
     '|---:|---|---|---|---|---|---|---:|---|',
     ...rows.map((row, index) => row.replace('| ', `| ${String(index + 1).padStart(2, '0')} | `)),
+    '',
+    '## 1A. Khung, biểu tượng, hiệu ứng (nguồn duy nhất: `slots.json`)',
+    '',
+    '| ID | Nhóm | Lớp | Thư mục | Kích thước/tỉ lệ | 9-slice (trên/phải/dưới/trái) | Trong suốt | Tối đa | File và trạng thái | Màn | Ghi chú |',
+    '|---|---|---:|---|---|---|---|---:|---|---|---|',
+    ...(skinRows.length ? skinRows : ['| Chưa đo | — | — | — | Chạy `pnpm theme:map <id>` | — | — | — | — | — | Registry chưa có dữ liệu. |']),
     '',
     '## 2. Màu (55 token CSS)',
     '',
@@ -461,7 +491,7 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
     '',
     '## 7. Những gì theme không đổi',
     '',
-    'Theme không đổi bố cục, khung/kích thước/vị trí, ghế và tọa độ người chơi, câu hỏi/đáp án/luật/điểm, đồng hồ, thứ tự BXH, hiệu ứng CSS/SVG cốt lõi hoặc giọng MC. Các phần này do ứng dụng và phiên game điều khiển; khóa chúng để giữ layout đã duyệt, khả năng đọc trên TikTok và tính đúng của trò chơi. Theme chỉ đổi asset được khai báo, màu/font, nhạc/hiệu ứng, chữ thương hiệu và cách trình bày danh hiệu.',
+    'Theme không đổi vị trí, kích thước, z-index, thứ tự lớp, ghế/tọa độ người chơi, dữ liệu câu hỏi/đáp án/điểm hoặc luật. Ảnh skin K, icon I và hiệu ứng H thay pixel trong bbox đã đo; thiếu ảnh thì CSS hiện tại tiếp tục làm dự phòng. `slots.json` là nguồn duy nhất của danh sách slot, kích thước và lớp.',
     '',
   ].join('\n');
 }
@@ -489,9 +519,13 @@ export async function createTheme(options: { id: string; name: string; themes: s
     writeFileSync(manifestPath, JSON.stringify(parsed, null, 2) + '\n', 'utf8');
     const validatedManifest = ThemeManifestSchema.parse(parsed);
     writeFileSync(join(stage, 'CAN-CHUAN-BI.md'), createPreparationGuide(parsed, assets, stage), 'utf8');
+    await createThemeReviewArtifacts(validatedManifest, {
+      themeDirectory: stage,
+      fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'fixtures/assets-placeholder'),
+    });
     writeFileSync(join(stage, 'SO-DO.png'), await createThemeMapPng(validatedManifest, {
       themeDirectory: stage,
-      fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'assets-local'),
+      fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'fixtures/assets-placeholder'),
     }));
     renameSync(stage, out);
     return { directory: out, copied, warnings };
@@ -507,7 +541,7 @@ type ParsedCliArgs =
   | { command: 'map'; id: string; themes: string }
   | { command: 'pack'; id: string; themes: string; out: string }
   | { command: 'import'; file: string; themes: string }
-  | { command: 'export-default'; options: { out: string; assets: string; force: boolean } };
+  | { command: 'export-default'; options: { out: string; assets: string; force: boolean; createSkinAssets: true } };
 
 function argumentsOf(argv: string[]): ParsedCliArgs {
   const [command, ...args] = argv;
@@ -517,10 +551,11 @@ function argumentsOf(argv: string[]): ParsedCliArgs {
     return { command, directory };
   }
   if (command === 'export-default') {
-    const options: { out: string; assets: string; force: boolean } = {
+    const options: { out: string; assets: string; force: boolean; createSkinAssets: true } = {
       out: resolve('data/themes/default'),
       assets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'assets-local'),
       force: false,
+      createSkinAssets: true,
     };
     for (let index = 0; index < args.length; index += 1) {
       const arg = args[index];
@@ -612,9 +647,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const directory = join(parsed.themes, parsed.id);
       const result = validateThemeDirectory(directory);
       if (!result.success) throw new Error(`Theme không hợp lệ: ${result.error}`);
+      await createThemeReviewArtifacts(result.manifest.manifest, {
+        themeDirectory: directory,
+        fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'fixtures/assets-placeholder'),
+      });
       writeFileSync(join(directory, 'SO-DO.png'), await createThemeMapPng(result.manifest.manifest, {
         themeDirectory: directory,
-        fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'assets-local'),
+        fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'fixtures/assets-placeholder'),
       }));
       writeFileSync(join(directory, 'CAN-CHUAN-BI.md'), createPreparationGuide(result.manifest.manifest, result.manifest.manifest.assets, directory), 'utf8');
       console.log('Đã tạo sơ đồ vị trí: ' + join(directory, 'SO-DO.png'));

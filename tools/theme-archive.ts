@@ -7,7 +7,7 @@ import { ThemeStore } from '../apps/server/src/theme-store';
 
 const MAX_THEME_ARCHIVE_BYTES = 512 * 1024 * 1024;
 const REQUIRED_FILES = ['theme.json', 'CAN-CHUAN-BI.md', 'SO-DO.png'];
-const EXTRA_ROOT_FILES = new Set(REQUIRED_FILES);
+const EXTRA_ROOT_FILES = new Set([...REQUIRED_FILES, 'slots.json']);
 const ASSET_JSON = /^assets\/.+\.json$/iu;
 const crcTable = Uint32Array.from({ length: 256 }, (_, index) => {
   let value = index;
@@ -35,6 +35,7 @@ function zipPath(value: string, directory = false) {
 
 function allowedThemeFile(path: string) {
   if (EXTRA_ROOT_FILES.has(path)) return true;
+  if (/^assets\/[KIH]-[a-z-]+\/[KIH]\d{2,3}-[a-z0-9-]+\/DOC-TOI\.txt$/iu.test(path)) return true;
   const extension = extname(path).toLowerCase();
   return (path.startsWith('assets/') && (ASSET_JSON.test(path) || (THEME_ALLOWED_EXTENSIONS as readonly string[]).includes(extension)))
     || (path.startsWith('fonts/') && extension === '.woff2');

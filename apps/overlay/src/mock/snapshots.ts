@@ -160,6 +160,7 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'lobby-12': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-15': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-35': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-queue': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-35-countdown': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-35-countdown-3': { scene: 'LOBBY', state: 'LOBBY' },
   prepare: { scene: 'QUESTION', state: 'PREPARE' },
@@ -312,7 +313,7 @@ function firstGraphemes(text: string, count: number): string {
 export function makeMockSnapshot(name: string, mcStateOverride?: McState): SnapshotWithThrone | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
-  const lobbySeatCount = /^lobby-(\d+)/u.exec(name)?.[1]
+  const lobbySeatCount = name === 'lobby-queue' ? 35 : /^lobby-(\d+)/u.exec(name)?.[1]
     ? Number(/^lobby-(\d+)/u.exec(name)![1])
     : name === 'throne-locked' ? 18 : 0;
   const throneScene = name.startsWith('throne-') || name.startsWith('fastest-throne-') || name.startsWith('reveal-throne-') || name.startsWith('top3-throne-');
@@ -497,7 +498,7 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
           : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
     audience: mapped.scene === 'LOBBY'
-      ? mockLobbyAudience(lobbySeatCount, throneScene ? 30 : 35)
+      ? mockLobbyAudience(lobbySeatCount, throneScene || name === 'lobby-queue' ? 30 : 35)
       : ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused', 'throne-locked-question', 'throne-held', 'throne-change', 'throne-empty', 'throne-tie-top10', 'reveal-throne-empty', 'reveal-throne-held'].includes(name) || isFastestThroneMock || isQuestionTop3Mock
         ? mockAudience(isReveal, audienceSeatCount, name === 'throne-held' || name === 'throne-change' || name === 'throne-tie-top10' || name === 'reveal-throne-held' || name.includes('-held-') ? holder.safeDisplayName : undefined, throneScene ? 30 : 35) : null,
     ...(throneScene ? { throne: throne as PublicThrone } : {}),

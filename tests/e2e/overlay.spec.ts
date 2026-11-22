@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { extname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { DEFAULT_HUD_CONFIG, THEME_DEFAULT_TEXTS, THEME_DEFAULT_TOKENS, ThemeManifestSchema, type HudConfig, type ResolvedTheme, type ThemeAssetSlot } from '@quiz/contracts';
+import { DEFAULT_HUD_CONFIG, THEME_DEFAULT_TEXTS, THEME_DEFAULT_TOKENS, ThemeManifestSchema, ThemeSlotRegistrySchema, type HudConfig, type ResolvedTheme, type ThemeAssetSlot } from '@quiz/contracts';
 import { getE2eAssetDirectory, getE2eTempDirectory } from './assets';
 import { makeMockSnapshot } from '../../apps/overlay/src/mock/snapshots';
+import { THEME_SKIN_TARGETS } from '../../apps/overlay/src/theme-skins';
 
 const scenes = [
   { name: 'lobby', scene: 'LOBBY' },
@@ -33,6 +34,7 @@ const roundCardHeight = 95;
 const localAssetDirectory = getE2eAssetDirectory();
 const c0386ReviewDirectory = resolve(process.cwd(), 'assets-local/review/c-theme-kit');
 const c0396ReviewDirectory = resolve(process.env.QUIZ_THEME_REVIEW_DIR?.trim() || 'assets-local/review/c-theme-goc');
+const c0397ReviewDirectory = resolve(process.env.QUIZ_THEME_FULL_REVIEW_DIR?.trim() || 'assets-local/review/c-theme-full');
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
 const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
@@ -196,7 +198,7 @@ async function compareThemePixels(page: Page, before: Buffer, after: Buffer, exc
     let compared = 0;
     for (let y = 0; y < canvas.height; y += 1) {
       for (let x = 0; x < canvas.width; x += 1) {
-        if (excludedRects.some((rect) => x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height)) continue;
+        if (excludedRects.some((rect) => x >= rect.x - 2 && x < rect.x + rect.width + 2 && y >= rect.y - 2 && y < rect.y + rect.height + 2)) continue;
         const index = (y * canvas.width + x) * 4;
         compared += 1;
         const bothTransparent = beforePixels[index + 3] === 0 && afterPixels[index + 3] === 0;
@@ -223,11 +225,22 @@ function resolvedFixtureTheme(id: string, version: number): ResolvedTheme {
   return resolvedManifestTheme(readThemeFixture(id), version);
 }
 
-function resolvedManifestTheme(manifest: ReturnType<typeof readThemeFixture>, version: number): ResolvedTheme {
+function resolvedManifestTheme(manifest: ReturnType<typeof readThemeFixture>, version: number, themeDirectory = resolve(process.cwd(), 'fixtures/themes', manifest.id)): ResolvedTheme {
   const id = manifest.id;
   const assets: Partial<Record<ThemeAssetSlot, string>> = {};
   for (const [slot, path] of Object.entries(manifest.assets)) {
     if (path) assets[slot as ThemeAssetSlot] = `/themes/${encodeURIComponent(id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${version}`;
+  }
+  const skinAssets = Object.fromEntries(Object.entries(manifest.skinAssets ?? {}).map(([slot, path]) => [
+    slot, `/themes/${encodeURIComponent(id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${version}`,
+  ]));
+  let skinSlots: ResolvedTheme['skinSlots'];
+  const registryPath = join(themeDirectory, 'slots.json');
+  if (existsSync(registryPath)) {
+    try {
+      const registry = ThemeSlotRegistrySchema.safeParse(JSON.parse(readFileSync(registryPath, 'utf8')) as unknown);
+      if (registry.success) skinSlots = registry.data;
+    } catch { /* ThemeStore/CLI tests report malformed registry data. */ }
   }
   return {
     id: manifest.id,
@@ -241,6 +254,8 @@ function resolvedManifestTheme(manifest: ReturnType<typeof readThemeFixture>, ve
       url: `/themes/${encodeURIComponent(id)}/${font.file.split('/').map(encodeURIComponent).join('/')}?v=${version}`,
     })),
     assets,
+    skinAssets,
+    ...(skinSlots ? { skinSlots } : {}),
     texts: { ...THEME_DEFAULT_TEXTS, ...(manifest.texts ?? {}) },
     achievements: manifest.achievements as ResolvedTheme['achievements'],
   };
@@ -258,12 +273,20 @@ function themeAssetMime(path: string) {
   } as Record<string, string>)[extname(path).toLowerCase()] ?? 'application/octet-stream';
 }
 
-test('C-0396 theme default xuất sẵn giống pixel với overlay không theme trên 5 cảnh (bỏ qua đồng hồ)', async ({ page }) => {
+test('C-0397 theme default xuất sẵn giống pixel với overlay không theme trên mọi màn (bỏ qua timer động)', async ({ page }) => {
   test.setTimeout(180_000);
   const themeDirectory = themeDirectoryForPixelTest();
   const manifest = ThemeManifestSchema.parse(JSON.parse(readFileSync(join(themeDirectory, 'theme.json'), 'utf8')));
+  const slotsPath = join(themeDirectory, 'slots.json');
+  const slotRegistry = existsSync(slotsPath) ? ThemeSlotRegistrySchema.parse(JSON.parse(readFileSync(slotsPath, 'utf8'))) : null;
+  const requiredSkinIds = THEME_SKIN_TARGETS.map((target) => target.id);
+  const registeredSkinIds = new Set(slotRegistry?.slots.map((slot) => slot.id) ?? []);
+  const missingSkinSlots = process.env.QUIZ_DEFAULT_THEME_EXPORT?.trim()
+    ? requiredSkinIds.filter((id) => !registeredSkinIds.has(id) || !manifest.skinAssets?.[id])
+    : [];
+  expect(missingSkinSlots, 'theme export phải có ảnh mặc định và bbox cho từng slot K/I/H').toEqual([]);
   const fallbackTheme: ResolvedTheme = { id: 'default', name: 'Giao diện mặc định', version: 1, tokens: {}, fonts: [], assets: {} };
-  const exportedTheme = resolvedManifestTheme(manifest, 2);
+  const exportedTheme = resolvedManifestTheme(manifest, 2, themeDirectory);
   const assetSource = process.env.QUIZ_ASSETS_DIR?.replaceAll('\\', '/').toLowerCase() ?? '';
   const strictPixelComparison = Boolean(process.env.QUIZ_DEFAULT_THEME_EXPORT?.trim()) && !assetSource.endsWith('fixtures/assets-placeholder');
   mkdirSync(c0396ReviewDirectory, { recursive: true });
@@ -272,15 +295,30 @@ test('C-0396 theme default xuất sẵn giống pixel với overlay không theme
     { name: 'lobby', scene: 'LOBBY', state: 'LOBBY' },
     { name: 'question', scene: 'QUESTION', state: 'ACCEPTING' },
     { name: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD' },
+    { name: 'fastest-a', scene: 'REVEAL', state: 'LEADERBOARD' },
+    { name: 'fastest-b', scene: 'REVEAL', state: 'LEADERBOARD' },
+    { name: 'top3-throne-held-short-reveal', scene: 'REVEAL', state: 'REVEAL' },
     { name: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
     { name: 'victory', scene: 'VICTORY', state: 'VICTORY' },
+    { name: 'intermission', scene: 'INTERMISSION', state: 'INTERMISSION' },
+    { name: 'connection-lost', scene: 'CONNECTION_LOST', state: 'CONNECTION_INTERRUPTED' },
+    { name: 'question-urgent', mock: 'question', scene: 'QUESTION', state: 'ACCEPTING', urgent: true },
   ];
+  const dynamicDataSelectors = [
+    '[data-testid="timer"]', '.v3-aux-timer', '.player-name', '.v3-score', '.v3-full-score',
+    '.v3-option-text', '.v3-option-count', '.v3-option-meter', '.v3-timer-track', '.v3-timer-arc',
+    '.v3-round-count', '.v3-lobby-seat-count', '.v3-lobby-countdown', '[data-testid="question-prompt-copy"]',
+    '.v3-top1-badge', '.v3-fastest-row-badge', '.v3-fastest-name-content', '.v3-top3-time',
+    '.v3-full-rank', '.v3v-player-name', '.v3v-rank-label', '.v3v-rank-top', '.v3v-rank-tie',
+  ];
+  const pixelCoverage: Array<{ scene: string; variant: string; changedPixelsOutsideDynamic: number; comparedPixels: number; exemptRegions: Array<{ selector: string; x: number; y: number; width: number; height: number }> }> = [];
   for (const entry of scenesToCompare) {
     const scenePage = await page.context().newPage();
     let activeTheme = fallbackTheme;
     let clockPaused = false;
     const pageErrors = watchPageErrors(scenePage);
     await scenePage.setViewportSize({ width: 1080, height: 1920 });
+    await scenePage.emulateMedia({ reducedMotion: 'reduce' });
     await scenePage.clock.install({ time: new Date('2026-11-22T04:00:00.000Z') });
     await scenePage.addInitScript(() => {
       const installStaticStyles = () => {
@@ -321,7 +359,7 @@ test('C-0396 theme default xuất sẵn giống pixel với overlay không theme
       const firstError = pageErrors.length;
       activeTheme = nextTheme;
       if (mode === 'initial') {
-        await scenePage.goto(`/?${new URLSearchParams({ mock: entry.name, role: 'preview' }).toString()}`, { waitUntil: 'domcontentloaded' });
+        await scenePage.goto(`/?${new URLSearchParams({ mock: entry.mock ?? entry.name, role: 'preview' }).toString()}`, { waitUntil: 'domcontentloaded' });
       } else {
         const pollCount = await scenePage.evaluate(() => {
           const testWindow = window as Window & { __c0396ThemePolls?: Array<() => void>; __c0396ResetRandom?: () => void };
@@ -333,12 +371,16 @@ test('C-0396 theme default xuất sẵn giống pixel với overlay không theme
       }
       await expect(scenePage).toHaveTitle('Nhà Thông Thái Free Fire · Overlay');
       await expect(scenePage.locator(`[data-testid="stage"][data-state="${entry.state}"]`)).toBeVisible();
+      if ('urgent' in entry && entry.urgent) await scenePage.locator('.v3-timer').evaluate((element) => element.classList.add('is-urgent'));
       await expect(scenePage.locator('html')).toHaveAttribute('data-theme-version', String(nextTheme.version));
       if (!clockPaused) {
         await scenePage.clock.pauseAt(new Date('2026-11-22T04:00:05.000Z'));
         clockPaused = true;
       }
       await scenePage.waitForFunction(() => Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0));
+      if (nextTheme.id !== 'default' && nextTheme.skinAssets && Object.keys(nextTheme.skinAssets).length) {
+        await expect.poll(() => scenePage.locator('style[data-theme-skins]').textContent(), { timeout: 15_000 }).toContain('background-image');
+      }
       await scenePage.evaluate(async () => { await document.fonts.ready; });
       await scenePage.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}' });
       let previousImageState = '';
@@ -374,19 +416,26 @@ test('C-0396 theme default xuất sẵn giống pixel với overlay không theme
         screenshot = nextScreenshot;
       }
       expect(stable, `${entry.scene}: ảnh chụp overlay phải ổn định trước khi so pixel`).toBe(true);
-      const timerLocator = scenePage.locator('[data-testid="timer"]');
-      const timer = (await timerLocator.count()) ? await timerLocator.first().boundingBox() : null;
-      return { screenshot, timer, errors: pageErrors.slice(firstError) };
+      const dynamicRects = await scenePage.evaluate((selectors) => selectors.flatMap((selector) =>
+        Array.from(document.querySelectorAll<HTMLElement>(selector)).flatMap((element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return width > 0 && height > 0 ? [{ selector, x, y, width, height }] : [];
+        })), dynamicDataSelectors);
+      return {
+        screenshot, dynamicRects, errors: pageErrors.slice(firstError),
+      };
     };
     try {
       const baseline = await capture(fallbackTheme);
       const themed = await capture(exportedTheme, 'refresh');
-      const timerRects = [baseline.timer, themed.timer].filter((rect): rect is NonNullable<typeof rect> => rect !== null);
-      const pixelResult = await compareThemePixels(page, baseline.screenshot, themed.screenshot, timerRects);
-      writeFileSync(join(c0396ReviewDirectory, `${entry.name}-khong-theme.png`), baseline.screenshot);
-      writeFileSync(join(c0396ReviewDirectory, `${entry.name}-theme-default.png`), themed.screenshot);
-      writeFileSync(join(c0396ReviewDirectory, `${entry.name}-diff.png`), Buffer.from(pixelResult.diffPng, 'base64'));
-      console.log(`C-0396 pixel ${entry.scene}: ${pixelResult.changed}/${pixelResult.total} pixel khác (bỏ đồng hồ).`);
+      const exemptRegions = [...baseline.dynamicRects, ...themed.dynamicRects];
+      const pixelResult = await compareThemePixels(page, baseline.screenshot, themed.screenshot, exemptRegions);
+      pixelCoverage.push({ scene: entry.scene, variant: entry.name, changedPixelsOutsideDynamic: pixelResult.changed, comparedPixels: pixelResult.total, exemptRegions });
+      mkdirSync(c0397ReviewDirectory, { recursive: true });
+      writeFileSync(join(c0397ReviewDirectory, `${entry.name}-khong-theme.png`), baseline.screenshot);
+      writeFileSync(join(c0397ReviewDirectory, `${entry.name}-theme-default.png`), themed.screenshot);
+      writeFileSync(join(c0397ReviewDirectory, `${entry.name}-diff.png`), Buffer.from(pixelResult.diffPng, 'base64'));
+      console.log(`C-0397 pixel ${entry.scene}/${entry.name}: ${pixelResult.changed}/${pixelResult.total} pixel khác ngoài ${exemptRegions.length} vùng dữ liệu trận.`);
       expect(baseline.errors, `${entry.scene}: baseline thiếu asset`).toEqual([]);
       expect(themed.errors, `${entry.scene}: theme thiếu asset`).toEqual([]);
       if (strictPixelComparison)
@@ -395,6 +444,24 @@ test('C-0396 theme default xuất sẵn giống pixel với overlay không theme
       await scenePage.close();
     }
   }
+  const report = {
+    viewport: { width: 1080, height: 1920 },
+    comparedAgainst: 'overlay không theme và gói theme default',
+    method: 'Playwright pixel diff; loại vùng dữ liệu trận theo selector, nới 2 px để tính viền khử răng cưa.',
+    exemptions: [...new Set(dynamicDataSelectors)],
+    registeredSlots: requiredSkinIds.length,
+    matchedSlots: requiredSkinIds.length - missingSkinSlots.length,
+    missingSlots: missingSkinSlots,
+    screens: pixelCoverage,
+    uncoveredPixelRegions: pixelCoverage.filter((screen) => screen.changedPixelsOutsideDynamic > 0).map(({ scene, variant, changedPixelsOutsideDynamic }) => ({ scene, variant, changedPixelsOutsideDynamic })),
+    result: pixelCoverage.every((screen) => screen.changedPixelsOutsideDynamic === 0) && missingSkinSlots.length === 0
+      ? '0_PIXEL_DIFF_NGOAI_DU_LIEU; DU_SLOT_KIH'
+      : 'CHUA_DAT_0_PIXEL_DIFF_HOAC_THIEU_SLOT',
+  };
+  writeFileSync(join(c0397ReviewDirectory, 'kiem-phu-pixel.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  const exportedCoveragePath = join(themeDirectory, 'SO-DO', 'kiem-phu.json');
+  if (existsSync(dirname(exportedCoveragePath))) writeFileSync(exportedCoveragePath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  cpSync(themeDirectory, join(c0397ReviewDirectory, 'default-theme'), { recursive: true, force: true });
 });
 
 test('theme mặc định giữ phong cách CSS fallback trên sáu cảnh', async ({ page }) => {
@@ -763,19 +830,81 @@ test('overlay tải theme khi mở, cập nhật theo version và gỡ token cũ
   await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
   let activeTheme: ResolvedTheme = { id: 'event', name: 'Sự kiện', version: 1, tokens: { deep: '#123456' }, fonts: [], assets: {} };
   await page.route('**/api/theme', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeTheme) }));
+  await page.route('**/themes/event/assets/K03/default.png**', (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL+nAAAAABJRU5ErkJggg==', 'base64'),
+  }));
   await page.goto('/?mock=lobby', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('html')).toHaveAttribute('data-theme-version', '1');
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('#123456');
+  const ribbon = page.locator('.v3-title-ribbon');
+  const defaultRibbonBox = await ribbon.boundingBox();
 
-  activeTheme = { ...activeTheme, version: 2, tokens: { deep: '#abcdef' } };
+  activeTheme = { ...activeTheme, version: 2, tokens: { deep: '#abcdef' }, skinAssets: { K03: '/themes/event/assets/K03?v=2' } };
   await page.clock.runFor(2_600);
   await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('#abcdef');
+  await expect.poll(() => ribbon.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain('/themes/event/assets/K03/default.png');
+  expect(await ribbon.boundingBox()).toEqual(defaultRibbonBox);
 
-  activeTheme = { ...activeTheme, version: 3, tokens: {} };
+  activeTheme = { ...activeTheme, version: 3, tokens: {}, skinAssets: {} };
   await page.clock.runFor(2_600);
   await expect(page.locator('html')).toHaveAttribute('data-theme-version', '3');
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('');
+  await expect.poll(() => ribbon.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toContain('/themes/event/assets/K03/default.png');
+  expect(await ribbon.boundingBox()).toEqual(defaultRibbonBox);
+});
+
+test('H01 chỉ hiện với skin có pixel, giữ đúng bbox CSS và không đẩy khung khác', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-22T04:00:00.000Z') });
+  const pngs = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Không tạo được canvas test H01.');
+    const transparent = canvas.toDataURL('image/png').split(',')[1] ?? '';
+    context.fillStyle = '#ff21ba'; context.fillRect(0, 0, 2, 2);
+    return { transparent, visible: canvas.toDataURL('image/png').split(',')[1] ?? '' };
+  });
+  let activeTheme: ResolvedTheme = {
+    id: 'event', name: 'Sự kiện', version: 1, tokens: {}, fonts: [], assets: {},
+    skinAssets: { H01: '/themes/event/assets/H01?v=1' },
+  };
+  await page.route('**/api/theme', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeTheme) }));
+  await page.route('**/themes/event/assets/H01/default.png**', (route) => {
+    const version = new URL(route.request().url()).searchParams.get('v');
+    const pixels = version === '1' ? pngs.transparent : pngs.visible;
+    return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(pixels, 'base64') });
+  });
+  await page.goto('/?mock=question&role=preview', { waitUntil: 'domcontentloaded' });
+  const storm = page.locator('.v3-storm');
+  await storm.evaluate((element) => element.parentElement?.classList.add('v3-bg--question-user'));
+  await expect(storm).toBeHidden();
+  await expect.poll(() => page.locator('style[data-theme-skins]').textContent()).not.toContain('#stage .v3-storm');
+  const expectedStormBox = await storm.evaluate((element) => {
+    const oldDisplay = element.style.getPropertyValue('display');
+    const oldPriority = element.style.getPropertyPriority('display');
+    element.style.setProperty('display', 'block', 'important');
+    const { x, y, width, height } = element.getBoundingClientRect();
+    if (oldDisplay) element.style.setProperty('display', oldDisplay, oldPriority);
+    else element.style.removeProperty('display');
+    return { x, y, width, height };
+  });
+  const frameSelectors = ['.v3-title-ribbon', '.v3-board', '.v3-option'];
+  const readFrameBoxes = () => page.evaluate((selectors) => selectors.map((selector) => {
+    const element = document.querySelector(selector);
+    if (!element) return null;
+    const { x, y, width, height } = element.getBoundingClientRect();
+    return [x, y, width, height];
+  }), frameSelectors);
+  const initialFrameBoxes = await readFrameBoxes();
+
+  activeTheme = { ...activeTheme, version: 2, skinAssets: { H01: '/themes/event/assets/H01?v=2' } };
+  await page.clock.runFor(2_600);
+  await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
+  await expect.poll(() => page.locator('style[data-theme-skins]').textContent()).toContain('#stage .v3-storm');
+  await expect(storm).toBeVisible();
+  expect(await storm.boundingBox()).toEqual(expectedStormBox);
+  expect(await readFrameBoxes()).toEqual(initialFrameBoxes);
 });
 
 async function openLobbyWithTenLeaderboardEntries(page: Page) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { THEME_ASSET_SLOTS, ThemeManifestSchema } from './theme';
+import { THEME_ASSET_SLOTS, ThemeManifestSchema, ThemeSlotRegistrySchema } from './theme';
 
 const valid = {
   schemaVersion: 1,
@@ -44,6 +44,44 @@ describe('ThemeManifestSchema', () => {
       MOST_CORRECT: { enabled: false, maxRows: 5 },
       eventOverrides: { 'ba-vuong-dai-chien-2026': { LONGEST_STREAK: { accentColor: '#FFCC58' } } },
     });
+  });
+
+  it('nhận skinAssets theo slot và registry chặn dữ liệu bố cục tự do', () => {
+    const manifest = ThemeManifestSchema.parse({ ...valid, skinAssets: { K07: 'assets/K-khung/K07-o-dap-an' } });
+    expect(manifest.skinAssets).toEqual({ K07: 'assets/K-khung/K07-o-dap-an' });
+    expect(ThemeManifestSchema.safeParse({ ...valid, skinAssets: { 'K07;width': 'assets/frame' } }).success).toBe(false);
+    expect(ThemeManifestSchema.safeParse({ ...valid, skinAssets: { K07: '../outside' } }).success).toBe(false);
+    expect(ThemeManifestSchema.safeParse({ ...valid, position: { left: 1 } }).success).toBe(false);
+
+    const registry = {
+      schemaVersion: 1,
+      slots: [{
+        id: 'K07', nhom: 'K', lop: 1, thuMuc: 'assets/K-khung/K07-o-dap-an',
+        files: [{ ten: 'default.png', batBuoc: true, trangThai: 'CAN_CHUAN_BI' }],
+        kichThuoc: { rong: 100, cao: 48, tiLe: 100 / 48, saiSoPx: 0 }, nineSlice: null,
+        dinhDang: ['PNG'], nenTrongSuot: true, dungLuongToiDa: 1_000_000,
+        viTri: [{ man: 'QUESTION', x: 10, y: 20, rong: 100, cao: 48 }],
+        nam_tren: [], nam_duoi: [], ghiChu: 'Khung đáp án.',
+      }],
+    };
+    expect(ThemeSlotRegistrySchema.safeParse(registry).success).toBe(true);
+    expect(ThemeSlotRegistrySchema.safeParse({ ...registry, slots: [{ ...registry.slots[0], left: 15 }] }).success).toBe(false);
+
+    const offscreenEffect = {
+      ...registry,
+      slots: [{ ...registry.slots[0]!, id: 'H01', nhom: 'H', lop: 3,
+        kichThuoc: { rong: 1200, cao: 640, tiLe: 1200 / 640, saiSoPx: 0 },
+        viTri: [{ man: 'QUESTION', x: -60, y: -260, rong: 1200, cao: 640 }],
+        ghiChu: 'Ảnh lấy theo bbox CSS đầy đủ; stage 1080×1920 sẽ cắt vùng tràn.' }],
+    };
+    expect(ThemeSlotRegistrySchema.safeParse(offscreenEffect).success).toBe(true);
+    const repeatedEffectSlots = {
+      ...offscreenEffect,
+      slots: [{ ...offscreenEffect.slots[0]!, viTri: Array.from({ length: 80 }, (_, index) => ({
+        man: 'QUESTION' as const, x: 97, y: 1935 + index, rong: 3, cao: 3,
+      })) }],
+    };
+    expect(ThemeSlotRegistrySchema.safeParse(repeatedEffectSlots).success).toBe(true);
   });
 
   it('từ chối ID, màu, icon, slot và số dòng danh hiệu ngoài registry/spec với lỗi rõ', () => {

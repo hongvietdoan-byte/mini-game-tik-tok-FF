@@ -38,9 +38,15 @@ export {
   type ThemeTexts,
   ThemeManifestSchema,
   ThemeRelativePathSchema,
+  ThemeSkinSlotIdSchema,
+  ThemeSkinAssetsSchema,
+  ThemeSlotSchema,
+  ThemeSlotRegistrySchema,
   type ResolvedTheme,
   type ThemeFont,
   type ThemeManifest,
+  type ThemeSlot,
+  type ThemeSlotRegistry,
 } from './theme';
 export { THEME_DEFAULT_TOKENS, THEME_DEFAULT_TOKEN_DESCRIPTIONS, type ThemeDefaultToken } from './theme-default-tokens';
 
