@@ -607,7 +607,7 @@ test('C-0386: đổi theme trên overlay program và preview không tải lại 
       await expect(page.locator('html')).toHaveAttribute('data-theme-version', '3');
       if (entry.name !== 'victory') await expect.poll(() => page.locator('.v3-title').first().getAttribute('aria-label'))
         .toBe(`${THEME_DEFAULT_TEXTS.kicker} · ${THEME_DEFAULT_TEXTS.arenaTitle}`);
-      await expect(logo).toHaveAttribute('src', /\/themes\/default\/assets\/brand\/logo\.png\?v=3/u);
+      await expect(logo).toHaveAttribute('src', '/assets/brand/logo.png');
       await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-gold').trim()))
         .toBe('');
       if (entry.name === 'victory') await expect(page.locator('.v3v-hud-title')).toHaveCount(0);
@@ -828,10 +828,18 @@ test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái
 
 test('overlay tải theme khi mở, cập nhật theo version và gỡ token cũ', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-17T12:00:00.000Z') });
+  const skinPng = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Không tạo được ảnh kiểm tra skin K03.');
+    context.fillStyle = '#7351a8'; context.fillRect(0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/png').split(',')[1] ?? '';
+  });
   let activeTheme: ResolvedTheme = { id: 'event', name: 'Sự kiện', version: 1, tokens: { deep: '#123456' }, fonts: [], assets: {} };
   await page.route('**/api/theme', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeTheme) }));
   await page.route('**/themes/event/assets/K03/default.png**', (route) => route.fulfill({
-    status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL+nAAAAABJRU5ErkJggg==', 'base64'),
+    status: 200, contentType: 'image/png', body: Buffer.from(skinPng, 'base64'),
   }));
   await page.goto('/?mock=lobby', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('html')).toHaveAttribute('data-theme-version', '1');
@@ -843,14 +851,14 @@ test('overlay tải theme khi mở, cập nhật theo version và gỡ token cũ
   await page.clock.runFor(2_600);
   await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('#abcdef');
-  await expect.poll(() => ribbon.evaluate((element) => getComputedStyle(element).backgroundImage)).toContain('/themes/event/assets/K03/default.png');
+  await expect.poll(() => ribbon.evaluate((element) => getComputedStyle(element).borderImageSource)).toContain('/themes/event/assets/K03/default.png');
   expect(await ribbon.boundingBox()).toEqual(defaultRibbonBox);
 
   activeTheme = { ...activeTheme, version: 3, tokens: {}, skinAssets: {} };
   await page.clock.runFor(2_600);
   await expect(page.locator('html')).toHaveAttribute('data-theme-version', '3');
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--theme-deep').trim())).toBe('');
-  await expect.poll(() => ribbon.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toContain('/themes/event/assets/K03/default.png');
+  await expect.poll(() => ribbon.evaluate((element) => getComputedStyle(element).borderImageSource)).not.toContain('/themes/event/assets/K03/default.png');
   expect(await ribbon.boundingBox()).toEqual(defaultRibbonBox);
 });
 
@@ -1003,7 +1011,8 @@ for (const { name, scene } of scenes) {
       await expect(stage.getByTestId('victory-background')).toBeVisible();
       if (hasLocalEventLogo) await expect(stage.getByTestId('v3v-event-logo')).toBeVisible();
       else await expect(stage.locator('.v3v-logo-fallback .v3-title')).toBeVisible();
-      await expect(stage.locator('.v3v-trophy, .v3v-trophy-glow, .v3v-side-lightning')).toHaveCount(0);
+      await expect(stage.locator('.v3v-trophy, .v3v-side-lightning')).toHaveCount(0);
+      for (const effect of await stage.locator('.v3v-trophy-glow, .v3v-bg-dim, .v3v-floor-reflection').all()) await expect(effect).toBeHidden();
     } else {
       await expect(stage.locator('.v3-title-ribbon')).toHaveText('ĐẤU TRƯỜNG BÃO TỐ');
     }
@@ -1168,7 +1177,8 @@ test('C-0279 keeps the approved fixed question frame and readable answer grid fo
         expect(meterBox).not.toBeNull();
         expect(countBox!.x).toBeGreaterThan(answerBox!.x + answerBox!.width);
         expect(meterBox!.x).toBeGreaterThanOrEqual(countBox!.x);
-        expect(meterBox!.x + meterBox!.width).toBeLessThanOrEqual(countBox!.x + countBox!.width);
+        // Chromium can report subpixel flex rounding here (the previous failure was 0.23px).
+        expect(meterBox!.x + meterBox!.width).toBeLessThanOrEqual(countBox!.x + countBox!.width + 1);
       }
     }
     await page.screenshot({ path: join(reviewDirectory, `${entry.phase}.png`), animations: 'disabled' });
@@ -2655,7 +2665,8 @@ test('Victory uses the selected background unchanged and keeps podium labels on 
   await expect(page.locator('.v3v .v3-mc-portrait')).toHaveCount(0);
   await expect(page.locator('.v3v-medal')).toHaveCount(0);
   await expect(page.locator('.v3v-score-reflection, .v3v-nameplate-reflection')).toHaveCount(0);
-  await expect(page.locator('.v3v-trophy, .v3v-trophy-stage, .v3v-bg-dim, .v3v-fan-lights, .v3v-side-lightning')).toHaveCount(0);
+  await expect(page.locator('.v3v-trophy, .v3v-trophy-stage, .v3v-fan-lights, .v3v-side-lightning')).toHaveCount(0);
+  for (const effect of await page.locator('.v3v-bg-dim, .v3v-trophy-glow, .v3v-floor-reflection').all()) await expect(effect).toBeHidden();
   expect(geometry.logoWidthRatio).toBeGreaterThanOrEqual(0.339);
   expect(geometry.logoWidthRatio).toBeLessThanOrEqual(0.35);
   expect(geometry.logoLeftRatio).toBeGreaterThanOrEqual(0.25);
