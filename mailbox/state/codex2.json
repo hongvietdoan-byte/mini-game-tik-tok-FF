@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 400,
-  "heartbeat": "2026-11-22T21:44:55+07:00",
-  "state": "waiting",
-  "task": "C-0397",
-  "note": "Inbox trống; DP3 đang được codex2 cập nhật theo BOARD, chờ thư mới",
+  "heartbeat": "2026-11-22T22:04:52+07:00",
+  "state": "working",
+  "task": "C-0401",
+  "note": "Đang sửa bộ theme full-asset theo 6 điểm coordinator phản hồi",
   "done": []
 }
