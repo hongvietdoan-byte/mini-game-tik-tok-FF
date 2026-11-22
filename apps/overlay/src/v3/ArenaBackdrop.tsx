@@ -51,7 +51,8 @@ export function ArenaBackdrop({
     || (questionBackground ? theme.assets['arena.background'] ?? '' : '');
   const customBackground = backgroundId ? hudImageUrl(backgroundId, '') : '';
   const backgroundSrc = [themeBackground, customBackground, fallbackBackground].find((source) => source && !failedSources.includes(source)) ?? fallbackBackground;
-  const isStaticQuestionBackground = questionBackground && backgroundSrc === fallbackBackground;
+  const isStaticQuestionBackground = questionBackground && (backgroundSrc === fallbackBackground
+    || (theme.id === 'default' && backgroundSrc === themeBackground));
   const backgroundClass = questionBackground ? ' v3-bg--question-user' : '';
   useEffect(() => setFailedSources([]), [backgroundId, questionBackground, theme.version]);
   return (

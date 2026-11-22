@@ -1,6 +1,8 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { createThemeMapPng } from './theme-map';
+import { importThemeArchive, packTheme } from './theme-archive';
 import { fileURLToPath } from 'node:url';
 import {
   ACHIEVEMENT_IDS,
@@ -9,6 +11,7 @@ import {
   THEME_DEFAULT_TOKEN_DESCRIPTIONS,
   THEME_DEFAULT_TEXTS,
   THEME_ASSET_SLOTS,
+  ThemeManifestSchema,
   type ThemeAssetSlot,
 } from '@quiz/contracts';
 import { ThemeStore } from '../apps/server/src/theme-store';
@@ -71,6 +74,7 @@ function copyTree(source: string, destination: string, root: string, copied: str
   if (stat.isDirectory()) {
     mkdirSync(destination, { recursive: true });
     for (const entry of readdirSync(source, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name === '_nhap') continue;
       const from = join(source, entry.name);
       if (entry.isSymbolicLink()) throw new Error(`Không sao chép symlink: ${from.slice(root.length + 1)}`);
       copyTree(from, join(destination, entry.name), root, copied, warnings);
@@ -80,7 +84,9 @@ function copyTree(source: string, destination: string, root: string, copied: str
     if (stat.size > 50 * 1024 * 1024) throw new Error(`Asset ${relative} lớn hơn 50 MB.`);
     const extension = extname(source).toLowerCase();
     if (!EXPORTABLE_ASSET_EXTENSIONS.has(extension)) {
-      warnings.push(`Bỏ qua tệp không hỗ trợ ${relative} (đuôi ${extension || 'không có'}).`);
+      const marker = `(đuôi ${extension || 'không có'})`;
+      if (!warnings.some((warning) => warning.includes(marker)))
+        warnings.push(`Bỏ qua tệp không hỗ trợ ${relative} ${marker}; các tệp cùng loại khác cũng bị bỏ qua.`);
       return;
     }
     mkdirSync(join(destination, '..'), { recursive: true });
@@ -97,11 +103,43 @@ function pickAudioSource(root: string, base: string) {
   return null;
 }
 
+function copyOptionalFonts(root: string, staging: string, copied: string[], warnings: string[]) {
+  const fonts: Array<{ family: string; file: string; weight: number; style: 'normal' | 'italic' }> = [];
+  const candidates = ['fonts', 'font'].map((name) => join(root, name)).filter((path) => existsSync(path));
+  for (const candidate of candidates) {
+    const rootStat = lstatSync(candidate);
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new Error(`Thư mục font không an toàn: ${candidate}`);
+    const sourceBase = candidate.slice(root.length + 1);
+    for (const absolute of walkFiles(candidate)) {
+      const stat = lstatSync(absolute);
+      if (stat.isSymbolicLink()) throw new Error(`Không sao chép symlink font: ${absolute.slice(root.length + 1)}`);
+      if (stat.size > 50 * 1024 * 1024) throw new Error(`Font ${absolute.slice(root.length + 1)} lớn hơn 50 MB.`);
+      if (extname(absolute).toLowerCase() !== '.woff2') {
+        warnings.push(`Bỏ qua font không phải WOFF2 ${absolute.slice(root.length + 1)}.`);
+        continue;
+      }
+      const relativePath = absolute.slice(root.length + 1).split(sep).join('/');
+      const destination = join(staging, 'fonts', ...relativePath.slice(sourceBase.length + 1).split('/'));
+      mkdirSync(dirname(destination), { recursive: true });
+      copyFileSync(absolute, destination);
+      const file = `fonts/${relativePath.slice(sourceBase.length + 1).split(sep).join('/')}`;
+      const stem = basename(absolute, extname(absolute));
+      const family = stem.replace(/[-_](?:thin|extralight|light|regular|medium|semibold|demibold|bold|extrabold|black|italic)$/iu, '').replace(/[-_]+/gu, ' ').trim() || stem;
+      const weight = /(?:thin|100)$/iu.test(stem) ? 100 : /(?:extralight|200)$/iu.test(stem) ? 200 : /(?:light|300)$/iu.test(stem) ? 300
+        : /(?:medium|500)$/iu.test(stem) ? 500 : /(?:semibold|demibold|600)$/iu.test(stem) ? 600 : /(?:bold|700)$/iu.test(stem) ? 700
+          : /(?:extrabold|800)$/iu.test(stem) ? 800 : /(?:black|900)$/iu.test(stem) ? 900 : 400;
+      fonts.push({ family, file, weight, style: /italic/iu.test(stem) ? 'italic' : 'normal' });
+      copied.push(relativePath);
+    }
+  }
+  return fonts;
+}
+
 export function validateThemeDirectory(directory: string) {
   return ThemeStore.validateDirectory(directory);
 }
 
-export function exportDefaultTheme(options: { out: string; assets: string; force?: boolean }) {
+export async function exportDefaultTheme(options: { out: string; assets: string; force?: boolean; createMap?: boolean }) {
   const out = resolve(options.out);
   const assetsRoot = resolve(options.assets);
   if (!/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(basename(out)))
@@ -154,6 +192,7 @@ export function exportDefaultTheme(options: { out: string; assets: string; force
       manifestAssets[item.slot] = relativeDestination;
     }
 
+    const fonts = copyOptionalFonts(assetsRoot, staging, copied, warnings);
     const manifest = {
       schemaVersion: 1,
       id: basename(out),
@@ -161,12 +200,16 @@ export function exportDefaultTheme(options: { out: string; assets: string; force
       description: 'Theme mặc định được xuất từ asset cục bộ hiện có.',
       tokens: THEME_DEFAULT_TOKENS,
       tokenDescriptions: THEME_DEFAULT_TOKEN_DESCRIPTIONS,
-      fonts: [],
+      fonts,
       assets: manifestAssets,
       texts: THEME_DEFAULT_TEXTS,
       achievements: Object.fromEntries(ACHIEVEMENT_IDS.map((id) => [id, THEME_DEFAULT_ACHIEVEMENTS[id]])),
     };
     writeFileSync(join(staging, 'theme.json'), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8' });
+    writeFileSync(join(staging, 'CAN-CHUAN-BI.md'), createPreparationGuide(manifest, manifestAssets, staging), 'utf8');
+    const parsedManifest = ThemeManifestSchema.parse(manifest);
+    if (options.createMap !== false)
+      writeFileSync(join(staging, 'SO-DO.png'), await createThemeMapPng(parsedManifest, { themeDirectory: staging, fallbackAssets: assetsRoot }));
 
     if (existsSync(out)) {
       if (!options.force) throw new Error(`Thư mục đích đã tồn tại: ${out}. Dùng --force để cập nhật.`);
@@ -217,7 +260,7 @@ const SLOT_GUIDE: Record<ThemeAssetSlot, { size: string; formats: string; alpha:
   'chibi.bankDir': { size: '92 × 104 px khung ghế; 70 × 78 px khi có ngai', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Ngân hàng chibi; đủ tất cả nhân vật đang dùng và các dáng.' },
   'chibi.podiumDir': { size: 'Top 2/3: 240 × 420 px; Top 1: 440 × 520 px', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Thư mục assets/chibi/dang-top2-top3/top2 và top3; đủ hai dáng cho mỗi nhân vật có thể thắng.' },
   'mc.static': { size: 'Khung cơ sở 250 × 290 px; compact 180 × 208 px; question/reveal 280 × 390 px hoặc 205 × 158 px theo bố cục V3', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Ảnh tĩnh dự phòng MC Kelly trong mọi cảnh.' },
-  'mc.sequenceDir': { size: 'Khung cơ sở 250 × 290 px; compact 180 × 208 px; question/reveal 280 × 390 px hoặc 205 × 158 px theo bố cục V3', formats: 'PNG, JPG, WEBP, GIF, SVG, JSON manifest', alpha: 'Nên có', scene: 'Chuỗi pose MC; cần manifest và đủ khung idle/welcome/ask/react/celebrate.' },
+  'mc.sequenceDir': { size: 'Khung cơ sở 250 × 290 px; compact 180 × 208 px; question/reveal 280 × 390 px hoặc 205 × 158 px theo bố cục V3', formats: 'PNG, JPG, WEBP, GIF, SVG, JSON manifest', alpha: 'Nên có', scene: 'Chuỗi pose MC: idle bắt buộc; welcome/ask/react/celebrate tùy chọn, thiếu thì dùng idle.' },
   'throne.bankDir': { size: 'Ngai 400 × 400 px; khung Top 1 Victory 440 × 520 px', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Ngai trống/ngai theo characterId; ảnh cùng slot dùng cho dáng Top 1 trong Victory.' },
   'victory.background': { size: '1080 × 1920 px (cover toàn khung)', formats: 'JPG, PNG, WEBP', alpha: 'Không', scene: 'Nền Victory.' },
   'victory.userCover': { size: '1080 × 1920 px (cover toàn khung)', formats: 'JPG, PNG, WEBP', alpha: 'Không', scene: 'Ảnh nền sự kiện Victory; ưu tiên ảnh riêng không có UI.' },
@@ -236,33 +279,194 @@ const SLOT_GUIDE: Record<ThemeAssetSlot, { size: string; formats: string; alpha:
   'audio.bgm': { size: 'Không áp dụng', formats: 'MP3, OGG, WAV', alpha: 'Không áp dụng', scene: 'Nhạc nền dự phòng.' },
 };
 
-function createPreparationGuide(manifest: Record<string, unknown>, assets: Record<string, string | undefined>) {
+const TOKEN_USAGE: Record<string, string> = {
+  deep: 'Nền gradient sân khấu, thẻ ghế và podium.', violet: 'Nút/điểm nhấn tím, ánh sáng.', gold: 'Điểm, thời gian, viền podium và trạng thái đúng.',
+  sky: 'Viền sáng, cờ/nhãn phụ.', pink: 'Điểm nhấn và trạng thái đồng hạng.', coral: 'Cảnh báo, nhấn MC.', ink: 'Nền tối sân khấu và panel.', neon: 'Quầng sáng/đường viền.', paper: 'Chữ sáng và họa tiết nền.',
+  'font-body': 'Font thân bài cho toàn overlay.', 'font-display': 'Font tiêu đề/ribbon và tiêu đề màn.', 'bg-main': 'Nền chính của overlay.', 'bg-panel': 'Nền panel/thẻ.', 'bg-panel-soft': 'Nền panel câu hỏi bán trong suốt.',
+  'text-primary': 'Chữ chính trên HUD và nhãn.', 'text-muted': 'Chữ phụ trên nhãn.', 'text-subtle': 'Chữ ít nhấn.', accent: 'Điểm nhấn panel và tiêu đề.',
+  'answer-a': 'Viền/nhãn lựa chọn A.', 'answer-b': 'Viền/nhãn lựa chọn B.', 'answer-c': 'Viền/nhãn lựa chọn C.', 'answer-d': 'Viền/nhãn lựa chọn D.',
+  correct: 'Chấm đúng, trạng thái đáp án đúng.', wrong: 'Sai/cảnh báo.', timer: 'Số và viền đồng hồ.', 'seat-accent': 'Ghế khán giả và nhãn cạnh ghế.',
+  'leaderboard-row': 'Nền dòng BXH.', 'border-glow': 'Viền phát sáng của panel.', 'violet-glow': 'Quầng tím.', 'gold-glow': 'Quầng vàng.', 'sky-glow': 'Quầng xanh trời.',
+  'storm-gradient': 'Nền sân khấu tổng thể.', 'question-gradient': 'Nền khung câu hỏi.', 'panel-gradient': 'Nền thẻ / panel.',
+  'accent-soft': 'Nền tím nhấn bán trong suốt.', 'answer-a-soft': 'Nền lựa chọn A.', 'answer-b-soft': 'Nền lựa chọn B.', 'answer-c-soft': 'Nền lựa chọn C.', 'answer-d-soft': 'Nền lựa chọn D.',
+  'coral-soft': 'Nền san hô cảnh báo.', 'correct-soft': 'Nền trạng thái đúng.', 'deep-soft': 'Nền xanh tím nhạt.', 'gold-soft': 'Nền vàng nhạt.', 'ink-soft': 'Nền tối bán trong suốt.',
+  'leaderboard-row-soft': 'Nền hàng BXH bán trong suốt.', 'neon-soft': 'Quầng neon.', 'paper-soft': 'Chữ/họa tiết sáng bán trong suốt.', 'pink-soft': 'Nền hồng bán trong suốt.',
+  'seat-accent-soft': 'Nền nhấn ghế bán trong suốt.', 'sky-soft': 'Nền xanh trời bán trong suốt.', 'text-primary-soft': 'Chữ chính có alpha.', 'timer-soft': 'Đồng hồ và quầng đồng hồ.',
+  'violet-soft': 'Nền/quầng tím bán trong suốt.', 'wrong-soft': 'Cảnh báo sai bán trong suốt.', transparent: 'Lớp trong suốt trên nền, không tô thêm màu.',
+};
+
+const TOKEN_GROUPS: Array<[string, string[]]> = [
+  ['Nền và panel', ['deep', 'ink', 'bg-main', 'bg-panel', 'bg-panel-soft', 'storm-gradient', 'question-gradient', 'panel-gradient', 'deep-soft', 'ink-soft']],
+  ['Chữ và font', ['paper', 'text-primary', 'text-muted', 'text-subtle', 'text-primary-soft', 'paper-soft', 'font-body', 'font-display']],
+  ['Đáp án A–D', ['answer-a', 'answer-b', 'answer-c', 'answer-d', 'answer-a-soft', 'answer-b-soft', 'answer-c-soft', 'answer-d-soft']],
+  ['Đồng hồ', ['timer', 'timer-soft']],
+  ['BXH và ghế', ['leaderboard-row', 'leaderboard-row-soft', 'seat-accent', 'seat-accent-soft']],
+  ['Viền sáng và trạng thái', ['violet', 'gold', 'sky', 'pink', 'coral', 'neon', 'accent', 'correct', 'wrong', 'border-glow', 'violet-glow', 'gold-glow', 'sky-glow', 'accent-soft', 'coral-soft', 'correct-soft', 'gold-soft', 'neon-soft', 'pink-soft', 'sky-soft', 'violet-soft', 'wrong-soft', 'transparent']],
+];
+
+const TEXT_GUIDE: Record<string, { where: string; recommended: string; behavior: string }> = {
+  brandTitleLine1: { where: 'LOBBY và logo dự phòng trong header.', recommended: '≤ 12 ký tự', behavior: 'Một dòng; co chữ tự động trong khung logo khi thay giá trị.' },
+  brandTitleLine2: { where: 'LOBBY và logo dự phòng trong header.', recommended: '≤ 12 ký tự', behavior: 'Một dòng; co chữ tự động trong khung logo khi thay giá trị.' },
+  brandTagline: { where: 'Dưới logo dự phòng; alt text của logo ảnh.', recommended: '≤ 28 ký tự', behavior: 'Một dòng; co chữ tự động. Alt text không hiển thị thành tiêu đề.' },
+  legacyBrandTitle: { where: 'Alt text / nhãn truy cập của logo.', recommended: '≤ 36 ký tự', behavior: 'Không hiển thị trực tiếp, không cần co chữ.' },
+  arenaWelcome: { where: 'LOBBY hoặc bóng thoại MC khi dùng lời chào mặc định.', recommended: '≤ 42 ký tự tổng; 24 mỗi dòng', behavior: 'Có thể xuống dòng; trong bóng thoại sẽ tự gói trong khung cố định.' },
+  kicker: { where: 'Nhãn sự kiện ở phần đầu header mọi cảnh.', recommended: '≤ 24 ký tự', behavior: 'Tách theo từ thành hai dòng và tự co trong khung.' },
+  arenaTitle: { where: 'Ribbon tiêu đề ở LOBBY, QUESTION và REVEAL.', recommended: '≤ 24 ký tự', behavior: 'Một dòng; tự co đến cỡ tối thiểu rồi rút gọn bằng dấu ba chấm.' },
+  playingLabel: { where: 'Thẻ số người chơi trong header.', recommended: '≤ 18 ký tự', behavior: 'Co chữ trong chiều rộng cố định.' },
+  roundLabel: { where: 'Tiền tố nhãn số vòng ở thẻ vòng.', recommended: '≤ 8 ký tự', behavior: 'Co chữ trong chiều rộng cố định; số vòng do game thêm sau.' },
+  leaderboardTitle: { where: 'Tiêu đề panel BXH ở QUESTION/REVEAL và màn BXH.', recommended: '≤ 16 ký tự', behavior: 'Co chữ trong chiều rộng cố định.' },
+  victoryTitle: { where: 'Tiêu đề tùy chọn ở màn VICTORY.', recommended: '≤ 22 ký tự', behavior: 'Co chữ trong khung; để trống thì ẩn tiêu đề.' },
+};
+
+const TEXT_IDS: Record<string, string> = Object.fromEntries(Object.keys(THEME_DEFAULT_TEXTS).map((key, index) =>
+  [key, `T${String(index + 1).padStart(2, '0')}`]));
+
+function walkFiles(directory: string): string[] {
+  if (!existsSync(directory)) return [];
+  const result: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const absolute = join(directory, entry.name);
+    if (entry.isDirectory()) result.push(...walkFiles(absolute));
+    else if (entry.isFile()) result.push(absolute);
+  }
+  return result;
+}
+
+function readJsonFile<T>(path: string): T | null {
+  try { return JSON.parse(readFileSync(path, 'utf8')) as T; } catch { return null; }
+}
+
+function createPreparationGuide(manifest: Record<string, unknown>, assets: Record<string, string | undefined>, themeDirectory: string) {
   const sourceBySlot = new Map(DEFAULT_SLOT_SOURCES.map((item) => [item.slot, item]));
   const rows = THEME_ASSET_SLOTS.map((slot) => {
     const info = SLOT_GUIDE[slot];
     const path = assets[slot] ?? sourceBySlot.get(slot)?.destination ?? 'Asset dự phòng trong ứng dụng';
     const format = path.includes('.') ? path.slice(path.lastIndexOf('.') + 1).toUpperCase() : info.formats;
+    const absolute = path === 'Asset dự phòng trong ứng dụng' ? '' : join(themeDirectory, ...path.split('/'));
+    const fileCount = absolute && existsSync(absolute) ? (lstatSync(absolute).isDirectory() ? walkFiles(absolute).length : 1) : 0;
     return '| ' + slot + ' | ' + path + ' | ' + info.size + ' | ' + format + '; chấp nhận ' + info.formats
-      + ' | ' + info.alpha + ' | ' + info.scene + ' | [ ] |';
+      + ' | ' + info.alpha + ' | ' + info.scene + ' | ' + fileCount + ' | [ ] |';
   });
+  const tokens = (manifest.tokens ?? {}) as Record<string, string>;
+  const tokenDescriptions = (manifest.tokenDescriptions ?? {}) as Record<string, string>;
+  const usedTokens = new Set<string>();
+  const tokenGroups = TOKEN_GROUPS.map(([group, keys]) => {
+    const lines = keys.filter((key) => key in tokens).map((key) => {
+      usedTokens.add(key);
+      const value = tokens[key]!;
+      const colorSample = /^(?:#|rgba?\(|linear-gradient\(|radial-gradient\()/iu.test(value);
+      const sample = value === 'transparent'
+        ? '<span style="display:inline-block;width:1em;height:1em;border:1px solid #777;background:transparent"></span>'
+        : colorSample
+          ? `<span style="display:inline-block;width:1em;height:1em;border:1px solid #777;background:${value}"></span>`
+          : '🔤';
+      return `| ${key} | ${value} | ${sample} | ${tokenDescriptions[key] ?? TOKEN_USAGE[key] ?? 'Màu/font dùng trong overlay.'} ${TOKEN_USAGE[key] ?? ''} |`;
+    });
+    return lines.length ? [`### ${group}`, '', '| Token | Giá trị | Mẫu | Dùng ở đâu |', '|---|---|---|---|', ...lines, ''] : [];
+  }).flat();
+  const ungroupedTokens = Object.keys(tokens).filter((key) => !usedTokens.has(key));
+  if (ungroupedTokens.length) tokenGroups.push('### Token khác', '', '| Token | Giá trị | Mẫu | Dùng ở đâu |', '|---|---|---|---|', ...ungroupedTokens.map((key) => `| ${key} | ${tokens[key]} | ◧ | ${TOKEN_USAGE[key] ?? ''} |`), '');
+
+  const charactersPath = join(themeDirectory, 'assets', 'chibi', 'manifest.json');
+  const charactersData = readJsonFile<{ characters?: Array<{ id?: string }> }>(charactersPath);
+  const characters = (charactersData?.characters ?? []).map((character) => character.id).filter((id): id is string => !!id);
+  const podiumRoot = join(themeDirectory, 'assets', 'chibi', 'dang-top2-top3');
+  const imageNames = (directory: string) => walkFiles(directory).filter((path) => /\.(?:png|jpe?g|webp|gif|svg)$/iu.test(path)).map((path) => path.slice(directory.length + 1).split(sep).join('/')).sort();
+  const top2 = imageNames(join(podiumRoot, 'top2'));
+  const top3 = imageNames(join(podiumRoot, 'top3'));
+  const podiumRows = characters.length
+    ? characters.map((id) => {
+      const top2File = `top2/top2-${id}.png`;
+      const top3File = `top3/top3-${id}.png`;
+      return `| ${id} | ${top2File} | ${top2.includes(top2File) ? 'Có' : 'Thiếu'} | ${top3File} | ${top3.includes(top3File) ? 'Có' : 'Thiếu'} |`;
+    })
+    : ['| Không có `assets/chibi/manifest.json`; số ID nhân vật chưa xác định. | `top2/top2-<characterId>.png` | — | `top3/top3-<characterId>.png` | — |'];
+  const mcDirectory = join(themeDirectory, 'assets', 'mc', 'kelly');
+  const mcManifest = readJsonFile<{ animations?: Record<string, { path?: string; frames?: number; fps?: number; loop?: boolean }>; fallback?: string }>(join(mcDirectory, 'manifest.json'));
+  const mcPoses = ['idle', 'welcome', 'ask', 'react', 'celebrate'] as const;
+  const mcRows = mcPoses.map((pose) => {
+    const animation = mcManifest?.animations?.[pose];
+    const playback = animation ? animation.loop ? 'lặp' : 'không lặp' : pose === 'idle' ? 'bắt buộc' : 'tùy chọn; thiếu thì dùng idle';
+    return `| ${pose} | ${animation?.path ?? `assets/mc/kelly/${pose}`} | ${animation?.frames ?? 0} | ${animation?.fps ?? '—'} | ${playback} |`;
+  });
+  const throneFiles = imageNames(join(themeDirectory, 'assets', 'throne'));
+  const fontFiles = (manifest.fonts ?? []) as Array<{ family?: string; file?: string; weight?: string | number; style?: string }>;
+  const textRows = Object.entries(THEME_DEFAULT_TEXTS).map(([key, defaultValue]) => {
+    const value = String(((manifest.texts ?? {}) as Record<string, string>)[key] ?? defaultValue);
+    const guide = TEXT_GUIDE[key] ?? { where: 'HUD overlay.', recommended: '≤ 24 ký tự', behavior: 'Co/gói chữ trong vùng cố định.' };
+    return `| ${TEXT_IDS[key]} | \`texts.${key}\` | ${value.replaceAll('\n', '<br>')} | ${guide.where} | ${guide.recommended} (schema tối đa 200) | ${guide.behavior} |`;
+  });
+  const achievements = (manifest.achievements ?? {}) as Record<string, { title?: string; subtitle?: string; accentColor?: string; icon?: string | null; enabled?: boolean; maxRows?: number }>;
+  const achievementRows = ACHIEVEMENT_IDS.map((id) => {
+    const base = THEME_DEFAULT_ACHIEVEMENTS[id];
+    const override = achievements[id] ?? {};
+    const title = override.title ?? base.title;
+    const subtitle = override.subtitle ?? base.subtitle;
+    return `| ${id} | ${title} | ${subtitle} | ${override.accentColor ?? base.accentColor} | ${override.icon ?? 'Không dùng icon riêng'} | ${title.length}/100 tên; ${subtitle.length}/160 phụ đề; schema tối đa 100/160 | ${override.maxRows ?? base.maxRows} |`;
+  });
+  const characterAssets = imageNames(join(themeDirectory, 'assets', 'chibi'));
+  const throneCount = throneFiles.length;
+  const mcCount = imageNames(mcDirectory).length;
+  const podiumCount = top2.length + top3.length;
+  const assetFileTotal = walkFiles(join(themeDirectory, 'assets')).length;
   return [
     '# Chuẩn bị theme: ' + String(manifest.name ?? ''),
     '',
-    'Thay ảnh/audio/video trong assets/ hoặc cập nhật đường dẫn tương đối trong theme.json. Mỗi tệp asset tối đa 50 MB. Không đổi bố cục, vị trí hay kích thước khung.',
+    'ID trong sơ đồ `SO-DO.png` trùng mã ở bảng asset (`01`–`33`) và bảng chữ (`T01`–`T11`). Mẫu màu là ô tham khảo; hãy đối chiếu giá trị hex/RGBA/gradient bên cạnh.',
+    'Thay asset trong `assets/`, màu/chữ trong `theme.json`. Mỗi tệp tối đa 50 MB. Không đổi bố cục hoặc hình học khung.',
     '',
-    'Ảnh nền phải là một lớp riêng không có chữ/khung UI. Ảnh mẫu dựng sẵn cả giao diện không dùng làm nền.',
-    'Chibi và MC phải đủ số khung/dáng như bản mặc định: đủ pose MC trong manifest.json, chibi sảnh và đủ dáng Top 2/Top 3 cho từng nhân vật có thể thắng.',
+    'Ảnh nền là lớp riêng, không dính chữ/khung UI. Số lượng asset đã xuất: **' + assetFileTotal + ' tệp**; asset ảnh trong kho chibi: **' + characterAssets.length + '**; chibi Top 2/3: **' + podiumCount + '**; frame/ảnh MC: **' + mcCount + '**; ngai: **' + throneCount + '**.',
     '',
-    '| Slot | Tệp hiện tại / dự phòng | Kích thước px đang hiển thị | Định dạng | Trong suốt | Màn hình / khung | Đã thay? |',
-    '|---|---|---|---|---|---|---|',
-    ...rows,
+    '## 1. Asset và vị trí',
     '',
-    'Các khung SVG/CSS, bảng, chữ HUD và vị trí seat được cố định để giữ nguyên hình học. Theme chỉ thay asset, màu, font, âm thanh, MC/chibi và chữ tiêu đề.',
+    '| ID | Slot | Tệp hiện tại / dự phòng | Kích thước px đang hiển thị | Định dạng | Trong suốt | Màn hình / khung | Số file | Đã thay? |',
+    '|---:|---|---|---|---|---|---|---:|---|',
+    ...rows.map((row, index) => row.replace('| ', `| ${String(index + 1).padStart(2, '0')} | `)),
+    '',
+    '## 2. Màu (55 token CSS)',
+    '',
+    ...tokenGroups,
+    'Token font chỉ đổi họ chữ, không làm đổi cỡ/khung. Bộ CSS vẫn kiểm tra từ chối tên token vị trí/kích thước.',
+    '',
+    '## 3. Font',
+    '',
+    ...(fontFiles.length ? fontFiles.map((font) => `- **${font.family ?? 'Font theme'}** — \`${font.file ?? '—'}\`, weight ${font.weight ?? 400}, ${font.style ?? 'normal'}; dùng theo \`font-body\`/\`font-display\`.`) : ['- Không có file font riêng trong manifest. Font hiện tại là `"Segoe UI", "Be Vietnam Pro", Roboto, Arial, sans-serif`; chữ nội dung và tiêu đề dùng hai token `font-body`/`font-display`. Nếu thêm font, chỉ nhận `.woff2`.']),
+    '- Kiểm tra mẫu ký tự Việt trước khi bàn giao: `ĐẶNG THỊ ÁNH · ă â ê ô ơ ư đ Ắ Ế Ộ Ơ Ư`.',
+    '',
+    '## 4. Chữ tiêu đề (`texts`)',
+    '',
+    '| ID | Khóa | Giá trị đang dùng | Hiện ở đâu | Giới hạn khuyến nghị | Quá dài thì |',
+    '|---|---|---|---|---|---|',
+    ...textRows,
+    'Giới hạn schema kỹ thuật là 200 ký tự mỗi khóa; các giới hạn khuyến nghị phía trên để giữ chữ dễ đọc.',
+    '',
+    '## 5. Danh hiệu (`achievements`)',
+    '',
+    '| Mã | Tên | Phụ đề | Màu | Icon | Độ dài hiện tại / tối đa | Số dòng |',
+    '|---|---|---|---|---|---|---:|',
+    ...achievementRows,
+    '',
+    '## 6. Chibi, MC và ngai',
+    '',
+    `- **Chibi bank:** ${characters.length} nhân vật trong \`assets/chibi/manifest.json\`; ${characterAssets.length} file ảnh hiện có (gồm thư mục podium). Tên ID nhân vật lấy nguyên từ manifest.`,
+    '- Top 2/Top 3: mỗi nhân vật có thể thắng cần đủ hai file theo quy ước `top2/top2-<characterId>.png` và `top3/top3-<characterId>.png`.',
+    '| Character ID | File Top 2 | Có? | File Top 3 | Có? |', '|---|---|---|---|---|', ...podiumRows,
+    '',
+    '- **MC:** ảnh tĩnh dự phòng `assets/mc/kelly.png`; thư mục sequence có ' + mcCount + ' ảnh/frame. `idle` là pose bắt buộc; `welcome`, `ask`, `react`, `celebrate` có thể thiếu và sẽ dùng `idle`. Mỗi frame dùng tên `0001.png`, `0002.png`… dưới thư mục pose; bảng ghi số frame/FPS/loop từ manifest, hoặc 0 nếu pose chưa có.',
+    '| Pose | Thư mục con | Số khung | FPS | Phát |', '|---|---|---:|---:|---|',
+    ...mcRows,
+    '',
+    `- **Ngai:** ${throneCount} ảnh; thay đủ các file hiện có trong \`assets/throne/\` theo tên nhân vật.`,
+    ...(throneFiles.length ? [`  - ${throneFiles.map((name) => `\`${name}\``).join(', ')}`] : ['  - Theme hiện không có file ngai riêng.']),
+    '',
+    '## 7. Những gì theme không đổi',
+    '',
+    'Theme không đổi bố cục, khung/kích thước/vị trí, ghế và tọa độ người chơi, câu hỏi/đáp án/luật/điểm, đồng hồ, thứ tự BXH, hiệu ứng CSS/SVG cốt lõi hoặc giọng MC. Các phần này do ứng dụng và phiên game điều khiển; khóa chúng để giữ layout đã duyệt, khả năng đọc trên TikTok và tính đúng của trò chơi. Theme chỉ đổi asset được khai báo, màu/font, nhạc/hiệu ứng, chữ thương hiệu và cách trình bày danh hiệu.',
     '',
   ].join('\n');
 }
 
-export function createTheme(options: { id: string; name: string; themes: string }) {
+export async function createTheme(options: { id: string; name: string; themes: string }) {
   const themesRoot = resolve(options.themes);
   const template = join(themesRoot, 'default');
   const out = join(themesRoot, options.id);
@@ -283,7 +487,12 @@ export function createTheme(options: { id: string; name: string; themes: string 
     parsed.texts = { ...THEME_DEFAULT_TEXTS, ...(parsed.texts as Record<string, string> | undefined) };
     const assets = (parsed.assets ?? {}) as Record<string, string | undefined>;
     writeFileSync(manifestPath, JSON.stringify(parsed, null, 2) + '\n', 'utf8');
-    writeFileSync(join(stage, 'CAN-CHUAN-BI.md'), createPreparationGuide(parsed, assets), 'utf8');
+    const validatedManifest = ThemeManifestSchema.parse(parsed);
+    writeFileSync(join(stage, 'CAN-CHUAN-BI.md'), createPreparationGuide(parsed, assets, stage), 'utf8');
+    writeFileSync(join(stage, 'SO-DO.png'), await createThemeMapPng(validatedManifest, {
+      themeDirectory: stage,
+      fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'assets-local'),
+    }));
     renameSync(stage, out);
     return { directory: out, copied, warnings };
   } catch (error) {
@@ -295,6 +504,9 @@ export function createTheme(options: { id: string; name: string; themes: string 
 type ParsedCliArgs =
   | { command: 'validate'; directory: string }
   | { command: 'new'; id: string; name: string; themes: string }
+  | { command: 'map'; id: string; themes: string }
+  | { command: 'pack'; id: string; themes: string; out: string }
+  | { command: 'import'; file: string; themes: string }
   | { command: 'export-default'; options: { out: string; assets: string; force: boolean } };
 
 function argumentsOf(argv: string[]): ParsedCliArgs {
@@ -342,7 +554,44 @@ function argumentsOf(argv: string[]): ParsedCliArgs {
     if (name.trim().length > 100) throw new Error('Tên theme tối đa 100 ký tự.');
     return { command, id, name: name.trim(), themes };
   }
-  throw new Error('Cách dùng: pnpm theme:validate <thư-mục>, pnpm theme:new <id> --name "<Tên>" hoặc pnpm theme:export-default [--out <dir>] [--assets <dir>] [--force]');
+  if (command === 'map') {
+    const id = args[0];
+    if (!id || !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(id)) throw new Error('Cách dùng: pnpm theme:map <id> [--themes <thư-mục>]');
+    let themes = resolve(process.env.QUIZ_THEMES_DIR ?? 'data/themes');
+    if (args.length > 1) {
+      if (args.length !== 3 || args[1] !== '--themes' || !args[2] || args[2].startsWith('--')) throw new Error('Cách dùng: pnpm theme:map <id> [--themes <thư-mục>]');
+      themes = resolve(args[2]);
+    }
+    return { command, id, themes };
+  }
+  if (command === 'pack') {
+    const id = args[0];
+    if (!id || !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/u.test(id)) throw new Error('Cách dùng: pnpm theme:pack <id> [--themes <thư-mục>] [--out <fichier.zip>]');
+    let themes = resolve(process.env.QUIZ_THEMES_DIR ?? 'data/themes');
+    let out = resolve(`${id}.zip`);
+    for (let index = 1; index < args.length; index += 1) {
+      const arg = args[index];
+      if ((arg !== '--themes' && arg !== '--out') || !args[index + 1] || args[index + 1]!.startsWith('--')) throw new Error('Cách dùng: pnpm theme:pack <id> [--themes <thư-mục>] [--out <tệp.zip>]');
+      if (arg === '--themes') themes = resolve(args[index + 1]!);
+      else out = resolve(args[index + 1]!);
+      index += 1;
+    }
+    return { command, id, themes, out };
+  }
+  if (command === 'import') {
+    const file = args[0];
+    if (!file) throw new Error('Cách dùng: pnpm theme:import <file.zip> [--themes <thư-mục>]');
+    let themes = resolve(process.env.QUIZ_THEMES_DIR ?? 'data/themes');
+    for (let index = 1; index < args.length; index += 1) {
+      if (args[index] !== '--themes' || !args[index + 1] || args[index + 1]!.startsWith('--') || index + 2 < args.length)
+        throw new Error('Cách dùng: pnpm theme:import <file.zip> [--themes <thư-mục>]');
+      themes = resolve(args[index + 1]!);
+      index += 1;
+    }
+    if (extname(file).toLowerCase() !== '.zip') throw new Error('Chỉ nhận tệp gói .zip.');
+    return { command, file, themes };
+  }
+  throw new Error('Cách dùng: pnpm theme:validate <thư-mục>, pnpm theme:new <id> --name "<Tên>", pnpm theme:map <id>, pnpm theme:pack <id>, pnpm theme:import <file.zip> hoặc pnpm theme:export-default [--out <dir>] [--assets <dir>] [--force]');
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -355,12 +604,31 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         process.exitCode = 1;
       } else console.log(`Theme “${result.manifest.name}” (${result.manifest.id}) hợp lệ.`);
     } else if (parsed.command === 'new') {
-      const result = createTheme(parsed);
+      const result = await createTheme(parsed);
       console.log('Đã tạo theme “' + parsed.name + '” (' + parsed.id + ') tại ' + result.directory);
       console.log('Danh sách cần chuẩn bị: ' + join(result.directory, 'CAN-CHUAN-BI.md'));
+      console.log('Sơ đồ vị trí: ' + join(result.directory, 'SO-DO.png'));
+    } else if (parsed.command === 'map') {
+      const directory = join(parsed.themes, parsed.id);
+      const result = validateThemeDirectory(directory);
+      if (!result.success) throw new Error(`Theme không hợp lệ: ${result.error}`);
+      writeFileSync(join(directory, 'SO-DO.png'), await createThemeMapPng(result.manifest.manifest, {
+        themeDirectory: directory,
+        fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'assets-local'),
+      }));
+      writeFileSync(join(directory, 'CAN-CHUAN-BI.md'), createPreparationGuide(result.manifest.manifest, result.manifest.manifest.assets, directory), 'utf8');
+      console.log('Đã tạo sơ đồ vị trí: ' + join(directory, 'SO-DO.png'));
+    } else if (parsed.command === 'pack') {
+      const result = packTheme({ directory: join(parsed.themes, parsed.id), out: parsed.out });
+      console.log(`Đã đóng gói theme “${result.id}”: ${result.file} (${result.bytes} byte).`);
+    } else if (parsed.command === 'import') {
+      const result = importThemeArchive(parsed);
+      console.log(`Đã kiểm tra và nhập theme “${result.name}” (${result.id}) vào ${result.directory}.`);
     } else {
-      const result = exportDefaultTheme(parsed.options);
+      const result = await exportDefaultTheme(parsed.options);
       console.log(`Đã xuất theme mặc định: ${result.directory}`);
+      console.log('Danh sách cần chuẩn bị: ' + join(result.directory, 'CAN-CHUAN-BI.md'));
+      console.log('Sơ đồ vị trí: ' + join(result.directory, 'SO-DO.png'));
       for (const warning of result.warnings) console.warn(`Cảnh báo: ${warning}`);
     }
   } catch (error) {

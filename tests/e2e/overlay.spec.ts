@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, resolve } from 'node:path';
+import { extname, join, relative, resolve, sep } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { DEFAULT_HUD_CONFIG, THEME_DEFAULT_TEXTS, THEME_DEFAULT_TOKENS, ThemeManifestSchema, type HudConfig, type ResolvedTheme, type ThemeAssetSlot } from '@quiz/contracts';
 import { getE2eAssetDirectory, getE2eTempDirectory } from './assets';
@@ -32,6 +32,7 @@ const roundCardMinimums = { title: 26, count: 44 };
 const roundCardHeight = 95;
 const localAssetDirectory = getE2eAssetDirectory();
 const c0386ReviewDirectory = resolve(process.cwd(), 'assets-local/review/c-theme-kit');
+const c0396ReviewDirectory = resolve(process.env.QUIZ_THEME_REVIEW_DIR?.trim() || 'assets-local/review/c-theme-goc');
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
 const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
@@ -166,13 +167,61 @@ async function countChangedPixels(page: Page, before: Buffer, after: Buffer, cli
   }, { beforePng: before.toString('base64'), afterPng: after.toString('base64'), sourceClip: clip });
 }
 
+async function compareThemePixels(page: Page, before: Buffer, after: Buffer, excluded: Array<{ x: number; y: number; width: number; height: number }>) {
+  return page.evaluate(async ({ beforePng, afterPng, excludedRects }) => {
+    const decode = (base64: string) => new Promise<HTMLImageElement>((resolveImage, rejectImage) => {
+      const image = new Image();
+      image.onload = () => resolveImage(image);
+      image.onerror = rejectImage;
+      image.src = `data:image/png;base64,${base64}`;
+    });
+    const [beforeImage, afterImage] = await Promise.all([decode(beforePng), decode(afterPng)]);
+    if (beforeImage.width !== afterImage.width || beforeImage.height !== afterImage.height)
+      throw new Error('Ảnh theme mặc định và ảnh không theme khác kích thước.');
+    const canvas = document.createElement('canvas');
+    canvas.width = beforeImage.width;
+    canvas.height = beforeImage.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Không tạo được canvas để so pixel theme.');
+    context.drawImage(beforeImage, 0, 0);
+    const beforePixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(afterImage, 0, 0);
+    const afterPixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const diff = context.createImageData(canvas.width, canvas.height);
+    let changed = 0;
+    let compared = 0;
+    for (let y = 0; y < canvas.height; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        if (excludedRects.some((rect) => x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height)) continue;
+        const index = (y * canvas.width + x) * 4;
+        compared += 1;
+        const bothTransparent = beforePixels[index + 3] === 0 && afterPixels[index + 3] === 0;
+        if (bothTransparent || (beforePixels[index] === afterPixels[index] && beforePixels[index + 1] === afterPixels[index + 1] &&
+            beforePixels[index + 2] === afterPixels[index + 2] && beforePixels[index + 3] === afterPixels[index + 3])) continue;
+        changed += 1;
+        diff.data[index] = 255;
+        diff.data[index + 1] = 0;
+        diff.data[index + 2] = 180;
+        diff.data[index + 3] = 255;
+      }
+    }
+    context.putImageData(diff, 0, 0);
+    return { changed, total: compared, diffPng: canvas.toDataURL('image/png').slice('data:image/png;base64,'.length) };
+  }, { beforePng: before.toString('base64'), afterPng: after.toString('base64'), excludedRects: excluded });
+}
+
 function readThemeFixture(id: string) {
   const manifestPath = resolve(process.cwd(), 'fixtures/themes', id, 'theme.json');
   return ThemeManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8')));
 }
 
 function resolvedFixtureTheme(id: string, version: number): ResolvedTheme {
-  const manifest = readThemeFixture(id);
+  return resolvedManifestTheme(readThemeFixture(id), version);
+}
+
+function resolvedManifestTheme(manifest: ReturnType<typeof readThemeFixture>, version: number): ResolvedTheme {
+  const id = manifest.id;
   const assets: Partial<Record<ThemeAssetSlot, string>> = {};
   for (const [slot, path] of Object.entries(manifest.assets)) {
     if (path) assets[slot as ThemeAssetSlot] = `/themes/${encodeURIComponent(id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${version}`;
@@ -193,6 +242,157 @@ function resolvedFixtureTheme(id: string, version: number): ResolvedTheme {
     achievements: manifest.achievements as ResolvedTheme['achievements'],
   };
 }
+
+function themeDirectoryForPixelTest() {
+  const exported = process.env.QUIZ_DEFAULT_THEME_EXPORT?.trim();
+  return exported ? resolve(exported) : resolve(process.cwd(), 'fixtures/themes/default');
+}
+
+function themeAssetMime(path: string) {
+  return ({
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+    '.webm': 'video/webm', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.json': 'application/json; charset=utf-8',
+  } as Record<string, string>)[extname(path).toLowerCase()] ?? 'application/octet-stream';
+}
+
+test('C-0396 theme default xuất sẵn giống pixel với overlay không theme trên 5 cảnh (bỏ qua đồng hồ)', async ({ page }) => {
+  test.setTimeout(180_000);
+  const themeDirectory = themeDirectoryForPixelTest();
+  const manifest = ThemeManifestSchema.parse(JSON.parse(readFileSync(join(themeDirectory, 'theme.json'), 'utf8')));
+  const fallbackTheme: ResolvedTheme = { id: 'default', name: 'Giao diện mặc định', version: 1, tokens: {}, fonts: [], assets: {} };
+  const exportedTheme = resolvedManifestTheme(manifest, 2);
+  const assetSource = process.env.QUIZ_ASSETS_DIR?.replaceAll('\\', '/').toLowerCase() ?? '';
+  const strictPixelComparison = Boolean(process.env.QUIZ_DEFAULT_THEME_EXPORT?.trim()) && !assetSource.endsWith('fixtures/assets-placeholder');
+  mkdirSync(c0396ReviewDirectory, { recursive: true });
+
+  const scenesToCompare = [
+    { name: 'lobby', scene: 'LOBBY', state: 'LOBBY' },
+    { name: 'question', scene: 'QUESTION', state: 'ACCEPTING' },
+    { name: 'reveal', scene: 'REVEAL', state: 'LEADERBOARD' },
+    { name: 'top10', scene: 'INTERIM_TOP10', state: 'LEADERBOARD' },
+    { name: 'victory', scene: 'VICTORY', state: 'VICTORY' },
+  ];
+  for (const entry of scenesToCompare) {
+    const scenePage = await page.context().newPage();
+    let activeTheme = fallbackTheme;
+    let clockPaused = false;
+    const pageErrors = watchPageErrors(scenePage);
+    await scenePage.setViewportSize({ width: 1080, height: 1920 });
+    await scenePage.clock.install({ time: new Date('2026-11-22T04:00:00.000Z') });
+    await scenePage.addInitScript(() => {
+      const installStaticStyles = () => {
+        if (!document.documentElement || document.getElementById('c0396-static-capture')) return;
+        const style = document.createElement('style');
+        style.id = 'c0396-static-capture';
+        style.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}';
+        document.documentElement.append(style);
+      };
+      new MutationObserver(installStaticStyles).observe(document, { childList: true, subtree: true });
+      installStaticStyles();
+      const testWindow = window as Window & { __c0396ThemePolls?: Array<() => void>; __c0396ResetRandom?: () => void };
+      testWindow.__c0396ThemePolls = [];
+      const originalSetInterval = window.setInterval.bind(window);
+      window.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        if (timeout === 2_500 && typeof handler === 'function')
+          testWindow.__c0396ThemePolls?.push(() => handler(...args));
+        return originalSetInterval(handler, timeout, ...args);
+      }) as typeof window.setInterval;
+      let state = 0x0396;
+      Math.random = () => {
+        state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+        return state / 0x1_0000_0000;
+      };
+      testWindow.__c0396ResetRandom = () => { state = 0x0396; };
+    });
+    await scenePage.route('**/api/theme', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(activeTheme) }));
+    await scenePage.route('**/themes/**', async (route) => {
+      const segments = new URL(route.request().url()).pathname.split('/').slice(3).map(decodeURIComponent);
+      if (segments.some((part) => !part || part === '.' || part === '..' || part.includes('/') || part.includes('\\')))
+        return route.fulfill({ status: 400, body: '' });
+      const target = resolve(themeDirectory, ...segments);
+      const rel = relative(themeDirectory, target);
+      if (rel === '..' || rel.startsWith(`..${sep}`) || !existsSync(target)) return route.fulfill({ status: 404, body: '' });
+      return route.fulfill({ status: 200, contentType: themeAssetMime(target), body: readFileSync(target) });
+    });
+    const capture = async (nextTheme: ResolvedTheme, mode: 'initial' | 'refresh' = 'initial') => {
+      const firstError = pageErrors.length;
+      activeTheme = nextTheme;
+      if (mode === 'initial') {
+        await scenePage.goto(`/?${new URLSearchParams({ mock: entry.name, role: 'preview' }).toString()}`, { waitUntil: 'domcontentloaded' });
+      } else {
+        const pollCount = await scenePage.evaluate(() => {
+          const testWindow = window as Window & { __c0396ThemePolls?: Array<() => void>; __c0396ResetRandom?: () => void };
+          testWindow.__c0396ResetRandom?.();
+          for (const poll of testWindow.__c0396ThemePolls ?? []) poll();
+          return testWindow.__c0396ThemePolls?.length ?? 0;
+        });
+        expect(pollCount, 'ThemeProvider phải có poll để cập nhật theme trong cùng tài liệu').toBeGreaterThan(0);
+      }
+      await expect(scenePage).toHaveTitle('Nhà Thông Thái Free Fire · Overlay');
+      await expect(scenePage.locator(`[data-testid="stage"][data-state="${entry.state}"]`)).toBeVisible();
+      await expect(scenePage.locator('html')).toHaveAttribute('data-theme-version', String(nextTheme.version));
+      if (!clockPaused) {
+        await scenePage.clock.pauseAt(new Date('2026-11-22T04:00:05.000Z'));
+        clockPaused = true;
+      }
+      await scenePage.waitForFunction(() => Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0));
+      await scenePage.evaluate(async () => { await document.fonts.ready; });
+      await scenePage.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}' });
+      let previousImageState = '';
+      let stableImagePolls = 0;
+      await expect.poll(async () => {
+        const imageState = await scenePage.evaluate(() => {
+          const images = Array.from(document.images);
+          if (!images.length || images.some((image) => !image.complete || image.naturalWidth === 0)) return '';
+          return JSON.stringify(images.map((image) => [image.currentSrc, image.naturalWidth, image.naturalHeight]));
+        });
+        if (!imageState) {
+          previousImageState = '';
+          stableImagePolls = 0;
+          return false;
+        }
+        stableImagePolls = imageState === previousImageState ? stableImagePolls + 1 : 0;
+        previousImageState = imageState;
+        return stableImagePolls >= 2;
+      }, { timeout: 15_000, intervals: [100] }).toBe(true);
+      await scenePage.evaluate(async () => {
+        await Promise.all(Array.from(document.images, (image) => image.decode()));
+      });
+      await new Promise((resolveWait) => setTimeout(resolveWait, 950));
+      let screenshot = await scenePage.screenshot({ animations: 'disabled' });
+      let stable = false;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+        const nextScreenshot = await scenePage.screenshot({ animations: 'disabled' });
+        if (screenshot.equals(nextScreenshot)) {
+          stable = true;
+          break;
+        }
+        screenshot = nextScreenshot;
+      }
+      expect(stable, `${entry.scene}: ảnh chụp overlay phải ổn định trước khi so pixel`).toBe(true);
+      const timerLocator = scenePage.locator('[data-testid="timer"]');
+      const timer = (await timerLocator.count()) ? await timerLocator.first().boundingBox() : null;
+      return { screenshot, timer, errors: pageErrors.slice(firstError) };
+    };
+    try {
+      const baseline = await capture(fallbackTheme);
+      const themed = await capture(exportedTheme, 'refresh');
+      const timerRects = [baseline.timer, themed.timer].filter((rect): rect is NonNullable<typeof rect> => rect !== null);
+      const pixelResult = await compareThemePixels(page, baseline.screenshot, themed.screenshot, timerRects);
+      writeFileSync(join(c0396ReviewDirectory, `${entry.name}-khong-theme.png`), baseline.screenshot);
+      writeFileSync(join(c0396ReviewDirectory, `${entry.name}-theme-default.png`), themed.screenshot);
+      writeFileSync(join(c0396ReviewDirectory, `${entry.name}-diff.png`), Buffer.from(pixelResult.diffPng, 'base64'));
+      console.log(`C-0396 pixel ${entry.scene}: ${pixelResult.changed}/${pixelResult.total} pixel khác (bỏ đồng hồ).`);
+      expect(baseline.errors, `${entry.scene}: baseline thiếu asset`).toEqual([]);
+      expect(themed.errors, `${entry.scene}: theme thiếu asset`).toEqual([]);
+      if (strictPixelComparison)
+        expect(pixelResult.changed, `${entry.scene}: bật theme default không được đổi pixel ngoài vùng đồng hồ`).toBe(0);
+    } finally {
+      await scenePage.close();
+    }
+  }
+});
 
 test('theme mặc định giữ phong cách CSS fallback trên sáu cảnh', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
