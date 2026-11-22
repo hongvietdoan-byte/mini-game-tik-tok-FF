@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, relative, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_HUD_CONFIG, THEME_ASSET_SLOTS, THEME_DEFAULT_ACHIEVEMENTS, THEME_DEFAULT_TEXTS, ThemeSlotRegistrySchema, type ThemeAssetSlot, type ThemeManifest, type ThemeSlotRegistry } from '@quiz/contracts';
-import { THEME_SKIN_TARGETS } from '../apps/overlay/src/theme-skins';
+import { THEME_SKIN_TARGETS, type ThemeSkinTarget } from '../apps/overlay/src/theme-skins';
 
 const TEXT_LOCATIONS: Record<string, string[]> = {
   brandTitleLine1: ['LOBBY'], brandTitleLine2: ['LOBBY'], brandTagline: ['LOBBY'], legacyBrandTitle: ['LOBBY', 'QUESTION', 'REVEAL', 'VICTORY'],
@@ -195,15 +196,130 @@ const REVIEW_SCENES = [
   { id: 'LOBBY', mock: 'throne-locked' },
 ] as const;
 type SlotMeasurement = { man: string; x: number; y: number; rong: number; cao: number };
+type MapSlotRow = { id: string; lop: number; x: number; y: number; rong: number; cao: number };
 
 function testColorForSlot(id: string) {
   const index = Math.max(0, THEME_SKIN_TARGETS.findIndex((target) => target.id === id));
-  return `hsl(${(index * 137.508) % 360} 100% 54%)`;
+  return `hsl(${(index * 137.508) % 360} 96% 44%)`;
 }
 
-function slotFolder(id: string, selector: string) {
+function fullScreenSlot(row: Pick<MapSlotRow, 'rong' | 'cao'>) {
+  return row.rong >= 1080 * 0.9 && row.cao >= 1920 * 0.9;
+}
+
+function placeMapLabels(rows: MapSlotRow[]) {
+  const firstById = new Map<string, MapSlotRow>();
+  for (const row of rows) {
+    if (fullScreenSlot(row)) continue;
+    const previous = firstById.get(row.id);
+    if (!previous || row.rong * row.cao > previous.rong * previous.cao) firstById.set(row.id, row);
+  }
+  const placed: Array<{ id: string; x: number; y: number; width: number; height: number; targetX: number; targetY: number; color: string }> = [];
+  const intersects = (left: typeof placed[number], right: typeof placed[number]) =>
+    left.x < right.x + right.width && left.x + left.width > right.x
+    && left.y < right.y + right.height && left.y + left.height > right.y;
+  const ids = [...firstById.keys()].sort((left, right) =>
+    THEME_SKIN_TARGETS.findIndex((target) => target.id === left) - THEME_SKIN_TARGETS.findIndex((target) => target.id === right));
+  for (const id of ids) {
+    const row = firstById.get(id)!;
+    const width = 62;
+    const height = 30;
+    const right = row.x + row.rong - width - 3;
+    const bottom = row.y + row.cao - height - 3;
+    const insideCandidates = [
+      { x: row.x + 3, y: row.y + 3 }, { x: right, y: row.y + 3 },
+      { x: row.x + 3, y: bottom }, { x: right, y: bottom },
+    ].filter((candidate) => row.rong >= width + 6 && row.cao >= height + 6);
+    const candidates = insideCandidates.length ? insideCandidates : [{ x: Math.max(0, Math.min(1080 - width, row.x + 3)), y: Math.max(0, Math.min(1920 - height, row.y + 3)) }];
+    const available = (candidate: { x: number; y: number }) => {
+      const box = { id, ...candidate, width, height, targetX: row.x + row.rong / 2, targetY: row.y + row.cao / 2, color: testColorForSlot(id) };
+      return candidate.x >= 0 && candidate.y >= 0 && candidate.x + width <= 1080 && candidate.y + height <= 1920
+        && !placed.some((other) => intersects(box, other));
+    };
+    let location = candidates.find(available);
+    if (!location) {
+      let best: { x: number; y: number; distance: number } | undefined;
+      for (let y = 0; y + height <= 1920; y += height + 4) {
+        for (let x = 0; x + width <= 1080; x += width + 4) {
+          const candidate = { x, y };
+          if (!available(candidate)) continue;
+          const distance = Math.hypot(x - row.x, y - row.y);
+          if (!best || distance < best.distance) best = { ...candidate, distance };
+        }
+      }
+      location = best;
+    }
+    if (!location) throw new Error(`Không thể đặt nhãn ${id} trên sơ đồ mà không đè nhãn khác.`);
+    placed.push({ id, ...location, width, height, targetX: row.x + row.rong / 2, targetY: row.y + row.cao / 2, color: testColorForSlot(id) });
+  }
+  return placed;
+}
+
+function mapSvg(rows: MapSlotRow[]) {
+  const visibleRows = rows.filter((row) => !fullScreenSlot(row));
+  const outlines = visibleRows.map((row) => `<rect x="${row.x}" y="${row.y}" width="${row.rong}" height="${row.cao}" fill="none" stroke="${testColorForSlot(row.id)}" stroke-width="3" vector-effect="non-scaling-stroke"/>`).join('');
+  const labels = placeMapLabels(rows).map((label) => {
+    return `<g><rect x="${label.x}" y="${label.y}" width="${label.width}" height="${label.height}" rx="3" fill="${label.color}" stroke="#fff" stroke-width="1.5"/><text x="${label.x + label.width / 2}" y="${label.y + 21}" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="18" font-weight="900" fill="#fff" stroke="#111827" stroke-width="1.4" paint-order="stroke">${label.id}</text></g>`;
+  }).join('');
+  return `<svg class="overlay" viewBox="0 0 1080 1920" aria-hidden="true">${outlines}${labels}</svg>`;
+}
+
+function mapLegend(rows: MapSlotRow[]) {
+  const ids = [...new Set(rows.map((row) => row.id))];
+  return ids.map((id) => {
+    const target = THEME_SKIN_TARGETS.find((candidate) => candidate.id === id);
+    const positions = rows.filter((row) => row.id === id);
+    const isFullscreen = positions.length > 0 && positions.every(fullScreenSlot);
+    const description = target?.ghiChu.replace(/[.]+$/u, '') ?? 'Vị trí giao diện';
+    return `<li><b style="background:${testColorForSlot(id)}">${id}</b><span>${ESCAPE(description)}${isFullscreen ? ' <strong>(phủ toàn màn; không vẽ viền)</strong>' : ''}</span></li>`;
+  }).join('');
+}
+
+async function writeSceneMap(page: Page, image: Buffer, rows: MapSlotRow[], scene: string, filePath: string) {
+  const html = `<!doctype html><html lang="vi"><meta charset="utf-8"><style>
+    *{box-sizing:border-box}html,body{margin:0;background:#e7e9ee;color:#101322;font-family:"Segoe UI",Arial,sans-serif}body{width:1780px;padding:24px}.title{height:44px;font-size:28px;font-weight:900;letter-spacing:.3px}.layout{display:grid;grid-template-columns:1080px 620px;gap:28px;align-items:start}.stage{position:relative;width:1080px;height:1920px;background:#111}.stage img,.overlay{position:absolute;inset:0;width:1080px;height:1920px}.stage img{object-fit:fill}.overlay{pointer-events:none}.legend{height:1920px;overflow:hidden;padding:18px;background:#fff;border:2px solid #28345f;border-radius:12px}.legend h2{font-size:24px;margin:0 0 10px}.legend p{font-size:15px;line-height:1.4;margin:0 0 12px;color:#374151}.legend ul{list-style:none;margin:0;padding:0}.legend li{display:grid;grid-template-columns:62px 1fr;gap:10px;min-height:30px;align-items:start;padding:4px 0;border-bottom:1px solid #d6d9e0;font-size:15px;line-height:1.25}.legend li b{color:#fff;text-align:center;padding:5px 3px;border-radius:4px;font-size:16px}.legend strong{color:#8c1741;font-size:13px}
+    </style><body><div class="title">SƠ ĐỒ ${ESCAPE(scene)} · 1080 × 1920</div><div class="layout"><div class="stage"><img src="data:image/png;base64,${image.toString('base64')}">${mapSvg(rows)}</div><aside class="legend"><h2>Chú giải ID → tên tiếng Việt</h2><p>Nền là ảnh chụp thật của màn. Viền 3 px chỉ đánh dấu slot; nhãn có nền đặc, cỡ chữ 18 px và không chồng nhãn.</p><ul>${mapLegend(rows) || '<li>Không có slot thuộc lớp này.</li>'}</ul></aside></div></body></html>`;
+  await page.setContent(html, { waitUntil: 'load' });
+  await page.screenshot({ path: filePath, fullPage: true });
+}
+
+function inspectionSvg(position: SlotMeasurement, id: string) {
+  const measureY = position.y >= 34 ? position.y - 14 : position.y + position.cao + 14;
+  const measureX = position.x >= 34 ? position.x - 14 : position.x + position.rong + 14;
+  return `<svg class="overlay" viewBox="0 0 1080 1920" aria-hidden="true"><defs><mask id="outside"><rect width="1080" height="1920" fill="white"/><rect x="${position.x}" y="${position.y}" width="${position.rong}" height="${position.cao}" fill="black"/></mask></defs>
+    <rect width="1080" height="1920" fill="#050816" opacity=".70" mask="url(#outside)"/>
+    <rect x="${position.x}" y="${position.y}" width="${position.rong}" height="${position.cao}" fill="none" stroke="#ff243a" stroke-width="4" vector-effect="non-scaling-stroke"/>
+    <line x1="${position.x}" y1="${measureY}" x2="${position.x + position.rong}" y2="${measureY}" stroke="#ff243a" stroke-width="3"/>
+    <line x1="${position.x}" y1="${measureY - 7}" x2="${position.x}" y2="${measureY + 7}" stroke="#ff243a" stroke-width="3"/>
+    <line x1="${position.x + position.rong}" y1="${measureY - 7}" x2="${position.x + position.rong}" y2="${measureY + 7}" stroke="#ff243a" stroke-width="3"/>
+    <line x1="${measureX}" y1="${position.y}" x2="${measureX}" y2="${position.y + position.cao}" stroke="#ff243a" stroke-width="3"/>
+    <line x1="${measureX - 7}" y1="${position.y}" x2="${measureX + 7}" y2="${position.y}" stroke="#ff243a" stroke-width="3"/>
+    <line x1="${measureX - 7}" y1="${position.y + position.cao}" x2="${measureX + 7}" y2="${position.y + position.cao}" stroke="#ff243a" stroke-width="3"/>
+    <g><rect x="${Math.max(0, position.x + 4)}" y="${Math.max(0, position.y + 4)}" width="112" height="34" rx="3" fill="#9d1022"/><text x="${Math.max(0, position.x + 10)}" y="${Math.max(0, position.y + 28)}" fill="#fff" font-size="18" font-weight="900" font-family="Segoe UI,Arial">${id} · ${position.x},${position.y}</text></g>
+  </svg>`;
+}
+
+async function writeInspectionMap(page: Page, image: Buffer, target: ThemeSkinTarget, position: SlotMeasurement, filePath: string) {
+  const name = target.ghiChu.replace(/[.]+$/u, '');
+  const fullScreen = fullScreenSlot({ rong: position.rong, cao: position.cao });
+  const html = `<!doctype html><html lang="vi"><meta charset="utf-8"><style>
+    *{box-sizing:border-box}html,body{margin:0;background:#e7e9ee;color:#101322;font-family:"Segoe UI",Arial,sans-serif}body{width:1780px;padding:24px}.title{height:44px;font-size:28px;font-weight:900}.layout{display:grid;grid-template-columns:1080px 620px;gap:28px;align-items:start}.stage{position:relative;width:1080px;height:1920px;background:#111}.stage img,.overlay{position:absolute;inset:0;width:1080px;height:1920px}.stage img{object-fit:fill}.overlay{pointer-events:none}.detail{height:1920px;padding:24px;background:#fff;border:2px solid #28345f;border-radius:12px}.detail h2{font-size:26px;margin:0 0 12px}.detail p{font-size:21px;line-height:1.5;margin:0 0 18px}.value{padding:16px;margin:16px 0;border-left:7px solid #ff243a;background:#f1f2f5;font-size:24px;font-weight:800}.note{font-size:17px;color:#455064;line-height:1.5}.caption{color:#8b1022;font-size:18px;font-weight:900}
+    </style><body><div class="title">SOI SLOT · ${target.id} · ${ESCAPE(position.man)}</div><div class="layout"><div class="stage"><img src="data:image/png;base64,${image.toString('base64')}">${inspectionSvg(position, target.id)}</div><aside class="detail"><h2>${target.id} · ${ESCAPE(name)}</h2><p>Ảnh chụp thật của màn, vùng ngoài slot làm tối 70%; slot được giữ sáng và viền đỏ.</p><div class="value">Kích thước: ${position.rong} × ${position.cao} px</div><div class="value">Toạ độ: x = ${position.x} px · y = ${position.y} px</div><p class="caption">Đường đỏ là số đo bbox; viền đỏ bao quanh vị trí đã đo.</p><p class="note">${fullScreen ? 'Slot phủ toàn màn: không có vùng bên ngoài để làm tối.' : 'Số đo theo stage 1080 × 1920 px.'}<br>Màn: ${target.scenes.join(', ')}<br>Bao gồm đúng nội dung slot; dữ liệu thay đổi của trận không dùng làm tên hay nhãn.</p></aside></div></body></html>`;
+  await page.setContent(html, { waitUntil: 'load' });
+  await page.screenshot({ path: filePath, fullPage: true });
+}
+
+function unaccentedSlug(value: string) {
+  return value.replace(/[đĐ]/gu, (character) => character === 'Đ' ? 'D' : 'd')
+    .normalize('NFD').replace(/[\u0300-\u036f]/gu, '')
+    .toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '');
+}
+
+function slotFolder(target: (typeof THEME_SKIN_TARGETS)[number]) {
+  const { id } = target;
   const group = id[0] === 'K' ? 'K-khung' : id[0] === 'I' ? 'I-bieu-tuong' : 'H-hieu-ung';
-  const shortName = selector.replace(/[^a-z0-9]+/giu, '-').replace(/^-|-$/gu, '').toLowerCase().slice(0, 48) || id.toLowerCase();
+  const description = target.ghiChu.split(/[.;]/u, 1)[0] ?? target.ghiChu;
+  const shortName = unaccentedSlug(description).replace(/^(?:khung|bieu-tuong|huy-hieu)-/u, '').slice(0, 42) || id.toLowerCase();
   return `assets/${group}/${id}-${shortName}`;
 }
 
@@ -216,20 +332,95 @@ function docForSlot(target: (typeof THEME_SKIN_TARGETS)[number], size: { width: 
     ? `9-slice: tren ${target.nineSlice.tren}px, phai ${target.nineSlice.phai}px, duoi ${target.nineSlice.duoi}px, trai ${target.nineSlice.trai}px; chi keo giãn phần giữa.`
     : '9-slice: không; giữ đúng tỉ lệ và bbox.';
   const activation = target.defaultHidden
-    ? `Ẩn ở bản mặc định; thêm ảnh thì hiệu ứng hiện ở ${[...new Set(positions.map((position) => position.man))].join(', ')}, trong bbox CSS ${positions.map((position) => `${position.man} ${position.x},${position.y} ${position.rong}×${position.cao}px`).join('; ')}.`
+    ? `Ẩn ở bản mặc định; thêm ảnh thì hiệu ứng hiện ở ${[...new Set(positions.map((position) => position.man))].join(', ')}, trong vùng bbox CSS ${positions.map((position) => `${position.man} ${position.x},${position.y} ${position.rong}×${position.cao}px`).join('; ')}.`
     : '';
   return [
-    `ID: ${target.id}`, `Nhóm: ${target.nhom}; lớp: ${target.lop}.`,
+    `ID: ${target.id}`, `Tên: ${target.ghiChu.replace(/[.]+$/u, '')}`, `Nguồn: theme:map.`, `Nhóm: ${target.nhom}; lớp: ${target.lop}.`,
     `BBox CSS tham chiếu: ${size.width} × ${size.height} px trong stage 1080 × 1920; tọa độ/vùng tràn lấy nguyên theo CSS.`,
     'Định dạng bắt buộc: PNG; nền trong suốt được hỗ trợ; tối đa 50 MB.',
     nineSlice,
-    `File bắt buộc: default.png (${fileStatus}).`,
+    ...(target.variants
+      ? [`File bắt buộc: ${target.variants.map((variant) => `${variant.file} (CO_SAN)`).join(', ')}; default.png (${fileStatus}) là ảnh dự phòng.`]
+      : [`File bắt buộc: default.png (${fileStatus}).`]),
     `Màn: ${target.scenes.join(', ')}.`,
     `Soi: soi/${target.id}.png. ${target.ghiChu}`,
     ...(activation ? [activation] : []),
     'Chỉ thay hình. Không thay vị trí, kích thước, z-index, thứ tự lớp hoặc dữ liệu trận.',
     '',
   ].join('\n');
+}
+
+function removeStaleGeneratedFolders(groupDirectory: string, target: ThemeSkinTarget, expectedDirectory: string) {
+  const expected = resolve(expectedDirectory);
+  if (!existsSync(groupDirectory)) return;
+  for (const entry of readdirSync(groupDirectory, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith(`${target.id}-`)) continue;
+    const candidate = resolve(groupDirectory, entry.name);
+    if (candidate === expected || resolve(candidate, '..') !== resolve(groupDirectory) || lstatSync(candidate).isSymbolicLink()) continue;
+    const docPath = join(candidate, 'DOC-TOI.txt');
+    if (!existsSync(docPath) || lstatSync(docPath).isSymbolicLink()) continue;
+    const doc = readFileSync(docPath, 'utf8');
+    const isGenerated = doc.startsWith(`ID: ${target.id}\n`)
+      && (doc.includes('\nNguồn: theme:map.') || doc.startsWith(`ID: ${target.id}\nNhóm: ${target.nhom}; lớp: ${target.lop}.`));
+    if (isGenerated) rmSync(candidate, { recursive: true, force: false });
+  }
+}
+
+async function captureSkinElement(page: Page, capture: Locator, target: ThemeSkinTarget) {
+  const keepChildren = target.keepChildren ?? (target.id === 'K12' || target.id === 'K13' ? ['svg'] : []);
+  await capture.evaluate((element, preserved) => {
+    const stage = element.closest<HTMLElement>('#stage');
+    for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      ancestor.dataset.themeCaptureAncestor = 'true';
+    }
+    for (const node of stage?.querySelectorAll<HTMLElement>('*') ?? []) {
+      if (node === element || node.contains(element) || element.contains(node)) continue;
+      node.dataset.themeMapHidden = 'true';
+    }
+    for (const node of element.querySelectorAll<HTMLElement>('*')) {
+      if (!preserved.some((selector) => node.matches(selector) || node.closest(selector)))
+        node.dataset.themeCaptureContentHidden = 'true';
+    }
+  }, keepChildren);
+  const isolationStyle = await page.addStyleTag({ content: [
+    '#stage [data-theme-map-hidden="true"],#stage [data-theme-capture-content-hidden="true"]{visibility:hidden!important}',
+    '[data-theme-capture-ancestor="true"]{background:transparent!important;background-image:none!important;box-shadow:none!important;border-color:transparent!important;outline:none!important;filter:none!important}',
+    '[data-theme-capture-ancestor="true"]::before,[data-theme-capture-ancestor="true"]::after{content:none!important;display:none!important}',
+    'html,body,#root,#stage,#stage .v3-stage,#stage .v3-bg{background:transparent!important;background-image:none!important;box-shadow:none!important}',
+    '#stage::before,#stage::after,#stage .v3-stage::before,#stage .v3-stage::after,#stage .v3-bg::before,#stage .v3-bg::after{content:none!important;display:none!important}',
+    target.nhom === 'K' || target.content === 'label' ? `${target.selector}{color:transparent!important;text-shadow:none!important}` : '',
+    target.nhom === 'H' && !target.defaultHidden ? `${target.selector}{opacity:1!important;visibility:visible!important;animation:none!important}` : '',
+  ].filter(Boolean).join('\n') });
+  try {
+    const image = await capture.screenshot({ animations: 'disabled', omitBackground: true });
+    const rgbaBase64 = await page.evaluate(async (base64) => {
+      const source = new Image();
+      source.src = `data:image/png;base64,${base64}`;
+      await source.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = source.naturalWidth; canvas.height = source.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Không tạo được canvas RGBA cho ảnh skin.');
+      context.drawImage(source, 0, 0);
+      return canvas.toDataURL('image/png').split(',')[1] ?? '';
+    }, image.toString('base64'));
+    const buffer = Buffer.from(rgbaBase64, 'base64');
+    if (buffer.length < 26 || buffer.toString('ascii', 1, 4) !== 'PNG' || buffer[25] !== 6)
+      throw new Error(`Ảnh ${target.id} không được mã hoá PNG RGBA (color type 6).`);
+    return buffer;
+  } catch (error) {
+    const box = await capture.boundingBox();
+    throw new Error(`Không chụp được skin ${target.id} (${target.selector}) tại ${box?.x ?? 0},${box?.y ?? 0} ${box?.width ?? 0}×${box?.height ?? 0}px: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    await isolationStyle.evaluate((node) => node.parentNode?.removeChild(node));
+    await capture.evaluate((element) => {
+      const stage = element.closest<HTMLElement>('#stage');
+      stage?.querySelectorAll<HTMLElement>('[data-theme-map-hidden="true"]').forEach((node) => delete node.dataset.themeMapHidden);
+      element.querySelectorAll<HTMLElement>('[data-theme-capture-content-hidden="true"]').forEach((node) => delete node.dataset.themeCaptureContentHidden);
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement)
+        delete ancestor.dataset.themeCaptureAncestor;
+    });
+  }
 }
 
 function fitNineSlice(slice: (typeof THEME_SKIN_TARGETS)[number]['nineSlice'], size: { width: number; height: number }) {
@@ -271,6 +462,7 @@ export async function createThemeReviewArtifacts(
   mkdirSync(inspectDirectory, { recursive: true });
   const measurements = new Map<string, SlotMeasurement[]>();
   const captureBuffers = new Map<string, Buffer>();
+  const sceneScreenshots = new Map<string, Buffer>();
   const mapRowsByScene = new Map<string, Array<{ id: string; lop: number; x: number; y: number; rong: number; cao: number }>>();
   const primaryMockByScene = new Map<string, string>();
   const missingSlots = new Set<string>();
@@ -346,58 +538,40 @@ export async function createThemeReviewArtifacts(
           if (!slots.some((candidate) => JSON.stringify(candidate) === key)) slots.push(position);
           measurements.set(target.id, slots);
           layerRows.push({ id: target.id, lop: target.lop, ...position });
-          if (!captureBuffers.has(target.id) && options.captureDefaultSkins && target.defaultHidden) {
+          const preferredCaptureScene = !['K22', 'K33'].includes(target.id) || scene.mock === 'throne-locked';
+          if (!captureBuffers.has(`${target.id}:default.png`) && options.captureDefaultSkins && target.defaultHidden) {
             const transparentBase64 = await page.evaluate(({ width, height }) => {
               const canvas = document.createElement('canvas');
               canvas.width = width; canvas.height = height;
               return canvas.toDataURL('image/png').split(',')[1] ?? '';
             }, { width: position.rong, height: position.cao });
-            captureBuffers.set(target.id, Buffer.from(transparentBase64, 'base64'));
+            captureBuffers.set(`${target.id}:default.png`, Buffer.from(transparentBase64, 'base64'));
           }
-          if (!captureBuffers.has(target.id) && options.captureDefaultSkins) {
-            const contentKind = target.content ?? 'frame';
-            const capture = locator.nth(index);
-            await capture.evaluate((element, hideChildren) => {
-              const stage = element.closest<HTMLElement>('#stage');
-              for (const node of stage?.querySelectorAll<HTMLElement>('*') ?? []) {
-                if (node === element || node.contains(element) || element.contains(node)) continue;
-                node.dataset.themeMapHidden = 'true';
+          const defaultKey = `${target.id}:default.png`;
+          if (preferredCaptureScene && !captureBuffers.has(defaultKey) && options.captureDefaultSkins) {
+            captureBuffers.set(defaultKey, await captureSkinElement(page, locator.nth(index), target));
+          }
+          for (const variant of target.variants ?? []) {
+            const variantKey = `${target.id}:${variant.file}`;
+            if (!preferredCaptureScene || !options.captureDefaultSkins || captureBuffers.has(variantKey)) continue;
+            const variantLocator = page.locator(variant.selector);
+            let variantCount = await variantLocator.count();
+            if (!variantCount && variant.file === 'mo.png') {
+              const hiddenOption = page.locator('.v3-option').first();
+              if (await hiddenOption.count()) {
+                await hiddenOption.evaluate((element) => {
+                  element.classList.add('is-hidden');
+                  element.dataset.themeSyntheticHidden = 'true';
+                });
+                variantCount = await variantLocator.count();
               }
-              if (hideChildren) for (const node of element.querySelectorAll<HTMLElement>('*')) node.dataset.themeCaptureContentHidden = 'true';
-            }, target.nhom === 'K');
-            const isolationStyle = await page.addStyleTag({ content: [
-              '#stage [data-theme-map-hidden="true"],#stage [data-theme-capture-content-hidden="true"]{visibility:hidden!important}',
-              'html,body,#root,#stage,#stage .v3-stage,#stage .v3-bg{background:transparent!important;background-image:none!important}',
-              target.nhom === 'K' || contentKind === 'label' ? `${target.selector}{color:transparent!important;text-shadow:none!important}` : '',
-            target.nhom === 'H' && !target.defaultHidden ? `${target.selector}{opacity:1!important;visibility:visible!important;animation:none!important}` : '',
-            ].filter(Boolean).join('\n') });
-            try {
-              const image = await capture.screenshot({ animations: 'disabled', omitBackground: true });
-              // Chromium may encode an entirely opaque crop as RGB (PNG color type 2).
-              // Re-encode through an alpha canvas so every exported skin remains PNG RGBA,
-              // including frames whose current CSS artwork fills its whole bbox.
-              const rgbaBase64 = await page.evaluate(async (base64) => {
-                const source = new Image();
-                source.src = `data:image/png;base64,${base64}`;
-                await source.decode();
-                const canvas = document.createElement('canvas');
-                canvas.width = source.naturalWidth; canvas.height = source.naturalHeight;
-                const context = canvas.getContext('2d');
-                if (!context) throw new Error('Không tạo được canvas RGBA cho ảnh skin.');
-                context.drawImage(source, 0, 0);
-                return canvas.toDataURL('image/png').split(',')[1] ?? '';
-              }, image.toString('base64'));
-              captureBuffers.set(target.id, Buffer.from(rgbaBase64, 'base64'));
-            } catch (error) {
-              throw new Error(`Không chụp được skin ${target.id} (${target.selector}) tại ${box.x},${box.y} ${box.width}×${box.height}px: ${error instanceof Error ? error.message : String(error)}`);
-            } finally {
-              await isolationStyle.evaluate((node) => node.parentNode?.removeChild(node));
-              await capture.evaluate((element) => {
-                const stage = element.closest<HTMLElement>('#stage');
-                stage?.querySelectorAll<HTMLElement>('[data-theme-map-hidden="true"]').forEach((node) => delete node.dataset.themeMapHidden);
-                element.querySelectorAll<HTMLElement>('[data-theme-capture-content-hidden="true"]').forEach((node) => delete node.dataset.themeCaptureContentHidden);
-              });
             }
+            if (!variantCount) continue;
+            captureBuffers.set(variantKey, await captureSkinElement(page, variantLocator.first(), target));
+            await page.locator('[data-theme-synthetic-hidden="true"]').evaluateAll((elements) => elements.forEach((element) => {
+              element.classList.remove('is-hidden');
+              delete (element as HTMLElement).dataset.themeSyntheticHidden;
+            }));
           }
         }
       }
@@ -409,70 +583,72 @@ export async function createThemeReviewArtifacts(
       mapRowsByScene.set(scene.id, sceneRows);
     }
 
-    // One canonical map per screen; merge all test variants first so conditional
-    // skins (urgent timer, fastest badge, and Top 3) are not overwritten.
+    // One map per screen plus isolated layer maps. The real scene screenshot is
+    // kept intact; SVG contributes outlines only (never a filled marker layer).
+    const mapPage = await browser.newPage({ viewport: { width: 1780, height: 2020 }, deviceScaleFactor: 1 });
     for (const [sceneId, mock] of primaryMockByScene) {
       await page.goto(`${baseUrl}/?mock=${mock}&role=preview`, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => !!document.querySelector('[data-testid="stage"]'));
       await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))); });
       await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}' });
-      const stage = page.locator('#stage');
-      const markers = (mapRowsByScene.get(sceneId) ?? []).map((row) => ({ ...row, color: testColorForSlot(row.id) }));
-      await stage.evaluate((element, rows) => {
-        for (const row of rows) {
-          const marker = document.createElement('div');
-          marker.className = 'theme-map-marker'; marker.dataset.layer = String(row.lop);
-          marker.textContent = `${row.id} ${row.rong}×${row.cao}`;
-          Object.assign(marker.style, {
-            position: 'absolute', left: `${row.x}px`, top: `${row.y}px`, width: `${row.rong}px`, height: `${row.cao}px`,
-            zIndex: '2147483000', pointerEvents: 'none', outline: `3px solid ${row.color}`,
-            background: row.color, opacity: '.88', color: '#fff', font: '900 16px/20px Segoe UI,Arial,sans-serif',
-            textShadow: '0 1px 3px #000', overflow: 'hidden', boxSizing: 'border-box', padding: '2px',
-          });
-          element.append(marker);
-        }
-      }, markers);
+      if (!sceneScreenshots.has(sceneId)) sceneScreenshots.set(sceneId, await page.screenshot({ type: 'png', animations: 'disabled' }));
+      const rows = mapRowsByScene.get(sceneId) ?? [];
+      const screenshot = sceneScreenshots.get(sceneId);
+      if (!screenshot) throw new Error(`Thiếu ảnh chụp thật của màn ${sceneId}.`);
       const aliases = sceneId === 'INTERIM_TOP10' ? ['INTERIM_TOP10', 'LEADERBOARD'] : [sceneId];
       for (const alias of aliases) {
-        await page.screenshot({ path: join(sceneDirectory, `${alias}.png`), animations: 'disabled' });
+        await writeSceneMap(mapPage, screenshot, rows, alias, join(sceneDirectory, `${alias}.png`));
         for (let layer = 0; layer <= 3; layer += 1) {
-          await stage.evaluate((element, onlyLayer) => {
-            element.querySelectorAll<HTMLElement>('.theme-map-marker').forEach((marker) => {
-              marker.style.visibility = Number(marker.dataset.layer) === onlyLayer ? 'visible' : 'hidden';
-            });
-          }, layer);
-          await page.screenshot({ path: join(sceneDirectory, `${alias}-lop-${layer}.png`), animations: 'disabled' });
+          await writeSceneMap(mapPage, screenshot, rows.filter((row) => row.lop === layer), `${alias} · lớp ${layer}`, join(sceneDirectory, `${alias}-lop-${layer}.png`));
         }
       }
-      await stage.evaluate((element) => element.querySelectorAll('.theme-map-marker').forEach((marker) => marker.remove()));
     }
+    await mapPage.close();
 
     const skinAssets: Record<string, string> = {};
     const slotRows: Array<Record<string, unknown>> = [];
+    const contactCards: Array<{ id: string; name: string; image: Buffer }> = [];
     for (const target of THEME_SKIN_TARGETS) {
       const places = measurements.get(target.id) ?? [];
-      const capturedImage = captureBuffers.get(target.id);
-      const configuredFolder = manifest.skinAssets?.[target.id];
-      const existingImage = configuredFolder ? join(options.themeDirectory, ...configuredFolder.split('/'), 'default.png') : '';
-      const image = capturedImage ?? (existingImage && existsSync(existingImage) ? readFileSync(existingImage) : undefined);
       if (!places.length) { missingSlots.add(target.id); continue; }
-      const folder = manifest.skinAssets?.[target.id] ?? slotFolder(target.id, target.selector);
+      const configuredFolder = manifest.skinAssets?.[target.id];
+      const folder = configuredFolder ?? slotFolder(target);
+      const absoluteFolder = join(options.themeDirectory, ...folder.split('/'));
+      const groupDirectory = join(options.themeDirectory, ...folder.split('/').slice(0, -1));
+      if (options.captureDefaultSkins && !configuredFolder) removeStaleGeneratedFolders(groupDirectory, target, absoluteFolder);
+      const wantedFiles = ['default.png', ...(target.variants ?? []).map((variant) => variant.file)];
+      const slotImages = new Map<string, Buffer>();
+      const fileRows: Array<{ ten: string; batBuoc: boolean; trangThai: string }> = [];
+      for (const file of wantedFiles) {
+        const captured = captureBuffers.get(`${target.id}:${file}`);
+        const existingPath = join(absoluteFolder, file);
+        const existing = !captured && existsSync(existingPath) ? readFileSync(existingPath) : undefined;
+        const image = captured ?? existing;
+        const required = file !== 'default.png' || !target.variants;
+        if (image) {
+          slotImages.set(file, image);
+          fileRows.push({ ten: file, batBuoc: required, trangThai: 'CO_SAN' });
+        } else {
+          fileRows.push({ ten: file, batBuoc: required, trangThai: required ? 'THIEU' : 'CAN_CHUAN_BI' });
+          if (required) missingSlots.add(target.id);
+        }
+      }
+      const image = slotImages.get('default.png') ?? slotImages.values().next().value as Buffer | undefined;
       const imageSize = image && image.length >= 24 && image.toString('ascii', 1, 4) === 'PNG'
         ? { width: image.readUInt32BE(16), height: image.readUInt32BE(20) }
         : { width: places[0]!.rong, height: places[0]!.cao };
-      let fileStatus = 'CAN_CHUAN_BI';
-      if (capturedImage) {
-        const absoluteFolder = join(options.themeDirectory, ...folder.split('/'));
+      if (options.captureDefaultSkins) {
         mkdirSync(absoluteFolder, { recursive: true });
-        writeFileSync(join(absoluteFolder, 'default.png'), capturedImage);
-        writeFileSync(join(absoluteFolder, 'DOC-TOI.txt'), docForSlot(target, imageSize, 'CO_SAN', places), 'utf8');
-        skinAssets[target.id] = folder;
-        fileStatus = 'CO_SAN';
-      } else if (configuredFolder && image) {
-        skinAssets[target.id] = configuredFolder;
-        fileStatus = 'CO_SAN';
+        for (const [file, data] of slotImages) writeFileSync(join(absoluteFolder, file), data);
+        writeFileSync(join(absoluteFolder, 'DOC-TOI.txt'), docForSlot(target, imageSize, slotImages.has('default.png') ? 'CO_SAN' : 'THIEU', places), 'utf8');
       }
+      if (slotImages.size) skinAssets[target.id] = folder;
+      if (image) contactCards.push({ id: target.id, name: target.ghiChu.replace(/[.]+$/u, ''), image });
+      const fileStatus = slotImages.has('default.png') ? 'CO_SAN' : 'CAN_CHUAN_BI';
       const allRects = places.map((position) => ({ ...position, right: position.x + position.rong, bottom: position.y + position.cao }));
+      const activation = target.defaultHidden
+        ? ` Ẩn ở bản mặc định; thêm ảnh thì hiệu ứng hiện ở ${[...new Set(places.map((position) => position.man))].join(', ')}, trong vùng bbox CSS ${places.map((position) => `${position.man} ${position.x},${position.y} ${position.rong}×${position.cao}px`).join('; ')}.`
+        : '';
       const overlaps = (left: typeof allRects[number], right: typeof allRects[number]) => left.man === right.man
         && Math.min(left.right, right.right) > Math.max(left.x, right.x)
         && Math.min(left.bottom, right.bottom) > Math.max(left.y, right.y);
@@ -484,12 +660,19 @@ export async function createThemeReviewArtifacts(
         .map((other) => other.id);
       slotRows.push({
         id: target.id, nhom: target.nhom, lop: target.lop, thuMuc: folder,
-        files: [{ ten: 'default.png', batBuoc: true, trangThai: fileStatus }],
+        files: fileRows,
         kichThuoc: { rong: imageSize.width, cao: imageSize.height, tiLe: imageSize.width / imageSize.height, saiSoPx: 0 },
         nineSlice: fitNineSlice(target.nineSlice, imageSize), dinhDang: ['PNG'], nenTrongSuot: true, dungLuongToiDa: 50 * 1024 * 1024,
-        viTri: places, nam_tren: above, nam_duoi: below, ghiChu: `${target.selector}. ${target.ghiChu}`,
+        viTri: places, nam_tren: above, nam_duoi: below, ghiChu: `${target.selector}. ${target.ghiChu}${activation}`,
       });
     }
+    const contactPage = await browser.newPage({ viewport: { width: 1780, height: 1200 }, deviceScaleFactor: 1 });
+    const contactHtml = `<!doctype html><html lang="vi"><meta charset="utf-8"><style>
+      *{box-sizing:border-box}html,body{margin:0;background:#d1d3d8;color:#171923;font-family:"Segoe UI",Arial,sans-serif}body{width:1780px;padding:24px}h1{font-size:30px;margin:0 0 8px}p{font-size:15px;margin:0 0 20px}.grid{display:grid;grid-template-columns:repeat(8,1fr);gap:10px}.card{height:168px;background:#b8bac0;border:1px solid #6b6e78;border-radius:6px;padding:7px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:space-between}.card img{width:100%;height:126px;object-fit:contain;background:#b8bac0}.card strong{font-size:14px}.card span{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+      </style><body><h1>DEFAULT-CONTACT · SKIN RGBA</h1><p>Ảnh xem trên nền xám trung tính. ${contactCards.length} khung/biểu tượng/hiệu ứng; nền trong suốt được giữ nguyên.</p><div class="grid">${contactCards.map((card) => `<article class="card"><img src="data:image/png;base64,${card.image.toString('base64')}" alt=""><strong>${card.id}</strong><span>${ESCAPE(card.name)}</span></article>`).join('')}</div></body></html>`;
+    await contactPage.setContent(contactHtml, { waitUntil: 'load' });
+    writeFileSync(join(reviewRoot, 'default-contact.png'), await contactPage.screenshot({ fullPage: true }));
+    await contactPage.close();
     const parsedRegistry = ThemeSlotRegistrySchema.safeParse({ schemaVersion: 1, slots: slotRows });
     if (!parsedRegistry.success) throw new Error('Không tạo được slots.json: ' + parsedRegistry.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '));
     writeFileSync(join(reviewRoot, 'slots.json'), `${JSON.stringify(parsedRegistry.data, null, 2)}\n`, 'utf8');
@@ -501,18 +684,25 @@ export async function createThemeReviewArtifacts(
       result: missingSlots.size ? 'CHUA_DU_SLOT' : 'CHO_PLAYWRIGHT_DO_PIXEL',
     }, null, 2)}\n`, 'utf8');
 
-    // Five inspection samples with the slot highlighted while the rest of the scene is dimmed.
-    for (const target of THEME_SKIN_TARGETS.filter((row) => ['K03', 'K14', 'K21', 'I01', 'H01'].includes(row.id))) {
-      const scene = REVIEW_SCENES.find((row) => target.scenes.includes(row.id));
-      if (!scene || missingSlots.has(target.id)) continue;
-      await page.goto(`${baseUrl}/?mock=${scene.mock}&role=preview`, { waitUntil: 'domcontentloaded' });
-      const selector = target.selector;
-      const effectTestImage = target.defaultHidden
-        ? `${stageSelectors(selector)}{display:block!important;visibility:visible!important;opacity:1!important;background-image:repeating-linear-gradient(135deg,#ff21ba 0 18px,#17132f 18px 36px)!important;background-size:72px 72px!important;background-position:0 0!important;background-repeat:repeat!important}`
-        : '';
-      await page.addStyleTag({ content: `${effectTestImage}\n#stage *{filter:blur(2px)!important;opacity:.18!important}#stage :is(${selector}){filter:none!important;opacity:1!important;outline:6px solid #ff2d93!important}#stage :is(${selector}) *{filter:none!important;opacity:1!important}` });
-      await page.screenshot({ path: join(inspectDirectory, `${target.id}.png`), animations: 'disabled' });
+    // One actual-scene inspection image for every unique ID (including full-screen slots).
+    const inspectPage = await browser.newPage({ viewport: { width: 1780, height: 2020 }, deviceScaleFactor: 1 });
+    for (const target of THEME_SKIN_TARGETS) {
+      const places = [...(measurements.get(target.id) ?? [])].sort((left, right) => right.rong * right.cao - left.rong * left.cao);
+      const position = places[0];
+      if (!position) continue;
+      let screenshot = sceneScreenshots.get(position.man);
+      if (target.id === 'K13' || target.id === 'K22' || target.id === 'K33') {
+        const mock = target.id === 'K13' ? 'question' : 'throne-locked';
+        await page.goto(`${baseUrl}/?mock=${mock}&role=preview`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => !!document.querySelector('[data-testid="stage"]'));
+        if (target.id === 'K13') await page.locator('.v3-timer').evaluate((element) => element.classList.add('is-urgent'));
+        await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}' });
+        screenshot = await page.screenshot({ type: 'png', animations: 'disabled' });
+      }
+      if (!screenshot) throw new Error(`Thiếu ảnh màn để soi slot ${target.id} (${position.man}).`);
+      await writeInspectionMap(inspectPage, screenshot, target, position, join(inspectDirectory, `${target.id}.png`));
     }
+    await inspectPage.close();
     return { registry: parsedRegistry.data, skinAssets, missingSlots: [...missingSlots] };
   } finally {
     await browser?.close();

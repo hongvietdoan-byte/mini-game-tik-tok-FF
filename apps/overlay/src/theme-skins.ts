@@ -10,6 +10,10 @@ export type ThemeSkinTarget = {
   defaultHidden?: boolean;
   /** Icon-only targets replace their children; label targets keep live data text over the skin. */
   content?: 'icon' | 'label' | 'frame';
+  /** K14 answer states share one directory and select a separate PNG per state. */
+  variants?: readonly { file: string; selector: string; legacyId?: string }[];
+  /** Preserve selected artwork inside a frame while hiding dynamic sibling content. */
+  keepChildren?: readonly string[];
   ghiChu: string;
 };
 
@@ -31,15 +35,18 @@ export const THEME_SKIN_TARGETS: readonly ThemeSkinTarget[] = [
   { id: 'K11', nhom: 'K', lop: 1, selector: '.v3-question', scenes: ['LOBBY', 'QUESTION', 'REVEAL'], nineSlice: { tren: 20, phai: 24, duoi: 20, trai: 24 }, ghiChu: 'Khung câu hỏi hoặc lời chào.' },
   { id: 'K12', nhom: 'K', lop: 1, selector: '.v3-timer', scenes: ['QUESTION', 'REVEAL'], nineSlice: null, ghiChu: 'Vòng đồng hồ và nền; trạng thái khẩn cấp dùng K13.' },
   { id: 'K13', nhom: 'K', lop: 1, selector: '.v3-timer.is-urgent', scenes: ['QUESTION'], nineSlice: null, ghiChu: 'Khung đồng hồ sắp hết giờ.' },
-  { id: 'K14', nhom: 'K', lop: 1, selector: '.v3-option:not(.is-correct):not(.is-dim)', scenes: ['QUESTION', 'REVEAL'], nineSlice: { tren: 16, phai: 20, duoi: 16, trai: 20 }, ghiChu: 'Ô đáp án thường.' },
-  { id: 'K15', nhom: 'K', lop: 1, selector: '.v3-option.is-correct', scenes: ['REVEAL'], nineSlice: { tren: 16, phai: 20, duoi: 16, trai: 20 }, ghiChu: 'Ô đáp án đúng.' },
-  { id: 'K16', nhom: 'K', lop: 1, selector: '.v3-option.is-dim', scenes: ['REVEAL'], nineSlice: { tren: 16, phai: 20, duoi: 16, trai: 20 }, ghiChu: 'Ô đáp án sai/mờ.' },
+  { id: 'K14', nhom: 'K', lop: 1, selector: '.v3-option', variants: [
+    { file: 'thuong.png', selector: '.v3-option:not(.is-correct):not(.is-dim):not(.is-hidden)' },
+    { file: 'dung.png', selector: '.v3-option.is-correct', legacyId: 'K15' },
+    { file: 'sai.png', selector: '.v3-option.is-dim', legacyId: 'K16' },
+    { file: 'mo.png', selector: '.v3-option.is-hidden' },
+  ], scenes: ['QUESTION', 'REVEAL'], nineSlice: { tren: 16, phai: 20, duoi: 16, trai: 20 }, ghiChu: 'Ô đáp án thường, đúng, sai và mờ.' },
   { id: 'K17', nhom: 'K', lop: 1, selector: '.v3-option-meter', scenes: ['REVEAL'], nineSlice: { tren: 6, phai: 10, duoi: 6, trai: 10 }, ghiChu: 'Thanh phần trăm trong ô đáp án.' },
   { id: 'K18', nhom: 'K', lop: 1, selector: '.v3-lobby-status', scenes: ['LOBBY'], nineSlice: { tren: 14, phai: 18, duoi: 14, trai: 18 }, ghiChu: 'Khung SẮP BẮT ĐẦU/đếm ngược.' },
   { id: 'K19', nhom: 'K', lop: 1, selector: '.v3-lobby-seat-summary', scenes: ['LOBBY'], nineSlice: { tren: 12, phai: 16, duoi: 12, trai: 16 }, ghiChu: 'Khung thống kê ghế.' },
   { id: 'K20', nhom: 'K', lop: 1, selector: '.v3-bubble', scenes: ['LOBBY', 'QUESTION', 'REVEAL', 'VICTORY', 'INTERIM_TOP10', 'INTERMISSION'], nineSlice: { tren: 24, phai: 30, duoi: 24, trai: 30 }, ghiChu: 'Bóng thoại MC.' },
   { id: 'K21', nhom: 'K', lop: 1, selector: '.v3-mc-plate', scenes: ['LOBBY', 'QUESTION', 'REVEAL', 'VICTORY', 'INTERIM_TOP10', 'INTERMISSION'], nineSlice: { tren: 12, phai: 16, duoi: 12, trai: 16 }, ghiChu: 'Bảng tên MC.' },
-  { id: 'K22', nhom: 'K', lop: 1, selector: '.v3-throne', scenes: ['LOBBY'], nineSlice: { tren: 34, phai: 38, duoi: 34, trai: 38 }, ghiChu: 'Khung ngai và bảng tên chủ ngai.' },
+  { id: 'K22', nhom: 'K', lop: 1, selector: '.v3-throne', keepChildren: ['.v3-throne-art'], scenes: ['LOBBY'], nineSlice: { tren: 34, phai: 38, duoi: 34, trai: 38 }, ghiChu: 'Khung ngai và bảng tên chủ ngai.' },
   { id: 'K23', nhom: 'K', lop: 1, selector: '.v3-fastest-callout', scenes: ['REVEAL', 'VICTORY'], nineSlice: { tren: 24, phai: 30, duoi: 24, trai: 30 }, ghiChu: 'Khung Top 3 nhanh nhất/nhanh nhất câu.' },
   { id: 'K24', nhom: 'K', lop: 1, selector: '.v3-question-top3', scenes: ['REVEAL'], nineSlice: { tren: 18, phai: 22, duoi: 18, trai: 22 }, ghiChu: 'Khung bảng Top 3 trả lời nhanh.' },
   { id: 'K25', nhom: 'K', lop: 1, selector: '.v3-top3-row', scenes: ['REVEAL'], nineSlice: { tren: 8, phai: 12, duoi: 8, trai: 12 }, ghiChu: 'Hàng trong bảng Top 3.' },
@@ -96,7 +103,7 @@ export const THEME_SKIN_TARGETS: readonly ThemeSkinTarget[] = [
   { id: 'H12', nhom: 'H', lop: 3, selector: '.v3v-confetti i', scenes: ['VICTORY'], nineSlice: null, ghiChu: 'Từng mảnh pháo giấy trên sân khấu Victory.' },
 ] as const;
 
-export const THEME_SKIN_FILES = ['default.png'] as const;
+export const THEME_SKIN_FILES = ['default.png', 'thuong.png', 'dung.png', 'sai.png', 'mo.png'] as const;
 
 export function skinAssetUrl(directoryUrl: string, file = 'default.png') {
   const query = directoryUrl.indexOf('?');

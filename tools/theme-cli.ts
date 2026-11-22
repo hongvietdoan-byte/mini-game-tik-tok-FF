@@ -19,22 +19,49 @@ import { ThemeStore } from '../apps/server/src/theme-store';
 type SlotSource = { slot: ThemeAssetSlot; source: string; destination: string; directory?: boolean };
 
 const DEFAULT_SLOT_SOURCES: SlotSource[] = [
-  { slot: 'arena.background', source: 'arena/bg.jpg', destination: 'assets/arena/bg.jpg' },
-  { slot: 'arena.questionBackground', source: 'arena/bg-question-user.jpg', destination: 'assets/arena/bg-question-user.jpg' },
-  ...Array.from({ length: 8 }, (_, index) => ({ slot: `arena.flag.${index}` as ThemeAssetSlot, source: `arena/flags/flag-${index + 1}.png`, destination: `assets/arena/flags/flag-${index + 1}.png` })),
-  { slot: 'arena.loopVideoWebm', source: 'arena/bg-loop.webm', destination: 'assets/arena/bg-loop.webm' },
-  { slot: 'arena.loopVideoMp4', source: 'arena/bg-loop.mp4', destination: 'assets/arena/bg-loop.mp4' },
-  { slot: 'brand.logo', source: 'brand/logo.png', destination: 'assets/brand/logo.png' },
-  { slot: 'chibi.bankDir', source: 'chibi', destination: 'assets/chibi', directory: true },
-  { slot: 'chibi.podiumDir', source: 'chibi/dang-top2-top3', destination: 'assets/chibi/dang-top2-top3', directory: true },
-  { slot: 'throne.bankDir', source: 'throne', destination: 'assets/throne', directory: true },
-  { slot: 'mc.static', source: 'mc/kelly.png', destination: 'assets/mc/kelly.png' },
-  { slot: 'mc.sequenceDir', source: 'mc/kelly', destination: 'assets/mc/kelly', directory: true },
-  { slot: 'victory.background', source: 'victory/bg.jpg', destination: 'assets/victory/bg.jpg' },
-  { slot: 'victory.userCover', source: 'victory/bg-user-cover.jpg', destination: 'assets/victory/bg-user-cover.jpg' },
-  { slot: 'victory.trophyStage', source: 'victory/trophy-stage.png', destination: 'assets/victory/trophy-stage.png' },
-  ...['question-enter', 'countdown-tick', 'timeout', 'correct-answer', 'top10', 'victory', 'victory-music-1', 'victory-music-2', 'transition', 'bgm-lobby', 'bgm-game', 'bgm']
-    .map((slot) => ({ slot: `audio.${slot}` as ThemeAssetSlot, source: `audio/${slot}`, destination: `assets/audio/${slot}` })),
+  { slot: 'arena.background', source: 'arena/bg.jpg', destination: 'assets/N-nen/N01-nen-sanh/bg.jpg' },
+  { slot: 'arena.questionBackground', source: 'arena/bg-question-user.jpg', destination: 'assets/N-nen/N02-nen-cau-hoi/bg-question-user.jpg' },
+  ...Array.from({ length: 8 }, (_, index) => ({ slot: `arena.flag.${index}` as ThemeAssetSlot, source: `arena/flags/flag-${index + 1}.png`, destination: `assets/L-thuong-hieu/L02-co-dau-truong/flag-${index + 1}.png` })),
+  { slot: 'arena.loopVideoWebm', source: 'arena/bg-loop.webm', destination: 'assets/N-nen/N03-video-lap/bg-loop.webm' },
+  { slot: 'arena.loopVideoMp4', source: 'arena/bg-loop.mp4', destination: 'assets/N-nen/N03-video-lap/bg-loop.mp4' },
+  { slot: 'brand.logo', source: 'brand/logo.png', destination: 'assets/L-thuong-hieu/L01-logo/logo.png' },
+  { slot: 'chibi.bankDir', source: 'chibi', destination: 'assets/V-nhan-vat/V01-ngan-hang-chibi', directory: true },
+  { slot: 'chibi.podiumDir', source: 'chibi/dang-top2-top3', destination: 'assets/V-nhan-vat/V02-chibi-top2-top3', directory: true },
+  { slot: 'throne.bankDir', source: 'throne', destination: 'assets/V-nhan-vat/V03-ngai', directory: true },
+  { slot: 'mc.static', source: 'mc/kelly.png', destination: 'assets/V-nhan-vat/V04-mc-anh-tinh/kelly.png' },
+  { slot: 'mc.sequenceDir', source: 'mc/kelly', destination: 'assets/V-nhan-vat/V05-mc-chuoi-dong-tac/kelly', directory: true },
+  { slot: 'victory.background', source: 'victory/bg.jpg', destination: 'assets/N-nen/N04-nen-victory/bg.jpg' },
+  { slot: 'victory.userCover', source: 'victory/bg-user-cover.jpg', destination: 'assets/N-nen/N05-nen-su-kien-victory/bg-user-cover.jpg' },
+  { slot: 'victory.trophyStage', source: 'victory/trophy-stage.png', destination: 'assets/N-nen/N06-san-khau-victory/trophy-stage.png' },
+  ...[
+    ['question-enter', 'A01-mo-cau-hoi', 'Mở câu hỏi'], ['countdown-tick', 'A02-tich-dem-nguoc', 'Tích đếm ngược'],
+    ['timeout', 'A03-het-gio', 'Hết giờ'], ['correct-answer', 'A04-cong-bo-dap-an', 'Công bố đáp án'],
+    ['top10', 'A05-top-10', 'Chuyển Top 10'], ['victory', 'A06-chien-thang', 'Cue chiến thắng'],
+    ['transition', 'A07-chuyen-canh', 'Chuyển cảnh'], ['victory-music-1', 'A08-nhac-vinh-danh-1', 'Nhạc vinh danh lượt 1'],
+    ['victory-music-2', 'A09-nhac-vinh-danh-2', 'Nhạc vinh danh lượt 2'], ['bgm-lobby', 'A10-nhac-sanh', 'Nhạc nền sảnh'],
+    ['bgm-game', 'A11-nhac-cau-hoi', 'Nhạc nền câu hỏi'], ['bgm', 'A12-nhac-du-phong', 'Nhạc nền dự phòng'],
+  ].map(([slot, folder]) => ({ slot: `audio.${slot}` as ThemeAssetSlot, source: `audio/${slot}`, destination: `assets/A-am-thanh/${folder}/${slot}` })),
+];
+
+const DEFAULT_ASSET_FOLDERS = [
+  { id: 'N01', name: 'Nền sảnh', path: 'assets/N-nen/N01-nen-sanh', slots: 'arena.background', detail: 'Ảnh nền sảnh/đấu trường.' },
+  { id: 'N02', name: 'Nền câu hỏi', path: 'assets/N-nen/N02-nen-cau-hoi', slots: 'arena.questionBackground', detail: 'Ảnh nền câu hỏi và công bố đáp án.' },
+  { id: 'N03', name: 'Video lặp', path: 'assets/N-nen/N03-video-lap', slots: 'arena.loopVideoWebm, arena.loopVideoMp4', detail: 'Video nền WEBM/MP4.' },
+  { id: 'N04', name: 'Nền Victory', path: 'assets/N-nen/N04-nen-victory', slots: 'victory.background', detail: 'Ảnh nền màn Victory.' },
+  { id: 'N05', name: 'Nền sự kiện Victory', path: 'assets/N-nen/N05-nen-su-kien-victory', slots: 'victory.userCover', detail: 'Ảnh phủ sự kiện Victory.' },
+  { id: 'N06', name: 'Sân khấu Victory', path: 'assets/N-nen/N06-san-khau-victory', slots: 'victory.trophyStage', detail: 'Ảnh sân khấu có trophy stage.' },
+  { id: 'L01', name: 'Logo', path: 'assets/L-thuong-hieu/L01-logo', slots: 'brand.logo', detail: 'Logo thương hiệu.' },
+  { id: 'L02', name: 'Cờ đấu trường', path: 'assets/L-thuong-hieu/L02-co-dau-truong', slots: 'arena.flag.0–7', detail: 'Bộ cờ hai bên đấu trường.' },
+  { id: 'V01', name: 'Ngân hàng chibi', path: 'assets/V-nhan-vat/V01-ngan-hang-chibi', slots: 'chibi.bankDir', detail: 'Danh sách nhân vật chibi.' },
+  { id: 'V02', name: 'Chibi Top 2/3', path: 'assets/V-nhan-vat/V02-chibi-top2-top3', slots: 'chibi.podiumDir', detail: 'Dáng nhân vật podium Top 2/3.' },
+  { id: 'V03', name: 'Ngai', path: 'assets/V-nhan-vat/V03-ngai', slots: 'throne.bankDir', detail: 'Ngai trống và ngai theo nhân vật.' },
+  { id: 'V04', name: 'Ảnh tĩnh MC', path: 'assets/V-nhan-vat/V04-mc-anh-tinh', slots: 'mc.static', detail: 'Ảnh tĩnh dự phòng MC.' },
+  { id: 'V05', name: 'Chuỗi động tác MC', path: 'assets/V-nhan-vat/V05-mc-chuoi-dong-tac', slots: 'mc.sequenceDir', detail: 'Các pose và manifest chuyển động MC.' },
+  ...DEFAULT_SLOT_SOURCES.filter((item) => item.slot.startsWith('audio.')).map((item, index) => {
+    const folder = item.destination.split('/').slice(0, -1).join('/');
+    const slot = item.slot.slice('audio.'.length);
+    return { id: `A${String(index + 1).padStart(2, '0')}`, name: slot, path: folder, slots: item.slot, detail: `Âm thanh ${slot}.` };
+  }),
 ];
 
 function safeSource(root: string, relative: string) {
@@ -84,7 +111,7 @@ function copyTree(source: string, destination: string, root: string, copied: str
     if (stat.size > 50 * 1024 * 1024) throw new Error(`Asset ${relative} lớn hơn 50 MB.`);
     const extension = extname(source).toLowerCase();
     const normalizedRelative = relative.split(sep).join('/');
-    const isSlotGuide = /^assets\/[KIH]-[a-z-]+\/[KIH]\d{2,3}-[a-z0-9-]+\/DOC-TOI\.txt$/iu.test(normalizedRelative);
+    const isSlotGuide = /^assets\/[NVLAKIH]-[a-z-]+\/[NVLAKIH]\d{2,3}-[a-z0-9-]+\/DOC-TOI\.txt$/iu.test(normalizedRelative);
     if (!EXPORTABLE_ASSET_EXTENSIONS.has(extension) && !isSlotGuide) {
       const marker = `(đuôi ${extension || 'không có'})`;
       if (!warnings.some((warning) => warning.includes(marker)))
@@ -194,6 +221,23 @@ export async function exportDefaultTheme(options: { out: string; assets: string;
       manifestAssets[item.slot] = relativeDestination;
     }
 
+    for (const folder of DEFAULT_ASSET_FOLDERS) {
+      const directory = join(staging, ...folder.path.split('/'));
+      if (!existsSync(directory) || !lstatSync(directory).isDirectory()) continue;
+      const files = walkFiles(directory).filter((path) => basename(path) !== 'DOC-TOI.txt');
+      if (!files.length) continue;
+      const docPath = join(directory, 'DOC-TOI.txt');
+      writeFileSync(docPath, [
+        `ID: ${folder.id}`, `Tên: ${folder.name}`, `Nhóm: ${folder.id[0]}; asset mặc định.`,
+        `Slot manifest: ${folder.slots}.`, folder.detail,
+        'Đường dẫn tương đối với theme. Giữ tên file, định dạng và hierarchy bên trong thư mục.',
+        'Mỗi file phải đúng nội dung được mô tả; nền/nhân vật có thể cần alpha theo định dạng hiện tại.',
+        `File hiện có: ${files.map((path) => path.slice(directory.length + 1).split(sep).join('/')).join(', ')}.`,
+        '',
+      ].join('\n'), 'utf8');
+      copied.push(docPath.slice(staging.length + 1));
+    }
+
     const fonts = copyOptionalFonts(assetsRoot, staging, copied, warnings);
     const manifest = {
       schemaVersion: 1,
@@ -269,7 +313,7 @@ const SLOT_GUIDE: Record<ThemeAssetSlot, { size: string; formats: string; alpha:
   'arena.loopVideoMp4': { size: '1080 × 1920 px vùng phủ; ưu tiên video dọc', formats: 'MP4', alpha: 'Không', scene: 'Bản dự phòng video nền lặp.' },
   'brand.logo': { size: 'Header 255 × 210 px; header QUESTION/REVEAL 172.8 × 178.5 px; Victory 502.2 × 501.1 px', formats: 'PNG, WEBP, SVG', alpha: 'Nên có', scene: 'Logo header và Victory; object-fit contain, giữ nguyên khung hiển thị.' },
   'chibi.bankDir': { size: '92 × 104 px khung ghế; 70 × 78 px khi có ngai', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Ngân hàng chibi; đủ tất cả nhân vật đang dùng và các dáng.' },
-  'chibi.podiumDir': { size: 'Top 2/3: 240 × 420 px; Top 1: 440 × 520 px', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Thư mục assets/chibi/dang-top2-top3/top2 và top3; đủ hai dáng cho mỗi nhân vật có thể thắng.' },
+  'chibi.podiumDir': { size: 'Top 2/3: 240 × 420 px; Top 1: 440 × 520 px', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Thư mục Top 2 và Top 3; đủ hai dáng cho mỗi nhân vật có thể thắng.' },
   'mc.static': { size: 'Khung cơ sở 250 × 290 px; compact 180 × 208 px; question/reveal 280 × 390 px hoặc 205 × 158 px theo bố cục V3', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Ảnh tĩnh dự phòng MC Kelly trong mọi cảnh.' },
   'mc.sequenceDir': { size: 'Khung cơ sở 250 × 290 px; compact 180 × 208 px; question/reveal 280 × 390 px hoặc 205 × 158 px theo bố cục V3', formats: 'PNG, JPG, WEBP, GIF, SVG, JSON manifest', alpha: 'Nên có', scene: 'Chuỗi pose MC: idle bắt buộc; welcome/ask/react/celebrate tùy chọn, thiếu thì dùng idle.' },
   'throne.bankDir': { size: 'Ngai 400 × 400 px; khung Top 1 Victory 440 × 520 px', formats: 'PNG, JPG, WEBP, GIF, SVG', alpha: 'Nên có', scene: 'Ngai trống/ngai theo characterId; ảnh cùng slot dùng cho dáng Top 1 trong Victory.' },
@@ -349,6 +393,13 @@ function readJsonFile<T>(path: string): T | null {
 
 function createPreparationGuide(manifest: Record<string, unknown>, assets: Record<string, string | undefined>, themeDirectory: string) {
   const sourceBySlot = new Map(DEFAULT_SLOT_SOURCES.map((item) => [item.slot, item]));
+  const assetPath = (slot: string, fallback: string) => assets[slot] ?? fallback;
+  const assetDirectory = (slot: string, fallback: string) => join(themeDirectory, ...assetPath(slot, fallback).split('/'));
+  const chibiBankPath = assetPath('chibi.bankDir', 'assets/chibi');
+  const podiumPath = assetPath('chibi.podiumDir', `${chibiBankPath}/dang-top2-top3`);
+  const mcStaticPath = assetPath('mc.static', 'assets/mc/kelly.png');
+  const mcSequencePath = assetPath('mc.sequenceDir', 'assets/mc/kelly');
+  const thronePath = assetPath('throne.bankDir', 'assets/throne');
   const rows = THEME_ASSET_SLOTS.map((slot) => {
     const info = SLOT_GUIDE[slot];
     const path = assets[slot] ?? sourceBySlot.get(slot)?.destination ?? 'Asset dự phòng trong ứng dụng';
@@ -390,10 +441,10 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
   const ungroupedTokens = Object.keys(tokens).filter((key) => !usedTokens.has(key));
   if (ungroupedTokens.length) tokenGroups.push('### Token khác', '', '| Token | Giá trị | Mẫu | Dùng ở đâu |', '|---|---|---|---|', ...ungroupedTokens.map((key) => `| ${key} | ${tokens[key]} | ◧ | ${TOKEN_USAGE[key] ?? ''} |`), '');
 
-  const charactersPath = join(themeDirectory, 'assets', 'chibi', 'manifest.json');
+  const charactersPath = join(assetDirectory('chibi.bankDir', 'assets/chibi'), 'manifest.json');
   const charactersData = readJsonFile<{ characters?: Array<{ id?: string }> }>(charactersPath);
   const characters = (charactersData?.characters ?? []).map((character) => character.id).filter((id): id is string => !!id);
-  const podiumRoot = join(themeDirectory, 'assets', 'chibi', 'dang-top2-top3');
+  const podiumRoot = assetDirectory('chibi.podiumDir', `${chibiBankPath}/dang-top2-top3`);
   const imageNames = (directory: string) => walkFiles(directory).filter((path) => /\.(?:png|jpe?g|webp|gif|svg)$/iu.test(path)).map((path) => path.slice(directory.length + 1).split(sep).join('/')).sort();
   const top2 = imageNames(join(podiumRoot, 'top2'));
   const top3 = imageNames(join(podiumRoot, 'top3'));
@@ -403,16 +454,16 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
       const top3File = `top3/top3-${id}.png`;
       return `| ${id} | ${top2File} | ${top2.includes(top2File) ? 'Có' : 'Thiếu'} | ${top3File} | ${top3.includes(top3File) ? 'Có' : 'Thiếu'} |`;
     })
-    : ['| Không có `assets/chibi/manifest.json`; số ID nhân vật chưa xác định. | `top2/top2-<characterId>.png` | — | `top3/top3-<characterId>.png` | — |'];
-  const mcDirectory = join(themeDirectory, 'assets', 'mc', 'kelly');
+    : [`| Không có \`${chibiBankPath}/manifest.json\`; số ID nhân vật chưa xác định. | \`${podiumPath}/top2-<characterId>.png\` | — | \`${podiumPath}/top3-<characterId>.png\` | — |`];
+  const mcDirectory = assetDirectory('mc.sequenceDir', 'assets/mc/kelly');
   const mcManifest = readJsonFile<{ animations?: Record<string, { path?: string; frames?: number; fps?: number; loop?: boolean }>; fallback?: string }>(join(mcDirectory, 'manifest.json'));
   const mcPoses = ['idle', 'welcome', 'ask', 'react', 'celebrate'] as const;
   const mcRows = mcPoses.map((pose) => {
     const animation = mcManifest?.animations?.[pose];
     const playback = animation ? animation.loop ? 'lặp' : 'không lặp' : pose === 'idle' ? 'bắt buộc' : 'tùy chọn; thiếu thì dùng idle';
-    return `| ${pose} | ${animation?.path ?? `assets/mc/kelly/${pose}`} | ${animation?.frames ?? 0} | ${animation?.fps ?? '—'} | ${playback} |`;
+    return `| ${pose} | ${animation?.path ?? `${mcSequencePath}/${pose}`} | ${animation?.frames ?? 0} | ${animation?.fps ?? '—'} | ${playback} |`;
   });
-  const throneFiles = imageNames(join(themeDirectory, 'assets', 'throne'));
+  const throneFiles = imageNames(assetDirectory('throne.bankDir', 'assets/throne'));
   const fontFiles = (manifest.fonts ?? []) as Array<{ family?: string; file?: string; weight?: string | number; style?: string }>;
   const textRows = Object.entries(THEME_DEFAULT_TEXTS).map(([key, defaultValue]) => {
     const value = String(((manifest.texts ?? {}) as Record<string, string>)[key] ?? defaultValue);
@@ -427,7 +478,7 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
     const subtitle = override.subtitle ?? base.subtitle;
     return `| ${id} | ${title} | ${subtitle} | ${override.accentColor ?? base.accentColor} | ${override.icon ?? 'Không dùng icon riêng'} | ${title.length}/100 tên; ${subtitle.length}/160 phụ đề; schema tối đa 100/160 | ${override.maxRows ?? base.maxRows} |`;
   });
-  const characterAssets = imageNames(join(themeDirectory, 'assets', 'chibi'));
+  const characterAssets = imageNames(assetDirectory('chibi.bankDir', 'assets/chibi'));
   const throneCount = throneFiles.length;
   const mcCount = imageNames(mcDirectory).length;
   const podiumCount = top2.length + top3.length;
@@ -478,15 +529,15 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
     '',
     '## 6. Chibi, MC và ngai',
     '',
-    `- **Chibi bank:** ${characters.length} nhân vật trong \`assets/chibi/manifest.json\`; ${characterAssets.length} file ảnh hiện có (gồm thư mục podium). Tên ID nhân vật lấy nguyên từ manifest.`,
-    '- Top 2/Top 3: mỗi nhân vật có thể thắng cần đủ hai file theo quy ước `top2/top2-<characterId>.png` và `top3/top3-<characterId>.png`.',
+    `- **Chibi bank:** ${characters.length} nhân vật trong \`${chibiBankPath}/manifest.json\`; ${characterAssets.length} file ảnh hiện có. Tên ID nhân vật lấy nguyên từ manifest.`,
+    `- Top 2/Top 3: mỗi nhân vật có thể thắng cần đủ hai file trong \`${podiumPath}/top2\` và \`${podiumPath}/top3\`.`,
     '| Character ID | File Top 2 | Có? | File Top 3 | Có? |', '|---|---|---|---|---|', ...podiumRows,
     '',
-    '- **MC:** ảnh tĩnh dự phòng `assets/mc/kelly.png`; thư mục sequence có ' + mcCount + ' ảnh/frame. `idle` là pose bắt buộc; `welcome`, `ask`, `react`, `celebrate` có thể thiếu và sẽ dùng `idle`. Mỗi frame dùng tên `0001.png`, `0002.png`… dưới thư mục pose; bảng ghi số frame/FPS/loop từ manifest, hoặc 0 nếu pose chưa có.',
+    `- **MC:** ảnh tĩnh dự phòng \`${mcStaticPath}\`; thư mục sequence \`${mcSequencePath}\` có ${mcCount} ảnh/frame. \`idle\` là pose bắt buộc; \`welcome\`, \`ask\`, \`react\`, \`celebrate\` có thể thiếu và sẽ dùng \`idle\`. Mỗi frame dùng tên \`0001.png\`, \`0002.png\`… dưới thư mục pose; bảng ghi số frame/FPS/loop từ manifest, hoặc 0 nếu pose chưa có.`,
     '| Pose | Thư mục con | Số khung | FPS | Phát |', '|---|---|---:|---:|---|',
     ...mcRows,
     '',
-    `- **Ngai:** ${throneCount} ảnh; thay đủ các file hiện có trong \`assets/throne/\` theo tên nhân vật.`,
+    `- **Ngai:** ${throneCount} ảnh; thay đủ các file hiện có trong \`${thronePath}/\` theo tên nhân vật.`,
     ...(throneFiles.length ? [`  - ${throneFiles.map((name) => `\`${name}\``).join(', ')}`] : ['  - Theme hiện không có file ngai riêng.']),
     '',
     '## 7. Những gì theme không đổi',

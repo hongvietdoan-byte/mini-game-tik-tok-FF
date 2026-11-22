@@ -36,7 +36,7 @@ describe('ThemeStore', () => {
     const root = temp();
     const out = join(root, 'default');
     const assets = join(process.cwd(), 'fixtures', 'assets-placeholder');
-    const exported = await exportDefaultTheme({ out, assets });
+    const exported = await exportDefaultTheme({ out, assets, createMap: false, createSkinAssets: false });
     expect(exported.manifest.id).toBe('default');
     expect(exported.manifest.achievements).toMatchObject({
       LONGEST_STREAK: THEME_DEFAULT_ACHIEVEMENTS.LONGEST_STREAK,
@@ -63,8 +63,9 @@ describe('ThemeStore', () => {
 
     expect(exported.warnings).toContainEqual(expect.stringContaining('HUONG_DAN.txt'));
     expect(exported.copied).toContainEqual(expect.stringContaining('frame-001.png'));
-    expect(existsSync(join(out, 'assets', 'mc', 'kelly', 'frame-001.png'))).toBe(true);
-    expect(existsSync(join(out, 'assets', 'mc', 'kelly', 'HUONG_DAN.txt'))).toBe(false);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V05-mc-chuoi-dong-tac', 'kelly', 'frame-001.png'))).toBe(true);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V05-mc-chuoi-dong-tac', 'kelly', 'HUONG_DAN.txt'))).toBe(false);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V05-mc-chuoi-dong-tac', 'DOC-TOI.txt'))).toBe(true);
     expect(ThemeStore.validateDirectory(out).success).toBe(true);
   });
 
@@ -82,8 +83,9 @@ describe('ThemeStore', () => {
 
     await exportDefaultTheme({ out, assets: join(root, 'assets-local'), createMap: false });
 
-    expect(existsSync(join(out, 'assets', 'chibi', 'dang-top2-top3', 'top2', 'top2-char.png'))).toBe(true);
-    expect(existsSync(join(out, 'assets', 'chibi', 'dang-top2-top3', '_nhap'))).toBe(false);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V02-chibi-top2-top3', 'top2', 'top2-char.png'))).toBe(true);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V02-chibi-top2-top3', '_nhap'))).toBe(false);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V02-chibi-top2-top3', 'DOC-TOI.txt'))).toBe(true);
   });
 
   it('bỏ slot thư mục nếu bên trong chỉ có tài liệu không được hỗ trợ', async () => {
@@ -112,7 +114,7 @@ describe('ThemeStore', () => {
 
     const exported = await exportDefaultTheme({ out, assets, createMap: false });
 
-    expect(exported.manifest.assets['audio.victory']).toBe('assets/audio/victory.wav');
+    expect(exported.manifest.assets['audio.victory']).toBe('assets/A-am-thanh/A06-chien-thang/victory.wav');
     expect(ThemeStore.validateDirectory(out).success).toBe(true);
   });
 

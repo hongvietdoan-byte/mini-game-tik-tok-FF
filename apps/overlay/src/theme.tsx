@@ -149,12 +149,24 @@ export function ThemeProvider({ themeVersion, mock = false, children }: { themeV
     const skinTargets = theme.id === 'default' ? [] : THEME_SKIN_TARGETS.flatMap((target) => {
       const directory = theme.skinAssets?.[target.id];
       if (!directory) return [];
-      const image = encodeURI(skinAssetUrl(directory));
       const slot = theme.skinSlots?.slots.find((entry) => entry.id === target.id);
       // The default pack captures the exact CSS pixels at the reference size;
       // custom themes use 9-slice so only the measured edge guides stay fixed.
       const nineSlice = theme.id === 'default' ? null : slot ? slot.nineSlice : target.nineSlice;
-      return [{ target, image, nineSlice }];
+      const defaultImage = encodeURI(skinAssetUrl(directory));
+      const rules = [{ selector: target.selector, images: [defaultImage] }];
+      for (const variant of target.variants ?? []) {
+        const legacyDirectory = variant.legacyId ? theme.skinAssets?.[variant.legacyId] : undefined;
+        rules.push({
+          selector: variant.selector,
+          images: [
+            encodeURI(skinAssetUrl(directory, variant.file)),
+            ...(legacyDirectory ? [encodeURI(skinAssetUrl(legacyDirectory))] : []),
+            defaultImage,
+          ],
+        });
+      }
+      return rules.map((rule) => ({ target, selector: rule.selector, images: [...new Set(rule.images)], nineSlice }));
     });
     const skinStyle = document.createElement('style');
     skinStyle.dataset.themeSkins = 'true';
@@ -162,19 +174,26 @@ export function ThemeProvider({ themeVersion, mock = false, children }: { themeV
 
     let active = true;
     const loadSkinImages = async () => {
-      const loaded = await Promise.all(skinTargets.map(({ target, image, nineSlice }) => new Promise<string | null>((resolveImage) => {
-        const probe = new Image();
-        probe.onload = () => {
-          if (target.defaultHidden && !imageHasVisiblePixels(probe)) return resolveImage(null);
-          const selector = target.selector.split(',').map((part) => `#stage ${part.trim()}`).join(',');
-          const enableEffect = target.defaultHidden ? `${selector}{display:block!important;visibility:visible!important;opacity:1!important}` : '';
-          resolveImage(`${enableEffect}${target.selector}{${nineSlice
+      const loaded = await Promise.all(skinTargets.map(async ({ target, selector, images, nineSlice }) => {
+        let image: string | null = null;
+        for (const candidate of images) {
+          const exists = await new Promise<boolean>((resolveImage) => {
+            const probe = new Image();
+            probe.onload = () => resolveImage(!target.defaultHidden || imageHasVisiblePixels(probe));
+            probe.onerror = () => resolveImage(false);
+            probe.src = candidate;
+          });
+          if (exists) { image = candidate; break; }
+        }
+        if (!image) return null;
+        const scopedSelector = selector.split(',').map((part) => `#stage ${part.trim()}`).join(',');
+        const enableEffect = target.defaultHidden ? `${scopedSelector}{display:block!important;visibility:visible!important;opacity:1!important}` : '';
+        const skinRule = `${scopedSelector}{${nineSlice
           ? `background-image:none!important;border-image-source:url("${image}")!important;border-image-slice:${nineSlice.tren} ${nineSlice.phai} ${nineSlice.duoi} ${nineSlice.trai} fill!important;border-image-width:${nineSlice.tren}px ${nineSlice.phai}px ${nineSlice.duoi}px ${nineSlice.trai}px!important;border-image-repeat:stretch!important;border-image-outset:0!important`
-          : `background-image:url("${image}")!important;background-size:100% 100%!important;background-position:center!important;background-repeat:no-repeat!important;background-origin:border-box!important`};background-color:transparent!important;border-color:transparent!important}${target.content === 'icon' ? `${target.selector}>*{visibility:hidden!important}` : ''}`);
-        };
-        probe.onerror = () => resolveImage(null);
-        probe.src = image;
-      })));
+          : `background-image:url("${image}")!important;background-size:100% 100%!important;background-position:center!important;background-repeat:no-repeat!important;background-origin:border-box!important`};background-color:transparent!important;border-color:transparent!important}`;
+        const iconChildren = target.content === 'icon' ? `${scopedSelector}>*{visibility:hidden!important}` : '';
+        return `${enableEffect}${skinRule}${iconChildren}`;
+      }));
       if (active) skinStyle.textContent = loaded.filter((rule): rule is string => rule !== null).join('\n');
     };
     void loadSkinImages();
