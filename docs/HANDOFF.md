@@ -1,6 +1,40 @@
-# HANDOFF — phiên coordinator (cập nhật 20/11/2026 chiều)
+# HANDOFF — phiên coordinator (cập nhật 22/11/2026 ~23:00)
 
-**PHIÊN KẾ (điều phối quiz TikTok, người dùng đổi tài khoản 20/11 ~17:15) — ĐÃ NHẬN 20/11 17:17.**
+**PHIÊN KẾ (điều phối quiz TikTok, sắp hết hạn mức tuần 22/11 ~23:00) — ĐỌC ĐẦU TIÊN.**
+
+## Mới nhất 22/11 ~23:00 — bộ theme (đọc khối này trước)
+**Yêu cầu người dùng (chốt 22/11):** gói bộ theme để mỗi đợt sự kiện chỉ cần thay. Phải biết thay những gì, kích cỡ bao nhiêu, và không ảnh hưởng phần khác. Gồm schema, token CSS, assets, cộng một bộ default xuất sẵn làm base.
+- **"Toàn bộ asset"** = mọi thứ người xem nhìn hoặc nghe thấy trên overlay, TRỪ dữ liệu trận (tên, điểm, câu hỏi, đáp án, số giây, số người) và bố cục (vị trí, kích thước).
+- **Nhóm:** N nền, K khung giao diện (skin), I biểu tượng, V nhân vật, L logo và cờ, H hiệu ứng, C màu, F font, T chữ cố định, A âm thanh.
+- **Người dùng nhắc 22/11:** họ giao bài toán và nhận kết quả. Không hỏi ngược chi tiết kỹ thuật; coordinator tự chốt cách làm (memory `user-gives-problem-wants-results`).
+
+**Trạng thái:**
+- ✅ C-0386 (Dashboard chọn theme, `texts`/danh hiệu theo theme, `theme:new`, theme mẫu `mau-kiem-tra`):
+  - ĐÃ GỘP main `73dd88f5`;
+  - checkout chính đã ff, liên kết `@quiz` OK, `web_build.py ensure` PASS;
+  - game CHƯA mở thử bản mới.
+- ⏳ Nhánh `codex2/c-theme-goc` (worktree `.claude/worktrees/c-theme-goc`), CHƯA GỘP, gồm:
+  - C-0396: `theme:export-default` từ asset thật, `CAN-CHUAN-BI.md`, `SO-DO.png`, `theme:pack`/`theme:import` zip;
+  - C-0397: 76 slot K43/I21/H12, `slots.json`, `theme:map`, kiểm phủ pixel.
+  - Commit cuối đã push: `5b00eb0b`.
+  - Coordinator soi C-0397 thấy CHƯA ĐẠT → giao **C-0401** (Codex 2 đang làm, nhận ~22:04), 6 điểm:
+    1. `SO-DO` phủ kín màu vàng, không đọc được → ảnh thật + viền màu riêng + nhãn;
+    2. `soi/<ID>.png` không thấy slot → làm tối phần còn lại, có đường đo, đủ mọi slot;
+    3. tên thư mục là class CSS và trùng ID (I01, I04, I05, H04, K27) → tên ngắn tiếng Việt, ID duy nhất;
+    4. N/V/L/A chưa xếp vào thư mục đánh số;
+    5. `default.png` cắt sai (K12/K13 thiếu vòng đồng hồ, K22/K33 ngai ô tối, K27 không alpha, K19/K24/K28/K29/K30/K34 dính nền);
+    6. vitest phải chạy đủ, Playwright asset thật 2 lần liên tiếp 0 failed.
+  - Đã duyệt cho Codex 2 trong C-0397:
+    - sửa `packages/contracts/src/theme.ts`, `theme-store.ts`, phần theme của `app.ts`, `tools/theme-*`, script `theme:*` (C-0399, chỉ thêm trường);
+    - H01–H03 bật khi theme có skin, default trong suốt (C-0400).
+  - Lần gộp thử trước có 2 test e2e lỗi (`overlay.spec.ts:945` C-0279, `:1164` HUD reload) → C-0398; C-0279 đã nới sai số subpixel.
+- **Khi C-0401 báo xong:**
+  1. soi ảnh ở `assets-local/review/c-theme-full/` của checkout chính: `SO-DO`, `soi`, ảnh ghép `default-contact.png`, cây thư mục `default-theme/assets`;
+  2. gộp thử ở `coord-merge-0293` (`git checkout --detach origin/main && git merge origin/codex2/c-theme-goc`): typecheck, privacy, vitest đủ, Playwright asset thật ×2 + placeholder;
+  3. gửi người dùng ảnh sơ đồ, ảnh soi mẫu và `CAN-CHUAN-BI.md`, xin duyệt (push main cần người dùng "Duyệt");
+  4. sau khi gộp: ff checkout chính (8787 phải tắt), kiểm liên kết `@quiz`, `web_build.py ensure`, chạy `pnpm theme:export-default` vào `data/themes/default` (thư mục này đang trống) rồi gửi người dùng.
+- **Sau đó:** người dùng sẽ đưa thông tin để làm theme sự kiện mới.
+- Codex 1 rảnh. Mailbox watcher: `bash scratchpad/watch.sh` (scratchpad của phiên cũ, có thể mất), dự phòng `py -X utf8 tools/mb.py unread --for coordinator`.
 
 ## Mới nhất 21/11 ~17:00
 - Main `6aead045`: gộp C-0378/C-0379/C-0381 (Codex 2, người dùng duyệt ảnh): khung MC REVEAL/LEADERBOARD giữ x 740→998 không đè ngai; Top 3 nhanh nhất mỗi câu (`questionTop3`) chữ nhỏ 20→15 px; ảnh MC hết hở với khung tên (chỉ nới CSS `.v3-mc-figure`). Checkout chính đã ff + `web_build.py ensure`.
