@@ -244,12 +244,7 @@ async function throneMetrics(page: import('@playwright/test').Page) {
   });
 }
 
-async function expectThroneArt(throne: import('@playwright/test').Locator, src: string, fallbackForPlaceholder = false) {
-  if (usesE2ePlaceholderAssets() && fallbackForPlaceholder) {
-    await expect(throne.locator('svg.v3-throne-emblem')).toBeVisible();
-    await expect(throne.getByTestId('throne-art')).toHaveCount(0);
-    return;
-  }
+async function expectThroneArt(throne: import('@playwright/test').Locator, src: string) {
   const image = throne.getByTestId('throne-art');
   await expect(image).toHaveAttribute('src', src);
   await expect(image).toHaveJSProperty('naturalWidth', 800);
@@ -317,7 +312,7 @@ test('C-0339 locked throne shows 18/30, unlock cue on one line, and keeps geomet
     range.selectNodeContents(element);
     return range.getClientRects().length;
   })).toBe(1);
-  await expectThroneArt(throne, '/assets/throne/ngai-trong.png', true);
+  await expectThroneArt(throne, '/assets/throne/ngai-trong.png');
   await expectThroneBLayout(page);
   await capture(page, 'throne-locked');
 });
@@ -331,7 +326,7 @@ test('C-0339 LOCKED question 3, HELD question 7 and EMPTY use the public throne 
   const lockedThrone = page.getByTestId('throne-panel');
   await expect(lockedStage.getByTestId('question-tab')).toContainText('CÂU HỎI 3');
   await expect(lockedThrone).toHaveAttribute('data-throne-state', 'LOCKED');
-  await expectThroneArt(lockedThrone, '/assets/throne/ngai-trong.png', true);
+  await expectThroneArt(lockedThrone, '/assets/throne/ngai-trong.png');
   await expectThroneBLayout(page);
   await capture(page, 'throne-locked-question');
 
@@ -372,7 +367,7 @@ test('C-0339 LOCKED question 3, HELD question 7 and EMPTY use the public throne 
   await expect(emptyThrone.getByTestId('throne-status')).toHaveText('đang chờ chủ');
   await expect(emptyThrone.getByTestId('throne-holder-name')).toHaveCount(0);
   await expect(emptyThrone.getByTestId('throne-holder-score')).toHaveCount(0);
-  await expectThroneArt(emptyThrone, '/assets/throne/ngai-trong.png', true);
+  await expectThroneArt(emptyThrone, '/assets/throne/ngai-trong.png');
   await expectThroneBLayout(page);
   await capture(page, 'throne-empty');
 });
