@@ -162,14 +162,53 @@ export type McBubbleTextMetrics = {
 function wrapSentenceGroups(line: string, metrics?: McBubbleTextMetrics): string {
   if (!metrics || metrics.maxWidth <= 0) return line;
 
+  // Canvas measurements can be a few pixels narrower than the rendered,
+  // balanced line with the same font. Leave a small safety margin so NBSP
+  // phrases don't turn a visually balanced wrap into horizontal overflow.
+  const safeWidth = metrics.maxWidth * 0.94;
   const sentences = line.split(/(?<=[.!?])\s+(?=\p{Lu})/u);
-  if (sentences.length < 2 || sentences.some((sentence) => metrics.measureText(sentence) > metrics.maxWidth)) return line;
-
   const wrapped: string[] = [];
   let current = '';
+  const wrapWords = (sentence: string) => {
+    const lines: string[] = [];
+    let currentLine = '';
+    // Protected phrases and number/unit pairs contain NBSP, so splitting on a
+    // normal space keeps those units together while preventing visual overflow.
+    const words = sentence.split(' ').flatMap((word) =>
+      word.includes('\u00a0') && metrics.measureText(word) > safeWidth ? word.split('\u00a0') : [word]);
+    for (const word of words) {
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      if (currentLine && metrics.measureText(candidate) > safeWidth) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = candidate;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    while (lines.length > 1 && lines.at(-1)!.split(' ').length === 1) {
+      const previousWords = lines.at(-2)!.split(' ');
+      if (previousWords.length < 2) break;
+      const movedWord = previousWords.pop()!;
+      const balancedPrevious = previousWords.join(' ');
+      const balancedLast = `${movedWord} ${lines.at(-1)!}`;
+      if (metrics.measureText(balancedPrevious) > safeWidth || metrics.measureText(balancedLast) > safeWidth) break;
+      lines[lines.length - 2] = balancedPrevious;
+      lines[lines.length - 1] = balancedLast;
+    }
+    return lines;
+  };
+
   for (const sentence of sentences) {
+    const sentenceLines = wrapWords(sentence);
+    if (sentenceLines.length > 1) {
+      if (current) wrapped.push(current);
+      wrapped.push(...sentenceLines);
+      current = '';
+      continue;
+    }
     const candidate = current ? `${current} ${sentence}` : sentence;
-    if (current && metrics.measureText(candidate) > metrics.maxWidth) {
+    if (current && metrics.measureText(candidate) > safeWidth) {
       wrapped.push(current);
       current = sentence;
     } else {

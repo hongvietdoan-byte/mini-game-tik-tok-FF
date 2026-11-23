@@ -664,7 +664,7 @@ test('C-0062: trình duyệt chạy đủ vòng TikTok bằng server thật và 
   const fps = await measureTenSecondFps(overlay);
   expect(fps.elapsedMs).toBeGreaterThanOrEqual(10_000);
   expect(fps.frameCount).toBeGreaterThan(0);
-  console.log(`C-0062 FPS QUESTION / 35 ghế: ${fps.averageFps.toFixed(1)} FPS trung bình; ${fps.frameCount} frame / ${fps.elapsedMs.toFixed(0)} ms; từng giây=${fps.secondBuckets.join(',')}.`);
+  console.log(`C-0062 FPS QUESTION / 30 ghế + ngai (35 phản hồi nhận được): ${fps.averageFps.toFixed(1)} FPS trung bình; ${fps.frameCount} frame / ${fps.elapsedMs.toFixed(0)} ms; từng giây=${fps.secondBuckets.join(',')}.`);
 
   running.scheduler.advance(runtime.config.timings.answerMs);
   await expect.poll(() => runtime.engine.state).toBe('REVEAL');

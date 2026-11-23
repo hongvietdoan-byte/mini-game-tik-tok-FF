@@ -8,7 +8,7 @@ const MOCK_CHIBI = ['chibi-002-a124', 'chibi-004-alvaro', 'chibi-005-andrew', 'c
   'chibi-009-d-bee', 'chibi-010-dasha', 'chibi-002-a124', 'chibi-012-ford', 'chibi-013-hayato', 'chibi-014-homer', 'chibi-015-ignis',
   'chibi-016-iris', 'chibi-017-joseph', 'chibi-018-jota', 'chibi-008-clu', 'chibi-020-kairos', 'chibi-021-kapella', 'chibi-022-kassie'];
 
-/** 35 ghế mock (tên hư cấu, gồm tên dài / emoji / chuỗi giống HTML) — toạ độ lấy từ cùng audience-engine như server. */
+/** 30 ghế mock (tên hư cấu, gồm tên dài / emoji / chuỗi giống HTML) — toạ độ lấy từ cùng audience-engine như server. */
 const MOCK_NAMES = [
   'FFVN.Kelly', 'StormKing', 'BVD.Champion', 'Choco.M', 'Hami',
   'Nyla_xinch', 'Lophgg', 'my.mitmeo', 'coheo246', 'Diemmy',
@@ -16,9 +16,8 @@ const MOCK_NAMES = [
   'Nhân cách', 'Tú Toàn', 'Huy Vũ', 'thảo cute', 'Bé cua 2k',
   'Phươngg', 'Xunx', 'Trần Khoa', 'sóng chó điên 99', '34a.',
   'LMHxr76', 'Muốn học giỏi', 'Lananh', 'nguyenhuyen', 'Mai Trí Đức',
-  'Hoài Thương', 'Choco Mutt', 'bó dài về phố', 'LNH 👨‍👩‍👧', 'Misu',
 ];
-function mockAudience(withResults: boolean, seated = 35, excludedName?: string, capacity = 35): AudienceView {
+function mockAudience(withResults: boolean, seated = 30, excludedName?: string, capacity = 30): AudienceView {
   const slots = createSlots(capacity / 5, 5);
   let state = createAudienceState(slots);
   for (let index = 0; index < seated; index += 1)
@@ -27,8 +26,8 @@ function mockAudience(withResults: boolean, seated = 35, excludedName?: string, 
   const names = new Map(Array.from({ length: seated }, (_, index) => [`audience-demo-${index}`, MOCK_NAMES[index]!]));
   return {
     rotationId: 3,
-    queued: state.queue.length + (seated === capacity && capacity === 30 ? 1213 : 0),
-    total: seated + state.queue.length + (seated === capacity && capacity === 30 ? 1213 : 0),
+    queued: state.queue.length,
+    total: seated + state.queue.length,
     seats: slots.map((slot) => {
       const occupant = state.seats[slot.slotId];
       const index = occupant ? playerIndex.get(occupant.playerId) ?? 0 : 0;
@@ -47,7 +46,7 @@ function mockAudience(withResults: boolean, seated = 35, excludedName?: string, 
   };
 }
 
-function mockLobbyAudience(seated: number, capacity = 35): AudienceView {
+function mockLobbyAudience(seated: number, capacity = 30, queued = 0): AudienceView {
   const slots = createSlots(capacity / 5, 5);
   let state = createAudienceState(slots);
   for (let index = 0; index < Math.min(seated, slots.length); index += 1)
@@ -56,8 +55,8 @@ function mockLobbyAudience(seated: number, capacity = 35): AudienceView {
   const names = new Map(Array.from({ length: seatedCount }, (_, index) => [`lobby-demo-${index}`, MOCK_NAMES[index]!]));
   return {
     rotationId: 0,
-    queued: Math.max(0, seated - slots.length),
-    total: seated,
+    queued: Math.max(queued, seated - slots.length),
+    total: seatedCount + Math.max(queued, seated - slots.length),
     seats: slots.map((slot, index) => {
       const occupant = state.seats[slot.slotId];
       const safeDisplayName = occupant ? names.get(occupant.playerId) ?? 'Khán giả' : '';
@@ -159,10 +158,10 @@ const sceneMap: Record<string, { scene: Scene; state: GameState }> = {
   'lobby-7': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-12': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-15': { scene: 'LOBBY', state: 'LOBBY' },
-  'lobby-35': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-30': { scene: 'LOBBY', state: 'LOBBY' },
   'lobby-queue': { scene: 'LOBBY', state: 'LOBBY' },
-  'lobby-35-countdown': { scene: 'LOBBY', state: 'LOBBY' },
-  'lobby-35-countdown-3': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-30-countdown': { scene: 'LOBBY', state: 'LOBBY' },
+  'lobby-30-countdown-3': { scene: 'LOBBY', state: 'LOBBY' },
   prepare: { scene: 'QUESTION', state: 'PREPARE' },
   reading: { scene: 'QUESTION', state: 'READING' },
   'reading-longest': { scene: 'QUESTION', state: 'READING' },
@@ -313,13 +312,13 @@ function firstGraphemes(text: string, count: number): string {
 export function makeMockSnapshot(name: string, mcStateOverride?: McState): SnapshotWithThrone | null {
   const mapped = sceneMap[name];
   if (!mapped) return null;
-  const lobbySeatCount = name === 'lobby-queue' ? 35 : /^lobby-(\d+)/u.exec(name)?.[1]
+  const lobbySeatCount = name === 'lobby-queue' ? 30 : /^lobby-(\d+)/u.exec(name)?.[1]
     ? Number(/^lobby-(\d+)/u.exec(name)![1])
     : name === 'throne-locked' ? 18 : 0;
-  const throneScene = name.startsWith('throne-') || name.startsWith('fastest-throne-') || name.startsWith('reveal-throne-') || name.startsWith('top3-throne-');
+  const lobbyQueuedCount = name === 'lobby-queue' ? 5 : 0;
   const audienceSeatCount = /^(?:question|reveal)-audience-(\d+)/u.exec(name)?.[1]
     ? Number(/^(?:question|reveal)-audience-(\d+)/u.exec(name)![1])
-    : throneScene ? 30 : 35;
+    : 30;
   const short = name === 'top10-short';
   const isFastestThroneMock = name.startsWith('fastest-throne-');
   const isFastestMock = name === 'fastest-a' || name === 'fastest-a-long' || name === 'fastest-b' || name === 'fastest-score-width' || isFastestThroneMock;
@@ -343,11 +342,15 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
     score: rankTie || name === 'throne-change' ? 1_500 : holderEntry.score,
     streak: holderEntry.top1Streak ?? (name === 'throne-change' ? 2 : 3),
   };
+  const questionIndex = name.endsWith('demo-006') ? 5 : name.startsWith('throne-locked') ? 2 : name === 'throne-held' || name === 'throne-change' ? 6 : name === 'throne-empty' ? 5 : 4;
+  const defaultLockedThrone = mapped.scene === 'LOBBY' || questionIndex < 4;
   const throne: PublicThrone = name === 'throne-empty' || name.includes('-empty-') || name === 'reveal-throne-empty'
     ? { state: 'EMPTY', unlockAfterQuestion: 5 }
     : name === 'throne-locked' || name === 'throne-locked-question'
       ? { state: 'LOCKED', unlockAfterQuestion: 5 }
-      : { state: 'HELD', unlockAfterQuestion: 5, holder };
+      : defaultLockedThrone
+        ? { state: 'LOCKED', unlockAfterQuestion: 5 }
+        : { state: 'HELD', unlockAfterQuestion: 5, holder };
   const question = ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused', 'throne-locked-question', 'throne-held', 'throne-change', 'throne-empty', 'throne-tie-top10', 'reveal-throne-empty', 'reveal-throne-held'].includes(name) || isFastestThroneMock || isQuestionTop3Mock;
   const longestPrompt = 'Trong Free Fire, tên tiếng Anh của thể thức sinh tồn nơi nhiều người chơi chiến đấu trên đảo, tìm trang bị, theo dõi vòng bo đang thu hẹp và phối hợp với đồng đội để sống sót đến cuối trận là gì: Battle Royale?';
   const demo006Prompt = 'Trong Clash Squad, người chơi dùng khu vực mua sắm trong trận để chọn vũ khí và trang bị cho vòng đấu. Khu vực đó thường được gọi là gì?';
@@ -425,13 +428,13 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
                     : 16_000,
       running: name !== 'paused',
     },
-    lobbyCountdown: name === 'lobby-35-countdown'
+    lobbyCountdown: name === 'lobby-30-countdown'
       ? { durationMs: 10_000, remainingMs: 10_000 }
-      : name === 'lobby-35-countdown-3' ? { durationMs: 10_000, remainingMs: 3_000 } : null,
-    round: { roundNumber: 1, questionIndex: name.endsWith('demo-006') ? 5 : name.startsWith('throne-locked') ? 2 : name === 'throne-held' || name === 'throne-change' ? 6 : name === 'throne-empty' ? 5 : 4, questionCount: 15 },
+      : name === 'lobby-30-countdown-3' ? { durationMs: 10_000, remainingMs: 3_000 } : null,
+    round: { roundNumber: 1, questionIndex, questionCount: 15 },
     question: question ? {
       questionInstanceId: name.endsWith('demo-006') ? 'demo-question-6' : 'demo-question-5',
-      index: name.endsWith('demo-006') ? 5 : name.startsWith('throne-locked') ? 2 : name === 'throne-held' || name === 'throne-change' ? 6 : name === 'throne-empty' ? 5 : 4,
+      index: questionIndex,
       prompt: name === 'question-live-long' || name === 'reveal-live-long'
         ? 'Trong Free Fire, từ nào thường xuất hiện trên kết quả khi người chơi hoặc đội giành chiến thắng Battle Royale?'
         : name === 'question-clamp-text' || name === 'reveal-clamp-text'
@@ -498,12 +501,12 @@ export function makeMockSnapshot(name: string, mcStateOverride?: McState): Snaps
           : 'Trả lời bằng cách\ncomment A, B, C hoặc D\nđể tham gia ngay!',
     },
     audience: mapped.scene === 'LOBBY'
-      ? mockLobbyAudience(lobbySeatCount, throneScene || name === 'lobby-queue' ? 30 : 35)
+      ? mockLobbyAudience(lobbySeatCount, 30, lobbyQueuedCount)
       : ['prepare', 'reading', 'reading-longest', 'reading-demo-006', 'reading-grid-balance', 'question', 'question-long-name', 'question-longest', 'question-demo-006', 'question-long-answer', 'question-grid-balance', 'question-clamp-text', 'question-live-long', 'question-audience-7', 'question-audience-15', 'reveal', 'reveal-grid-balance', 'reveal-zero-score', 'reveal-clamp-text', 'reveal-live-long', 'fastest-a', 'fastest-a-long', 'fastest-b', 'fastest-score-width', 'paused', 'throne-locked-question', 'throne-held', 'throne-change', 'throne-empty', 'throne-tie-top10', 'reveal-throne-empty', 'reveal-throne-held'].includes(name) || isFastestThroneMock || isQuestionTop3Mock
-        ? mockAudience(isReveal, audienceSeatCount, name === 'throne-held' || name === 'throne-change' || name === 'throne-tie-top10' || name === 'reveal-throne-held' || name.includes('-held-') ? holder.safeDisplayName : undefined, throneScene ? 30 : 35) : null,
-    ...(throneScene ? { throne: throne as PublicThrone } : {}),
+        ? mockAudience(isReveal, audienceSeatCount, name === 'throne-held' || name === 'throne-change' || name === 'throne-tie-top10' || name === 'reveal-throne-held' || name.includes('-held-') ? holder.safeDisplayName : undefined, 30) : null,
+    throne,
     safeZone: INITIAL_TEST_SAFE_ZONE,
   } as SnapshotWithThrone;
 }
 
-export const MOCK_SCENES = Object.keys(sceneMap).filter((name) => name !== 'lobby-35' && name !== 'lobby-35-countdown-3');
+export const MOCK_SCENES = Object.keys(sceneMap).filter((name) => name !== 'lobby-30' && name !== 'lobby-30-countdown-3');

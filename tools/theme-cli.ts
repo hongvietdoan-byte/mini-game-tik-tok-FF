@@ -500,6 +500,8 @@ function createPreparationGuide(manifest: Record<string, unknown>, assets: Recor
     '',
     '## 1A. Khung, biểu tượng, hiệu ứng (nguồn duy nhất: `slots.json`)',
     '',
+    'Nhóm H là hiệu ứng động: xem ảnh asset riêng; kiểm thật bằng chạy thử overlay.',
+    '',
     '| ID | Nhóm | Lớp | Thư mục | Kích thước/tỉ lệ | 9-slice (trên/phải/dưới/trái) | Trong suốt | Tối đa | File và trạng thái | Màn | Ghi chú |',
     '|---|---|---:|---|---|---|---|---:|---|---|---|',
     ...(skinRows.length ? skinRows : ['| Chưa đo | — | — | — | Chạy `pnpm theme:map <id>` | — | — | — | — | — | Registry chưa có dữ liệu. |']),
@@ -698,10 +700,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const directory = join(parsed.themes, parsed.id);
       const result = validateThemeDirectory(directory);
       if (!result.success) throw new Error(`Theme không hợp lệ: ${result.error}`);
-      await createThemeReviewArtifacts(result.manifest.manifest, {
+      const review = await createThemeReviewArtifacts(result.manifest.manifest, {
         themeDirectory: directory,
         fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'fixtures/assets-placeholder'),
       });
+      if (review.missingSlots.length)
+        throw new Error(`theme:map không đủ bbox hiển thị cho slot ${review.missingSlots.join(', ')}.`);
       writeFileSync(join(directory, 'SO-DO.png'), await createThemeMapPng(result.manifest.manifest, {
         themeDirectory: directory,
         fallbackAssets: resolve(process.env.QUIZ_ASSETS_DIR ?? 'fixtures/assets-placeholder'),

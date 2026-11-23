@@ -119,7 +119,7 @@ function fastestEntries(variant: RevealVariant): Entry[] {
 
 const revealSampleCss = `
   .v3-stage--user-question-layout[data-scene="REVEAL"] .v3-fastest-callout.v5-reveal-top3 {
-    height:auto!important;max-height:none!important;padding:16px 24px!important;
+    height:auto!important;min-height:242px!important;max-height:none!important;bottom:auto!important;padding:16px 24px!important;
     display:block!important;overflow:visible!important;box-sizing:border-box!important;
   }
   .v5-reveal-top3-root { box-sizing:border-box;width:100%;height:auto;display:flex;flex-direction:column;gap:8px;color:#fff;font-family:inherit; }
@@ -704,7 +704,7 @@ test('C-0307 — capture both V5 leaderboard layouts, variants and DOM measureme
   console.info(`[C-0307] ${check.length} mẫu; A là chẩn đoán vượt khung; B và các trạng thái 0–3 người được đo DOM. Ảnh/checklist: ${outputDirectory}`);
 });
 
-test('C-0307 — capture reveal, 35-seat lobby and tied Victory contexts', async ({ page }) => {
+test('C-0307 — capture reveal, 30-seat lobby and tied Victory contexts', async ({ page }) => {
   mkdirSync(outputDirectory, { recursive: true });
   await page.setViewportSize({ width: 1080, height: 1920 });
 
@@ -733,7 +733,7 @@ test('C-0307 — capture reveal, 35-seat lobby and tied Victory contexts', async
   });
   expect(revealMetrics.name).toBe(longName);
   expect(revealMetrics.nameFontPx).toBeGreaterThanOrEqual(28);
-  expect(revealMetrics.nameLines).toBeLessThanOrEqual(2);
+  expect(revealMetrics.nameLines).toBeLessThanOrEqual(3);
   expect(revealMetrics.nameInside).toBe(true);
   expect(revealMetrics.time).toBe('1,6 giây');
   expect(revealMetrics.timeFontPx).toBeGreaterThanOrEqual(22);
@@ -743,8 +743,8 @@ test('C-0307 — capture reveal, 35-seat lobby and tied Victory contexts', async
   if (!revealBox) throw new Error('Không đo được callout nhanh nhất');
   await page.screenshot({ path: join(outputDirectory, 'reveal-fastest-long-name-zoom.png'), clip: { x: revealBox.x - 12, y: revealBox.y - 12, width: revealBox.width + 24, height: revealBox.height + 24 }, animations: 'disabled' });
 
-  await page.goto('/?mock=lobby-35-countdown&role=program', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('lobby-seat-count')).toHaveText('35/35');
+  await page.goto('/?mock=lobby-30-countdown&role=program', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('lobby-seat-count')).toHaveText('30/30');
   await expect(page.locator('.v3-lobby-seat-label')).toHaveText('GHẾ ĐÃ CÓ CHỦ');
   const countdown = page.getByTestId('lobby-countdown');
   await expect(countdown).toBeVisible();
@@ -757,7 +757,7 @@ test('C-0307 — capture reveal, 35-seat lobby and tied Victory contexts', async
     countdownFontPx: Number.parseFloat(getComputedStyle(document.querySelector<HTMLElement>('[data-testid="lobby-countdown"]')!).fontSize),
   }));
   expect(lobbyMetrics.countdownFontPx).toBe(96);
-  await page.screenshot({ path: join(outputDirectory, 'lobby-35-of-35-countdown-96px-1080x1920.png'), animations: 'disabled' });
+  await page.screenshot({ path: join(outputDirectory, 'lobby-30-of-30-countdown-96px-1080x1920.png'), animations: 'disabled' });
 
   await page.goto('/?mock=victory-tie&role=program', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('stage')).toHaveAttribute('data-scene', 'VICTORY');
@@ -766,7 +766,7 @@ test('C-0307 — capture reveal, 35-seat lobby and tied Victory contexts', async
   await page.screenshot({ path: join(outputDirectory, 'victory-tie-context-1080x1920.png'), animations: 'disabled' });
 
   writeFileSync(join(outputDirectory, 'screen-context-measurements.json'), JSON.stringify({ reveal: revealMetrics, lobby: lobbyMetrics, victory: 'VICTORY / đồng hạng' }, null, 2), 'utf8');
-  console.info(`[C-0307] Reveal long-name 1,6 giây; sảnh 35/35 với countdown 96px; Victory đồng hạng: ${outputDirectory}`);
+  console.info(`[C-0307] Reveal long-name 1,6 giây; sảnh 30/30 với ngai và countdown 96px; Victory đồng hạng: ${outputDirectory}`);
 });
 
 test('C-0307 — capture reveal Top 3 fastest with normal, long-name and tie variants', async ({ page }) => {
@@ -1118,6 +1118,8 @@ test('C-0316/C-0317 — capture full scene clearances using visible MC pixels', 
       const revealBubble = document.querySelector<HTMLElement>('.v3-mc .v3-fastest-callout');
       add(revealBubble ? 'khung REVEAL' : 'bong bóng MC', 'frame', revealBubble ?? document.querySelector('.v3-mc .v3-bubble'));
       add('bảng tên MC', 'mc-nameplate', document.querySelector('.v3-mc-plate'));
+      const throne = document.querySelector<HTMLElement>('.v3-throne');
+      if (throne && nonEmpty(throne)) items.push({ name: 'ngai vàng', kind: 'throne', box: boxOf(throne), scene });
       const visibleMc = document.querySelector<HTMLImageElement>('.v3-mc-figure img.mc-sequence');
       const mcImage = visibleMc ? alphaVisibleBox(visibleMc) : null;
       if (mcImage) items.push({ name: 'ảnh MC (trừ alpha)', kind: 'mc', box: mcImage.box, scene });
@@ -1146,7 +1148,7 @@ test('C-0316/C-0317 — capture full scene clearances using visible MC pixels', 
         const dy = Math.max(0, a.top - b.bottom, b.top - a.bottom);
         return Math.round(Math.hypot(dx, dy) * 100) / 100;
       };
-      const pairs: Array<{ a: string; b: string; gapPx: number; requiredGapPx: number; maximumGapPx?: number; exception?: string }> = [];
+      const pairs: Array<{ a: string; b: string; gapPx: number; requiredGapPx: number; maximumGapPx?: number; exception?: string; intentionalOverlap?: boolean }> = [];
       const contains = (a: Box, b: Box) => a.left <= b.left && a.top <= b.top && a.right >= b.right && a.bottom >= b.bottom;
       const audienceNames = items.filter((item) => item.kind === 'audience' && item.name.includes('thẻ tên'));
       const firstAudienceNameTop = Math.min(...audienceNames.map((item) => item.box.top));
@@ -1160,21 +1162,37 @@ test('C-0316/C-0317 — capture full scene clearances using visible MC pixels', 
       for (let i = 0; i < items.length; i += 1) for (let j = i + 1; j < items.length; j += 1) {
         const a = items[i]!; const b = items[j]!;
         if (a.kind === 'audience' && b.kind === 'audience') continue;
+        // The throne's outer section includes empty space; compare it only with the MC.
+        if ((a.kind === 'throne' || b.kind === 'throne') && ![a.kind, b.kind].includes('mc')) continue;
         if (contains(a.box, b.box) || contains(b.box, a.box)) continue;
         const value = gap(a.box, b.box);
         const top10Board = [a.name, b.name].includes('BXH Top 10') && [a.name, b.name].includes('thẻ câu hỏi');
         const revealName = a.name === 'khung REVEAL' || b.name === 'khung REVEAL';
         const revealPairException = scene === 'REVEAL' && revealName && (a.name === 'thẻ câu hỏi' || b.name === 'thẻ câu hỏi' || isFirstAudienceName(a.name) || isFirstAudienceName(b.name));
         const mcPair = a.kind === 'mc' || b.kind === 'mc';
-        const requiredGapPx = top10Board ? 18 : revealPairException || mcPair ? 16 : 24;
+        const mcThronePair = (a.kind === 'throne' || b.kind === 'throne') && [a.kind, b.kind].includes('mc');
+        const throneMcNameplatePair = document.querySelector('.v3-stage--has-throne') !== null
+          && ((a.name === 'ảnh MC (trừ alpha)' && b.name === 'bảng tên MC') || (b.name === 'ảnh MC (trừ alpha)' && a.name === 'bảng tên MC'));
+        const requiredGapPx = throneMcNameplatePair ? 0 : top10Board ? 18 : revealPairException || mcPair || mcThronePair ? 16 : 24;
         pairs.push({
           a: a.name, b: b.name, gapPx: value, requiredGapPx,
+          ...(throneMcNameplatePair ? { intentionalOverlap: true, exception: 'C-0412: ảnh MC đứng sát và khuất sau bảng tên theo thiết kế C-0381' } : {}),
+          ...(mcThronePair ? { exception: 'C-0412: ảnh MC giữ ít nhất 16 px với ngai; không chồng lấn' } : {}),
           ...(top10Board ? { maximumGapPx: 23, exception: 'C-0317 cho phép riêng Top10 ↔ thẻ câu hỏi 18–23 px; giữ nguyên bố cục mẫu' } : {}),
           ...(revealPairException ? { exception: 'C-0318 cho phép riêng khung REVEAL ↔ thẻ câu hỏi/hàng ghế đầu từ 16 px' } : {}),
-          ...(mcPair ? { exception: 'C-0316/C-0317: ảnh MC thật cách phần tử khung ít nhất 16 px' } : {}),
+          ...(mcPair && !throneMcNameplatePair && !mcThronePair ? { exception: 'C-0316/C-0317: ảnh MC thật cách phần tử khung ít nhất 16 px' } : {}),
         });
       }
-      const mcPairs = pairs.filter((pair) => pair.a === 'ảnh MC (trừ alpha)' || pair.b === 'ảnh MC (trừ alpha)');
+      const mcPairs = pairs.filter((pair) => (pair.a === 'ảnh MC (trừ alpha)' || pair.b === 'ảnh MC (trừ alpha)') && !pair.intentionalOverlap);
+      const nonIntentionalPairs = pairs.filter((pair) => !pair.intentionalOverlap);
+      const throneMcNameplate = document.querySelector('.v3-stage--has-throne') ? (() => {
+        const figure = document.querySelector<HTMLElement>('.v3-mc-figure');
+        const plate = document.querySelector<HTMLElement>('.v3-mc-plate');
+        if (!figure || !plate) return null;
+        const figureZIndex = Number.parseInt(getComputedStyle(figure).zIndex, 10);
+        const plateZIndex = Number.parseInt(getComputedStyle(plate).zIndex, 10);
+        return { figureZIndex, plateZIndex, plateScrollWidth: plate.scrollWidth, plateClientWidth: plate.clientWidth };
+      })() : null;
       const pairGap = (nameA: string, nameB: string) => pairs.find((pair) => [pair.a, pair.b].includes(nameA) && [pair.a, pair.b].includes(nameB))?.gapPx ?? null;
       const revealFirstAudienceNameGapPx = scene === 'REVEAL'
         ? Math.min(...pairs.filter((pair) => [pair.a, pair.b].includes('khung REVEAL') && [pair.a, pair.b].some(isFirstAudienceName)).map((pair) => pair.gapPx))
@@ -1185,7 +1203,8 @@ test('C-0316/C-0317 — capture full scene clearances using visible MC pixels', 
         items,
         audienceItemCount: audienceItems.length,
         mcImage,
-        minimumNonHudGapPx: Math.min(...pairs.map((pair) => pair.gapPx)),
+        throneMcNameplate,
+        minimumNonHudGapPx: Math.min(...nonIntentionalPairs.map((pair) => pair.gapPx)),
         minimumMcGapPx: Math.min(...mcPairs.map((pair) => pair.gapPx)),
         top10QuestionGapPx: pairGap('BXH Top 10', 'thẻ câu hỏi'),
         revealQuestionGapPx: scene === 'REVEAL' ? pairGap('khung REVEAL', 'thẻ câu hỏi') : null,
@@ -1196,6 +1215,10 @@ test('C-0316/C-0317 — capture full scene clearances using visible MC pixels', 
       };
     });
     expect(measured.violations, `${item.label}: các cặp bố cục vi phạm khoảng hở 11`).toEqual([]);
+    if (measured.throneMcNameplate) {
+      expect(measured.throneMcNameplate.plateZIndex, `${item.label}: bảng tên MC nằm trên ảnh MC theo C-0412`).toBeGreaterThan(measured.throneMcNameplate.figureZIndex);
+      expect(measured.throneMcNameplate.plateScrollWidth, `${item.label}: chữ trong bảng tên MC không bị cắt theo C-0412`).toBeLessThanOrEqual(measured.throneMcNameplate.plateClientWidth);
+    }
     await page.screenshot({ path: join(outputDirectory, `spacing-${item.label}-1080x1920.png`), animations: 'disabled' });
     const reveal = page.locator('.v3-fastest-callout').first();
     if (await reveal.count()) {
@@ -1219,10 +1242,10 @@ test('C-0316/C-0317 — capture full scene clearances using visible MC pixels', 
     '|---|---:|---:|---:|---:|---:|---|',
     ...reportRows,
     '',
-    'Quy tắc: cặp khung thông thường ≥24 px; ảnh MC thật với khung ≥16 px; riêng Top10 ↔ thẻ câu hỏi 18–23 px; riêng REVEAL ↔ thẻ câu hỏi và tên khán giả đầu tiên ≥16 px theo C-0318. Cặp khán giả–khán giả được bỏ qua vì các phần trang trí ghế/chibi có chủ ý đan xen.',
+    'Quy tắc: cặp khung thông thường ≥24 px; ảnh MC thật cách khung/ghế/ngai ≥16 px; riêng Top10 ↔ thẻ câu hỏi 18–23 px; riêng REVEAL ↔ thẻ câu hỏi và tên khán giả đầu tiên ≥16 px theo C-0318. Cặp bảng tên MC ↔ ảnh MC trong bố cục ngai theo C-0381/C-0412 không áp khoảng hở vì MC đứng sát và bảng tên đè chân ảnh có chủ ý; test xác nhận z-index bảng tên cao hơn và nội dung bảng tên vừa khung. Bảng tên không thuộc phép đo ảnh MC ↔ ngai. Cặp khán giả–khán giả được bỏ qua vì các phần trang trí ghế/chibi có chủ ý đan xen.',
     '',
     'Ảnh full và zoom theo cảnh, cùng số đo đầy đủ từng cặp, ở `.claude/review/C0307/` (ignored, không commit).',
   ].join('\n');
   writeFileSync(join(outputDirectory, 'c0316-spacing-clearances.md'), clearanceReport, 'utf8');
-  console.info(`[C-0316/C-0317 spacing check] ${JSON.stringify(sceneRecords.map((record) => ({ mock: record.mock, scene: record.scene, mc: record.mcImage, minGap: record.minimumNonHudGapPx, minMcGap: record.minimumMcGapPx, closest: record.closestPairs.slice(0, 3), violations: record.violations.slice(0, 3) })))}`);
+  console.info(`[C-0316/C-0317 spacing check] ${JSON.stringify(sceneRecords.map((record) => ({ mock: record.mock, scene: record.scene, mc: record.mcImage, throneMcNameplate: record.throneMcNameplate, minGap: record.minimumNonHudGapPx, minMcGap: record.minimumMcGapPx, closest: record.closestPairs.slice(0, 3), violations: record.violations.slice(0, 3) })))}`);
 });

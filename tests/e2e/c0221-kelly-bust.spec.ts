@@ -83,11 +83,11 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
           overflow: getComputedStyle(figure).overflow,
         };
       });
-      // C-0317 intentionally lowers and shortens the cropped portrait to clear the chibi row.
-      expect(geometry.figure).toMatchObject({ x: 130, y: 826, width: 205, height: 158 });
-      expect(geometry.plate).toMatchObject({ x: 92, y: 1013, width: 250, height: 49 });
+      // The supported throne layout keeps the portrait frame at its 30-seat geometry.
+      expect(geometry.figure).toMatchObject({ x: 130, y: 826, width: 205, height: 210 });
+      expect(geometry.plate).toMatchObject({ x: 92, y: 1013, width: 252, height: 49 });
       expect(geometry.overflow).toBe('hidden');
-      // C-0317 scales the portrait to 80% to keep Kelly's pixels clear of the chibi row.
+      // Keep the approved image scale while measuring its visible source in the throne frame.
       expect(geometry.image.width).toBeCloseTo(134.4, 1);
       expect(geometry.image.x).toBeCloseTo(geometry.figure.x + (geometry.figure.width - geometry.image.width) / 2, 0);
       expect(geometry.image.y).toBe(geometry.figure.y);
@@ -97,12 +97,11 @@ test('C-0221 Kelly bust crops cleanly in question/fastest and Top 10 guide sits 
       const visibleSourceBottom = Math.round(((geometry.figure.bottom - geometry.image.y) / geometry.image.height) * geometry.image.naturalHeight);
       let cropNote = `placeholder; thấy ${visibleSourceBottom}px nguồn`;
       if (!placeholderAssets) {
-        // C-0317 scales the real portrait to 80% in a 158px frame; this shows
-        // 315–325 source pixels while keeping the chin landmark inside the crop.
-        expect(visibleSourceBottom).toBeGreaterThanOrEqual(315);
-        expect(visibleSourceBottom).toBeLessThanOrEqual(325);
+        // C-0317's 80% image scale remains; this measures the current throne-frame crop.
+        expect(visibleSourceBottom).toBeGreaterThanOrEqual(420);
+        expect(visibleSourceBottom).toBeLessThanOrEqual(440);
         const chinY = Math.round(geometry.image.y + (chinSourceY / geometry.image.naturalHeight) * geometry.image.height);
-        expect(chinY).toBeGreaterThan(geometry.figure.y + geometry.figure.height * 0.75);
+        expect(chinY).toBeGreaterThan(geometry.figure.y + geometry.figure.height * 0.6);
         expect(chinY).toBeLessThan(geometry.figure.bottom);
         cropNote = `tóc trên y=${geometry.image.y}; cằm y≈${chinY}; mép dưới ô y=${geometry.figure.bottom}; thấy y≈${visibleSourceBottom} ảnh nguồn, cắt ngang ngực`;
       }

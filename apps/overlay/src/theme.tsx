@@ -176,18 +176,28 @@ export function ThemeProvider({ themeVersion, mock = false, children }: { themeV
     const loadSkinImages = async () => {
       const loaded = await Promise.all(skinTargets.map(async ({ target, selector, images, nineSlice }) => {
         let image: string | null = null;
+        let enableDefaultHiddenEffect = false;
         for (const candidate of images) {
-          const exists = await new Promise<boolean>((resolveImage) => {
+          const result = await new Promise<{ loaded: boolean; visible: boolean }>((resolveImage) => {
             const probe = new Image();
-            probe.onload = () => resolveImage(!target.defaultHidden || imageHasVisiblePixels(probe));
-            probe.onerror = () => resolveImage(false);
+            probe.onload = () => resolveImage({ loaded: true, visible: !target.defaultHidden || imageHasVisiblePixels(probe) });
+            probe.onerror = () => resolveImage({ loaded: false, visible: false });
             probe.src = candidate;
           });
-          if (exists) { image = candidate; break; }
+          if (result.loaded) {
+            image = candidate;
+            enableDefaultHiddenEffect = result.visible;
+            break;
+          }
         }
         if (!image) return null;
-        const scopedSelector = selector.split(',').map((part) => `#stage ${part.trim()}`).join(',');
-        const enableEffect = target.defaultHidden ? `${scopedSelector}{display:block!important;visibility:visible!important;opacity:1!important}` : '';
+        // Most theme targets live inside #stage, but animated effects render
+        // as siblings of it under .viewport. Scope to the overlay root so both
+        // groups receive their selected skin without leaking into the page.
+        const scopedSelector = selector.split(',').map((part) => `.viewport ${part.trim()}`).join(',');
+        const enableEffect = target.defaultHidden && enableDefaultHiddenEffect
+          ? `${scopedSelector}{display:block!important;visibility:visible!important;opacity:1!important}`
+          : '';
         const skinRule = `${scopedSelector}{${nineSlice
           ? `background-image:none!important;border-image-source:url("${image}")!important;border-image-slice:${nineSlice.tren} ${nineSlice.phai} ${nineSlice.duoi} ${nineSlice.trai} fill!important;border-image-width:${nineSlice.tren}px ${nineSlice.phai}px ${nineSlice.duoi}px ${nineSlice.trai}px!important;border-image-repeat:stretch!important;border-image-outset:0!important`
           : `background-image:url("${image}")!important;background-size:100% 100%!important;background-position:center!important;background-repeat:no-repeat!important;background-origin:border-box!important`};background-color:transparent!important;border-color:transparent!important}`;

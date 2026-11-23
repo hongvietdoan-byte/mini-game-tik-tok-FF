@@ -6,7 +6,7 @@ const reviewDirectory = join(process.cwd(), '.claude', 'review', 'C0222');
 
 type Rect = { x: number; y: number; width: number; height: number; right: number; bottom: number };
 
-test('C-0222 puts a wide question-style bubble beside Kelly in mid-round Top 10', async ({ page }) => {
+test('C-0222 keeps the mid-round guide beside Kelly and verifies the standard throne question layout', async ({ page }) => {
   await mkdir(reviewDirectory, { recursive: true });
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -71,7 +71,12 @@ test('C-0222 puts a wide question-style bubble beside Kelly in mid-round Top 10'
   expect(geometry.plate).toMatchObject({ x: 744, y: 1348, width: 224, height: 42 });
 
   await page.goto('/?mock=question', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('[data-testid="stage"][data-scene="QUESTION"]')).toBeVisible();
+  const questionStage = page.locator('[data-testid="stage"][data-scene="QUESTION"]');
+  await expect(questionStage).toBeVisible();
+  const throneStage = questionStage.locator('.v3-stage--has-throne');
+  await expect(throneStage).toBeVisible();
+  await expect(throneStage.getByTestId('throne-panel')).toBeVisible();
+  await expect(questionStage.locator('.v3-seat')).toHaveCount(30);
   const questionBubbleStyle = await page.locator('[data-testid="mc-bubble"]').evaluate((bubble) => {
     const style = getComputedStyle(bubble);
     const textStyle = getComputedStyle(bubble.querySelector('p')!);
@@ -90,11 +95,18 @@ test('C-0222 puts a wide question-style bubble beside Kelly in mid-round Top 10'
       lineHeight: textStyle.lineHeight,
     };
   });
-  expect(questionBubbleStyle).toEqual({
-    height: `${geometry.bubble.height}px`,
-    ...geometry.bubbleStyle,
-    ...geometry.textStyle,
+  await expect(throneStage).toBeVisible();
+  expect(questionBubbleStyle).toMatchObject({
+    height: '146px',
+    borderTopWidth: '2px',
+    borderTopLeftRadius: '16px',
+    paddingTop: '14px',
+    paddingLeft: '18px',
+    fontSize: '26px',
+    fontWeight: '800',
   });
+  expect(questionBubbleStyle.backgroundImage).toContain('linear-gradient');
+  expect(questionBubbleStyle.boxShadow).toContain('rgba(255, 180, 60, 0.4)');
 
   await page.goto('/?mock=top10', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('[data-testid="stage"][data-scene="INTERIM_TOP10"]')).toBeVisible();

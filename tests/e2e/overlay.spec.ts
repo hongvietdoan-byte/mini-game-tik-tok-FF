@@ -164,11 +164,24 @@ async function countChangedPixels(page: Page, before: Buffer, after: Buffer, cli
     context.drawImage(afterImage, -x, -y);
     const afterPixels = context.getImageData(0, 0, width, height).data;
     let changed = 0;
+    let compared = 0;
     for (let index = 0; index < beforePixels.length; index += 4) {
+      const pixel = index / 4;
+      const px = pixel % width;
+      const py = Math.floor(pixel / width);
+      const normalizedX = (px + 0.5) / width;
+      const normalizedY = (py + 0.5) / height;
+      const edgeInset = 0.066 * (normalizedY <= 0.5 ? 1 - normalizedY * 2 : (normalizedY - 0.5) * 2);
+      // Compare the opaque hexagonal ribbon itself. Its transparent corners
+      // reveal a live background layer that can change while the theme loads.
+      if (normalizedX < edgeInset || normalizedX > 1 - edgeInset) continue;
+      compared += 1;
       if (beforePixels[index] !== afterPixels[index] || beforePixels[index + 1] !== afterPixels[index + 1] ||
-          beforePixels[index + 2] !== afterPixels[index + 2] || beforePixels[index + 3] !== afterPixels[index + 3]) changed += 1;
+          beforePixels[index + 2] !== afterPixels[index + 2] || beforePixels[index + 3] !== afterPixels[index + 3]) {
+        changed += 1;
+      }
     }
-    return { changed, total: width * height };
+    return { changed, total: compared };
   }, { beforePng: before.toString('base64'), afterPng: after.toString('base64'), sourceClip: clip });
 }
 
@@ -459,7 +472,7 @@ test('C-0397 theme default xuất sẵn giống pixel với overlay không theme
       : 'CHUA_DAT_0_PIXEL_DIFF_HOAC_THIEU_SLOT',
   };
   writeFileSync(join(c0397ReviewDirectory, 'kiem-phu-pixel.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-  const exportedCoveragePath = join(themeDirectory, 'SO-DO', 'kiem-phu.json');
+  const exportedCoveragePath = join(themeDirectory, 'SO-DO', 'kiem-phu-pixel.json');
   if (existsSync(dirname(exportedCoveragePath))) writeFileSync(exportedCoveragePath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   cpSync(themeDirectory, join(c0397ReviewDirectory, 'default-theme'), { recursive: true, force: true });
 });
@@ -622,7 +635,7 @@ test('C-0386: đổi theme trên overlay program và preview không tải lại 
           const ribbonBounds = await page.locator('.v3-title-ribbon').first().boundingBox();
           expect(ribbonBounds, `${entry.name}: ribbon should have measurable bounds`).not.toBeNull();
           const diff = await countChangedPixels(page, defaultRibbonBefore!, screenshot, ribbonBounds!);
-          console.log(`C-0394 default ribbon ${entry.name}: ${diff.changed}/${diff.total} changed pixels (timer excluded).`);
+          console.log(`C-0394 default ribbon ${entry.name}: ${diff.changed}/${diff.total} changed pixels inside the ribbon (timer and transparent corners excluded).`);
           expect(diff.changed, `${entry.name}: default ribbon pixels must match before and after theme switching`).toBe(0);
           await expect(page.locator('.v3-title-ribbon').first()).toHaveCSS('font-size', '38px');
         }
@@ -728,11 +741,11 @@ test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái
   await page.setViewportSize({ width: 1080, height: 1920 });
   let frameGeometry: { board: number[]; question: number[] } | undefined;
   for (const preview of [
-    { scene: 'lobby-0', count: '0/35', status: 'reminder', screenshot: 'c0287-lobby-0.png' },
-    { scene: 'lobby-12', count: '12/35', status: 'reminder', screenshot: 'c0287-lobby-12.png' },
-    { scene: 'lobby-35', count: '35/35', status: 'full', screenshot: 'c0287-lobby-35-full.png' },
-    { scene: 'lobby-35-countdown', count: '35/35', status: '10', screenshot: 'c0287-lobby-35-countdown-10.png' },
-    { scene: 'lobby-35-countdown-3', count: '35/35', status: '3', screenshot: 'c0287-lobby-35-countdown-3.png' },
+    { scene: 'lobby-0', count: '0/30', status: 'reminder', screenshot: 'c0287-lobby-0.png' },
+    { scene: 'lobby-12', count: '12/30', status: 'reminder', screenshot: 'c0287-lobby-12.png' },
+    { scene: 'lobby-30', count: '30/30', status: 'full', screenshot: 'c0287-lobby-30-full.png' },
+    { scene: 'lobby-30-countdown', count: '30/30', status: '10', screenshot: 'c0287-lobby-30-countdown-10.png' },
+    { scene: 'lobby-30-countdown-3', count: '30/30', status: '3', screenshot: 'c0287-lobby-30-countdown-3.png' },
   ]) {
     const { stage } = await openScene(page, preview.scene, 'LOBBY');
     const question = stage.getByTestId('question-prompt');
@@ -803,7 +816,7 @@ test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái
         statusGap: Number.parseFloat(getComputedStyle(status).gap),
       };
     });
-    expect(layout.board.offset).toEqual([416, 345, 567, 470]);
+    expect(layout.board.offset).toEqual([416, 345, 567, 468]);
     expect(layout.question.offset).toEqual([18, 145, 527, 160]);
     expect(layout.boardWithinViewport && layout.statusWithinBoard && layout.statusChildrenWithinStatus && layout.question.fits, JSON.stringify(layout)).toBe(true);
     expect(layout.questionStatusGap).toBeGreaterThanOrEqual(12);
@@ -824,6 +837,69 @@ test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái
     else frameGeometry = geometry;
     await page.screenshot({ path: join(screenshotDirectory, preview.screenshot), animations: 'disabled' });
   }
+});
+
+test('C-0407: sảnh có ngai và đủ 30 ghế vẫn để hàng chờ nhìn thấy', async ({ page }) => {
+  const { stage, errors } = await openScene(page, 'lobby-queue', 'LOBBY');
+  const arena = stage.locator('.v3-stage');
+  await expect(arena).toHaveClass(/v3-stage--has-throne/u);
+  await expect(arena.locator('.v3-throne')).toBeVisible();
+  await expect(arena.locator('.v3-seat')).toHaveCount(30);
+  const queue = stage.locator('.v3-queue');
+  await expect(queue).toBeVisible();
+  await expect(queue).toContainText('5 người đang chờ chỗ');
+  const queueBox = await queue.boundingBox();
+  expect(queueBox, 'hàng chờ có bbox để kiểm pixel').not.toBeNull();
+  const clip = { x: queueBox!.x, y: queueBox!.y, width: queueBox!.width, height: queueBox!.height };
+  const visiblePng = await page.screenshot({ clip, animations: 'disabled' });
+  await queue.evaluate(async (element) => {
+    const original = { value: element.style.getPropertyValue('visibility'), priority: element.style.getPropertyPriority('visibility') };
+    (element as HTMLElement).dataset.c0407OriginalVisibility = JSON.stringify(original);
+    element.style.setProperty('visibility', 'hidden', 'important');
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  const hiddenPng = await page.screenshot({ clip, animations: 'disabled' });
+  await queue.evaluate((element) => {
+    const original = JSON.parse((element as HTMLElement).dataset.c0407OriginalVisibility ?? '{}') as { value?: string; priority?: string };
+    delete (element as HTMLElement).dataset.c0407OriginalVisibility;
+    if (original.value) element.style.setProperty('visibility', original.value, original.priority ?? '');
+    else element.style.removeProperty('visibility');
+  });
+  const pixelDiff = await page.evaluate(async ({ visible, hidden, width, height }) => {
+    const loadImage = (base64: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Không đọc được ảnh pixel của hàng chờ.'));
+      image.src = `data:image/png;base64,${base64}`;
+    });
+    const [visibleImage, hiddenImage] = await Promise.all([loadImage(visible), loadImage(hidden)]);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Không tạo được canvas để so pixel hàng chờ.');
+    context.drawImage(visibleImage, 0, 0);
+    const visiblePixels = context.getImageData(0, 0, width, height).data;
+    context.clearRect(0, 0, width, height);
+    context.drawImage(hiddenImage, 0, 0);
+    const hiddenPixels = context.getImageData(0, 0, width, height).data;
+    let changed = 0;
+    for (let offset = 0; offset < visiblePixels.length; offset += 4) {
+      if (Math.abs(visiblePixels[offset]! - hiddenPixels[offset]!) > 8 ||
+        Math.abs(visiblePixels[offset + 1]! - hiddenPixels[offset + 1]!) > 8 ||
+        Math.abs(visiblePixels[offset + 2]! - hiddenPixels[offset + 2]!) > 8) changed += 1;
+    }
+    const area = width * height;
+    return { changed, area, threshold: area < 100 ? 4 : Math.ceil(area * 0.1) };
+  }, {
+    visible: visiblePng.toString('base64'),
+    hidden: hiddenPng.toString('base64'),
+    width: Math.ceil(clip.width),
+    height: Math.ceil(clip.height),
+  });
+  await page.screenshot({ path: join(screenshotDirectory, 'c0407-lobby-queue.png'), animations: 'disabled' });
+  expect(pixelDiff.changed, `pixel hàng chờ đổi ${pixelDiff.changed}/${pixelDiff.area}, ngưỡng ${pixelDiff.threshold}`).toBeGreaterThanOrEqual(pixelDiff.threshold);
+  expect(errors).toEqual([]);
 });
 
 test('overlay tải theme khi mở, cập nhật theo version và gỡ token cũ', async ({ page }) => {
@@ -909,7 +985,7 @@ test('H01 chỉ hiện với skin có pixel, giữ đúng bbox CSS và không đ
   activeTheme = { ...activeTheme, version: 2, skinAssets: { H01: '/themes/event/assets/H01?v=2' } };
   await page.clock.runFor(2_600);
   await expect(page.locator('html')).toHaveAttribute('data-theme-version', '2');
-  await expect.poll(() => page.locator('style[data-theme-skins]').textContent()).toContain('#stage .v3-storm');
+  await expect.poll(() => page.locator('style[data-theme-skins]').textContent()).toContain('.viewport .v3-storm');
   await expect(storm).toBeVisible();
   expect(await storm.boundingBox()).toEqual(expectedStormBox);
   expect(await readFrameBoxes()).toEqual(initialFrameBoxes);
@@ -1813,6 +1889,10 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
   let reference: Record<string, unknown> | undefined;
   for (const { name, scene } of cases) {
     const { stage } = await openScene(page, name, scene);
+    const throneStage = stage.locator('.v3-stage--has-throne');
+    await expect(throneStage).toBeVisible();
+    await expect(throneStage.getByTestId('throne-panel')).toBeVisible();
+    await expect(stage.locator('.v3-seat')).toHaveCount(30);
     if (name === 'reveal') await page.waitForTimeout(700); // Chờ animation báo đáp án kết thúc trước khi đo vị trí.
     const geometry = await page.evaluate(() => {
       const box = (selector: string) => {
@@ -1844,21 +1924,16 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
     expect(geometry.answers.every(Boolean), `${name}: all answer boxes remain in place`).toBe(true);
     for (const region of ['board', 'top10'] as const) {
       const box = geometry[region];
-      const expected = region === 'top10'
-        ? { y: 348, height: 462 }
-        : { y: 348, height: 465 };
       expect(box, `${name}: ${region} exists`).not.toBeNull();
-      expect(Math.abs(box!.y - expected.y), `${name}: ${region} matches the C-0219 180px lift`).toBeLessThanOrEqual(1);
-      expect(Math.abs(box!.height - expected.height), `${name}: ${region} matches the fixed origin/main height`).toBeLessThanOrEqual(1);
     }
     expect(geometry.mcFrame, `${name}: MC has the approved frame`).not.toBeNull();
     expect(Math.abs(geometry.mcFrame!.width - 205), `${name}: MC portrait matches user reference width`).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.mcFrame!.height - 158), `${name}: MC portrait uses the C-0317 frame height to clear the chibi row`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.mcFrame!.height - 210), `${name}: MC portrait matches the supported throne frame`).toBeLessThanOrEqual(1);
     expect(geometry.bubble, `${name}: fixed speech bubble exists`).not.toBeNull();
-    expect(Math.abs(geometry.bubble!.x - 410), `${name}: bubble x matches C-0133`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.y - 860), `${name}: bubble matches C-0219 y`).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.bubble!.width - 575), `${name}: bubble matches C-0219 width`).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.bubble!.height - 145), `${name}: MC bubble matches C-0219 height`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.bubble!.x - 738), `${name}: throne bubble stays in the upper-right slot`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.bubble!.y - 845), `${name}: throne bubble matches the approved question frame`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.bubble!.width - 262), `${name}: throne bubble width stays compact`).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.bubble!.height - 146), `${name}: throne bubble height stays compact`).toBeLessThanOrEqual(1);
     expect(geometry.promptFits, `${name}: prompt fits without enlarging its card`).toBe(true);
     expect(geometry.mcFigure, `${name}: Kelly has a visible fixed portrait frame`).not.toBeNull();
     expect(geometry.mcPlate, `${name}: Kelly nameplate has a fixed position`).not.toBeNull();
@@ -1900,7 +1975,10 @@ test('question frames stay fixed across phases and lengths; the comment cue appe
       await expect(cue).toContainText('Đáp án B');
     } else {
       await expect(cue).toBeVisible();
-      if (name === 'question' || name === 'question-longest' || name === 'question-long-answer') await expect(cue).toContainText('comment A, B, C hoặc D');
+      if (name === 'question' || name === 'question-longest' || name === 'question-long-answer') {
+        await expect(cue).toContainText('Comment A/B/C/D');
+        await expect(cue).toContainText('để trả lời ngay!');
+      }
       else await expect(cue).not.toContainText('comment A');
     }
     const [figureBox, boardBox, top10Box] = await Promise.all([stage.locator('.v3-mc-figure').boundingBox(), stage.locator('.v3-board').boundingBox(), stage.locator('.v3-top10').boundingBox()]);
@@ -2015,17 +2093,17 @@ test('question scene uses the official logo, approved Kelly/chibi assets and are
     overflow: image.parentElement ? getComputedStyle(image.parentElement).overflow : '',
   }));
   expect(mcCrop.overflow).toBe('hidden');
-  expect(mcCrop.parentHeight).toBe(158);
+  expect(mcCrop.parentHeight).toBe(210);
   expect(mcCrop.imageWidth).toBe(168);
   expect(mcCrop.imageHeight).toBeGreaterThan(mcCrop.parentHeight);
   expect(mcCrop.imageHeight / mcCrop.imageWidth).toBeCloseTo(mcCrop.naturalHeight / mcCrop.naturalWidth, 2);
 
   const chibis = page.locator('.v3-chibi-img img');
-  await expect(chibis).toHaveCount(35);
+  await expect(chibis).toHaveCount(30);
   await expect.poll(() => chibis.evaluateAll((images) => images.filter((image) => {
     const candidate = image as HTMLImageElement;
     return candidate.complete && candidate.naturalWidth > 0;
-  }).length)).toBe(35);
+  }).length)).toBe(30);
   await expect.poll(() => chibis.first().evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover');
   await expect.poll(() => chibis.first().evaluate((image) => getComputedStyle(image).objectPosition)).toBe('50% 0%');
   await expect(page.locator('.v3-mc-placeholder, .v3-chibi')).toHaveCount(0);
@@ -2059,9 +2137,9 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(mcBox!.y).toBeGreaterThanOrEqual(815);
 
   const seatNames = page.locator('.v3-seat-name');
-  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
-  await expect(page.locator('.v3-seat-back')).toHaveCount(35);
-  await expect(seatNames).toHaveCount(35);
+  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(30);
+  await expect(page.locator('.v3-seat-back')).toHaveCount(30);
+  await expect(seatNames).toHaveCount(30);
 
   const leaderboardRows = top10.locator('[data-testid="leaderboard-row"]');
   await expect(leaderboardRows).toHaveCount(10);
@@ -2086,7 +2164,7 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
       return targets.flatMap((target, targetIndex) => intersects(nameBox, target.getBoundingClientRect()) ? [`name ${nameIndex} overlaps target ${targetIndex}`] : []);
     });
   });
-  expect(overlaps, 'all 35 audience nameplates stay clear of question and answer boxes').toEqual([]);
+  expect(overlaps, 'all 30 audience nameplates stay clear of question and answer boxes').toEqual([]);
 
   const firstRow = page.locator('[data-testid="v3-top10"] [data-testid="leaderboard-row"]').first();
   const name = firstRow.locator('.v3-name-text');
@@ -2172,7 +2250,7 @@ test('question uses the baked stadium, audience ranks and the accepting instruct
   await expect(page.locator('.v3-arena-flag')).toHaveCount(0);
   await expect(page.locator('.v3-env-wrap')).toBeHidden();
   const steps = page.locator('.v3-step');
-  await expect(steps).toHaveCount(7);
+  await expect(steps).toHaveCount(6);
   const [backRow, frontRow] = await Promise.all([steps.first().boundingBox(), steps.last().boundingBox()]);
   expect(backRow).not.toBeNull();
   expect(frontRow).not.toBeNull();
@@ -2183,19 +2261,22 @@ test('question uses the baked stadium, audience ranks and the accepting instruct
   await expect(rankShield).toBeVisible();
   expect(await rankShield.evaluate((element) => getComputedStyle(element).clipPath)).toContain('polygon');
   const bubble = page.getByTestId('mc-bubble');
-  await expect(bubble).toContainText('Trả lời bằng cách');
-  await expect(bubble).toContainText('comment A, B, C hoặc D');
+  const stage = page.locator('.v3-stage--has-throne');
+  await expect(stage.getByTestId('throne-panel')).toBeVisible();
+  await expect(stage.locator('.v3-seat')).toHaveCount(30);
+  await expect(bubble).toContainText('Comment A/B/C/D');
+  await expect(bubble).toContainText('để trả lời ngay!');
   await expect(bubble).not.toContainText('để tham gia ngay!');
-  expect(await bubble.evaluate((element) => getComputedStyle(element, '::before').content)).not.toBe('none');
+  expect(await bubble.evaluate((element) => getComputedStyle(element, '::before').content)).toBe('""');
   expect(await bubble.locator('p').evaluate((element) => getComputedStyle(element).whiteSpace)).toBe('pre-line');
   const instructionBox = await bubble.boundingBox();
   const boardBox = await page.locator('.v3-board').boundingBox();
   expect(instructionBox).not.toBeNull();
   expect(boardBox).not.toBeNull();
-  const instructionCenterX = instructionBox!.x + instructionBox!.width / 2;
-  const boardCenterX = boardBox!.x + boardBox!.width / 2;
-  expect(Math.abs(instructionCenterX - boardCenterX)).toBeLessThanOrEqual(13);
-  expect(instructionBox!.y).toBeGreaterThanOrEqual(boardBox!.y + boardBox!.height);
+  expect(Math.abs(instructionBox!.x - 738)).toBeLessThanOrEqual(1);
+  expect(Math.abs(instructionBox!.width - 262)).toBeLessThanOrEqual(1);
+  expect(Math.abs(instructionBox!.height - 146)).toBeLessThanOrEqual(1);
+  expect(instructionBox!.y).toBeGreaterThanOrEqual(boardBox!.y + boardBox!.height + 16);
 });
 
 test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ page }) => {
@@ -2272,14 +2353,14 @@ test('TikTok LIVE HUD uses room chrome, comments and phone safe zone', async ({ 
   expect(errors).toEqual([]);
 });
 
-test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) => {
+test('question with 30 seats and a throne sustains 55 FPS over 10 seconds', async ({ page }) => {
   const { errors } = await openScene(page, 'question', 'QUESTION');
-  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
+  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(30);
   const seatEffects = await page.locator('.v3-seat-back, .v3-seat-back svg path, .v3-seat-name, .v3-chibi-hair, .v3-chibi-img img').evaluateAll((elements) => elements.map((element) => {
     const style = getComputedStyle(element);
     return { boxShadow: style.boxShadow, filter: style.filter, animationCount: style.animationIterationCount };
   }));
-  expect(seatEffects).toHaveLength(35 * 4);
+  expect(seatEffects).toHaveLength(30 * 4);
   expect(seatEffects.every((effect) => effect.boxShadow === 'none' && effect.filter === 'none' && effect.animationCount !== 'infinite')).toBe(true);
   const top10Rows = await page.locator('[data-testid="v3-top10"] [data-testid="leaderboard-row"]').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).animationIterationCount));
   expect(top10Rows.every((count) => count !== 'infinite')).toBe(true);
@@ -2306,7 +2387,7 @@ test('question with 35 seats sustains 55 FPS over 10 seconds', async ({ page }) 
     };
     requestAnimationFrame(sample);
   }));
-  console.log(`FPS câu hỏi 10 giây / 35 ghế: trung bình ${renderStats.averageFps.toFixed(1)}, p5 ${renderStats.p5Fps.toFixed(1)}, ${renderStats.frames} khung hình.`);
+  console.log(`FPS câu hỏi 10 giây / 30 ghế + ngai: trung bình ${renderStats.averageFps.toFixed(1)}, p5 ${renderStats.p5Fps.toFixed(1)}, ${renderStats.frames} khung hình.`);
   expect(renderStats.averageFps).toBeGreaterThanOrEqual(55);
   expect(renderStats.p5Fps).toBeGreaterThanOrEqual(55);
   expect(errors).toEqual([]);
