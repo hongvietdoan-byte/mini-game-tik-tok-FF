@@ -72,6 +72,7 @@ const PLACEHOLDER_IMAGE_PATHS = new Set([
   'fixtures/assets-placeholder/throne/ngai-chibi-013-hayato.png',
   'fixtures/assets-placeholder/throne/ngai-chibi-016-iris.png',
   'fixtures/assets-placeholder/throne/ngai-chibi-020-kairos.png',
+  'fixtures/assets-placeholder/throne/ngai-trong.png',
   'fixtures/assets-placeholder/arena/bg.jpg',
   'fixtures/assets-placeholder/arena/bg-question-user.jpg',
   'fixtures/assets-placeholder/victory/bg.jpg',
