@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ManualScheduler } from '@quiz/live-adapters';
+import type { SessionConfig } from '@quiz/contracts';
 import { boot, command, createSession, rt, runUntil, tempDbPath, type Harness } from './helpers';
 
 const open: Harness[] = [];
@@ -10,8 +11,8 @@ afterEach(async () => {
   }
 });
 
-async function session(dbPath?: string) {
-  const h = await createSession(await boot(dbPath ? { dbPath } : {}));
+async function session(dbPath?: string, config: Partial<SessionConfig> = {}) {
+  const h = await createSession(await boot(dbPath ? { dbPath } : {}), config);
   open.push(h);
   return h;
 }
@@ -52,6 +53,7 @@ describe('V3 §6 — 30 ghế khán giả', () => {
     const correct = r.adminSnapshot().current!.correctOptionId;
     for (let i = 0; i < 500; i++)
       r.ingest({ source: 'MOCK', userId: `v${i}`, displayName: `Khán giả ${i}`, text: i % 2 ? correct : correct === 'A' ? 'B' : 'A', eventId: `e${i}` });
+    h.scheduler.advance(1_500); // Persist the audience join order before checking equal-score ties.
     const a = r.publicSnapshot().audience!;
     expect(a.seats.filter((s) => s.occupant)).toHaveLength(30);
     expect(a.queued).toBe(470);
@@ -68,10 +70,22 @@ describe('V3 §6 — 30 ghế khán giả', () => {
 
     runUntil(h, () => r.engine.state === 'REVEAL');
     const after = r.publicSnapshot().audience!;
-    const k0 = after.seats.find((s) => s.occupant?.safeDisplayName === 'Khán giả 0')!;
-    const k1 = after.seats.find((s) => s.occupant?.safeDisplayName === 'Khán giả 1')!;
-    expect(k0.occupant!.result).toBe('wrong');
-    expect(k1.occupant!.result).toBe('correct');
+    const ranked = h.store.rankedStandings(r.engine.round!.roundId);
+    const currentSeatOrder = new Set(a.seats.flatMap((seat) => seat.occupant ? [seat.occupant.safeDisplayName] : []));
+    const savedAudience = h.store.loadAudienceState<{ joinOrder?: string[] }>(r.engine.round!.roundId);
+    const joinPosition = new Map((savedAudience?.joinOrder ?? []).map((playerId, index) => [playerId, index]));
+    const expectedNames = [...ranked]
+      .sort((left, right) => right.score - left.score || right.correctCount - left.correctCount ||
+        Number(currentSeatOrder.has(right.displayName)) - Number(currentSeatOrder.has(left.displayName)) ||
+        (joinPosition.get(left.playerId) ?? Number.MAX_SAFE_INTEGER) - (joinPosition.get(right.playerId) ?? Number.MAX_SAFE_INTEGER) ||
+        (left.playerId < right.playerId ? -1 : left.playerId > right.playerId ? 1 : 0))
+      .slice(0, 30)
+      .map((entry) => entry.displayName);
+    const actualNames = after.seats
+      .sort((left, right) => right.rowIndex - left.rowIndex || Math.abs(left.seatIndex - 2) - Math.abs(right.seatIndex - 2) || left.seatIndex - right.seatIndex)
+      .flatMap((seat) => seat.occupant ? [seat.occupant.safeDisplayName] : []);
+    expect(actualNames).toEqual(expectedNames);
+    expect(after.seats.filter((seat) => seat.occupant?.result === 'correct')).toHaveLength(30);
     // Người không có ghế vẫn được chấm điểm như người có ghế
     const lb = h.store.ledgerTotals(r.engine.round!.roundId);
     // đúng = 100 + thưởng tốc độ (> 100); sai = 0
@@ -80,31 +94,33 @@ describe('V3 §6 — 30 ghế khán giả', () => {
     expect(lb.size).toBe(250); // người trả lời sai không có dòng nào trong sổ điểm
   });
 
-  it('xoay ghế giữa câu: ≤ 5 ghế đổi người, Top 3 đang ngồi được giữ nguyên, không ai ngồi 2 ghế', async () => {
-    const h = await session();
+  it('REVEAL chọn Top 30 theo điểm và bỏ qua cấu hình xoay cũ', async () => {
+    const h = await session(undefined, { audienceRotateEvery: 1, audiencePinTop: 5 });
     await command(h, { type: 'OPEN_LOBBY' });
-    await command(h, { type: 'START_ROUND' });
     const r = rt(h);
-    runUntil(h, () => r.engine.state === 'ACCEPTING');
-    // 30 người ngồi trả lời đúng câu 1, 35 người hàng chờ trả lời đúng
-    const c1 = r.adminSnapshot().current!.correctOptionId;
-    for (let i = 0; i < 65; i++) r.ingest({ source: 'MOCK', userId: `p${i}`, displayName: `P${i}`, text: c1 });
-    runUntil(h, () => r.engine.state === 'ACCEPTING' && r.engine.round!.questionIndex === 1);
-    // câu 2: chỉ p0..p2 (đang ngồi, dẫn đầu sau câu này) và hàng chờ trả lời
-    const c2 = r.adminSnapshot().current!.correctOptionId;
-    for (const i of [0, 1, 2, ...Array.from({ length: 30 }, (_, k) => 30 + k)])
-      r.ingest({ source: 'MOCK', userId: `p${i}`, displayName: `P${i}`, text: c2 });
+    for (let index = 0; index < 35; index += 1)
+      r.ingest({ source: 'MOCK', userId: `rank-seat-${index}`, displayName: `Seat ${index}`, text: 'Comment Free Fire', eventId: `rank-seat-lobby-${index}` });
+    expect(r.publicSnapshot().audience).toMatchObject({ queued: 5, total: 35 });
+    await command(h, { type: 'START_ROUND' });
+
+    runUntil(h, () => r.engine.state === 'ACCEPTING' && r.engine.round!.questionIndex === 0);
+    runUntil(h, () => r.engine.state === 'REVEAL' && r.engine.round!.questionIndex === 0);
     const before = r.publicSnapshot().audience!;
-    runUntil(h, () => r.engine.state === 'PREPARE' && r.engine.round!.questionIndex === 2); // xoay khi vào câu 3
+    const rotationId = before.rotationId;
+    runUntil(h, () => r.engine.state === 'ACCEPTING' && r.engine.round!.questionIndex === 1);
+    const correct = r.adminSnapshot().current!.correctOptionId;
+    r.ingest({ source: 'MOCK', userId: 'rank-seat-30', displayName: 'Seat 30', text: correct, eventId: 'rank-seat-q2-top' });
+    runUntil(h, () => r.engine.state === 'REVEAL' && r.engine.round!.questionIndex === 1);
+
     const after = r.publicSnapshot().audience!;
-    expect(after.rotationId).toBe(before.rotationId + 1);
-    const changed = after.seats.filter((s, i) => s.occupant?.safeDisplayName !== before.seats[i]!.occupant?.safeDisplayName);
-    expect(changed.length).toBeGreaterThan(0);
-    expect(changed.length).toBeLessThanOrEqual(5);
-    for (const top of ['P0', 'P1', 'P2']) expect(after.seats.find((s) => s.occupant?.safeDisplayName === top)?.occupant?.pinned).toBe(true);
-    const names = after.seats.flatMap((s) => (s.occupant ? [s.occupant.safeDisplayName] : []));
-    expect(new Set(names).size).toBe(names.length);
-    expect(after.queued + names.length).toBe(65);
+    const names = after.seats.flatMap((seat) => seat.occupant ? [seat.occupant.safeDisplayName] : []);
+    expect(names).toHaveLength(30);
+    expect(new Set(names).size).toBe(30);
+    expect(names).toContain('Seat 30');
+    expect(names).not.toContain('Seat 29');
+    expect(after.queued).toBe(5);
+    expect(after.rotationId).toBe(rotationId);
+    expect(after.queued + names.length).toBe(after.total);
   });
 
   it('sắp lại người đang ngồi theo điểm khi vào REVEAL, giữ người/nhân vật và khôi phục thứ tự sau restart', async () => {
