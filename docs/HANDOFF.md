@@ -1,6 +1,6 @@
 # HANDOFF — phiên coordinator (cập nhật 22/11/2026 ~23:00)
 
-**PHIÊN KẾ (điều phối quiz TikTok, sắp hết hạn mức tuần 22/11 ~23:00) — ĐỌC ĐẦU TIÊN.**
+**PHIÊN KẾ (điều phối quiz TikTok, sắp hết hạn mức tuần 22/11 ~23:00) — ĐÃ NHẬN 23/11 ~08:00 (C-0401/C-0402 đã xong, đang soi + gộp thử).**
 
 ## Mới nhất 22/11 ~23:00 — bộ theme (đọc khối này trước)
 **Yêu cầu người dùng (chốt 22/11):** gói bộ theme để mỗi đợt sự kiện chỉ cần thay. Phải biết thay những gì, kích cỡ bao nhiêu, và không ảnh hưởng phần khác. Gồm schema, token CSS, assets, cộng một bộ default xuất sẵn làm base.
