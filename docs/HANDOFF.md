@@ -2,6 +2,10 @@
 
 **PHIÊN KẾ (điều phối quiz TikTok, sắp hết hạn mức tuần 22/11 ~23:00) — ĐÃ NHẬN 23/11 ~08:00 (C-0401/C-0402 đã xong, đang soi + gộp thử).**
 
+## Mới nhất 24/11 ~01:10 — theme đang chờ Codex 2 (đọc trước)
+- Codex 2 làm C-0407/C-0408 (một bố cục 30 ghế + ngai) trên `codex2/c-theme-goc`, CHƯA push (origin vẫn 0a433405). Đã chốt: C-0410 (bỏ hit-test, dùng pixel-diff), C-0411 (webServer timeout 180 s, server lên ~70 s), C-0412 (MC sát khung tên là đúng C-0381), C-0413 (gate theo alpha ảnh ≥50%, nhóm H chỉ báo cáo), C-0414 (H01–H03 trong suốt có ý, không làm probe), C-0415 (slot nhiều vị trí: tốt nhất ≥50% và mọi vị trí ≥25%; I10 đạt; nhãn soi đặt ngoài viền).
+- Khi có report: soi ảnh (kiểm có ngai, 30 ghế), gộp thử ở coord-merge-0293 + `E:/Temp/coord-theme/run.sh`, gửi người dùng xin "Duyệt"; sau duyệt làm các bước sau gộp ở khối 22/11.
+
 ## Mới nhất 22/11 ~23:00 — bộ theme (đọc khối này trước)
 **Yêu cầu người dùng (chốt 22/11):** gói bộ theme để mỗi đợt sự kiện chỉ cần thay. Phải biết thay những gì, kích cỡ bao nhiêu, và không ảnh hưởng phần khác. Gồm schema, token CSS, assets, cộng một bộ default xuất sẵn làm base.
 - **"Toàn bộ asset"** = mọi thứ người xem nhìn hoặc nghe thấy trên overlay, TRỪ dữ liệu trận (tên, điểm, câu hỏi, đáp án, số giây, số người) và bố cục (vị trí, kích thước).
