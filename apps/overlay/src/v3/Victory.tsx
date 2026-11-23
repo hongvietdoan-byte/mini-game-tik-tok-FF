@@ -191,11 +191,13 @@ export function VictoryStage({ snapshot, allowLegacyNames = false }: { snapshot:
   const podium = positiveScorePodium(snapshot.podium);
   const podiumSlots = podium ? orderPodiumHolderFirst(podium.slots, holderId) : [];
   const bubbleText = snapshot.mcChatBubble?.text ?? snapshot.mcVoiceCue?.bubbleText ?? snapshot.mc.bubble;
-  useEffect(() => setFailedSources([]), [customBackground, theme.version, themeBackground]);
   return (
     <div className="v3-stage v3v" data-scene={snapshot.scene} data-holder-id={holderId ?? ''} data-testid="victory-stage">
       <img className="v3v-bg-image" src={backgroundSource} alt="" draggable={false} decoding="async" data-testid="victory-background" onError={() => setFailedSources((current) => current.includes(backgroundSource) ? current : [...current, backgroundSource])} />
       <ArenaLoopVideo poster={backgroundSource} className="v3v-bg-video" testId="victory-background-video" />
+      <div className="v3v-bg-dim" aria-hidden="true" />
+      <div className="v3v-trophy-glow" aria-hidden="true" />
+      <div className="v3v-floor-reflection" aria-hidden="true" />
       <VictoryConfetti />
       <header className="v3v-header">
         <VictoryLogo />

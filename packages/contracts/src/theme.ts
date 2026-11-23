@@ -96,6 +96,78 @@ export const ThemeRelativePathSchema = z.string().min(1).max(240).superRefine((v
     ctx.addIssue({ code: 'custom', message: `Đuôi tệp ${extension} không được hỗ trợ.` });
 });
 
+/** A skin asset points to a slot directory, never to layout/CSS data. */
+export const ThemeSkinSlotIdSchema = z.string().regex(/^[KIH]\d{2,3}$/u, 'Id slot skin phải là K/I/H theo sau bởi 2–3 chữ số.');
+export const ThemeSkinAssetsSchema = z.record(ThemeSkinSlotIdSchema, ThemeRelativePathSchema).default({});
+
+const ThemeSlotSceneSchema = z.enum([
+  'LOBBY', 'QUESTION', 'REVEAL', 'LEADERBOARD', 'INTERIM_TOP10', 'VICTORY', 'INTERMISSION', 'CONNECTION_LOST',
+]);
+const ThemeSlotPositionSchema = z.object({
+  man: ThemeSlotSceneSchema,
+  // CSS boxes and repeated particles can extend past the clipped 1080×1920 stage;
+  // store the full measured, unclipped box so custom artwork has exact dimensions.
+  x: z.number().finite().min(-2160).max(2160),
+  y: z.number().finite().min(-3840).max(3840),
+  rong: z.number().finite().positive().max(2160),
+  cao: z.number().finite().positive().max(3840),
+}).strict().superRefine((position, ctx) => {
+  if (position.x + position.rong > 2160) ctx.addIssue({ code: 'custom', path: ['rong'], message: 'BBox CSS vượt quá vùng đo tối đa 2160 px.' });
+  if (position.y + position.cao > 3840) ctx.addIssue({ code: 'custom', path: ['cao'], message: 'BBox CSS vượt quá vùng đo tối đa 3840 px.' });
+});
+const ThemeSlotFileSchema = z.object({
+  ten: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,99}$/iu, 'Tên file slot không hợp lệ.'),
+  batBuoc: z.boolean(),
+  trangThai: z.enum(['CO_SAN', 'CAN_CHUAN_BI', 'TUY_CHON']),
+}).strict();
+const ThemeSlotDimensionSchema = z.object({
+  rong: z.number().finite().positive().max(2160),
+  cao: z.number().finite().positive().max(3840),
+  tiLe: z.number().finite().positive(),
+  saiSoPx: z.number().int().min(0).max(10),
+}).strict();
+const ThemeNineSliceSchema = z.object({
+  tren: z.number().int().min(0), phai: z.number().int().min(0), duoi: z.number().int().min(0), trai: z.number().int().min(0),
+}).strict();
+export const ThemeSlotSchema = z.object({
+  id: ThemeSkinSlotIdSchema,
+  nhom: z.enum(['K', 'I', 'H']),
+  lop: z.number().int().min(0).max(3),
+  thuMuc: ThemeRelativePathSchema,
+  files: z.array(ThemeSlotFileSchema).min(1).max(32),
+  kichThuoc: ThemeSlotDimensionSchema,
+  nineSlice: ThemeNineSliceSchema.nullable(),
+  dinhDang: z.array(z.enum(['PNG', 'WEBP', 'SVG'])).min(1).max(3),
+  nenTrongSuot: z.boolean(),
+  dungLuongToiDa: z.number().int().positive().max(MAX_THEME_FILE_BYTES),
+  viTri: z.array(ThemeSlotPositionSchema).min(1).max(2_000),
+  nam_tren: z.array(ThemeSkinSlotIdSchema).max(64),
+  nam_duoi: z.array(ThemeSkinSlotIdSchema).max(64),
+  ghiChu: z.string().max(1_000),
+}).strict().superRefine((slot, ctx) => {
+  if ((slot.nhom === 'K' && !slot.id.startsWith('K')) || (slot.nhom === 'I' && !slot.id.startsWith('I')) || (slot.nhom === 'H' && !slot.id.startsWith('H')))
+    ctx.addIssue({ code: 'custom', path: ['id'], message: 'Tiền tố ID phải trùng nhóm slot.' });
+  if (Math.abs(slot.kichThuoc.tiLe - slot.kichThuoc.rong / slot.kichThuoc.cao) > 0.01)
+    ctx.addIssue({ code: 'custom', path: ['kichThuoc', 'tiLe'], message: 'Tỉ lệ phải khớp rộng/cao.' });
+  if (slot.nineSlice && slot.nineSlice.trai + slot.nineSlice.phai >= slot.kichThuoc.rong)
+    ctx.addIssue({ code: 'custom', path: ['nineSlice'], message: 'Hai vùng góc trái/phải phải nhỏ hơn chiều rộng slot.' });
+  if (slot.nineSlice && slot.nineSlice.tren + slot.nineSlice.duoi >= slot.kichThuoc.cao)
+    ctx.addIssue({ code: 'custom', path: ['nineSlice'], message: 'Hai vùng góc trên/dưới phải nhỏ hơn chiều cao slot.' });
+});
+export const ThemeSlotRegistrySchema = z.object({ schemaVersion: z.literal(1), slots: z.array(ThemeSlotSchema).max(500) }).strict()
+  .superRefine((registry, ctx) => {
+    const seen = new Set<string>();
+    for (const [index, slot] of registry.slots.entries()) {
+      if (seen.has(slot.id)) ctx.addIssue({ code: 'custom', path: ['slots', index, 'id'], message: `Id slot bị trùng: ${slot.id}.` });
+      seen.add(slot.id);
+      for (const related of [...slot.nam_tren, ...slot.nam_duoi]) {
+        if (related === slot.id) ctx.addIssue({ code: 'custom', path: ['slots', index], message: 'Slot không thể tự chồng lên chính nó.' });
+      }
+    }
+  });
+export type ThemeSlot = z.infer<typeof ThemeSlotSchema>;
+export type ThemeSlotRegistry = z.infer<typeof ThemeSlotRegistrySchema>;
+
 const AchievementOverrideFieldsSchema = z.object({
   enabled: z.boolean().optional(),
   title: z.string().trim().min(1).max(100).optional(),
@@ -225,6 +297,8 @@ export const ThemeManifestSchema = z.object({
   tokenDescriptions: z.record(z.string(), z.string().trim().max(200)).optional(),
   fonts: z.array(ThemeFontSchema).max(32).default([]),
   assets: ThemeAssetsSchema.default({}),
+  /** Optional for C-0396 themes; adding skins never changes legacy slot semantics. */
+  skinAssets: ThemeSkinAssetsSchema.optional(),
   texts: ThemeTextsSchema.optional(),
   achievements: ThemeAchievementsSchema.optional(),
 }).strict();
@@ -238,6 +312,10 @@ export type ResolvedTheme = {
   tokens: Record<string, string>;
   fonts: ThemeFont[];
   assets: Partial<Record<ThemeAssetSlot, string>>;
+  /** Slot-directory URLs; absent in legacy themes and omitted default skins. */
+  skinAssets?: Record<string, string>;
+  /** Validated slot artwork/slice metadata, delivered from the theme's slots.json. */
+  skinSlots?: ThemeSlotRegistry;
   /** Complete, merged text values; old manifests resolve to THEME_DEFAULT_TEXTS. */
   texts?: Record<keyof ThemeTexts, string>;
   /** Luôn có ở theme resolved mới; optional để tương thích client/theme fixture cũ. */

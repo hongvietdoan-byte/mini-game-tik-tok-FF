@@ -140,7 +140,7 @@ class MockDashboardClient implements DashboardClient {
   private autoMode = false;
   private autoStartWhenAudienceFull = false;
   private lobbyDisplayNames = new Map<string, string>();
-  private lobbySeatCapacity = 35;
+  private lobbySeatCapacity = 30;
   private lobbyCountdownEndsAtMs: number | null = null;
   private lobbyCountdownTimeoutId: number | null = null;
   private lobbyCountdownIntervalId: number | null = null;
@@ -653,7 +653,7 @@ class MockDashboardClient implements DashboardClient {
   }
 
   setLobbySeatCapacity(capacity: number) {
-    if (Number.isInteger(capacity) && capacity > 0 && capacity <= 35) this.lobbySeatCapacity = capacity;
+    if (Number.isInteger(capacity) && capacity > 0 && capacity <= 30) this.lobbySeatCapacity = capacity;
   }
 
   private lobbyAudience(): NonNullable<PublicSnapshot['audience']> {

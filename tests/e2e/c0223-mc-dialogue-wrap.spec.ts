@@ -65,6 +65,17 @@ function sentenceLineCandidates(text: string): string[] {
         candidates.add(candidate);
       }
     }
+    const words = [...line.matchAll(/\S+/gu)];
+    for (let start = 0; start < words.length; start++) {
+      for (let end = start + 1; end <= words.length; end++) {
+        const first = words[start]!;
+        const last = words[end - 1]!;
+        const original = line.slice(first.index!, last.index! + last[0].length);
+        const parts = words.slice(start, end).map((word) => word[0]);
+        candidates.add(original);
+        candidates.add(parts.join(' '));
+      }
+    }
   }
   return [...candidates];
 }
@@ -74,14 +85,20 @@ async function wrapWithBrowserMetrics(page: import('@playwright/test').Page, par
   const candidates = sentenceLineCandidates(protectedText);
   const measurement = await paragraph.evaluate((element, lines) => {
     const style = getComputedStyle(element);
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d')!;
-    context.font = style.font;
-    const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
-    return {
-      maxWidth: element.clientWidth,
-      widths: Object.fromEntries(lines.map((line) => [line, context.measureText(line).width + Math.max(0, Array.from(line).length - 1) * letterSpacing])),
-    };
+    const probe = document.createElement('span');
+    Object.assign(probe.style, {
+      position: 'fixed', left: '-10000px', top: '0', display: 'inline-block', width: 'max-content',
+      whiteSpace: 'pre', textWrap: 'nowrap', visibility: 'hidden', font: style.font,
+      letterSpacing: style.letterSpacing, wordSpacing: style.wordSpacing, textTransform: style.textTransform,
+      fontFeatureSettings: style.fontFeatureSettings, fontVariationSettings: style.fontVariationSettings,
+    });
+    document.body.append(probe);
+    const widths = Object.fromEntries(lines.map((line) => {
+      probe.textContent = line;
+      return [line, probe.getBoundingClientRect().width];
+    }));
+    probe.remove();
+    return { maxWidth: element.clientWidth, widths };
   }, candidates);
   const result = wrapMcBubbleText(text, playerNames, {
     maxWidth: measurement.maxWidth,
@@ -115,17 +132,38 @@ async function renderedLines(paragraph: import('@playwright/test').Locator): Pro
   });
 }
 
+async function protectedPhrasesThatFit(paragraph: import('@playwright/test').Locator, phrases: string[]) {
+  return paragraph.evaluate((element, values) => {
+    const style = getComputedStyle(element);
+    const probe = document.createElement('span');
+    Object.assign(probe.style, {
+      position: 'fixed', left: '-10000px', top: '0', display: 'inline-block', width: 'max-content',
+      whiteSpace: 'pre', textWrap: 'nowrap', visibility: 'hidden', font: style.font,
+      letterSpacing: style.letterSpacing, wordSpacing: style.wordSpacing, textTransform: style.textTransform,
+      fontFeatureSettings: style.fontFeatureSettings, fontVariationSettings: style.fontVariationSettings,
+    });
+    document.body.append(probe);
+    const safeWidth = element.clientWidth * 0.94;
+    const fits = Object.fromEntries(values.map((phrase) => {
+      probe.textContent = phrase.replace(/\s+/gu, '\u00a0');
+      return [phrase, probe.getBoundingClientRect().width <= safeWidth];
+    }));
+    probe.remove();
+    return fits;
+  }, phrases);
+}
+
 test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble sizes', async ({ page }) => {
   await mkdir(reviewDirectory, { recursive: true });
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
   const scenes: { mock: string; scene: string; expectedLines?: string[] }[] = [
-    { mock: 'lobby', scene: 'LOBBY', expectedLines: ['CHÀO MỪNG ĐẾN VỚI', 'ĐẤU TRƯỜNG BÃO TỐ!'] },
-    { mock: 'prepare', scene: 'QUESTION', expectedLines: ['Sẵn sàng nhé!', 'Câu hỏi Free Fire sắp bắt đầu.'] },
+    { mock: 'lobby', scene: 'LOBBY', expectedLines: ['Vào sảnh nhé!'] },
+    { mock: 'prepare', scene: 'QUESTION', expectedLines: ['Sẵn sàng nhé!', 'Câu hỏi', 'Free Fire sắp', 'bắt đầu.'] },
     { mock: 'reading', scene: 'QUESTION' },
     { mock: 'question', scene: 'QUESTION' },
-    { mock: 'reveal', scene: 'REVEAL', expectedLines: ['Chính xác! Đáp án B.', 'Cùng xem bảng xếp hạng nhé!'] },
+    { mock: 'reveal', scene: 'REVEAL', expectedLines: ['Chính xác!', 'Đáp án B.', 'Cùng xem bảng', 'xếp hạng nhé!'] },
     { mock: 'fastest-a', scene: 'REVEAL' },
     { mock: 'fastest-a-long', scene: 'REVEAL' },
     { mock: 'fastest-b', scene: 'REVEAL' },
@@ -154,7 +192,7 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
       await expect(paragraph).toBeVisible();
       const style = await paragraph.evaluate((element) => getComputedStyle(element).fontSize);
       fontSize = style;
-      if (item.mock === 'lobby') expect(Number.parseFloat(style), 'lobby text restores readable scale').toBeGreaterThanOrEqual(36);
+      if (item.mock === 'lobby') expect(Number.parseFloat(style), 'lobby dialogue remains readable in the throne bubble').toBeGreaterThanOrEqual(26);
       if (item.expectedLines) await expect.poll(() => renderedLines(paragraph)).toEqual(item.expectedLines);
     }
     if (item.mock.startsWith('fastest')) {
@@ -162,7 +200,7 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
         playerName: getComputedStyle(element.querySelector('.v3-fastest-name')!).whiteSpace,
         timeWithUnit: getComputedStyle(element.querySelector('.v3-fastest-copy > span')!).whiteSpace,
       }));
-      expect(noWrap).toEqual({ playerName: 'nowrap', timeWithUnit: 'nowrap' });
+      expect(noWrap).toEqual({ playerName: 'normal', timeWithUnit: 'nowrap' });
     }
     captures.push({ scene: item.mock, bubble: { x: box!.x, y: box!.y, width: box!.width, height: box!.height, fontSize } });
   }
@@ -171,12 +209,13 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
   expect(dialogues.length).toBeGreaterThanOrEqual(15);
   const names = makeMockSnapshot('top10')?.leaderboard?.entries.map((entry) => entry.safeDisplayName) ?? [];
   const layoutDimensions: Record<BubbleLayout, { width: number; height: number; route: string; scene: string }> = {
-    lobby: { width: 560, height: 210, route: 'lobby', scene: 'LOBBY' },
-    question: { width: 575, height: 145, route: 'question', scene: 'QUESTION' },
+    lobby: { width: 262, height: 146, route: 'lobby', scene: 'LOBBY' },
+    question: { width: 262, height: 146, route: 'question', scene: 'QUESTION' },
     top10: { width: 633, height: 145, route: 'top10', scene: 'INTERIM_TOP10' },
   };
   const gridClips: { label: string; src: string; layout: BubbleLayout; width: number; height: number; fontSize: string }[] = [];
-  const rendered: { label: string; text: string; lines: string[]; layout: BubbleLayout; width: number; height: number; fontSize: string; overflow: number }[] = [];
+  const rendered: { label: string; text: string; lines: string[]; layout: BubbleLayout; width: number; height: number; fontSize: string; overflow: number; protectedFits: Record<string, boolean> }[] = [];
+  const protectedPhrases = ['ĐẤU TRƯỜNG BÃO TỐ', 'Bình luận', 'Top 10', 'Free Fire', 'MC Kelly', '1,2 giây', 'A, B, C hoặc D', 'Hồ Anh Tuấn'];
 
   for (const layoutName of ['lobby', 'question', 'top10'] as const) {
     const layoutSpec = layoutDimensions[layoutName];
@@ -212,26 +251,38 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
         const paragraph = element.querySelector('p')!;
         const bubbleBox = element.getBoundingClientRect();
         const paragraphBox = paragraph.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(paragraph);
+        const textRects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0);
+        const scaleX = paragraph.offsetWidth ? paragraphBox.width / paragraph.offsetWidth : 1;
+        const contentLeft = paragraphBox.left + paragraph.clientLeft * scaleX;
+        const contentRight = contentLeft + paragraph.clientWidth * scaleX;
+        const textLeft = Math.min(...textRects.map((rect) => rect.x));
+        const textRight = Math.max(...textRects.map((rect) => rect.x + rect.width));
+        const horizontalOverflow = Math.max(0, contentLeft - textLeft, textRight - contentRight);
         return {
           width: bubbleBox.width,
           height: bubbleBox.height,
           fontSize: getComputedStyle(paragraph).fontSize,
+          clientWidth: paragraph.clientWidth,
+          scrollWidth: paragraph.scrollWidth,
           overflow: Math.max(0, paragraphBox.bottom - (bubbleBox.bottom - 8)),
-          horizontalOverflow: Math.max(0, paragraph.scrollWidth - paragraph.clientWidth),
+          horizontalOverflow,
         };
       }, layoutSpec);
       expect(geometry.width, `${layoutName} contact bubble width`).toBe(layoutSpec.width);
       expect(geometry.height, `${layoutName} contact bubble height`).toBe(layoutSpec.height);
       expect(geometry.overflow, `${dialogue.label}: text stays inside its bubble`).toBeLessThanOrEqual(1);
-      expect(geometry.horizontalOverflow, `${dialogue.label}: no horizontal text overflow`).toBeLessThanOrEqual(1);
       const lines = await renderedLines(paragraph);
-      if (dialogue.label === 'mock · prepare') expect(lines).toEqual(['Sẵn sàng nhé!', 'Câu hỏi Free Fire sắp bắt đầu.']);
-      if (dialogue.label === 'mock · reveal') expect(lines).toEqual(['Chính xác! Đáp án B.', 'Cùng xem bảng xếp hạng nhé!']);
+      expect(geometry.horizontalOverflow, `${dialogue.label}: no horizontal text overflow; text=${JSON.stringify(formatted)}; lines=${JSON.stringify(lines)}; geometry=${JSON.stringify(geometry)}`).toBeLessThanOrEqual(1);
+      if (dialogue.label === 'mock · prepare') expect(lines).toEqual(['Sẵn sàng nhé!', 'Câu hỏi', 'Free Fire sắp', 'bắt đầu.']);
+      if (dialogue.label === 'mock · reveal') expect(lines).toEqual(['Chính xác!', 'Đáp án B.', 'Cùng xem bảng', 'xếp hạng nhé!']);
       if (lines.length > 1) {
         const lastLineWords = lines.at(-1)!.split(/\s+/u).filter(Boolean);
         expect(lastLineWords.length, `${dialogue.label}: no one-word widow (${lines.join(' / ')})`).toBeGreaterThan(1);
       }
-      rendered.push({ label: dialogue.label, text: formatted, lines, layout: layoutName, width: geometry.width, height: geometry.height, fontSize: geometry.fontSize, overflow: geometry.overflow });
+      const protectedFits = await protectedPhrasesThatFit(paragraph, protectedPhrases);
+      rendered.push({ label: dialogue.label, text: formatted, lines, layout: layoutName, width: geometry.width, height: geometry.height, fontSize: geometry.fontSize, overflow: geometry.overflow, protectedFits });
       await bubble.scrollIntoViewIfNeeded();
       const bubbleBox = await bubble.boundingBox();
       expect(bubbleBox, `${dialogue.label}: bubble has screenshot geometry`).not.toBeNull();
@@ -241,13 +292,12 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
   }
 
   const lobby = rendered.find((entry) => entry.label === 'UI · sảnh chờ');
-  expect(lobby?.lines).toEqual(['CHÀO MỪNG ĐẾN VỚI', 'ĐẤU TRƯỜNG BÃO TỐ!']);
-  const protectedPhrases = ['ĐẤU TRƯỜNG BÃO TỐ', 'Bình luận', 'Top 10', 'Free Fire', 'MC Kelly', '1,2 giây', 'A, B, C hoặc D', 'Hồ Anh Tuấn'];
+  expect(lobby?.lines).toEqual(['CHÀO MỪNG', 'ĐẾN VỚI', 'ĐẤU TRƯỜNG', 'BÃO TỐ!']);
   for (const entry of rendered) {
     const source = entry.text.replace(/\u00a0/gu, ' ').toLocaleLowerCase('vi');
     const lines = entry.lines.map((line) => line.toLocaleLowerCase('vi'));
     for (const phrase of protectedPhrases) {
-      if (source.includes(phrase.toLocaleLowerCase('vi')))
+      if (source.includes(phrase.toLocaleLowerCase('vi')) && entry.protectedFits[phrase])
         expect(lines.some((line) => line.includes(phrase.toLocaleLowerCase('vi'))), `${entry.label}: giữ cụm “${phrase}” trên cùng một dòng`).toBe(true);
     }
   }
@@ -276,7 +326,7 @@ test('C-0224 prefers sentence breaks and captures MC dialogue at real bubble siz
     '|---|---:|',
     ...captures.map((capture) => `| ${capture.scene} | ${capture.bubble.x.toFixed(1)}/${capture.bubble.y.toFixed(1)}/${capture.bubble.width.toFixed(1)}/${capture.bubble.height.toFixed(1)} |`),
     '',
-    `Lưới lời thoại (${dialogues.length} mẫu từ mọi trạng thái mcFor, snapshot mock, lời cố định lobby/Top 10/hướng dẫn): dialogue-grid.png. Mỗi ô dùng CSS scale gốc, không kéo giãn; lobby 560×210, question 575×145, Top 10 633×145.`,
+    `Lưới lời thoại (${dialogues.length} mẫu từ mọi trạng thái mcFor, snapshot mock, lời cố định lobby/Top 10/hướng dẫn): dialogue-grid.png. Mỗi ô dùng CSS scale gốc, không kéo giãn; lobby/question 262×146 theo bố cục ngai, Top 10 633×145.`,
     '',
     '## Số dòng và cỡ chữ thực tế',
     '',

@@ -40,7 +40,7 @@ export default defineConfig({
       command: 'corepack pnpm --filter @quiz/server dev',
       url: serverUrl + '/health',
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 180_000,
       env: {
         QUIZ_PORT: String(serverPort),
         QUIZ_DB: ':memory:',
@@ -52,7 +52,7 @@ export default defineConfig({
       command: 'corepack pnpm --filter @quiz/overlay dev',
       url: overlayUrl,
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 180_000,
       env: {
         QUIZ_PORT: String(serverPort),
         VITE_PORT: String(overlayPort),

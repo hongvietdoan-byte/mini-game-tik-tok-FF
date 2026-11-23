@@ -50,7 +50,7 @@ const isMock = new URLSearchParams(location.search).get('mock') === '1';
 const client: DashboardClient = isMock ? mockClient : apiClient;
 if (isMock) {
   const seatCapacity = Number(new URLSearchParams(location.search).get('mockSeatCapacity'));
-  mockClient.setLobbySeatCapacity(Number.isInteger(seatCapacity) && seatCapacity > 0 && seatCapacity <= 35 ? seatCapacity : 35);
+  mockClient.setLobbySeatCapacity(Number.isInteger(seatCapacity) && seatCapacity > 0 && seatCapacity <= 30 ? seatCapacity : 30);
 }
 
 type RecoveryDecision = 'RESUME' | 'VOID' | 'STOP';

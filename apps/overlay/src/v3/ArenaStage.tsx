@@ -10,13 +10,13 @@ import { themeAssetChildUrl, useTheme } from '../theme';
 import { ArenaBackdrop } from './ArenaBackdrop';
 import { useHudConfig } from '../hudConfig';
 import { fitHudTextStyle } from './hudText';
-import { getPublicThrone, orderRankOneHolderFirst, publicThroneHolderId, type PublicThrone } from '../throne';
+import { getPublicThroneOrLocked, orderRankOneHolderFirst, publicThroneHolderId, type PublicThrone } from '../throne';
 import { activeQuestionTop3, questionTop3Presentation } from './questionTop3Presentation';
 import './arena.css';
 
 /**
  * Bố cục V3 "Storm Arena" theo ảnh mẫu người dùng duyệt (11/11): header, BXH Top 10 trái, khung câu hỏi + đồng hồ + 4 đáp án,
- * MC Kelly + bong bóng hướng dẫn, khán giả 7×5. Mọi chữ/điểm là lớp DOM độc lập (không ghép vào ảnh nền).
+ * MC Kelly + bong bóng hướng dẫn, khán giả 6×5 cùng ngai vàng luôn hiện diện. Mọi chữ/điểm là lớp DOM độc lập (không ghép vào ảnh nền).
  * Kelly và chibi lấy từ asset bank local; logo, khung động, ghế và hiệu ứng sân khấu được dựng bằng CSS/SVG.
  */
 
@@ -593,15 +593,23 @@ export function McBubbleText({ text, playerNames = [], as = 'span', highlight = 
 
     const update = () => {
       const style = window.getComputedStyle(element);
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      if (!context) return;
-      context.font = style.font;
-      const letterSpacing = Number.parseFloat(style.letterSpacing) || 0;
+      const probe = document.createElement('span');
+      Object.assign(probe.style, {
+        position: 'fixed', left: '-10000px', top: '0', display: 'inline-block',
+        width: 'max-content', whiteSpace: 'pre', textWrap: 'nowrap', visibility: 'hidden',
+        font: style.font, letterSpacing: style.letterSpacing, wordSpacing: style.wordSpacing,
+        textTransform: style.textTransform, fontFeatureSettings: style.fontFeatureSettings,
+        fontVariationSettings: style.fontVariationSettings,
+      });
+      document.body.append(probe);
       const next = wrapMcBubbleText(text, playerNames, {
         maxWidth: element.clientWidth,
-        measureText: (value) => context.measureText(value).width + Math.max(0, Array.from(value).length - 1) * letterSpacing,
+        measureText: (value) => {
+          probe.textContent = value;
+          return probe.getBoundingClientRect().width;
+        },
       });
+      probe.remove();
       setFormatted((current) => current === next ? current : next);
     };
 
@@ -886,7 +894,7 @@ export function ArenaStage({ snapshot, remainingMs, debug = false, allowLegacyNa
   }, [voiceBubble?.cueId]);
   const fastest = fastestCorrectFor(snapshot);
   const questionTop3 = activeQuestionTop3(snapshot);
-  const throne = getPublicThrone(snapshot);
+  const throne = getPublicThroneOrLocked(snapshot);
   const holderId = throne?.state === 'HELD' ? publicThroneHolderId(throne.holder) ?? undefined : undefined;
   const fastestVariant: 'a' | 'b' = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === 'fastest-b' ? 'b' : 'a';
   const questionBackground = snapshot.scene === 'LOBBY' || snapshot.scene === 'QUESTION' || snapshot.scene === 'REVEAL';

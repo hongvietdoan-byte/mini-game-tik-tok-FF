@@ -7,7 +7,7 @@ const reviewRoot = join(process.cwd(), '.claude', 'review', 'C0214');
 const headerVariants = ['A', 'B'] as const;
 const supportsFastestMocks = Boolean(makeMockSnapshot('fastest-a')) && Boolean(makeMockSnapshot('fastest-b'));
 const seatColumns = [160, 350, 540, 730, 920];
-  const seatRows = [1839, 1734.33, 1629.67, 1525, 1420.33, 1315.67, 1211];
+  const seatRows = [1890, 1776, 1662, 1548, 1434, 1320];
 const reference = {
   top10: { x: 70, y: 348, width: 317, height: 462 },
   board: { x: 410, y: 348, width: 600, height: 465 },
@@ -16,9 +16,9 @@ const reference = {
   mc: { x: 0, y: 815, width: 1080, height: 252 },
   // C-0317 moves the cropped MC portrait down and shortens its frame so it
   // clears the Top 10/chibi row while retaining the approved 205px width.
-  figure: { x: 130, y: 826, width: 205, height: 158 },
-  plate: { x: 92, y: 1013, width: 250, height: 49 },
-  bubble: { x: 411, y: 860, width: 575, height: 145 },
+  figure: { x: 130, y: 826, width: 205, height: 210 },
+  plate: { x: 92, y: 1013, width: 252, height: 49 },
+  bubble: { x: 738, y: 845, width: 262, height: 146 },
   timer: { x: 870, y: 364, width: 124, height: 124 },
   logoFrame: { x: 400, y: 30, width: 255, height: 210 },
   ribbon: { x: 220, y: 250, width: 635, height: 72 },
@@ -99,7 +99,7 @@ for (const header of headerVariants) {
       expect(geometry.figure, `${header}/${phase.name}: MC portrait uses the C-0317 clear frame`).toEqual(reference.figure);
       expect(geometry.plate, `${header}/${phase.name}: Kelly nameplate follows the user's reference`).toEqual(reference.plate);
       const expectedBubble = phase.name.startsWith('fastest-')
-        ? { ...reference.bubble, width: 599 }
+        ? { x: 740, y: 825, width: 258, height: 168 }
         : reference.bubble;
       expect(geometry.bubble, `${header}/${phase.name}: MC bubble uses the C-0317 position/fastest width`).toEqual(expectedBubble);
       expect(geometry.logoFrame, `${header}/${phase.name}: event logo frame`).toEqual(reference.logoFrame);
@@ -107,8 +107,8 @@ for (const header of headerVariants) {
       expect(geometry.event, `${header}/${phase.name}: Storm Arena mark`).toEqual(reference.event);
       expect(geometry.round, `${header}/${phase.name}: three-row round card`).toEqual(reference.round);
       expect(geometry.timer, `${header}/${phase.name}: inset timer`).toEqual(phase.name === 'reading' ? null : reference.timer);
-      expect(geometry.seatCount, `${header}/${phase.name}: all 35 seats remain mounted`).toBe(35);
-      expect(geometry.nameTagCount, `${header}/${phase.name}: all 35 name tags remain mounted`).toBe(35);
+      expect(geometry.seatCount, `${header}/${phase.name}: all 30 seats remain mounted beside the throne`).toBe(30);
+      expect(geometry.nameTagCount, `${header}/${phase.name}: all 30 name tags remain mounted beside the throne`).toBe(30);
       expect(geometry.seats, `${header}/${phase.name}: audience rows match C-0219`).toEqual(
         seatRows.flatMap((top) => seatColumns.map((left) => ({ left, top }))),
       );
@@ -133,7 +133,7 @@ for (const header of headerVariants) {
       console.log(`C-0216 user reference · ${header}/${phase.name}: ${JSON.stringify({
         Target: {
           top10: reference.top10, board: reference.board, timer: phase.name === 'reading' ? null : reference.timer,
-          bubble: reference.bubble, mc: reference.mc, figure: reference.figure, plate: reference.plate, seatCount: 35,
+          bubble: reference.bubble, mc: reference.mc, figure: reference.figure, plate: reference.plate, seatCount: 30,
         },
         Render: {
           top10: geometry.top10, board: geometry.board, timer: geometry.timer, bubble: geometry.bubble,

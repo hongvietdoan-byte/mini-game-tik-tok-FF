@@ -15,9 +15,9 @@ const targetBoxes = {
   'Prompt frame': { x: 428, y: 502, width: 564, height: 124 },
   'Answer grid': { x: 428, y: 642, width: 564, height: 156 },
   // C-0317 intentionally shortens and lowers the portrait to clear the chibi row.
-  'Kelly portrait': { x: 130, y: 826, width: 205, height: 158 },
-  'Kelly nameplate': { x: 92, y: 1013, width: 250, height: 49 },
-  'MC bubble': { x: 411, y: 860, width: 575, height: 145 },
+  'Kelly portrait': { x: 130, y: 826, width: 205, height: 210 },
+  'Kelly nameplate': { x: 92, y: 1013, width: 252, height: 49 },
+  'MC bubble': { x: 738, y: 845, width: 262, height: 146 },
 };
 
 const box = (root: Element, selector: string) => {
@@ -37,7 +37,7 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
     { mock: 'lobby-ref', scene: 'LOBBY', output: 'lobby.png' },
   ] as const;
   const measurements: Array<{ name: string; phase: string; target: typeof targetBoxes[keyof typeof targetBoxes]; actual: ReturnType<typeof box> }> = [];
-  let audienceMeasurement = '| 5×7 audience | hàng tên đầu x=158/350/541/733/925, y=1091; bục dưới cùng y=1795–1845 | — | — |';
+  let audienceMeasurement = '| 6×5 audience + ngai | hàng tên đầu x=158/350/541/733/925; bục dưới cùng | — | — |';
   let fastestStackMeasurement = 'Fastest StormKing: chưa đo.';
 
   for (const capture of captures) {
@@ -53,7 +53,7 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
       await expect(stage.getByTestId('timer')).toContainText('00:12');
       await expect(stage.getByTestId('answer-count')).toHaveCount(0);
       await expect(stage.locator('[data-testid^="option-"].is-correct')).toHaveCount(0);
-      await expect(stage.locator('.v3-seat-name[data-row-index="6"]')).toHaveCount(5);
+      await expect(stage.locator('.v3-seat-name[data-row-index="5"]')).toHaveCount(5);
     }
     if (capture.mock === 'lobby-ref') {
       const lobbyBody = await stage.evaluate((root) => ['.v3-top10', '.v3-board', '.v3-mc'].map((selector) => {
@@ -63,7 +63,7 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
       }));
       expect(lobbyBody).toEqual([
         { selector: '.v3-top10', x: 98, y: 345, width: 300, height: 466 },
-        { selector: '.v3-board', x: 416, y: 345, width: 567, height: 470 },
+        { selector: '.v3-board', x: 416, y: 345, width: 567, height: 468 },
         { selector: '.v3-mc', x: 0, y: 760, width: 1080, height: 470 },
       ]);
     }
@@ -102,9 +102,9 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
         };
       });
       expect(fastestSeatStack.fastestTagText).toBe('StormKing');
-      expect(fastestSeatStack.fastestTagOverlapsAvatar).toBe(true);
+      expect(fastestSeatStack.fastestTagOverlapsAvatar, 'nhãn ghế nhanh nhất phải tách khỏi chibi trong lưới 30 ghế').toBe(false);
       expect(fastestSeatStack.nameLayer).toBeGreaterThan(fastestSeatStack.fastestSeatLayer);
-      expect(fastestSeatStack.nextRowTagOverlapsSeatBack).toBe(true);
+      expect(fastestSeatStack.nextRowTagOverlapsSeatBack, 'nhãn hàng kế tiếp phải tách khỏi lưng ghế nhanh nhất trong lưới 30 ghế').toBe(false);
       expect(fastestSeatStack.nextRowTagLayer).toBeGreaterThan(fastestSeatStack.fastestSeatLayer);
       fastestStackMeasurement = `| Ghế nhanh nhất | fastest/row 2 | StormKing nhãn y≈1091; ghế vàng y≈1174–1217; nhãn hàng 2 y≈1192 | nhãn y=${fastestSeatStack.fastestTagTop}; ghế y=${fastestSeatStack.fastestBackTop}–${fastestSeatStack.fastestBackBottom}; hàng 2 y=${fastestSeatStack.nextRowTagTop}; lớp nhãn ${fastestSeatStack.nameLayer} > ghế ${fastestSeatStack.fastestSeatLayer} | thứ tự lớp đã sửa |`;
       const fastestBox = await stage.getByTestId('mc-bubble').evaluate((element) => {
@@ -141,7 +141,7 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
       }, { selector: selectors[name]! });
       if (capture.mock === 'question-ref' || capture.mock === 'fastest-a-ref') {
         const expectedTarget = name === 'MC bubble' && capture.mock === 'fastest-a-ref'
-          ? { ...target, width: 599 }
+          ? { x: 740, y: 825, width: 258, height: 168 }
           : target;
         if (capture.mock === 'question-ref') measurements.push({ name, phase: 'question + fastest', target: expectedTarget, actual });
         expect(actual, `${name} must be measurable`).not.toBeNull();
@@ -151,20 +151,20 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
       }
     }
     if (capture.mock === 'question-ref') {
-      const rows = await stage.locator('.v3-seat-name[data-row-index="6"]').evaluateAll((elements) => elements.map((element) => {
+      const rows = await stage.locator('.v3-seat-name[data-row-index="5"]').evaluateAll((elements) => elements.map((element) => {
         const rect = element.getBoundingClientRect();
         return { centerX: Math.round(rect.x + rect.width / 2), topY: Math.round(rect.y) };
       }));
       for (const [index, expected] of [158, 350, 541, 733, 925].entries()) {
         expect(Math.abs(rows[index]!.centerX - expected), `top row column ${index + 1}`).toBeLessThanOrEqual(12);
-        expect(Math.abs(rows[index]!.topY - 1091), `top row label ${index + 1}`).toBeLessThanOrEqual(12);
+        expect(Math.abs(rows[index]!.topY - 1200), `top row label ${index + 1}`).toBeLessThanOrEqual(12);
       }
       const lowerPodium = await stage.locator('.v3-seat[data-row-index="0"]').first().evaluate((seat) => {
         const back = seat.querySelector<HTMLElement>('.v3-seat-back')!.getBoundingClientRect();
         return { top: Math.round(back.top), bottom: Math.round(back.bottom) };
       });
-      expect(Math.abs(lowerPodium.top - 1795)).toBeLessThanOrEqual(5);
-      expect(Math.abs(lowerPodium.bottom - 1845)).toBeLessThanOrEqual(5);
+      expect(Math.abs(lowerPodium.top - 1844)).toBeLessThanOrEqual(5);
+      expect(Math.abs(lowerPodium.bottom - 1894)).toBeLessThanOrEqual(5);
       const centers = rows.map((row) => row.centerX).join('/');
       const rowLabels = [...new Set(rows.map((row) => row.topY))].join('/');
       const audienceDelta = Math.max(
@@ -172,7 +172,7 @@ test('C-0214 capture the five user-reference screenshots and check C-0279 geomet
         Math.abs(lowerPodium.top - 1795),
         Math.abs(lowerPodium.bottom - 1845),
       );
-      audienceMeasurement = `| 5×7 audience | tâm cột 158/350/541/733/925; nhãn y=1091; bục y=1795–1845 | tâm ${centers}; nhãn y=${rowLabels}; bục y=${lowerPodium.top}–${lowerPodium.bottom} | ${audienceDelta}px |`;
+      audienceMeasurement = `| 6×5 audience + ngai | tâm cột 158/350/541/733/925; nhãn hàng trên; bục dưới cùng | tâm ${centers}; nhãn y=${rowLabels}; bục y=${lowerPodium.top}–${lowerPodium.bottom} | ${audienceDelta}px |`;
     }
     await stage.screenshot({ path: join(reviewRoot, capture.output), animations: 'disabled' });
   }

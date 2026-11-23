@@ -16,7 +16,7 @@ test('C-0295 — 7 and 15 early arrivals fill the top audience rows in lobby and
   ]) {
     await page.goto(`/?mock=${scenario.mock}`, { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('stage')).toHaveAttribute('data-scene', scenario.scene);
-    if (scenario.scene === 'LOBBY') await expect(page.getByTestId('lobby-seat-count')).toHaveText(`${scenario.seated}/35`);
+    if (scenario.scene === 'LOBBY') await expect(page.getByTestId('lobby-seat-count')).toHaveText(`${scenario.seated}/30`);
     else await expect(page.getByTestId('participant-count')).toContainText(String(scenario.seated));
 
     const layout = await page.evaluate(() => {
@@ -48,9 +48,9 @@ test('C-0295 — 7 and 15 early arrivals fill the top audience rows in lobby and
     expect(layout.occupied).toBe(scenario.seated);
     expect(layout.names).toBe(scenario.seated);
     expect(layout.characters).toBe(scenario.seated);
-    expect(layout.countsByRow['6']).toBe(5);
-    expect(layout.countsByRow['5']).toBe(Math.min(Math.max(scenario.seated - 5, 0), 5));
-    expect(layout.countsByRow['4'] ?? 0).toBe(Math.max(scenario.seated - 10, 0));
+    expect(layout.countsByRow['5']).toBe(Math.min(scenario.seated, 5));
+    expect(layout.countsByRow['4'] ?? 0).toBe(Math.min(Math.max(scenario.seated - 5, 0), 5));
+    expect(layout.countsByRow['3'] ?? 0).toBe(Math.max(scenario.seated - 10, 0));
     await page.screenshot({
       path: join(reviewDirectory, `${scenario.mock}-1080x1920.png`),
       animations: 'disabled',

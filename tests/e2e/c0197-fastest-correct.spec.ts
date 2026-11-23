@@ -47,7 +47,7 @@ test('C-0202 fastest A — 24-character safe name and 12,3 giây stay inside the
   await expect(stage).toHaveAttribute('data-scene', 'REVEAL');
   await expect(copy).toContainText('StormKingChampion123456');
   await expect(copy).toContainText('12,3 giây');
-  await expect(name).toHaveCSS('text-overflow', 'ellipsis');
+  await expect(name).toHaveCSS('text-overflow', 'clip');
 
   const boxes = await Promise.all([callout, copy.locator(':scope > strong'), name, time].map((element) => element.boundingBox()));
   expect(boxes.every(Boolean)).toBe(true);
@@ -91,9 +91,9 @@ test('C-0202 — MC does not cover occupied chairs or name tags on either fastes
       };
     });
     console.log(`C0202 MC visibility ${variant.toUpperCase()}:`, JSON.stringify(visibility));
-    expect(visibility.names).toBe(35);
-    expect(visibility.chibis).toBe(35);
-    expect(visibility.seatBacks).toBe(35);
+    expect(visibility.names).toBe(30);
+    expect(visibility.chibis).toBe(30);
+    expect(visibility.seatBacks).toBe(30);
     expect(visibility.hiddenNames).toEqual([]);
     expect(visibility.coveredSeats).toBe(0);
     expect(visibility.coveredChibis).toBe(0);
