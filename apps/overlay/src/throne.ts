@@ -23,6 +23,11 @@ export function getPublicThrone(snapshot: PublicSnapshot): PublicThrone | null {
   return { state: 'HELD', unlockAfterQuestion: 5, holder };
 }
 
+/** Missing or invalid throne data still renders the single supported stage layout. */
+export function getPublicThroneOrLocked(snapshot: PublicSnapshot): PublicThrone {
+  return getPublicThrone(snapshot) ?? { state: 'LOCKED', unlockAfterQuestion: 5 };
+}
+
 export function orderRankOneHolderFirst<T extends { rank: number; playerId: string }>(
   entries: readonly T[], holderId?: string,
 ): T[] {

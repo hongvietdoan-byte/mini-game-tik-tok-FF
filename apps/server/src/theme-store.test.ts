@@ -32,11 +32,11 @@ function writeTheme(root: string, id = 'halloween', manifestExtra: Record<string
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('ThemeStore', () => {
-  it('CLI xuất gói default từ fixture, bỏ asset thiếu và không ghi đè khi chưa có --force', () => {
+  it('CLI xuất gói default từ fixture, bỏ asset thiếu và không ghi đè khi chưa có --force', async () => {
     const root = temp();
     const out = join(root, 'default');
     const assets = join(process.cwd(), 'fixtures', 'assets-placeholder');
-    const exported = exportDefaultTheme({ out, assets });
+    const exported = await exportDefaultTheme({ out, assets, createMap: false, createSkinAssets: false });
     expect(exported.manifest.id).toBe('default');
     expect(exported.manifest.achievements).toMatchObject({
       LONGEST_STREAK: THEME_DEFAULT_ACHIEVEMENTS.LONGEST_STREAK,
@@ -46,11 +46,11 @@ describe('ThemeStore', () => {
     expect(exported.manifest.assets).toHaveProperty('brand.logo');
     expect(exported.warnings).toEqual(expect.arrayContaining([expect.stringContaining('arena.flag.0')]));
     expect(ThemeStore.validateDirectory(out).success).toBe(true);
-    expect(() => exportDefaultTheme({ out, assets })).toThrow(/đã tồn tại/u);
-    expect(exportDefaultTheme({ out, assets, force: true }).manifest.id).toBe('default');
+    await expect(exportDefaultTheme({ out, assets })).rejects.toThrow(/đã tồn tại/u);
+    expect((await exportDefaultTheme({ out, assets, force: true, createMap: false })).manifest.id).toBe('default');
   });
 
-  it('bỏ qua tài liệu không hỗ trợ trong thư mục asset sequence và vẫn xuất theme hợp lệ', () => {
+  it('bỏ qua tài liệu không hỗ trợ trong thư mục asset sequence và vẫn xuất theme hợp lệ', async () => {
     const root = temp();
     const assets = join(root, 'assets-local');
     const sequence = join(assets, 'mc', 'kelly');
@@ -59,16 +59,36 @@ describe('ThemeStore', () => {
     writeFileSync(join(sequence, 'HUONG_DAN.txt'), 'Tài liệu hướng dẫn');
     const out = join(root, 'default');
 
-    const exported = exportDefaultTheme({ out, assets });
+    const exported = await exportDefaultTheme({ out, assets, createMap: false });
 
     expect(exported.warnings).toContainEqual(expect.stringContaining('HUONG_DAN.txt'));
     expect(exported.copied).toContainEqual(expect.stringContaining('frame-001.png'));
-    expect(existsSync(join(out, 'assets', 'mc', 'kelly', 'frame-001.png'))).toBe(true);
-    expect(existsSync(join(out, 'assets', 'mc', 'kelly', 'HUONG_DAN.txt'))).toBe(false);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V05-mc-chuoi-dong-tac', 'kelly', 'frame-001.png'))).toBe(true);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V05-mc-chuoi-dong-tac', 'kelly', 'HUONG_DAN.txt'))).toBe(false);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V05-mc-chuoi-dong-tac', 'DOC-TOI.txt'))).toBe(true);
     expect(ThemeStore.validateDirectory(out).success).toBe(true);
   });
 
-  it('bỏ slot thư mục nếu bên trong chỉ có tài liệu không được hỗ trợ', () => {
+  it('không đưa thư mục _nhap vào gói ảnh Top 2/Top 3', async () => {
+    const root = temp();
+    const podium = join(root, 'assets-local', 'chibi', 'dang-top2-top3');
+    const draft = join(podium, '_nhap', 'top2');
+    mkdirSync(join(podium, 'top2'), { recursive: true });
+    mkdirSync(join(podium, 'top3'), { recursive: true });
+    mkdirSync(draft, { recursive: true });
+    writeFileSync(join(podium, 'top2', 'top2-char.png'), Buffer.from([137, 80, 78, 71]));
+    writeFileSync(join(podium, 'top3', 'top3-char.png'), Buffer.from([137, 80, 78, 71]));
+    writeFileSync(join(draft, 'top2-char-ban-nhap.png'), Buffer.from([137, 80, 78, 71]));
+    const out = join(root, 'default');
+
+    await exportDefaultTheme({ out, assets: join(root, 'assets-local'), createMap: false });
+
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V02-chibi-top2-top3', 'top2', 'top2-char.png'))).toBe(true);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V02-chibi-top2-top3', '_nhap'))).toBe(false);
+    expect(existsSync(join(out, 'assets', 'V-nhan-vat', 'V02-chibi-top2-top3', 'DOC-TOI.txt'))).toBe(true);
+  });
+
+  it('bỏ slot thư mục nếu bên trong chỉ có tài liệu không được hỗ trợ', async () => {
     const root = temp();
     const assets = join(root, 'assets-local');
     const sequence = join(assets, 'mc', 'kelly');
@@ -76,7 +96,7 @@ describe('ThemeStore', () => {
     writeFileSync(join(sequence, 'HUONG_DAN.txt'), 'Tài liệu hướng dẫn');
     const out = join(root, 'default');
 
-    const exported = exportDefaultTheme({ out, assets });
+    const exported = await exportDefaultTheme({ out, assets, createMap: false });
 
     expect(exported.manifest.assets['mc.sequenceDir']).toBeUndefined();
     expect(exported.warnings).toContainEqual(expect.stringContaining('HUONG_DAN.txt'));
@@ -85,20 +105,20 @@ describe('ThemeStore', () => {
     expect(ThemeStore.validateDirectory(out).success).toBe(true);
   });
 
-  it('giữ phần mở rộng nguồn khi xuất asset âm thanh', () => {
+  it('giữ phần mở rộng nguồn khi xuất asset âm thanh', async () => {
     const root = temp();
     const assets = join(root, 'assets-local');
     mkdirSync(join(assets, 'audio'), { recursive: true });
     writeFileSync(join(assets, 'audio', 'victory.wav'), Buffer.from([1, 2, 3]));
     const out = join(root, 'default');
 
-    const exported = exportDefaultTheme({ out, assets });
+    const exported = await exportDefaultTheme({ out, assets, createMap: false });
 
-    expect(exported.manifest.assets['audio.victory']).toBe('assets/audio/victory.wav');
+    expect(exported.manifest.assets['audio.victory']).toBe('assets/A-am-thanh/A06-chien-thang/victory.wav');
     expect(ThemeStore.validateDirectory(out).success).toBe(true);
   });
 
-  it('dọn staging khi lỗi giữa chừng và giữ nguyên theme cũ khi --force', () => {
+  it('dọn staging khi lỗi giữa chừng và giữ nguyên theme cũ khi --force', async () => {
     const root = temp();
     const assets = join(root, 'assets-local');
     mkdirSync(join(assets, 'arena'), { recursive: true });
@@ -110,13 +130,13 @@ describe('ThemeStore', () => {
 
     const parent = join(root, 'themes');
     const out = join(parent, 'default');
-    expect(() => exportDefaultTheme({ out, assets })).toThrow(/lớn hơn 50 MB/u);
+    await expect(exportDefaultTheme({ out, assets, createMap: false })).rejects.toThrow(/lớn hơn 50 MB/u);
     expect(existsSync(out)).toBe(false);
     expect(readdirSync(parent)).toEqual([]);
 
     mkdirSync(out, { recursive: true });
     writeFileSync(join(out, 'keep.txt'), 'theme cũ');
-    expect(() => exportDefaultTheme({ out, assets, force: true })).toThrow(/lớn hơn 50 MB/u);
+    await expect(exportDefaultTheme({ out, assets, force: true, createMap: false })).rejects.toThrow(/lớn hơn 50 MB/u);
     expect(readFileSync(join(out, 'keep.txt'), 'utf8')).toBe('theme cũ');
     expect(readdirSync(parent)).toEqual(['default']);
   });
@@ -298,6 +318,32 @@ describe('ThemeStore', () => {
     const store = new ThemeStore(themes, root);
     expect(store.resolveFile('halloween', 'assets/sequence/manifest.json')?.mimeType).toBe('application/json; charset=utf-8');
     expect(store.resolveFile('halloween', 'assets/sequence/extra.json')).toBeNull();
+  });
+
+  it('phục vụ slots.json và chỉ công bố skin slot đã được khai báo trong registry', () => {
+    const root = temp();
+    const themes = join(root, 'themes');
+    const slotDirectory = 'assets/K-khung/K07-o-dap-an';
+    const directory = writeTheme(themes, 'halloween', { skinAssets: { K07: slotDirectory } });
+    mkdirSync(join(directory, ...slotDirectory.split('/')), { recursive: true });
+    writeFileSync(join(directory, ...slotDirectory.split('/'), 'default.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL+nAAAAABJRU5ErkJggg==', 'base64'));
+    writeFileSync(join(directory, 'slots.json'), JSON.stringify({
+      schemaVersion: 1,
+      slots: [{
+        id: 'K07', nhom: 'K', lop: 1, thuMuc: slotDirectory,
+        files: [{ ten: 'default.png', batBuoc: true, trangThai: 'CO_SAN' }],
+        kichThuoc: { rong: 1, cao: 1, tiLe: 1, saiSoPx: 0 }, nineSlice: null,
+        dinhDang: ['PNG'], nenTrongSuot: true, dungLuongToiDa: 1_000_000,
+        viTri: [{ man: 'QUESTION', x: 10, y: 20, rong: 1, cao: 1 }],
+        nam_tren: [], nam_duoi: [], ghiChu: 'Khung đáp án.',
+      }],
+    }));
+
+    const store = new ThemeStore(themes, root);
+    expect(store.resolve('halloween')?.skinAssets).toEqual({ K07: `/themes/halloween/${slotDirectory}?v=1` });
+    expect(store.resolveFile('halloween', 'slots.json')?.mimeType).toBe('application/json; charset=utf-8');
+    expect(store.resolveFile('halloween', 'assets/K-khung/K07-o-dap-an/default.png')?.mimeType).toBe('image/png');
+    expect(store.resolveFile('halloween', 'theme.json')).toBeNull();
   });
 
   it('API admin đổi theme/reload tăng phiên bản, snapshot có themeVersion, static trả MIME đúng', async () => {

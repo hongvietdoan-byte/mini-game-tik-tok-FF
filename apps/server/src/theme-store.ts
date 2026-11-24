@@ -10,6 +10,7 @@ import {
   ThemeAchievementsSchema,
   ThemeManifestSchema,
   ThemeRelativePathSchema,
+  ThemeSlotRegistrySchema,
   type AchievementId,
   type AchievementThemePresentation,
   type PublicAchievementSnapshot,
@@ -17,6 +18,7 @@ import {
   type ThemeAssetSlot,
   type ThemeAchievements,
   type ThemeManifest,
+  type ThemeSlotRegistry,
 } from '@quiz/contracts';
 
 const DIRECTORY_SLOTS = new Set<ThemeAssetSlot>(THEME_ASSET_DIRECTORY_SLOTS);
@@ -26,7 +28,7 @@ const VIDEO_EXTENSIONS = new Set(['.webm', '.mp4']);
 const STATE_FILE = 'theme-settings.json';
 
 type ThemeState = { activeThemeId: string | null; version: number };
-type LoadedTheme = { id: string; name: string; manifest: ThemeManifest; directory: string };
+type LoadedTheme = { id: string; name: string; manifest: ThemeManifest; directory: string; skinSlots?: ThemeSlotRegistry };
 export type ThemeListItem = { id: string; name: string; valid: boolean; error?: string; active: boolean };
 
 export class ThemeStoreError extends Error {
@@ -136,6 +138,60 @@ export class ThemeStore {
       if (DIRECTORY_SLOTS.has(slot)) validatePath(rawPath, `assets.${slot}`, true);
       else validatePath(rawPath, `assets.${slot}`, false, expectedExtensions(slot));
     }
+    const skinAssets = manifest.skinAssets ?? {};
+    for (const [slotId, directoryPath] of Object.entries(skinAssets)) {
+      validatePath(directoryPath, `skinAssets.${slotId}`, true);
+    }
+    const slotsFile = join(directory, 'slots.json');
+    let slotRegistry: ReturnType<typeof ThemeSlotRegistrySchema.parse> | null = null;
+    if (existsSync(slotsFile)) {
+      if (lstatSync(slotsFile).isSymbolicLink() || !lstatSync(slotsFile).isFile()) throw new Error('slots.json: cần là tệp thường, không phải symlink.');
+      let contents: unknown;
+      try { contents = JSON.parse(readFileSync(slotsFile, 'utf8')) as unknown; }
+      catch { throw new Error('slots.json: JSON không hợp lệ.'); }
+      const registry = ThemeSlotRegistrySchema.safeParse(contents);
+      if (!registry.success) throw new Error(registry.error.issues.map((issue) => `slots.json.${issue.path.join('.')}: ${issue.message}`).join('; '));
+      slotRegistry = registry.data;
+      const registryIds = new Set(slotRegistry.slots.map((slot) => slot.id));
+      for (const slotId of Object.keys(skinAssets)) {
+        if (!registryIds.has(slotId)) throw new Error(`skinAssets.${slotId}: slot không có trong slots.json.`);
+      }
+      for (const slot of slotRegistry.slots) {
+        const mappedDirectory = skinAssets[slot.id];
+        if (!mappedDirectory) continue; // Giữ CSS cũ làm fallback cho slot chưa được thay.
+        if (mappedDirectory !== slot.thuMuc) throw new Error(`skinAssets.${slot.id}: thư mục phải trùng slots.json (${slot.thuMuc}).`);
+        for (const file of slot.files) {
+          if (!file.batBuoc) continue;
+          const label = `slots.json.${slot.id}.${file.ten}`;
+          try {
+            const relativeFile = validatePath(`${slot.thuMuc}/${file.ten}`, label, false, IMAGE_EXTENSIONS);
+            const absoluteFile = join(directory, ...relativeFile.split('/'));
+            const extension = extname(absoluteFile).slice(1).toUpperCase();
+            if (!slot.dinhDang.includes(extension as (typeof slot.dinhDang)[number]))
+              throw new Error(`${label}: định dạng ${extension} không có trong danh sách ${slot.dinhDang.join(', ')}.`);
+            const image = readFileSync(absoluteFile);
+            if (image.byteLength > slot.dungLuongToiDa) throw new Error(`${label}: vượt giới hạn ${slot.dungLuongToiDa} byte.`);
+            if (extension === 'PNG') {
+              if (image.byteLength < 26 || image.toString('ascii', 1, 4) !== 'PNG') throw new Error(`${label}: PNG hỏng hoặc thiếu IHDR.`);
+              const width = image.readUInt32BE(16);
+              const height = image.readUInt32BE(20);
+              if (Math.abs(width - slot.kichThuoc.rong) > slot.kichThuoc.saiSoPx
+                || Math.abs(height - slot.kichThuoc.cao) > slot.kichThuoc.saiSoPx)
+                throw new Error(`${label}: cần ${slot.kichThuoc.rong}×${slot.kichThuoc.cao}px, nhận ${width}×${height}px.`);
+              const colorType = image.readUInt8(25);
+              const hasAlpha = colorType === 4 || colorType === 6 || image.includes(Buffer.from('tRNS'));
+              if (slot.nenTrongSuot && !hasAlpha) throw new Error(`${label}: cần nền trong suốt (PNG có kênh alpha).`);
+            }
+          }
+          catch (error) {
+            const message = error instanceof Error ? error.message : 'không đọc được tệp';
+            throw new Error(message.startsWith(`${label}:`) ? message : `${label}: ${message}`);
+          }
+        }
+      }
+    } else if (Object.keys(skinAssets).length) {
+      throw new Error('slots.json: bắt buộc khi theme khai báo skinAssets.');
+    }
     for (const [index, font] of manifest.fonts.entries()) {
       if (extname(font.file).toLowerCase() !== '.woff2') throw new Error(`fonts[${index}].file: chỉ hỗ trợ .woff2.`);
       validatePath(font.file, `fonts[${index}].file`, false, new Set(['.woff2']));
@@ -155,7 +211,7 @@ export class ThemeStore {
     validateAchievementIcons(baseAchievementOverrides, 'achievements');
     for (const [eventId, overrides] of Object.entries(eventOverrides ?? {}))
       validateAchievementIcons(overrides, `achievements.eventOverrides.${eventId}`);
-    return { id, name: manifest.name, manifest, directory };
+    return { id, name: manifest.name, manifest, directory, ...(slotRegistry ? { skinSlots: slotRegistry } : {}) };
   }
 
   private scan() {
@@ -348,9 +404,11 @@ export class ThemeStore {
     const url = (path: string) => `/themes/${encodeURIComponent(theme.id)}/${path.split('/').map(encodeURIComponent).join('/')}?v=${this.state.version}`;
     const assets: Partial<Record<ThemeAssetSlot, string>> = {};
     for (const [slot, path] of Object.entries(theme.manifest.assets)) if (path) assets[slot as ThemeAssetSlot] = url(path);
+    const skinAssets = Object.fromEntries(Object.entries(theme.manifest.skinAssets ?? {}).map(([slot, path]) => [slot, url(path)]));
     return {
       id: theme.id, name: theme.name, version: this.state.version, tokens: theme.manifest.tokens,
       fonts: theme.manifest.fonts.map((font) => ({ family: font.family, url: url(font.file), weight: font.weight, style: font.style })), assets,
+      skinAssets, ...(theme.skinSlots ? { skinSlots: theme.skinSlots } : {}),
       texts: { ...THEME_DEFAULT_TEXTS, ...(theme.manifest.texts ?? {}) },
       achievements: this.mergeAchievementPresentations(theme, eventId, url),
     };
@@ -364,7 +422,8 @@ export class ThemeStore {
     // needs this one JSON file to discover the PNG frames; no other JSON is served.
     const sequenceDirectory = theme.manifest.assets['mc.sequenceDir'];
     const isSequenceManifest = !!sequenceDirectory && rawRelativePath === `${sequenceDirectory}/manifest.json`;
-    const safe = isSequenceManifest ? rawRelativePath : safeRelativePath(rawRelativePath);
+    const isSlotRegistry = rawRelativePath === 'slots.json';
+    const safe = isSequenceManifest || isSlotRegistry ? rawRelativePath : safeRelativePath(rawRelativePath);
     if (!safe) return null;
     try {
       const themeDir = join(this.themesDir, themeId);
@@ -377,8 +436,9 @@ export class ThemeStore {
       const real = realpathSync(target);
       if (!isInside(themeRootReal, real) || !lstatSync(real).isFile()) return null;
       const extension = extname(real).toLowerCase();
-      const type = isSequenceManifest && extension === '.json' ? 'application/json; charset=utf-8' : mimeType(real);
-      if ((!isSequenceManifest && !(THEME_ALLOWED_EXTENSIONS as readonly string[]).includes(extension)) || !type
+      const isApprovedJson = (isSequenceManifest || isSlotRegistry) && extension === '.json';
+      const type = isApprovedJson ? 'application/json; charset=utf-8' : mimeType(real);
+      if ((!isApprovedJson && !(THEME_ALLOWED_EXTENSIONS as readonly string[]).includes(extension)) || !type
         || lstatSync(real).size > MAX_THEME_FILE_BYTES) return null;
       return { path: real, mimeType: type, size: lstatSync(real).size };
     } catch { return null; }

@@ -206,6 +206,7 @@ for (const mock of ['reading-demo-006', 'question-demo-006']) {
 test('C-0319 — demo question bank identifies prompts that reach the 24px floor', async ({ page }) => {
   await page.setViewportSize({ width: 1080, height: 1920 });
   await page.goto('/?mock=question-longest&hud=tall&role=program', { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-testid="question-prompt"]').waitFor({ state: 'visible' });
   const prompts = DEMO_QUESTIONS.filter(({ approvalStatus, prompt }) => approvalStatus === 'APPROVED' && prompt.length > 160)
     .map(({ id, prompt }) => ({ id, prompt }));
   expect(prompts).toHaveLength(0);

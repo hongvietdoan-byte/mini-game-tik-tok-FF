@@ -93,8 +93,18 @@ describe('V3 arena logic', () => {
       'Ngắt sau câu. Vế sau vẫn đủ ngắn.',
     );
     expect(wrapMcBubbleText('Câu mở đầu. Một vế câu rất dài không thể nằm trọn trên một dòng.', [], metrics)).toBe(
-      'Câu mở đầu. Một vế câu rất dài không thể nằm trọn trên một dòng.',
+      'Câu mở đầu.\nMột vế câu rất dài không thể nằm trọn\ntrên một dòng.',
     );
+    expect(wrapMcBubbleText('Free Fire để tham gia', [], {
+      maxWidth: 100,
+      measureText: (value) => Array.from(value).length * 10 - (value.includes('để tham gia') ? 30 : 0),
+    })).toBe(
+      'Free\u00a0Fire\nđể tham gia',
+    );
+    expect(wrapMcBubbleText('Đấu Trường Bão Tố!', [], {
+      maxWidth: 100,
+      measureText: (value) => Array.from(value).length * 10,
+    })).toBe('Đấu\nTrường\nBão Tố!');
   });
 
   it('tô vàng đúng các chữ cái đáp án đứng riêng, không tô chữ cái trong từ', () => {

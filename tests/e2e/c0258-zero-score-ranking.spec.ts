@@ -12,7 +12,7 @@ test('ranking panels hide zero-score players and preserve the scored order', asy
     for (const score of await rows.locator('.v3-full-score, .v3-score').allTextContents()) {
       expect(Number(score.replace(/\D/gu, ''))).toBeGreaterThan(0);
     }
-    if (mock === 'reveal-zero-score') await expect(page.getByTestId('stage').locator('.v3-seat')).toHaveCount(35);
+    if (mock === 'reveal-zero-score') await expect(page.getByTestId('stage').locator('.v3-seat')).toHaveCount(30);
   }
 
   await page.goto('/?mock=top10-zero-score-empty', { waitUntil: 'domcontentloaded' });

@@ -274,7 +274,7 @@
 }
 .v3-bubble p { margin: 0; text-align: center; font-size: 36px; font-weight: 800; font-style: italic; line-height: 1.25; }
 .v3-bubble em { color: var(--gold); font-style: italic; }
-/* ---------- khán giả 7×5 ---------- */
+/* ---------- khán giả 6×5 ---------- */
 .v3-audience { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 4; pointer-events: none; }
 .v3-tiers { position: absolute; left: 0; right: 0; top: 1050px; bottom: 0; }
 .v3-tiers::before {

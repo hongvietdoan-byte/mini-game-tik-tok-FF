@@ -14,14 +14,14 @@ async function serveLoop(page: Page) {
   }));
 }
 
-test('1080x1920 question video loop plays smoothly with 35 seats', async ({ page }) => {
+test('1080x1920 question video loop plays smoothly with 30 seats and a throne', async ({ page }) => {
   await serveLoop(page);
   await page.goto('/?mock=lobby', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('arena-background-video')).toHaveCount(0);
   await page.goto('/?mock=question&hud=1', { waitUntil: 'domcontentloaded' });
   const video = page.getByTestId('arena-background-video');
   await expect(page.getByTestId('arena-background')).toBeVisible();
-  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(35);
+  await expect(page.locator('[data-testid="audience-seat"]')).toHaveCount(30);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({ muted: element.muted, loop: element.loop, playsInline: element.playsInline })))
     .toEqual({ muted: true, loop: true, playsInline: true });
   await expect(video).toHaveAttribute('data-video-state', 'playing', { timeout: 15_000 });
@@ -62,11 +62,11 @@ test('1080x1920 question video loop plays smoothly with 35 seats', async ({ page
   const mainThreadCpuPercent = taskDurationBefore !== undefined && taskDurationAfter !== undefined
     ? Math.max(0, (taskDurationAfter - taskDurationBefore) / (renderStats.durationMs / 1000) * 100)
     : null;
-  console.log(`Video WebM + 35 ghế @1080x1920: FPS TB ${renderStats.averageFps.toFixed(1)}, p5 ${renderStats.p5Fps.toFixed(1)}, CPU main-thread proxy ${mainThreadCpuPercent === null ? 'n/a' : `${mainThreadCpuPercent.toFixed(1)}%`} / 8s.`);
+  console.log(`Video WebM + 30 ghế + ngai @1080x1920: FPS TB ${renderStats.averageFps.toFixed(1)}, p5 ${renderStats.p5Fps.toFixed(1)}, CPU main-thread proxy ${mainThreadCpuPercent === null ? 'n/a' : `${mainThreadCpuPercent.toFixed(1)}%`} / 8s.`);
   expect(renderStats.averageFps).toBeGreaterThanOrEqual(50);
   expect(renderStats.p5Fps).toBeGreaterThanOrEqual(45);
   mkdirSync(screenshots, { recursive: true });
-  await page.screenshot({ path: resolve(screenshots, 'question-video-35-seats.png'), fullPage: true });
+  await page.screenshot({ path: resolve(screenshots, 'question-video-30-seats-throne.png'), fullPage: true });
 });
 
 test('victory video plays; missing loop assets retain the static background', async ({ page }) => {
