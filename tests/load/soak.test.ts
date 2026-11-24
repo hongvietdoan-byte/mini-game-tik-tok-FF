@@ -24,10 +24,9 @@ const ANSWER_MS = 58_000;
 const EXPECTED_COMMENTS = ROUNDS * QUESTIONS_PER_ROUND * COMMENTS_PER_QUESTION;
 const OLD_EVENT_MS = 8 * 24 * 60 * 60 * 1_000;
 const MEMORY_LIMIT_BYTES = 96 * 1024 * 1024;
-// Node's Vitest worker does not expose an explicit GC hook, so heapUsed can rise
-// by more than 32 MiB between snapshots even when whole-run growth stays bounded.
-// Keep a tighter second-half ceiling than the 96 MiB whole-run limit while
-// allowing normal collection timing variance on long soak runs.
+// Sample after explicit collections so the limits reflect retained heap instead
+// of garbage-collection timing. Keep a tighter second-half ceiling than the
+// 96 MiB whole-run limit to catch steadily growing retained memory.
 const SECOND_HALF_HEAP_LIMIT_BYTES = 64 * 1024 * 1024;
 const TIMINGS = {
   ...DEFAULT_TIMINGS,
@@ -109,15 +108,15 @@ function checkSeatsFollowRank(h: Harness) {
   }
 }
 
-function memoryBytes() {
-  const gc = (globalThis as typeof globalThis & { gc?: () => void }).gc;
-  gc?.();
-  return process.memoryUsage().heapUsed;
-}
-
 async function memorySnapshot() {
+  const gc = (globalThis as typeof globalThis & { gc?: () => void }).gc;
+  if (!gc) {
+    throw new Error('Vitest load worker requires --expose-gc (globalThis.gc is unavailable)');
+  }
+  gc();
   await new Promise<void>((resolve) => setImmediate(resolve));
-  return memoryBytes();
+  gc();
+  return process.memoryUsage().heapUsed;
 }
 
 function duplicateRowCount(h: Harness, table: 'answers' | 'score_events', roundId: string) {
@@ -326,7 +325,7 @@ describe('C-0051 — soak MOCK 60 phút ảo', () => {
     expect(finalHeap - initialHeap).toBeLessThan(MEMORY_LIMIT_BYTES);
     expect(finalHeap - middleHeap).toBeLessThan(SECOND_HALF_HEAP_LIMIT_BYTES);
     expect(audits.every((audit) => audit.regressions === 0 && audit.messages > 0)).toBe(true);
-  }, 300_000);
+  }, 480_000);
 
   it('LIVE kết thúc giữa vòng: kết nối không tự chạy lại, operator dừng vòng an toàn', async () => {
     const h = await createSession(await boot({ questions: 10 }), {

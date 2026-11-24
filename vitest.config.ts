@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 const systemTempRoot = tmpdir();
 const repoRoot = dirname(fileURLToPath(import.meta.url));
 const repoTempRoot = resolve(repoRoot, '.tmp-test');
+const loadProjectSelected = process.argv.some((arg, index, args) =>
+  arg === '--project=load' || (arg === '--project' && args[index + 1] === 'load'),
+);
 process.env.QUIZ_SYSTEM_TEMP_ROOT = systemTempRoot;
 process.env.TMPDIR = repoTempRoot;
 process.env.TMP = repoTempRoot;
@@ -13,6 +16,10 @@ process.env.TEMP = repoTempRoot;
 
 export default defineConfig({
   test: {
+    // Vitest 3 project configs cannot set forks.execArgv. Gate it to the
+    // `--project load` run so unit/integration workers keep their default args.
+    pool: 'forks',
+    poolOptions: { forks: { execArgv: loadProjectSelected ? ['--expose-gc'] : [] } },
     exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', '.codex-wt/**'],
     passWithNoTests: true,
     setupFiles: ['./tests/support/vitest-temp-setup.ts'],
@@ -29,7 +36,14 @@ export default defineConfig({
         },
       },
       { test: { name: 'integration', include: ['tests/integration/**/*.test.ts'], environment: 'node', testTimeout: 60_000 } },
-      { test: { name: 'load', include: ['tests/load/**/*.test.ts'], environment: 'node', testTimeout: 120_000 } },
+      {
+        test: {
+          name: 'load',
+          include: ['tests/load/**/*.test.ts'],
+          environment: 'node',
+          testTimeout: 120_000,
+        },
+      },
     ],
   },
 });
