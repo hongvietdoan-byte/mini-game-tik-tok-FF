@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 418,
-  "heartbeat": "2026-11-24T12:43:54+07:00",
+  "heartbeat": "2026-11-24T12:58:05+07:00",
   "state": "working",
   "task": "C-0419",
-  "note": "Đã cấu hình GC có điều kiện riêng cho --project load; worker xác nhận --expose-gc. Bắt đầu 5 lượt test:load liên tiếp.",
+  "note": "Test:load lượt 1/5 đạt; heap 32.3/39.8/38.8 MiB, 315.5s tổng. Bắt đầu lượt 2/5.",
   "done": []
 }
