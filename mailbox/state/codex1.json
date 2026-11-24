@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 418,
-  "heartbeat": "2026-11-24T13:30:04+07:00",
+  "heartbeat": "2026-11-24T13:44:31+07:00",
   "state": "working",
   "task": "C-0419",
-  "note": "5/5 test:load đạt; heap ổn định. Đang hoàn tất dependency trong worktree thật để chạy ci (privacy/typecheck/unit+integration).",
+  "note": "5/5 test:load đạt. CI chạy privacy/typecheck ok; 687/688 unit+integration qua, một test MC chat nhạy thời gian fail. Đang xác minh test đó riêng rồi rerun CI.",
   "done": []
 }
