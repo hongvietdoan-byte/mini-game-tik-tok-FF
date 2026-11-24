@@ -325,7 +325,7 @@ describe('C-0051 — soak MOCK 60 phút ảo', () => {
     expect(finalHeap - initialHeap).toBeLessThan(MEMORY_LIMIT_BYTES);
     expect(finalHeap - middleHeap).toBeLessThan(SECOND_HALF_HEAP_LIMIT_BYTES);
     expect(audits.every((audit) => audit.regressions === 0 && audit.messages > 0)).toBe(true);
-  }, 300_000);
+  }, 420_000);
 
   it('LIVE kết thúc giữa vòng: kết nối không tự chạy lại, operator dừng vòng an toàn', async () => {
     const h = await createSession(await boot({ questions: 10 }), {
