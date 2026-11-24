@@ -521,6 +521,10 @@ export class SessionRuntime {
     this.participants = this.store.participantCount(r.roundId);
     this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
     this.rebuildThrone(r.roundId);
+    this.audienceChanged = this.audience.reorderByRank(
+      this.ranked,
+      this.throne.holder?.playerId ?? null,
+    ) || this.audienceChanged;
     const qid = currentQuestionInstanceId(this.engine);
     if (qid) {
       this.countsQid = qid;
@@ -663,6 +667,7 @@ export class SessionRuntime {
   /** Hiệu ứng DB theo sự kiện (chạy TRONG transaction). @returns thông điệp lỗi toàn vẹn nếu có. */
   private applyEffects(events: EngineEvent[], now: number): string | null {
     let integrity: string | null = null;
+    const rankAudienceAtReveal = events.some((event) => event.type === 'STATE_CHANGED' && event.to === 'REVEAL');
     for (const e of events) {
       switch (e.type) {
         case 'ROUND_STARTED':
@@ -696,7 +701,6 @@ export class SessionRuntime {
           this.store.markQuestion(e.questionInstanceId, 'CLOSED', now);
           this.updateCachedQuestion(e.questionInstanceId, { status: 'CLOSED', closedAtMs: now });
           this.counts = this.store.optionCounts(e.questionInstanceId);
-          this.audience.recordClosedQuestion(this.store.answersForQuestion(e.questionInstanceId).keys());
           integrity = this.scoreRound(now, 'AFTER_QUESTION', e.questionInstanceId) ?? integrity;
           this.rememberClosedQuestionDelaySample(e.questionInstanceId);
           break;
@@ -735,10 +739,6 @@ export class SessionRuntime {
           this.store.closeSession(this.id, now);
           break;
         case 'STATE_CHANGED': {
-          if (e.to === 'REVEAL' && this.engine.round) {
-            const scores = new Map(this.ranked.map((entry) => [entry.playerId, entry.score]));
-            this.audienceChanged = this.audience.reorderByRank(scores) || this.audienceChanged;
-          }
           if (e.to === 'LOBBY') {
             this.throne = { unlocked: false, holder: null, correctElapsedMs: new Map() };
             this.throneStreaks.clear();
@@ -750,12 +750,6 @@ export class SessionRuntime {
             this.lobbyClaimedKeys.clear();
             this.welcomeCueRequested = false;
             this.audienceChanged = true;
-          }
-          const every = this.config.audienceRotateEvery ?? 2;
-          const qi = this.engine.round?.questionIndex ?? 0;
-          if (e.to === 'PREPARE' && (e.from === 'REVEAL' || e.from === 'LEADERBOARD') && every > 0 && qi > 0 && qi % every === 0) {
-            const top = this.ranked.slice(0, this.config.audiencePinTop ?? 3).map((x) => x.playerId);
-            this.audience.rotateBetweenQuestions(now, top, this.throne.holder?.playerId ?? null);
           }
           break;
         }
@@ -770,6 +764,14 @@ export class SessionRuntime {
           throw new Error(`Sự kiện chưa xử lý: ${JSON.stringify(never)}`);
         }
       }
+    }
+    // QUESTION_CLOSED and its score/throne updates may appear after STATE_CHANGED
+    // in the reducer event list, so reconcile only after every effect has run.
+    if (rankAudienceAtReveal && this.engine.round) {
+      this.audienceChanged = this.audience.reorderByRank(
+        this.ranked,
+        this.throne.holder?.playerId ?? null,
+      ) || this.audienceChanged;
     }
     return integrity;
   }

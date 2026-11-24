@@ -17,11 +17,11 @@ async function session(dbPath: string, config: Partial<SessionConfig> = {}) {
   return harness;
 }
 
-async function answerCurrent(harness: Harness, questionIndex: number) {
+async function answerCurrent(harness: Harness, questionIndex: number, playerIndices = [0, 1, 2]) {
   const runtime = rt(harness);
   runUntil(harness, () => runtime.engine.state === 'ACCEPTING' && runtime.engine.round!.questionIndex === questionIndex);
   const correct = runtime.adminSnapshot().current!.correctOptionId;
-  for (let index = 0; index < 3; index += 1) {
+  for (const index of playerIndices) {
     runtime.ingest({
       source: 'MOCK',
       userId: `throne-player-${index}`,
@@ -60,12 +60,19 @@ async function restart(harness: Harness, dbPath: string) {
     reason: 'Kiểm thử phát lại ngai sau khởi động lại',
   });
   expect(resume.status).toBe(200);
+  const resumedSnapshot = rt(next).publicSnapshot();
+  const resumedAudience = resumedSnapshot.audience!;
+  const resumedNames = resumedAudience.seats.flatMap((seat) => seat.occupant ? [seat.occupant.safeDisplayName] : []);
+  const throneCount = resumedSnapshot.throne.state === 'HELD' ? 1 : 0;
+  if (resumedSnapshot.throne.state === 'HELD')
+    expect(resumedNames).not.toContain(resumedSnapshot.throne.holder.safeDisplayName);
+  expect(resumedAudience.queued + resumedNames.length + throneCount).toBe(resumedAudience.total);
   return next;
 }
 
 describe('ngai server-side và liên kết nhân vật', () => {
-  it('thay ngai ở lượt xoay gần nhất bằng người đầu hàng chờ, không trùng ngai và ghế', async () => {
-    const harness = await session(tempDbPath(), { audienceRotateEvery: 6 });
+  it('đổi chủ ngai thì chủ mới rời ghế, chủ cũ được xét lại theo điểm ở đúng REVEAL', async () => {
+    const harness = await session(tempDbPath(), { audienceRotateEvery: 1, audiencePinTop: 5 });
     await command(harness, { type: 'OPEN_LOBBY' });
     const runtime = rt(harness);
     for (let index = 0; index < 35; index += 1) {
@@ -77,25 +84,34 @@ describe('ngai server-side và liên kết nhân vật', () => {
     expect(runtime.publicSnapshot().audience).toMatchObject({ queued: 5, total: 35 });
     await command(harness, { type: 'START_ROUND' });
 
-    for (let questionIndex = 0; questionIndex <= 5; questionIndex += 1)
+    for (let questionIndex = 0; questionIndex < 5; questionIndex += 1)
       await answerCurrent(harness, questionIndex);
 
     const before = runtime.publicSnapshot();
     expect(before.throne.state).toBe('HELD');
-    if (before.throne.state !== 'HELD') throw new Error('Ngai chưa có chủ sau câu 6');
+    if (before.throne.state !== 'HELD') throw new Error('Ngai chưa có chủ sau câu 5');
     const oldHolderName = before.throne.holder.safeDisplayName;
-    const oldHolderSeat = before.audience!.seats.find((seat) => seat.occupant === null)?.slotId;
-    expect(oldHolderSeat).toBeDefined();
-    expect(before.audience!.seats.filter((seat) => seat.occupant === null)).toHaveLength(1);
+    const beforeNames = before.audience!.seats.flatMap((seat) => seat.occupant ? [seat.occupant.safeDisplayName] : []);
+    expect(beforeNames).toHaveLength(30);
+    expect(new Set(beforeNames).size).toBe(30);
+    expect(beforeNames).not.toContain(oldHolderName);
+    expect(before.audience!.queued + beforeNames.length + 1).toBe(before.audience!.total);
+    const rotationId = before.audience!.rotationId;
 
-    runUntil(harness, () => runtime.engine.state === 'PREPARE' && runtime.engine.round?.questionIndex === 6);
+    // Q6: player 1 vượt player 0 và nhận ngai; player 0 phải quay lại ghế theo điểm.
+    await answerCurrent(harness, 5, [1]);
     const after = runtime.publicSnapshot();
+    expect(after.throne.state).toBe('HELD');
+    if (after.throne.state !== 'HELD') throw new Error('Ngai không có chủ sau câu 6');
+    expect(after.throne.holder.safeDisplayName).toBe('Người 1');
     const names = after.audience!.seats.flatMap((seat) => seat.occupant ? [seat.occupant.safeDisplayName] : []);
-    expect(after.audience!.seats.find((seat) => seat.slotId === oldHolderSeat)?.occupant?.safeDisplayName).toBe('Người 30');
-    expect(names).not.toContain(oldHolderName);
+    expect(names).toHaveLength(30);
     expect(new Set(names).size).toBe(30);
-    // 35 người vẫn chia thành 30 ghế + 5 chờ; chủ ngai cũ trở lại hàng chờ khi mất ngai.
-    expect(after.audience!.queued).toBe(before.audience!.queued);
+    expect(names).toContain(oldHolderName);
+    expect(names).not.toContain(after.throne.holder.safeDisplayName);
+    expect(after.audience!.seats.every((seat) => seat.occupant !== null)).toBe(true);
+    expect(after.audience!.queued + names.length + 1).toBe(after.audience!.total);
+    expect(after.audience!.rotationId).toBe(rotationId);
   });
 
   it('giữ cùng public playerId/characterId qua Top 10, Top 3, ngai, ghế, podium và restart sau câu 7/9', async () => {

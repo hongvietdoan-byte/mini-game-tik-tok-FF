@@ -71,14 +71,15 @@ type SeatSnapshot = NonNullable<ReturnType<ReturnType<typeof rt>['publicSnapshot
 function seatShape(h: Harness): SeatSnapshot {
   const audience = rt(h).publicSnapshot().audience;
   if (!audience) throw new Error('Audience chưa được tạo trong vòng');
-  expect(audience.seats).toHaveLength(35);
+  expect(audience.seats).toHaveLength(30);
   const occupiedCount = audience.seats.filter((seat) => seat.occupant !== null).length;
   const privateState = h.store.loadAudienceState<{ seats: Record<string, PrivateSeatState> }>(rt(h).engine.round!.roundId);
   const privateSeats = privateState?.seats ?? {};
   const playerIds = Object.values(privateSeats).flatMap((occupant) => (occupant ? [occupant.playerId] : []));
   // Tên hiển thị đã lọc có thể trùng; kiểm tra định danh nội bộ để bắt lỗi một người ngồi hai ghế.
   expect(new Set(playerIds).size).toBe(playerIds.length);
-  expect(audience.queued + occupiedCount).toBe(audience.total);
+  const hasThroneHolder = rt(h).publicSnapshot().throne.state === 'HELD' ? 1 : 0;
+  expect(audience.queued + occupiedCount + hasThroneHolder).toBe(audience.total);
   return { ...audience, privateSeats };
 }
 
@@ -86,28 +87,10 @@ function seatSignature(h: Harness) {
   return seatShape(h).seats.map((seat) => `${seat.slotId}:${seat.occupant?.safeDisplayName ?? '-'}:${seat.occupant?.characterId ?? '-'}`).join('|');
 }
 
-function checkRotation(h: Harness, before: ReturnType<typeof seatShape>) {
-  const after = seatShape(h);
-  expect(after.rotationId).toBe(before.rotationId + 1);
-  const seatedBefore = new Set(Object.values(before.privateSeats).flatMap((seat) => (seat ? [seat.playerId] : [])));
-  const newlySeated = new Set(Object.values(after.privateSeats)
-    .flatMap((seat) => seat && !seatedBefore.has(seat.playerId) ? [seat.playerId] : []));
-  expect(newlySeated.size).toBeGreaterThan(0);
-  expect(newlySeated.size).toBeLessThanOrEqual(5);
-
-  const roundId = rt(h).engine.round!.roundId;
-  const topPlayerIds = rankPlayers(h.store.standings(roundId)).slice(0, 3).map((entry) => entry.playerId);
-  for (const playerId of topPlayerIds) {
-    if (!seatedBefore.has(playerId)) continue;
-    expect(Object.values(after.privateSeats).some((seat) => seat?.playerId === playerId && seat.pinned)).toBe(true);
-  }
-  return after;
-}
-
 function checkSeatsFollowRank(h: Harness) {
   const audience = seatShape(h);
   const standings = new Map(rankPlayers(h.store.standings(rt(h).engine.round!.roundId))
-    .map((entry) => [entry.playerId, entry.score]));
+    .map((entry) => [entry.playerId, { score: entry.score, correctCount: entry.correctCount }]));
   const occupied = audience.seats
     .filter((seat) => seat.occupant !== null)
     .sort((a, b) => b.rowIndex - a.rowIndex ||
@@ -115,12 +98,14 @@ function checkSeatsFollowRank(h: Harness) {
     .map((seat) => {
       const playerId = audience.privateSeats[seat.slotId]?.playerId;
       expect(playerId).toBeDefined();
-      const score = standings.get(playerId!);
-      expect(score).toBeDefined();
-      return score!;
+      const standing = standings.get(playerId!);
+      expect(standing).toBeDefined();
+      return standing!;
     });
   for (let index = 1; index < occupied.length; index += 1) {
-    expect(occupied[index - 1]).toBeGreaterThanOrEqual(occupied[index]!);
+    expect(occupied[index - 1]!.score).toBeGreaterThanOrEqual(occupied[index]!.score);
+    if (occupied[index - 1]!.score === occupied[index]!.score)
+      expect(occupied[index - 1]!.correctCount).toBeGreaterThanOrEqual(occupied[index]!.correctCount);
   }
 }
 
@@ -145,7 +130,7 @@ function duplicateRowCount(h: Harness, table: 'answers' | 'score_events', roundI
 }
 
 describe('C-0051 — soak MOCK 60 phút ảo', () => {
-  it('6 vòng × 10 câu, 20 comment/s, reconnect, recovery, prune, score và 35 ghế', async () => {
+  it('6 vòng × 10 câu, 20 comment/s, reconnect, recovery, prune, score và Top 30 ghế', async () => {
     const dbPath = tempDbPath();
     let h = await createSession(await boot({ dbPath, questions: ROUNDS * QUESTIONS_PER_ROUND }), {
       questionsPerRound: QUESTIONS_PER_ROUND,
@@ -175,7 +160,6 @@ describe('C-0051 — soak MOCK 60 phút ảo', () => {
       expect(started.status, JSON.stringify(started.body)).toBe(200);
       const roundId = rt(h).engine.round!.roundId;
       roundIds.push(roundId);
-      let lastSeats: ReturnType<typeof seatShape> | null = null;
 
       for (let question = 0; question < QUESTIONS_PER_ROUND; question += 1) {
         const globalQuestion = round * QUESTIONS_PER_ROUND + question;
@@ -183,13 +167,6 @@ describe('C-0051 — soak MOCK 60 phút ảo', () => {
         const r = rt(h);
         const questionId = currentQuestionInstanceId(r.engine);
         if (!questionId) throw new Error('Thiếu question instance trong ACCEPTING');
-
-        if (question > 0 && question % 2 === 0) {
-          if (!lastSeats) throw new Error('Thiếu snapshot ghế trước lần xoay');
-          lastSeats = checkRotation(h, lastSeats);
-        } else {
-          lastSeats = seatShape(h);
-        }
 
         const correct = r.adminSnapshot().current!.correctOptionId;
         const wrong = (['A', 'B', 'C', 'D'] as const).find((option) => option !== correct)!;
