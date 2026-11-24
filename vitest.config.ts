@@ -13,6 +13,10 @@ process.env.TEMP = repoTempRoot;
 
 export default defineConfig({
   test: {
+    // Vitest 3 project configs cannot set forks.execArgv, so expose explicit GC
+    // for workers globally. Only tests/load currently consumes globalThis.gc.
+    pool: 'forks',
+    poolOptions: { forks: { execArgv: ['--expose-gc'] } },
     exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', '.codex-wt/**'],
     passWithNoTests: true,
     setupFiles: ['./tests/support/vitest-temp-setup.ts'],
@@ -35,8 +39,6 @@ export default defineConfig({
           include: ['tests/load/**/*.test.ts'],
           environment: 'node',
           testTimeout: 120_000,
-          pool: 'forks',
-          poolOptions: { forks: { execArgv: ['--expose-gc'] } },
         },
       },
     ],
