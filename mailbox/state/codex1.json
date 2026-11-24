@@ -1,9 +1,9 @@
 {
   "role": "codex1",
-  "last_read": 392,
-  "heartbeat": "2026-11-24T02:22:53+07:00",
+  "last_read": 416,
+  "heartbeat": "2026-11-24T07:05:31+07:00",
   "state": "waiting",
-  "task": "C-0382",
-  "note": "Inbox codex1 trống (unread=0); DP codex1 đã xong, đã báo rảnh; chờ task mới.",
+  "task": "C-0416",
+  "note": "C-0416 hoàn tất; inbox codex1 trống, DP1/DP2/DP4 đã xong và DP3 thuộc codex2; chờ task mới",
   "done": []
 }
