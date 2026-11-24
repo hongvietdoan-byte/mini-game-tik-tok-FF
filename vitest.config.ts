@@ -29,7 +29,16 @@ export default defineConfig({
         },
       },
       { test: { name: 'integration', include: ['tests/integration/**/*.test.ts'], environment: 'node', testTimeout: 60_000 } },
-      { test: { name: 'load', include: ['tests/load/**/*.test.ts'], environment: 'node', testTimeout: 120_000 } },
+      {
+        test: {
+          name: 'load',
+          include: ['tests/load/**/*.test.ts'],
+          environment: 'node',
+          testTimeout: 120_000,
+          pool: 'forks',
+          poolOptions: { forks: { execArgv: ['--expose-gc'] } },
+        },
+      },
     ],
   },
 });
