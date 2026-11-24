@@ -337,7 +337,6 @@
   transform: skewX(-24deg);
 }
 .v3-seat-name.is-pinned { box-shadow: 0 0 0 2px var(--gold), 0 2px 6px var(--theme-seat-accent-soft, rgba(0, 0, 0, 0.35)); }
-.v3-queue { position: absolute; right: 24px; bottom: 16px; padding: 4px 12px; border-radius: 14px; background: var(--theme-ink-soft, rgba(14, 10, 48, 0.75)); font-size: 16px; color: var(--theme-text-primary, #d9d0ff); }
 
 @media (prefers-reduced-motion: reduce) {
   .v3-stage *,
@@ -599,7 +598,6 @@
 .v3-seat.is-correct .v3-chibi-img img { animation: none; }
 .v3-chibi-img { width: 92px; height: 104px; }
 .v3-chibi-img img { width: 92px; height: 104px; object-fit: contain; filter: none; }
-.v3-queue { right: 97px; top: 1004px; bottom: auto; border: 1px solid var(--theme-neon-soft, rgba(188,157,255,.34)); }
 
 /* BXH lớn, nghỉ giữa vòng, mất kết nối — cùng hệ khung V3. */
 .v3-aux-stage .v3-header { z-index: 5; }
@@ -1834,7 +1832,6 @@
   background: linear-gradient(145deg, var(--theme-deep, #242280), var(--theme-ink, #11143f));
 }
 .v3-stage--user-question-layout .v3-mc .v3-bubble p { max-width: 510px; font-size: 27px; line-height: 1.08; }
-.v3-stage--user-question-layout .v3-queue { display: none; }
 .v3-stage--user-question-layout .v3-nametags { z-index: 90; }
 .v3-stage--user-question-layout .v3-tiers { top: 1070px; }
 .v3-stage--user-question-layout[data-scene="REVEAL"] .v3-fastest-callout { height: 145px !important; max-height: 145px; }

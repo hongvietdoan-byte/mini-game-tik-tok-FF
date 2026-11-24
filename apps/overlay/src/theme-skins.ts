@@ -71,7 +71,6 @@ export const THEME_SKIN_TARGETS: readonly ThemeSkinTarget[] = [
   { id: 'K40', nhom: 'K', lop: 1, selector: '.v3v-place-1 .v3v-nameplate', scenes: ['VICTORY'], nineSlice: { tren: 12, phai: 16, duoi: 12, trai: 16 }, ghiChu: 'Bảng tên Victory Top 1.' },
   { id: 'K41', nhom: 'K', lop: 1, selector: '.v3v-place-2 .v3v-nameplate', scenes: ['VICTORY'], nineSlice: { tren: 12, phai: 16, duoi: 12, trai: 16 }, ghiChu: 'Bảng tên Victory Top 2.' },
   { id: 'K42', nhom: 'K', lop: 1, selector: '.v3v-place-3 .v3v-nameplate', scenes: ['VICTORY'], nineSlice: { tren: 12, phai: 16, duoi: 12, trai: 16 }, ghiChu: 'Bảng tên Victory Top 3.' },
-  { id: 'K43', nhom: 'K', lop: 1, selector: '.v3-queue', scenes: ['LOBBY', 'QUESTION', 'REVEAL', 'INTERIM_TOP10'], nineSlice: { tren: 8, phai: 12, duoi: 8, trai: 12 }, content: 'label', ghiChu: 'Khung nhãn hàng chờ ghế; nội dung số người được giữ nguyên.' },
   { id: 'I01', nhom: 'I', lop: 2, selector: '.v3v-place-1 .v3v-rank-crown', scenes: ['VICTORY'], nineSlice: null, content: 'icon', ghiChu: 'Vương miện vàng Top 1.' },
   { id: 'I02', nhom: 'I', lop: 2, selector: '.v3-top1-badge', scenes: ['QUESTION', 'REVEAL', 'INTERIM_TOP10', 'VICTORY'], nineSlice: null, content: 'label', ghiChu: 'Huy hiệu chuỗi Top 1.' },
   { id: 'I03', nhom: 'I', lop: 2, selector: '.v3-letter', scenes: ['QUESTION', 'REVEAL'], nineSlice: null, content: 'label', ghiChu: 'Huy hiệu chữ A/B/C/D.' },

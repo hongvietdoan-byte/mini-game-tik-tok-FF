@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_HUD_CONFIG, THEME_ASSET_SLOTS, THEME_DEFAULT_ACHIEVEMENTS, THEME_DEFAULT_TEXTS, ThemeSlotRegistrySchema, type ThemeAssetSlot, type ThemeManifest, type ThemeSlotRegistry } from '@quiz/contracts';
@@ -448,21 +448,6 @@ async function inspectSlotForCapture(page: Page, locator: Locator, expectedAlpha
 }> {
   const audit = await inspectSlotVisibility(page, locator, expectedAlphaPixels, reportOnly, minimumRatio);
   return { audit, problems: slotVisibilityProblems(audit) };
-}
-
-async function captureK43CoverageScreenshot(page: Page, filePath: string) {
-  const queue = await page.locator('.v3-queue').first().boundingBox();
-  const bubble = await page.locator('.v3-bubble').first().boundingBox();
-  if (!queue || !bubble) throw new Error('Không lấy được bbox .v3-queue/.v3-bubble để lưu ảnh mức che thật của K43.');
-  const padding = 18;
-  const left = Math.max(0, Math.min(queue.x, bubble.x) - padding);
-  const top = Math.max(0, Math.min(queue.y, bubble.y) - padding);
-  const right = Math.min(1080, Math.max(queue.x + queue.width, bubble.x + bubble.width) + padding);
-  const bottom = Math.min(1920, Math.max(queue.y + queue.height, bubble.y + bubble.height) + padding);
-  mkdirSync(dirname(resolve(filePath)), { recursive: true });
-  writeFileSync(resolve(filePath), await page.screenshot({ type: 'png', animations: 'disabled', clip: {
-    x: left, y: top, width: Math.max(1, right - left), height: Math.max(1, bottom - top),
-  } }));
 }
 
 function testColorForSlot(id: string) {
@@ -915,8 +900,6 @@ export async function createThemeReviewArtifacts(
       }
       await settleThemeCapture(page);
       await assertCanonicalThroneLayout(page, scene.id, scene.mock);
-      if (scene.id === 'LOBBY' && scene.mock === 'lobby-queue' && process.env.QUIZ_THEME_K43_COVERAGE_SCREENSHOT)
-        await captureK43CoverageScreenshot(page, process.env.QUIZ_THEME_K43_COVERAGE_SCREENSHOT);
       const optionalEffects = THEME_SKIN_TARGETS.filter((target) => target.defaultHidden && target.scenes.includes(scene.id));
       if (optionalEffects.length) await page.addStyleTag({ content: optionalEffects.map((target) =>
         `${stageSelectors(target.selector)}{display:block!important;visibility:visible!important;opacity:1!important;animation:none!important}`,
