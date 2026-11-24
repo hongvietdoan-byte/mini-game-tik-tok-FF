@@ -17,7 +17,7 @@ function percentile(sorted: number[], p: number): number {
 }
 
 describe('tải Audience V3', () => {
-  it('2000 người vào trong 20 giây ảo + 2 spam/người: đúng 35 ghế, 1965 chờ, p99 dưới 50 ms', async () => {
+  it('2000 người vào trong 20 giây ảo + 2 spam/người: đúng 30 ghế, 1970 chờ, p99 dưới 50 ms', async () => {
     const h = await createSession(await boot({}), {
       questionsPerRound: 10,
       timings: { ...DEFAULT_TIMINGS, answerMs: 60_000 },
@@ -91,8 +91,8 @@ describe('tải Audience V3', () => {
 
     const audience = r.publicSnapshot().audience!;
     expect(audience.total).toBe(2_000);
-    expect(audience.seats.filter((seat) => seat.occupant !== null)).toHaveLength(35);
-    expect(audience.queued).toBe(1_965);
+    expect(audience.seats.filter((seat) => seat.occupant !== null)).toHaveLength(30);
+    expect(audience.queued).toBe(1_970);
 
     runUntil(h, () => r.engine.state === 'REVEAL');
     const roundId = r.engine.round!.roundId;

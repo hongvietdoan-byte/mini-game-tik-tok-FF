@@ -7,7 +7,7 @@ import {
   type AudienceState,
   type Slot,
 } from '@quiz/audience-engine';
-import type { AudienceView, OptionId } from '@quiz/contracts';
+import type { AudienceView, LeaderboardEntry, OptionId } from '@quiz/contracts';
 import type { Store } from '@quiz/persistence';
 
 export const DEFAULT_CHARACTER_POOL = Array.from({ length: 12 }, (_, i) => `chibi-${String(i + 1).padStart(2, '0')}`);
@@ -31,6 +31,9 @@ export class AudienceManager {
   private known = new Set<string>();
   /** Stable first-join positions, maintained as players register. */
   private joinOrderIndices = new Map<string, number>();
+  /** Latest throne holder; when they lose it, they rejoin the FIFO queue. */
+  private throneHolderId: string | null = null;
+  private warnedUnacceptedRankedPlayer = false;
   private dirty = false;
   private answersCache: { qid: string; answers: Map<string, OptionId> } | null = null;
 
@@ -52,6 +55,7 @@ export class AudienceManager {
   openLobby() {
     this.roundId = null;
     this.state = createAudienceState(this.slots);
+    this.throneHolderId = null;
     this.chars.clear();
     this.names.clear();
     this.known.clear();
@@ -70,6 +74,7 @@ export class AudienceManager {
 
   /** Vòng mới: 30 ghế trống bên dưới ngai. Gọi TRONG transaction của ROUND_STARTED. */
   startRound(roundId: string, now: number) {
+    this.throneHolderId = null;
     if (this.state && this.lobbyReservation) {
       this.roundId = roundId;
       this.lobbyReservation = false;
@@ -98,6 +103,7 @@ export class AudienceManager {
   /** Khôi phục sau khởi động lại / reload: ghế và nhân vật lấy đúng từ DB. */
   load(roundId: string, now = Date.now()) {
     this.lobbyReservation = false;
+    this.throneHolderId = null;
     this.roundId = roundId;
     const savedState = this.store.loadAudienceState<AudienceState>(roundId);
     let repairedState = false;
@@ -263,76 +269,176 @@ export class AudienceManager {
   }
 
   /** Select the round Top 30 at REVEAL, with the throne holder represented only on the throne. */
-  reorderByRank(
-    rankByPlayer: ReadonlyMap<string, { score: number; correctCount: number }>,
-    throneHolderId: string | null = null,
-    now = Date.now(),
-  ): boolean {
+  reorderByRank(ranked: readonly Pick<LeaderboardEntry, 'playerId' | 'score' | 'correctCount'>[], throneHolderId: string | null = null): boolean {
     if (!this.state || !this.roundId) return false;
     const previous = this.state;
-    const originalJoinOrderLength = previous.joinOrder.length;
-
     const currentlySeated = new Set(this.visiblePlayerIds().filter((playerId) => playerId !== throneHolderId));
-    const candidateIds = new Set([
-      ...this.known,
-      ...(previous.joinOrder ?? []),
-      ...Object.values(previous.seats).flatMap((occupant) => occupant ? [occupant.playerId] : []),
-      ...previous.queue,
-      ...rankByPlayer.keys(),
-      ...(throneHolderId ? [throneHolderId] : []),
-    ]);
-
-    for (const [playerId, standing] of rankByPlayer) {
-      if (!Number.isFinite(standing.score) || !Number.isFinite(standing.correctCount))
-        throw new TypeError('Điểm và số câu đúng phải là số hữu hạn.');
-      if (standing.correctCount < 0) throw new TypeError('Số câu đúng không được âm.');
-      if (!candidateIds.has(playerId)) candidateIds.add(playerId);
-    }
-
-    // Standings normally contain only accepted participants, who are already
-    // registered by onAccepted. Repair any missing registration deterministically.
-    const joinOrderSet = new Set(previous.joinOrder);
-    let nextJoinOrderIndex = previous.joinOrder.length;
-    for (const playerId of candidateIds) {
-      if (!joinOrderSet.has(playerId)) {
-        previous.joinOrder.push(playerId);
-        joinOrderSet.add(playerId);
-      }
-      if (!this.joinOrderIndices.has(playerId)) this.joinOrderIndices.set(playerId, nextJoinOrderIndex++);
-      if (this.known.has(playerId)) continue;
-      this.known.add(playerId);
-      this.joined += 1;
-      this.names.set(playerId, this.store.displayNames([playerId]).get(playerId) ?? 'Khán giả');
-      if (!this.chars.has(playerId)) this.chars.set(playerId, this.assignRoundCharacter(playerId, now));
-    }
-
-    const scoreOf = (playerId: string) => rankByPlayer.get(playerId)?.score ?? 0;
-    const correctOf = (playerId: string) => rankByPlayer.get(playerId)?.correctCount ?? 0;
-    const rankedIds = [...candidateIds]
-      .filter((playerId) => playerId !== throneHolderId)
-      .sort((a, b) =>
-        scoreOf(b) - scoreOf(a) ||
-        correctOf(b) - correctOf(a) ||
-        Number(currentlySeated.has(b)) - Number(currentlySeated.has(a)) ||
-        this.joinOrderIndex(a) - this.joinOrderIndex(b) ||
-        (a < b ? -1 : a > b ? 1 : 0),
-      );
-
     const orderedSlots = this.orderedSlots();
     const nextSeats = { ...previous.seats };
-    const selected = new Set(rankedIds.slice(0, orderedSlots.length));
+
+    // Runtime already keeps standings sorted by score/correct-count/playerId.
+    // Scan each tie range in place: a large boundary tie must not allocate an
+    // array/Set proportional to the whole audience on every REVEAL.
+    const selectedIds: string[] = [];
+    let missingRankedIds: string[] = [];
+    let missingRankedIdsComputed = false;
+    const getMissingRankedIds = () => {
+      if (!missingRankedIdsComputed) {
+        // assignCharacter creates the round_players row for accepted round
+        // participants. Avoid a full leaderboard Set when that invariant holds.
+        if (ranked.length < this.known.size) {
+          const rankedIds = new Set(ranked.map((entry) => entry.playerId));
+          missingRankedIds = previous.joinOrder.filter((playerId) =>
+            this.known.has(playerId) && playerId !== throneHolderId && !rankedIds.has(playerId));
+        }
+        missingRankedIdsComputed = true;
+      }
+      return missingRankedIds;
+    };
+    let zeroScoreFallbackProcessed = false;
+    const rankRangeHasPlayer = (playerId: string, start: number, end: number) => {
+      // rankPlayers uses JS string order as its final tie-break, including the
+      // Unicode fallback in Runtime.rankRound, so ids are ordered inside a tie.
+      let low = start;
+      let high = end;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        const rankedId = ranked[middle]!.playerId;
+        if (rankedId < playerId) low = middle + 1;
+        else high = middle;
+      }
+      return low < end && ranked[low]!.playerId === playerId && this.known.has(playerId);
+    };
+    const processTieGroup = (start: number, end: number, rankedCount: number, extraIds: readonly string[] = []) => {
+      const remaining = orderedSlots.length - selectedIds.length;
+      const groupCount = rankedCount + extraIds.length;
+      if (groupCount <= remaining) {
+        // Materialize only a group that can fit in the remaining (<= 30) seats.
+        const groupIds = extraIds.slice();
+        for (let index = start; index < end; index += 1) {
+          const playerId = ranked[index]!.playerId;
+          if (playerId !== throneHolderId && this.known.has(playerId)) groupIds.push(playerId);
+        }
+        groupIds.sort((a, b) =>
+          Number(currentlySeated.has(b)) - Number(currentlySeated.has(a)) ||
+          this.joinOrderIndex(a) - this.joinOrderIndex(b) ||
+          (a < b ? -1 : a > b ? 1 : 0),
+        );
+        selectedIds.push(...groupIds);
+        return false;
+      }
+
+      const extraSet = extraIds.length ? new Set(extraIds) : null;
+      const isBoundaryMember = (playerId: string) =>
+        (extraSet?.has(playerId) ?? false) || rankRangeHasPlayer(playerId, start, end);
+      const takeBoundaryMember = (playerId: string) => {
+        if (selectedIds.length >= orderedSlots.length || playerId === throneHolderId || !isBoundaryMember(playerId) || selectedIds.includes(playerId)) return;
+        selectedIds.push(playerId);
+      };
+      const seatedInBoundary = this.visiblePlayerIds()
+        .filter(isBoundaryMember)
+        .sort((a, b) => this.joinOrderIndex(a) - this.joinOrderIndex(b));
+      for (const playerId of seatedInBoundary) takeBoundaryMember(playerId);
+      for (const playerId of previous.queue) {
+        if (selectedIds.length >= orderedSlots.length) break;
+        takeBoundaryMember(playerId);
+      }
+      // Keep deterministic recovery behavior if a legacy state has an accepted
+      // participant in joinOrder but in neither a seat nor the queue.
+      if (selectedIds.length < orderedSlots.length) {
+        for (const playerId of previous.joinOrder) {
+          if (selectedIds.length >= orderedSlots.length) break;
+          takeBoundaryMember(playerId);
+        }
+      }
+      return true;
+    };
+    let cursor = 0;
+    while (cursor < ranked.length && selectedIds.length < orderedSlots.length) {
+      const first = ranked[cursor]!;
+      const score = first.score;
+      const correctCount = first.correctCount;
+      const start = cursor;
+      if (score < 0 && !zeroScoreFallbackProcessed) {
+        zeroScoreFallbackProcessed = true;
+        if (processTieGroup(0, 0, 0, getMissingRankedIds())) break;
+      }
+      let rankedCount = 0;
+      while (cursor < ranked.length) {
+        const entry = ranked[cursor]!;
+        if (!Number.isFinite(entry.score) || !Number.isFinite(entry.correctCount))
+          throw new TypeError('Điểm và số câu đúng phải là số hữu hạn.');
+        if (entry.correctCount < 0) throw new TypeError('Số câu đúng không được âm.');
+        if (entry.score !== score || entry.correctCount !== correctCount) break;
+        if (!this.known.has(entry.playerId)) {
+          if (!this.warnedUnacceptedRankedPlayer) {
+            console.warn('Bỏ qua người chơi trong bảng xếp hạng chưa được chấp nhận vào audience.');
+            this.warnedUnacceptedRankedPlayer = true;
+          }
+        } else if (entry.playerId !== throneHolderId) {
+          rankedCount += 1;
+        }
+        cursor += 1;
+      }
+      const end = cursor;
+      let extraIds: readonly string[] = [];
+      if (score === 0 && correctCount === 0 && !zeroScoreFallbackProcessed) {
+        extraIds = getMissingRankedIds();
+        zeroScoreFallbackProcessed = true;
+      }
+      if (processTieGroup(start, end, rankedCount, extraIds)) break;
+    }
+    if (selectedIds.length < orderedSlots.length && !zeroScoreFallbackProcessed) {
+      zeroScoreFallbackProcessed = true;
+      processTieGroup(0, 0, 0, getMissingRankedIds());
+    }
+
+    const selected = new Set(selectedIds);
     for (let index = 0; index < orderedSlots.length; index += 1) {
       const slotId = orderedSlots[index]!.slotId;
-      const playerId = rankedIds[index];
+      const playerId = selectedIds[index];
       nextSeats[slotId] = playerId && selected.has(playerId) ? { playerId, pinned: false } : null;
     }
-    const nextQueue = rankedIds.slice(orderedSlots.length);
-    const changed = this.slots.some((slot) =>
+
+    // Waiting players remain FIFO. Promote selected ids out of that queue, then
+    // append players leaving seats (and the former throne holder) at its tail.
+    let nextQueue = previous.queue;
+    let filteredQueue: string[] | null = null;
+    for (let index = 0; index < previous.queue.length; index += 1) {
+      const playerId = previous.queue[index]!;
+      const remove = selected.has(playerId) || playerId === throneHolderId;
+      if (remove) {
+        if (!filteredQueue) filteredQueue = previous.queue.slice(0, index);
+      } else if (filteredQueue) {
+        filteredQueue.push(playerId);
+      }
+    }
+    if (filteredQueue) nextQueue = filteredQueue;
+
+    const leaving = new Set<string>();
+    for (const occupant of Object.values(previous.seats)) {
+      if (occupant && occupant.playerId !== throneHolderId && !selected.has(occupant.playerId))
+        leaving.add(occupant.playerId);
+    }
+    const previousThroneHolderId = this.throneHolderId;
+    if (previousThroneHolderId && previousThroneHolderId !== throneHolderId && !selected.has(previousThroneHolderId))
+      leaving.add(previousThroneHolderId);
+    if (leaving.size) {
+      const departingIds = [...leaving]
+        .filter((playerId) => this.known.has(playerId) && playerId !== throneHolderId && !previous.queue.includes(playerId))
+        .sort((a, b) => this.joinOrderIndex(a) - this.joinOrderIndex(b) || (a < b ? -1 : a > b ? 1 : 0));
+      if (departingIds.length) {
+        if (nextQueue === previous.queue) nextQueue = [...previous.queue];
+        nextQueue.push(...departingIds);
+      }
+    }
+
+    const seatsChanged = this.slots.some((slot) =>
       previous.seats[slot.slotId]?.playerId !== nextSeats[slot.slotId]?.playerId ||
-      previous.seats[slot.slotId]?.pinned !== nextSeats[slot.slotId]?.pinned) ||
-      previous.joinOrder.length !== originalJoinOrderLength ||
-      previous.queue.length !== nextQueue.length || previous.queue.some((playerId, index) => playerId !== nextQueue[index]);
-    this.state = { ...previous, seats: nextSeats, queue: nextQueue };
+      previous.seats[slot.slotId]?.pinned !== nextSeats[slot.slotId]?.pinned);
+    const changed = seatsChanged || nextQueue !== previous.queue;
+    this.throneHolderId = throneHolderId;
+    if (changed) this.state = { ...previous, seats: nextSeats, queue: nextQueue };
     if (changed) this.dirty = true;
     return changed;
   }

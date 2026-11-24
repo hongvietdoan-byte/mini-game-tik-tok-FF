@@ -522,9 +522,8 @@ export class SessionRuntime {
     this.top1 = top1Streaks(this.store.leaderboardHistory(r.roundId));
     this.rebuildThrone(r.roundId);
     this.audienceChanged = this.audience.reorderByRank(
-      new Map(this.ranked.map((entry) => [entry.playerId, { score: entry.score, correctCount: entry.correctCount }])),
+      this.ranked,
       this.throne.holder?.playerId ?? null,
-      this.scheduler.now(),
     ) || this.audienceChanged;
     const qid = currentQuestionInstanceId(this.engine);
     if (qid) {
@@ -769,14 +768,9 @@ export class SessionRuntime {
     // QUESTION_CLOSED and its score/throne updates may appear after STATE_CHANGED
     // in the reducer event list, so reconcile only after every effect has run.
     if (rankAudienceAtReveal && this.engine.round) {
-      const standings = new Map(this.ranked.map((entry) => [
-        entry.playerId,
-        { score: entry.score, correctCount: entry.correctCount },
-      ]));
       this.audienceChanged = this.audience.reorderByRank(
-        standings,
+        this.ranked,
         this.throne.holder?.playerId ?? null,
-        now,
       ) || this.audienceChanged;
     }
     return integrity;
