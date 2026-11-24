@@ -35,6 +35,7 @@ const localAssetDirectory = getE2eAssetDirectory();
 const c0386ReviewDirectory = resolve(process.cwd(), 'assets-local/review/c-theme-kit');
 const c0396ReviewDirectory = resolve(process.env.QUIZ_THEME_REVIEW_DIR?.trim() || 'assets-local/review/c-theme-goc');
 const c0397ReviewDirectory = resolve(process.env.QUIZ_THEME_FULL_REVIEW_DIR?.trim() || 'assets-local/review/c-theme-full');
+const c0417ReviewDirectory = resolve(process.cwd(), 'assets-local/review/c-bo-nhan-cho');
 const hasLocalCharacterAssets = existsSync(join(localAssetDirectory, 'chibi', 'manifest.json'));
 const hasLocalKellyAsset = existsSync(join(localAssetDirectory, 'mc', 'kelly.png'));
 const hasLocalEventLogo = existsSync(join(localAssetDirectory, 'brand', 'logo.png'));
@@ -47,7 +48,10 @@ test.afterAll(() => {
   console.log(`Cảnh sát biên vùng an toàn nhất: ${closestSafeScene} (${closestSafeMargin.toFixed(1)}px).`);
 });
 
-test.beforeAll(() => mkdirSync(screenshotDirectory, { recursive: true }));
+test.beforeAll(() => {
+  mkdirSync(screenshotDirectory, { recursive: true });
+  mkdirSync(c0417ReviewDirectory, { recursive: true });
+});
 
 function watchPageErrors(page: Page) {
   const errors: string[] = [];
@@ -839,66 +843,39 @@ test('C-0287: copy sảnh đủ lớn, không tràn khung ở các trạng thái
   }
 });
 
-test('C-0407: sảnh có ngai và đủ 30 ghế vẫn để hàng chờ nhìn thấy', async ({ page }) => {
+test('C-0417: sảnh có ngai và 30 ghế, không hiện nhãn hàng chờ che chữ NGAI VÀNG', async ({ page }) => {
+  const lobbyQueue = makeMockSnapshot('lobby-queue');
+  expect(lobbyQueue?.audience?.seats).toHaveLength(30);
+  expect(lobbyQueue?.audience?.queued).toBe(5);
   const { stage, errors } = await openScene(page, 'lobby-queue', 'LOBBY');
   const arena = stage.locator('.v3-stage');
   await expect(arena).toHaveClass(/v3-stage--has-throne/u);
   await expect(arena.locator('.v3-throne')).toBeVisible();
   await expect(arena.locator('.v3-seat')).toHaveCount(30);
   const queue = stage.locator('.v3-queue');
-  await expect(queue).toBeVisible();
-  await expect(queue).toContainText('5 người đang chờ chỗ');
-  const queueBox = await queue.boundingBox();
-  expect(queueBox, 'hàng chờ có bbox để kiểm pixel').not.toBeNull();
-  const clip = { x: queueBox!.x, y: queueBox!.y, width: queueBox!.width, height: queueBox!.height };
-  const visiblePng = await page.screenshot({ clip, animations: 'disabled' });
-  await queue.evaluate(async (element) => {
-    const original = { value: element.style.getPropertyValue('visibility'), priority: element.style.getPropertyPriority('visibility') };
-    (element as HTMLElement).dataset.c0407OriginalVisibility = JSON.stringify(original);
-    element.style.setProperty('visibility', 'hidden', 'important');
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-  });
-  const hiddenPng = await page.screenshot({ clip, animations: 'disabled' });
-  await queue.evaluate((element) => {
-    const original = JSON.parse((element as HTMLElement).dataset.c0407OriginalVisibility ?? '{}') as { value?: string; priority?: string };
-    delete (element as HTMLElement).dataset.c0407OriginalVisibility;
-    if (original.value) element.style.setProperty('visibility', original.value, original.priority ?? '');
-    else element.style.removeProperty('visibility');
-  });
-  const pixelDiff = await page.evaluate(async ({ visible, hidden, width, height }) => {
-    const loadImage = (base64: string) => new Promise<HTMLImageElement>((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error('Không đọc được ảnh pixel của hàng chờ.'));
-      image.src = `data:image/png;base64,${base64}`;
-    });
-    const [visibleImage, hiddenImage] = await Promise.all([loadImage(visible), loadImage(hidden)]);
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('Không tạo được canvas để so pixel hàng chờ.');
-    context.drawImage(visibleImage, 0, 0);
-    const visiblePixels = context.getImageData(0, 0, width, height).data;
-    context.clearRect(0, 0, width, height);
-    context.drawImage(hiddenImage, 0, 0);
-    const hiddenPixels = context.getImageData(0, 0, width, height).data;
-    let changed = 0;
-    for (let offset = 0; offset < visiblePixels.length; offset += 4) {
-      if (Math.abs(visiblePixels[offset]! - hiddenPixels[offset]!) > 8 ||
-        Math.abs(visiblePixels[offset + 1]! - hiddenPixels[offset + 1]!) > 8 ||
-        Math.abs(visiblePixels[offset + 2]! - hiddenPixels[offset + 2]!) > 8) changed += 1;
+  await expect(queue).toHaveCount(0);
+  const throneTitle = arena.locator('.v3-throne-title');
+  await expect(throneTitle).toHaveText('NGAI VÀNG');
+  await expect(throneTitle).toBeVisible();
+  const titleBox = await throneTitle.boundingBox();
+  expect(titleBox, 'chữ NGAI VÀNG có bbox để kiểm tra lớp phủ').not.toBeNull();
+  const occludingElements = await throneTitle.evaluate((title) => {
+    const bounds = title.getBoundingClientRect();
+    const stepX = Math.max(1, bounds.width / 16);
+    const stepY = Math.max(1, bounds.height / 4);
+    const occluders = new Set<string>();
+    for (let y = bounds.top + stepY / 2; y < bounds.bottom; y += stepY) {
+      for (let x = bounds.left + stepX / 2; x < bounds.right; x += stepX) {
+        const topmost = document.elementFromPoint(x, y);
+        if (topmost && topmost !== title && !title.contains(topmost)) {
+          occluders.add(`${topmost.tagName.toLowerCase()}${topmost.id ? `#${topmost.id}` : ''}.${String(topmost.className).replaceAll(' ', '.')}`);
+        }
+      }
     }
-    const area = width * height;
-    return { changed, area, threshold: area < 100 ? 4 : Math.ceil(area * 0.1) };
-  }, {
-    visible: visiblePng.toString('base64'),
-    hidden: hiddenPng.toString('base64'),
-    width: Math.ceil(clip.width),
-    height: Math.ceil(clip.height),
+    return [...occluders];
   });
-  await page.screenshot({ path: join(screenshotDirectory, 'c0407-lobby-queue.png'), animations: 'disabled' });
-  expect(pixelDiff.changed, `pixel hàng chờ đổi ${pixelDiff.changed}/${pixelDiff.area}, ngưỡng ${pixelDiff.threshold}`).toBeGreaterThanOrEqual(pixelDiff.threshold);
+  expect(occludingElements, 'không phần tử nào phủ lên bbox chữ NGAI VÀNG').toEqual([]);
+  await page.screenshot({ path: join(c0417ReviewDirectory, 'lobby-30-seats-5-waiting-throne.png'), animations: 'disabled' });
   expect(errors).toEqual([]);
 });
 
@@ -2153,7 +2130,7 @@ test('question crowd labels stay clear of the quiz and Top 1 badge fits its scor
   expect(firstNameBox!.width).toBeGreaterThanOrEqual(96);
 
   const queue = page.locator('.v3-queue');
-  await expect(queue).toBeHidden();
+  await expect(queue).toHaveCount(0);
 
   const overlaps = await page.evaluate(() => {
     const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="question-prompt"], [data-testid^="option-"]'));

@@ -866,7 +866,6 @@ function Audience({ snapshot, allowLegacyNames, hasThrone }: { snapshot: PublicS
       <div className="v3-nametags" data-layer="audience-nametags">
         {a?.seats.map((s) => { const identity = audienceIdentity(s); const motion = identity ? motions[identity] : undefined; return <SeatName key={s.slotId} seat={s} compactQuestion={compactQuestion} userQuestionLayout={userQuestionLayout} hasThrone={hasThrone} allowLegacyNames={allowLegacyNames} fastestSeatId={fastest?.seatId} motion={motion} />; })}
       </div>
-      {a && a.queued > 0 && <div className="v3-queue">+{a.queued.toLocaleString('vi-VN')} người đang chờ chỗ</div>}
     </section>
   );
 }
