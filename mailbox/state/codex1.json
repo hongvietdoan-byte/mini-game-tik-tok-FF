@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 418,
-  "heartbeat": "2026-11-24T13:25:48+07:00",
+  "heartbeat": "2026-11-24T13:30:04+07:00",
   "state": "working",
   "task": "C-0419",
-  "note": "test:load 5/5 pass; heap start 32.3, mid 39.8–41.3, end 38.8–39.5 MiB; 315.5–407.3s/run. Đang chạy ci đầy đủ.",
+  "note": "5/5 test:load đạt; heap ổn định. Đang hoàn tất dependency trong worktree thật để chạy ci (privacy/typecheck/unit+integration).",
   "done": []
 }
