@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-25T08:35:16+07:00",
+  "heartbeat": "2026-11-25T08:55:16+07:00",
   "state": "waiting",
   "task": "C-0419",
-  "note": "Không có thư mới; chờ coordinator, việc dự phòng codex1 đã xử lý",
+  "note": "Mailbox trống; đã báo rảnh cho coordinator; chờ việc phù hợp",
   "done": []
 }
