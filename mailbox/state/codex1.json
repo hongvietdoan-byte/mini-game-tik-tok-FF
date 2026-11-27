@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T00:44:50+07:00",
+  "heartbeat": "2026-11-28T01:02:57+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Đã hoàn tất typecheck, privacy:check và test:load (10/10); full unit/integration chạy song song bị timeout do máy bận, đã dừng tiến trình profiler/server tạm để đo lại",
+  "note": "Đã đọc 3 thư; áp dụng C-0428 bỏ chờ worker ở timer, giới hạn flush sau Victory/tắt máy; typecheck và 2 test trọng điểm xanh, tiếp tục C-0420",
   "done": [
     421
   ]
