@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T06:44:25+07:00",
+  "heartbeat": "2026-11-28T06:46:24+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Đã đọc đủ 3 thư, không có thư mới; baseline main 10k/20k lượt đầu và lặp đều xong, tiếp tục đo đối chứng trên bản sao DB riêng.",
+  "note": "Inbox unchanged (C-0420/C-0426/C-0428); 10k/20k main baseline repeats confirm p99 >1.4s, max >1.8s; resuming isolated-database after runs.",
   "done": [
     421
   ]
