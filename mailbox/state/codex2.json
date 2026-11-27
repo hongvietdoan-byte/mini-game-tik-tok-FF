@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 417,
-  "heartbeat": "2026-11-28T03:41:40+07:00",
+  "heartbeat": "2026-11-28T03:42:31+07:00",
   "state": "blocked",
   "task": "C-0422",
-  "note": "Nhánh codex2/c-fast-start đã push và report Y-0698 gửi; chưa done vì command review chặn xóa các bản sao/tệp tạm C-0422 khỏi E:\\\\temp. Chờ coordinator xử lý dọn qua kênh được phép.",
+  "note": "C-0422 đã report Y-0698; command review vẫn chặn dọn E:\\\\temp, chưa có thư phản hồi hoặc việc độc lập khả thi.",
   "done": [
     423,
     424,
