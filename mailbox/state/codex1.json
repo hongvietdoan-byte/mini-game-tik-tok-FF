@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T01:10:39+07:00",
+  "heartbeat": "2026-11-28T01:25:47+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Đã đọc 3 thư và gửi ACK C-0420; C-0428 thay mục 1, đang tiếp tục triển khai yêu cầu RAM và kiểm thử Phase Q trong worktree.",
+  "note": "Đã đọc BOARD và 3 thư chưa xử lý; không có thư mới. Tiếp tục C-0420 trong worktree được giao, áp dụng C-0428.",
   "done": [
     421
   ]
