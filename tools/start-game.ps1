@@ -31,16 +31,17 @@ function Start-QuizServer {
   $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
   if ($RunTsx) {
     Write-Host '[quiz] Dang chay server bang tsx.'
-    return Start-Process -FilePath $nodePath -ArgumentList @('--import', 'tsx', $sourceEntry) -WorkingDirectory $Root -NoNewWindow -PassThru
+    return Start-Process -FilePath $nodePath -ArgumentList @('--import', 'tsx', "`"$sourceEntry`"") -WorkingDirectory $Root -NoNewWindow -PassThru
   }
-  return Start-Process -FilePath $nodePath -ArgumentList @($bundle) -WorkingDirectory $Root -NoNewWindow -PassThru
+  return Start-Process -FilePath $nodePath -ArgumentList @("`"$bundle`"") -WorkingDirectory $Root -NoNewWindow -PassThru
 }
 
 function Invoke-WindowCheck {
   param([System.Diagnostics.Process]$Server)
   $serverUrl = "http://127.0.0.1:$port"
-  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $helper -Root $Root -ServerPid $Server.Id -ServerBaseUrl $serverUrl -TimeoutSeconds $TimeoutSeconds
-  return $LASTEXITCODE
+  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $helper -Root $Root -ServerPid $Server.Id -ServerBaseUrl $serverUrl -TimeoutSeconds $TimeoutSeconds 2>&1 | ForEach-Object { Write-Host $_ }
+  $helperExit = $LASTEXITCODE
+  return $helperExit
 }
 
 $timer = [Diagnostics.Stopwatch]::StartNew()

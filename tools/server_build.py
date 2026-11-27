@@ -7,6 +7,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -25,8 +26,10 @@ SOURCE_DIRS = (
 )
 SOURCE_SUFFIXES = {".ts", ".tsx", ".mts", ".cts", ".js", ".mjs"}
 CONFIG_FILES = (
+    ".npmrc",
     "package.json",
     "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
     "apps/server/package.json",
     "packages/audience-engine/package.json",
     "packages/contracts/package.json",
@@ -34,10 +37,12 @@ CONFIG_FILES = (
     "packages/name-filter/package.json",
     "packages/persistence/package.json",
     "packages/quiz-core/package.json",
+    "tools/server_build.py",
 )
 ENTRY = "apps/server/src/main.ts"
 OUTPUT = "apps/server/dist/main.js"
 MARKER = "apps/server/dist/.build-server.json"
+NATIVE_PACKAGE = "packages/persistence/node_modules/better-sqlite3/package.json"
 
 
 def production_sources(root: Path) -> list[Path]:
@@ -65,6 +70,14 @@ def source_hash(root: Path) -> str:
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(chunk)
+    return digest.hexdigest()
+
+
+def file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
     return digest.hexdigest()
 
 
@@ -98,8 +111,10 @@ def artifact_state(root: Path) -> tuple[bool, list[str]]:
         try:
             if metadata.get("sourceHash") != source_hash(root):
                 stale.append("source server/workspace đã đổi sau lần bundle")
+            if output.is_file() and metadata.get("bundleHash") != file_hash(output):
+                stale.append("hash bundle server không khớp; bundle có thể bị hỏng hoặc bị sửa")
         except (OSError, ValueError, TypeError) as error:
-            stale.append(f"không thể xác minh hash source: {error}")
+            stale.append(f"không thể xác minh hash source/bundle: {error}")
     return not stale, stale
 
 
@@ -152,6 +167,7 @@ def build_bundle(root: Path) -> int:
         "--platform=node",
         "--target=node22",
         "--format=esm",
+        '--banner:js=import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
         "--external:better-sqlite3",
         f"--outfile={output}",
         "--log-level=warning",
@@ -167,6 +183,25 @@ def build_bundle(root: Path) -> int:
     if not output.is_file() or output.stat().st_size == 0:
         print(f"[server] esbuild không tạo được {OUTPUT}.")
         return 1
+    try:
+        bundle = output.read_text(encoding="utf-8")
+        import_pattern = re.compile(r'(["\'])better-sqlite3\1')
+        package_path = root / NATIVE_PACKAGE
+        if import_pattern.search(bundle):
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            entry = package_path.parent / package.get("main", "index.js")
+            if not entry.is_file():
+                raise FileNotFoundError(f"không tìm thấy entry native {entry}")
+            specifier = os.path.relpath(entry, output.parent).replace(os.sep, "/")
+            if not specifier.startswith("."):
+                specifier = f"./{specifier}"
+            bundle, replacements = import_pattern.subn(lambda match: f"{match.group(1)}{specifier}{match.group(1)}", bundle)
+            if replacements == 0:
+                raise RuntimeError("không thay được external import better-sqlite3")
+            output.write_bytes(bundle.encode("utf-8"))
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, RuntimeError) as error:
+        print(f"[server] không thể liên kết native better-sqlite3 vào bundle: {error}")
+        return 1
     return 0
 
 
@@ -176,8 +211,9 @@ def write_marker(root: Path) -> int:
         print(f"[server] không ghi marker vì {OUTPUT} thiếu hoặc rỗng.")
         return 1
     metadata = {
-        "version": 1,
+        "version": 2,
         "sourceHash": source_hash(root),
+        "bundleHash": file_hash(output),
         "gitHead": current_git_head(root),
         "createdAtUtc": datetime.now(timezone.utc).isoformat(),
         "sizeBytes": output.stat().st_size,

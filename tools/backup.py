@@ -142,19 +142,25 @@ def sqlite_backup(source_path: Path, destination_path: Path) -> None:
         raise BackupError(f"SQLite không tạo được bản sao: {destination_path}")
 
 
-def asset_files(assets_root: Path) -> list[tuple[Path, str]]:
-    files: list[tuple[Path, str]] = []
+def asset_files(assets_root: Path) -> list[tuple[Path, str, os.stat_result]]:
+    files: list[tuple[Path, str, os.stat_result]] = []
     if not assets_root.exists():
         return files
-    for directory, names, filenames in os.walk(assets_root, followlinks=False):
-        names[:] = [name for name in names if name.lower() not in BACKUP_EXCLUDES and not (Path(directory) / name).is_symlink()]
-        for filename in filenames:
-            source = Path(directory) / filename
-            if source.is_symlink() or not source.is_file():
-                continue
-            relative = source.relative_to(assets_root.parent).as_posix()
-            files.append((source, relative))
-    return sorted(files, key=lambda pair: pair[1])
+    pending = [assets_root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    if entry.name.lower() not in BACKUP_EXCLUDES:
+                        pending.append(Path(entry.path))
+                    continue
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                source = Path(entry.path)
+                relative = source.relative_to(assets_root.parent).as_posix()
+                files.append((source, relative, entry.stat(follow_symlinks=False)))
+    return sorted(files, key=lambda item: item[1])
 
 
 def prune_backups(backup_base: Path, keep: int = 10) -> int:
@@ -299,21 +305,13 @@ def make_backup(root: Path, output_dir: Path | None = None, *, keep: int = 10) -
         if sidecar.is_file():
             required_bytes += sidecar.stat().st_size
     changed_assets: list[tuple[Path, str, os.stat_result, dict[str, object] | None]] = []
-    for source, relative in assets:
-        stat = source.stat()
+    for source, relative, stat in assets:
         prior = previous_records.get(relative) if previous_backup else None
         unchanged = bool(
             prior
             and prior.get("sizeBytes") == stat.st_size
             and prior.get("mtimeNs") == stat.st_mtime_ns
         )
-        prior_file = resolved_child(previous_backup, relative_path(relative)) if unchanged and previous_backup else None
-        if prior_file is not None:
-            try:
-                prior_stat = prior_file.stat()
-                unchanged = prior_file.is_file() and prior_stat.st_size == stat.st_size and prior_stat.st_mtime_ns == stat.st_mtime_ns
-            except OSError:
-                unchanged = False
         if not unchanged or not allow_hardlinks:
             required_bytes += stat.st_size
         changed_assets.append((source, relative, stat, prior if unchanged else None))

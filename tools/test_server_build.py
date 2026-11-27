@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -44,6 +45,46 @@ class ServerBuildTests(unittest.TestCase):
                 self.assertTrue(any("source" in reason for reason in reasons))
                 self.assertEqual(server_build.ensure_build(root), 0)
                 self.assertEqual(server_build.build_state(root), (True, []))
+
+    def test_same_size_bundle_corruption_forces_rebuild(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="quiz-server-corrupt-") as temp:
+            root = self._root(temp)
+            with patch.object(server_build, "current_git_head", return_value="commit-a"), \
+                    patch.object(server_build, "build_bundle", side_effect=self._fake_build) as build:
+                self.assertEqual(server_build.ensure_build(root), 0)
+                output = root / server_build.OUTPUT
+                original = output.read_bytes()
+                output.write_bytes(b"!" + original[1:])
+                self.assertEqual(output.stat().st_size, len(original))
+                fresh, reasons = server_build.build_state(root)
+                self.assertFalse(fresh)
+                self.assertTrue(any("hash bundle" in reason for reason in reasons))
+                self.assertEqual(server_build.ensure_build(root), 0)
+                self.assertEqual(build.call_count, 2)
+                self.assertEqual(server_build.build_state(root), (True, []))
+
+    def test_bundle_rewrites_external_sqlite_import_to_workspace_package(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="quiz-server-native-") as temp:
+            root = self._root(temp)
+            package = root / "packages" / "persistence" / "node_modules" / "better-sqlite3"
+            (package / "lib").mkdir(parents=True)
+            (package / "package.json").write_text(json.dumps({"main": "lib/index.js"}), encoding="utf-8")
+            (package / "lib" / "index.js").write_text("export default class Database {}\n", encoding="utf-8")
+            esbuild = root / "node_modules" / ".pnpm" / "esbuild@1" / "node_modules" / "esbuild" / "bin" / "esbuild"
+            esbuild.parent.mkdir(parents=True)
+            esbuild.write_text("", encoding="utf-8")
+
+            def fake_esbuild(command: list[str], *, cwd: Path, check: bool) -> subprocess.CompletedProcess[str]:
+                output_arg = next(value for value in command if value.startswith("--outfile="))
+                Path(output_arg.split("=", 1)[1]).write_text('import Database from "better-sqlite3";\n', encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0)
+
+            with patch.object(server_build.subprocess, "run", side_effect=fake_esbuild):
+                self.assertEqual(server_build.build_bundle(root), 0)
+
+            bundle = (root / server_build.OUTPUT).read_text(encoding="utf-8")
+            self.assertIn('"../../../packages/persistence/node_modules/better-sqlite3/lib/index.js"', bundle)
+            self.assertNotIn('"better-sqlite3"', bundle)
 
     def test_no_git_rebuilds_every_time_but_remains_runnable(self) -> None:
         with tempfile.TemporaryDirectory(prefix="quiz-server-no-git-") as temp:
