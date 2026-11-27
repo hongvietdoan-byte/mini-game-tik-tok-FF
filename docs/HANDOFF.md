@@ -1,6 +1,29 @@
-# HANDOFF — phiên coordinator (cập nhật 22/11/2026 ~23:00)
+# HANDOFF — phiên coordinator (cập nhật 27/11/2026 ~15:00)
 
-**PHIÊN KẾ (điều phối quiz TikTok, sắp hết hạn mức tuần 22/11 ~23:00) — ĐÃ NHẬN 23/11 ~08:00 (C-0401/C-0402 đã xong, đang soi + gộp thử).**
+**PHIÊN KẾ: người dùng đổi tài khoản 27/11 ~15:00. Đọc khối "Mới nhất 27/11" trước.**
+
+## Mới nhất 27/11 ~15:00 — đọc trước
+- **Trạng thái main:** đã gộp toàn bộ, gồm ghế theo điểm (C-0416/C-0418), bỏ nhãn hàng chờ (C-0417), soak có GC (C-0419) và bộ theme. Checkout chính đang ở main mới nhất.
+- **Ngân hàng câu hỏi:**
+  - Đã xuất 186 câu APPROVED từ DB ra `NGAN_HANG_CAU_HOI_2026-11-27.xlsx` ở gốc repo (gitignore). Định dạng mới: sheet `Cau hoi`, cột A–M, nhập bằng `pnpm questions:import-xlsx`.
+  - Dry-run cho kết quả 186 Giữ, 0 lỗi. Đã gửi file cho người dùng; chờ người dùng sửa và gửi lại.
+  - Khi nhận lại: chạy dry-run → báo người dùng → `--apply` (tự backup) → người dùng duyệt ở tab Câu hỏi của Dashboard.
+  - 8 câu quá dài nên bị loại khỏi vòng chơi: demo-002, demo-003, demo-004, demo-006, demo-019, demo-025, demo-029, demo-036.
+  - `pnpm` không có trong PATH của Bash/PowerShell: dùng `node_modules/.bin/tsx tools/questions_import_xlsx.ts <file>` và chạy nền vì HDD chậm (hơn 5 phút).
+- **Cinema Mode V6:**
+  - Kế hoạch ở `docs/CINEMA_MODE_AUDIT_V6.md`; mục 0 là các quyết định người dùng chốt 27/11:
+    - **một nút gạt** Quiz ↔ Cinema trên thanh trên cùng Dashboard;
+    - **tải 20.000 người** cho cả Quiz và Cinema;
+    - **chibi quay lưng tự gen bằng AI**.
+  - Ước tính đã báo người dùng: Cinema 13–17 ngày làm việc (bản MVP 10–12 ngày). Nếu bắt đầu 30/11 thì sẵn sàng khoảng 13–19/12.
+  - **Người dùng CHƯA duyệt cả kế hoạch Cinema. Chưa code Cinema.**
+  - Còn chờ người dùng: video 16:9, có dùng `UTM Mother` thay NVN Motherland không, duyệt các thông số mặc định (60 s/poll, kết quả ẩn sau 10 s, video −12 dB khi MC nói).
+- **Đang chạy — C-0420 (Codex 1, Phase Q):**
+  - Quiz chịu tải 20.000 người trọn vòng, nhánh `codex1/c-quiz-20k`, đã ACK 14:44.
+  - Bằng chứng cũ: vòng MOCK 2.000 người có event-loop p99 806 ms.
+  - Nghiệm thu: p99 < 100 ms, max < 250 ms, 0 đáp án mất, snapshot Overlay không lớn theo số người, ở 10k và 20k, mỗi mức 2 lượt.
+  - Khi có report: coordinator tự chạy lại phép đo, gộp thử, chạy đủ test, gửi người dùng bảng trước/sau rồi mới gộp.
+- Codex 2 rảnh. Mailbox: `py -X utf8 tools/mb.py read --for coordinator`; chờ thư: `py -X utf8 tools/mb.py wait --for coordinator --timeout 2400` (chạy nền).
 
 ## Mới nhất 24/11 ~01:10 — theme đang chờ Codex 2 (đọc trước)
 - Codex 2 làm C-0407/C-0408 (một bố cục 30 ghế + ngai) trên `codex2/c-theme-goc`, CHƯA push (origin vẫn 0a433405). Đã chốt: C-0410 (bỏ hit-test, dùng pixel-diff), C-0411 (webServer timeout 180 s, server lên ~70 s), C-0412 (MC sát khung tên là đúng C-0381), C-0413 (gate theo alpha ảnh ≥50%, nhóm H chỉ báo cáo), C-0414 (H01–H03 trong suốt có ý, không làm probe), C-0415 (slot nhiều vị trí: tốt nhất ≥50% và mọi vị trí ≥25%; I10 đạt; nhãn soi đặt ngoài viền).
