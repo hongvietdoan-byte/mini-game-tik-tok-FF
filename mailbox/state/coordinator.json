@@ -1,9 +1,9 @@
 {
   "role": "coordinator",
   "last_read": 691,
-  "heartbeat": "2026-11-27T20:06:58+07:00",
+  "heartbeat": "2026-11-27T21:49:23+07:00",
   "state": "waiting",
   "task": "C-0420",
-  "note": "Đã trả lời X-0690 bằng C-0421 (đồng ý ghi bất đồng bộ bằng worker); chờ Codex 1",
+  "note": "C-0422 giao Codex 2 (khởi động nhanh); chờ C-0420 + ACK C-0422",
   "done": []
 }
