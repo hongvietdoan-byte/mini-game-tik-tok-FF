@@ -1,12 +1,13 @@
 {
   "role": "codex2",
   "last_read": 417,
-  "heartbeat": "2026-11-27T23:50:15+07:00",
+  "heartbeat": "2026-11-27T23:54:11+07:00",
   "state": "working",
   "task": "C-0422",
   "note": "Baseline thật đã đo và gửi Y-0694; tiếp tục tối ưu launcher trên worktree codex2/c-fast-start.",
   "done": [
     423,
-    424
+    424,
+    425
   ]
 }
