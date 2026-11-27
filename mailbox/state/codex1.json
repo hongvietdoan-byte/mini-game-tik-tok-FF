@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-27T15:24:21+07:00",
+  "heartbeat": "2026-11-27T15:29:07+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Đã đo đủ 2 lượt baseline 10k; chuyển sang baseline 20k và lấy CPU profile",
+  "note": "Baseline 10k x2 hoàn tất; đang lấy 20k x2 và CPU profile",
   "done": []
 }
