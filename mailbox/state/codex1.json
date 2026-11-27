@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T01:02:57+07:00",
+  "heartbeat": "2026-11-28T01:10:39+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Đã đọc 3 thư; áp dụng C-0428 bỏ chờ worker ở timer, giới hạn flush sau Victory/tắt máy; typecheck và 2 test trọng điểm xanh, tiếp tục C-0420",
+  "note": "Đã đọc 3 thư và gửi ACK C-0420; C-0428 thay mục 1, đang tiếp tục triển khai yêu cầu RAM và kiểm thử Phase Q trong worktree.",
   "done": [
     421
   ]
