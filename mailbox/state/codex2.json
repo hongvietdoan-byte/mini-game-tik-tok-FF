@@ -1,9 +1,11 @@
 {
   "role": "codex2",
   "last_read": 417,
-  "heartbeat": "2026-11-27T22:47:18+07:00",
+  "heartbeat": "2026-11-27T22:49:58+07:00",
   "state": "working",
   "task": "C-0422",
   "note": "Đã đo baseline 3 warm và 3 gần lạnh trong worktree riêng; đang triển khai bundle server, backup tăng dần, kiểm tra links và chờ health.",
-  "done": []
+  "done": [
+    423
+  ]
 }
