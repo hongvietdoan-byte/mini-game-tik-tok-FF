@@ -1,9 +1,9 @@
 {
   "role": "coordinator",
   "last_read": 690,
-  "heartbeat": "2026-11-27T19:27:39+07:00",
-  "state": "working",
-  "task": null,
-  "note": "",
+  "heartbeat": "2026-11-27T19:27:51+07:00",
+  "state": "waiting",
+  "task": "C-0420",
+  "note": "Đã trả lời X-0690 bằng C-0421 (đồng ý ghi bất đồng bộ bằng worker); chờ Codex 1",
   "done": []
 }
