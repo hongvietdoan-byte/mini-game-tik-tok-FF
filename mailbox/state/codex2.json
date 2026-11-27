@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 417,
-  "heartbeat": "2026-11-28T04:02:25+07:00",
+  "heartbeat": "2026-11-28T04:22:21+07:00",
   "state": "blocked",
   "task": "C-0422",
-  "note": "Y-0698 đã báo cáo; chưa có thư mới. Việc còn lại là dọn bản sao/tệp tạm E:\\\\temp, command review vẫn chặn thao tác xóa.",
+  "note": "Y-0698 đã báo cáo; mailbox chưa có thư mới. Dọn các bản sao/tệp tạm E:\\\\temp vẫn bị command review chặn.",
   "done": [
     423,
     424,
