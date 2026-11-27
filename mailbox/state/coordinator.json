@@ -1,7 +1,7 @@
 {
   "role": "coordinator",
-  "last_read": 693,
-  "heartbeat": "2026-11-27T22:50:54+07:00",
+  "last_read": 694,
+  "heartbeat": "2026-11-27T23:49:47+07:00",
   "state": "waiting",
   "task": "C-0420",
   "note": "Phiên mới 22:50: theo dõi C-0420 (codex1, 908 dòng chưa commit, đang CPU profile) + C-0422 (codex2, chưa có thay đổi; đã gửi C-0423 xin heartbeat)",
