@@ -1,9 +1,9 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-27T16:02:28+07:00",
+  "heartbeat": "2026-11-27T16:21:05+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Đã đọc hòm thư; profile sau tối ưu 20k: heap sau GC 47.3MB, SQLite ingestBatch/transaction còn nóng; p99 1112.5ms max 2841.6ms chưa đạt, tiếp tục tối ưu ingest an toàn",
+  "note": "Đã tối ưu tránh tạo người chơi/truy vấn lặp và cache round_players; typecheck + 34 unit tests xanh. Hai lượt 20k full round sau sửa vẫn p99 1383/1508ms, max 2655/2223ms; tiếp tục xử lý SQLite ingest/burst, chưa nghiệm thu",
   "done": []
 }
