@@ -1,8 +1,47 @@
-# HANDOFF — phiên coordinator (cập nhật 27/11/2026 ~15:00)
+# HANDOFF — phiên coordinator (cập nhật 27/11/2026 ~22:50)
 
-**PHIÊN KẾ: người dùng đổi tài khoản 27/11 ~15:00. Đọc khối "Mới nhất 27/11" trước.**
+**PHIÊN KẾ: người dùng đổi tài khoản 27/11 ~22:50. Đọc khối "Mới nhất 27/11 ~22:50" trước, rồi khối 15:00 ngay dưới.**
 
-## Mới nhất 27/11 ~15:00 — đọc trước
+## Mới nhất 27/11 ~22:50 — đọc trước
+- **Hai việc đang chạy, coordinator chỉ theo dõi:**
+  - **C-0420 (Codex 1, Phase Q — Quiz 20k trọn vòng):**
+    - Codex 1 hỏi (X-0690): tối ưu điểm nóng chưa đủ, 20k vẫn p99 1,955 s, max 3,4 s.
+    - Coordinator trả lời bằng **C-0421**: ĐỒNG Ý ghi SQLite bất đồng bộ bằng `worker_threads`, có các ràng buộc:
+      - chấm điểm, xếp hạng và chốt câu vẫn tính trong RAM, theo seq nhận ở luồng chính;
+      - `await flush()` trước các mốc chốt (không chặn luồng chính, quá 5 s chỉ cảnh báo);
+      - dòng chưa ack giữ lại và gửi lại khi worker chết, ghi idempotent;
+      - có chế độ `QUIZ_PERSIST_MODE=sync` dự phòng;
+      - giữ nguyên ngưỡng nghiệm thu;
+      - thêm 3 ca biên: giết worker, DB bận, tắt server khi còn lô chưa ghi.
+    - Codex 1 ACK lúc 20:06 (X-0691).
+    - Heartbeat 22:07: ingest 20k đã đạt, nhưng trọn vòng vẫn vượt ngưỡng ở READING/REVEAL/ANSWER. Đang lấy CPU profile 20k để khoanh vùng.
+    - Đã hứa gửi số đo giữa chừng sau lượt 20k đầu tiên có worker.
+    - Khi có report: tự đo lại → gộp thử → chạy đủ test → gửi người dùng bảng trước/sau → mới gộp.
+  - **C-0422 (Codex 2, nhánh `codex2/c-fast-start`, người dùng duyệt "Giao ngay"):**
+    - Việc: CHAY_GAME khởi động nhanh trên HDD.
+      - server chạy từ bản bundle bằng node thay vì tsx, có hash nguồn và preflight;
+      - backup tăng dần (hardlink hoặc bỏ qua asset không đổi, restore byte-for-byte);
+      - `open-game-windows.ps1` chờ theo tiến trình server thay vì mốc 90 s;
+      - chặn liên kết `@quiz/*` trỏ vào worktree;
+      - in thời gian từng bước.
+    - Nghiệm thu:
+      - ấm ≤ 60 s;
+      - gần lạnh giảm ≥ 50 %;
+      - backup lần 2 ≤ 10 s.
+    - CẤM sửa `apps/server/src/runtime.ts` và `packages/persistence/**` (C-0420 đang sửa).
+    - Codex 2 ACK lúc 21:50 (Y-0692).
+    - Khi gộp phải chờ lúc người dùng không live.
+- **Người dùng TỰ LO (đừng giao Codex):**
+  - gen chibi quay lưng A6 cho Cinema;
+  - rút gọn 8 câu quá dài (demo-002/003/004/006/019/025/029/036).
+- Cinema vẫn CHƯA được duyệt, chưa code. Ngân hàng câu hỏi vẫn chờ người dùng gửi lại file xlsx (quy trình ở khối 15:00).
+- **Hòm thư:**
+  - Trong worktree, `tools/mb.py` báo lỗi "không phải checkout chính". Phải gọi `py -X utf8 "E:\Ai\2026\Trend mini game tiktok\tools\mb.py" ...`.
+  - Lúc bàn giao không còn thư chưa xử lý.
+  - Phiên mới: chạy `read --for coordinator`, rồi bật lại `wait --for coordinator --timeout 2400` ở chế độ chạy nền.
+- Grep toàn repo trên HDD rất chậm (quá 2 phút). Hãy giới hạn trong thư mục cụ thể.
+
+## 27/11 ~15:00
 - **Trạng thái main:** đã gộp toàn bộ, gồm ghế theo điểm (C-0416/C-0418), bỏ nhãn hàng chờ (C-0417), soak có GC (C-0419) và bộ theme. Checkout chính đang ở main mới nhất.
 - **Ngân hàng câu hỏi:**
   - Đã xuất 186 câu APPROVED từ DB ra `NGAN_HANG_CAU_HOI_2026-11-27.xlsx` ở gốc repo (gitignore). Định dạng mới: sheet `Cau hoi`, cột A–M, nhập bằng `pnpm questions:import-xlsx`.
