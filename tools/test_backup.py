@@ -161,6 +161,144 @@ class RestoreSafetyTests(unittest.TestCase):
             self.assertTrue(extra.exists())
 
 
+class IncrementalBackupTests(unittest.TestCase):
+    def _seed_checkout(self, root: Path) -> None:
+        (root / "data").mkdir()
+        (root / "data" / "quiz.db").write_bytes(b"sqlite snapshot bytes")
+        (root / "assets-local" / "subfolder").mkdir(parents=True)
+        (root / "assets-local" / "logo.txt").write_bytes(b"logo v1")
+        (root / "assets-local" / "subfolder" / "music.txt").write_bytes(b"music v1")
+
+    def _make(self, root: Path, output_dir: Path) -> Path:
+        with patch.object(
+            backup,
+            "sqlite_backup",
+            side_effect=lambda source, target: (target.parent.mkdir(parents=True, exist_ok=True), shutil.copy2(source, target)),
+        ), redirect_stdout(StringIO()):
+            result = make_backup(root, output_dir)
+        assert result is not None
+        return result
+
+    def test_unchanged_assets_are_linked_and_remain_restorable_after_prune(self) -> None:
+        with repo_temp_directory(prefix="quiz-backup-incremental-link-") as temp:
+            root = Path(temp)
+            self._seed_checkout(root)
+            output_dir = root / "backup-store"
+            first = self._make(root, output_dir)
+            with patch.object(backup, "hardlinks_supported", return_value=True):
+                second = self._make(root, output_dir)
+
+            first_asset = first / "assets-local" / "logo.txt"
+            second_asset = second / "assets-local" / "logo.txt"
+            source_asset = root / "assets-local" / "logo.txt"
+            self.assertFalse(os.path.samefile(source_asset, first_asset))
+            self.assertTrue(os.path.samefile(first_asset, second_asset))
+            self.assertFalse(os.path.samefile(first / "data" / "quiz.db", second / "data" / "quiz.db"))
+            self.assertEqual(backup.verify_backup(second)[0], True)
+
+            backup.prune_backups(output_dir, keep=1)
+            self.assertFalse(first.exists())
+            self.assertEqual(backup.verify_backup(second)[0], True)
+
+            restored = root / "restored"
+            with patch.object(backup, "server_is_listening", return_value=False), \
+                    patch.object(backup, "restore_database", side_effect=lambda source, target: (target.parent.mkdir(parents=True, exist_ok=True), shutil.copy2(source, target))), \
+                    redirect_stdout(StringIO()):
+                backup.restore_backup(second, restored, assume_yes=True, mirror=True)
+            for relative in ("data/quiz.db", "assets-local/logo.txt", "assets-local/subfolder/music.txt"):
+                self.assertEqual((restored / relative).read_bytes(), (root / relative).read_bytes())
+
+    def test_editing_source_asset_does_not_mutate_hardlinked_backup_snapshots(self) -> None:
+        with repo_temp_directory(prefix="quiz-backup-source-edit-") as temp:
+            root = Path(temp)
+            self._seed_checkout(root)
+            output_dir = root / "backup-store"
+            first = self._make(root, output_dir)
+            with patch.object(backup, "hardlinks_supported", return_value=True):
+                second = self._make(root, output_dir)
+
+            source = root / "assets-local" / "logo.txt"
+            original_mtime = source.stat().st_mtime_ns
+            source.write_bytes(b"logo changed in source")
+            os.utime(source, ns=(source.stat().st_atime_ns, original_mtime + 2_000_000_000))
+
+            self.assertEqual((first / "assets-local" / "logo.txt").read_bytes(), b"logo v1")
+            self.assertEqual((second / "assets-local" / "logo.txt").read_bytes(), b"logo v1")
+            self.assertTrue(backup.verify_backup(first)[0])
+            self.assertTrue(backup.verify_backup(second)[0])
+            with patch.object(backup, "hardlinks_supported", return_value=True):
+                third = self._make(root, output_dir)
+            self.assertEqual((third / "assets-local" / "logo.txt").read_bytes(), b"logo changed in source")
+            self.assertTrue(backup.verify_backup(third)[0])
+
+    def test_changed_added_and_deleted_assets_are_mirrored_independently(self) -> None:
+        with repo_temp_directory(prefix="quiz-backup-incremental-changes-") as temp:
+            root = Path(temp)
+            self._seed_checkout(root)
+            output_dir = root / "backup-store"
+            first = self._make(root, output_dir)
+            logo = root / "assets-local" / "logo.txt"
+            logo.write_bytes(b"logo v2 changed")
+            os.utime(logo, ns=(logo.stat().st_atime_ns, logo.stat().st_mtime_ns + 2_000_000_000))
+            (root / "assets-local" / "new.txt").write_bytes(b"new asset")
+            (root / "assets-local" / "subfolder" / "music.txt").unlink()
+
+            with patch.object(backup, "hardlinks_supported", return_value=True):
+                second = self._make(root, output_dir)
+            self.assertEqual((second / "assets-local" / "logo.txt").read_bytes(), b"logo v2 changed")
+            self.assertFalse((second / "assets-local" / "subfolder" / "music.txt").exists())
+            self.assertEqual((second / "assets-local" / "new.txt").read_bytes(), b"new asset")
+            self.assertEqual((first / "assets-local" / "logo.txt").read_bytes(), b"logo v1")
+            self.assertEqual(backup.verify_backup(second)[0], True)
+
+    def test_missing_or_corrupt_latest_manifest_forces_full_copy(self) -> None:
+        for damage in ("missing-manifest", "bad-manifest", "missing-file"):
+            with self.subTest(damage=damage), repo_temp_directory(prefix="quiz-backup-corrupt-latest-") as temp:
+                root = Path(temp)
+                self._seed_checkout(root)
+                output_dir = root / "backup-store"
+                first = self._make(root, output_dir)
+                if damage == "missing-manifest":
+                    (first / backup.MANIFEST_NAME).unlink()
+                elif damage == "bad-manifest":
+                    (first / backup.MANIFEST_NAME).write_text("{not-json", encoding="utf-8")
+                else:
+                    (first / "assets-local" / "logo.txt").unlink()
+
+                with patch.object(backup, "hardlinks_supported", return_value=True):
+                    second = self._make(root, output_dir)
+                self.assertFalse(os.path.samefile(first / "assets-local" / "subfolder" / "music.txt", second / "assets-local" / "subfolder" / "music.txt"))
+                self.assertEqual(backup.verify_backup(second)[0], True)
+
+    def test_hardlink_failure_falls_back_to_copy(self) -> None:
+        with repo_temp_directory(prefix="quiz-backup-hardlink-fallback-") as temp:
+            root = Path(temp)
+            self._seed_checkout(root)
+            output_dir = root / "backup-store"
+            first = self._make(root, output_dir)
+            with patch.object(backup, "hardlinks_supported", return_value=True), \
+                    patch.object(backup.os, "link", side_effect=OSError(18, "cross-device link")):
+                second = self._make(root, output_dir)
+            self.assertFalse(os.path.samefile(first / "assets-local" / "logo.txt", second / "assets-local" / "logo.txt"))
+            self.assertEqual(backup.verify_backup(second)[0], True)
+
+    def test_edge_profiles_and_admin_token_are_not_backup_inputs(self) -> None:
+        with repo_temp_directory(prefix="quiz-backup-edge-profile-exclusion-") as temp:
+            root = Path(temp)
+            self._seed_checkout(root)
+            profile = root / "data" / "edge-program-profile"
+            profile.mkdir()
+            (profile / "browser-state.txt").write_text("synthetic", encoding="utf-8")
+            (root / "data" / "admin-token.txt").write_text("synthetic-token", encoding="utf-8")
+            output_dir = root / "backup-store"
+            created = self._make(root, output_dir)
+            manifest = backup.read_manifest(created)
+            paths = {record["path"] for record in manifest["files"]}
+            self.assertEqual(paths, {"data/quiz.db", "assets-local/logo.txt", "assets-local/subfolder/music.txt"})
+            self.assertFalse((created / "data" / "edge-program-profile").exists())
+            self.assertFalse((created / "data" / "admin-token.txt").exists())
+
+
 
 
 if __name__ == "__main__":

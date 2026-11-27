@@ -8,7 +8,11 @@ param(
 
   [int]$Height = 0,
 
-  [string]$ServerBaseUrl = 'http://127.0.0.1:8787'
+  [string]$ServerBaseUrl = 'http://127.0.0.1:8787',
+
+  [int]$ServerPid = 0,
+
+  [int]$TimeoutSeconds = 1200
 )
 
 $ErrorActionPreference = 'Stop'
@@ -323,7 +327,10 @@ $ServerBaseUrl = $ServerBaseUrl.TrimEnd('/')
 $healthUrl = "$ServerBaseUrl/health"
 $programUrl = "$ServerBaseUrl/overlay/?role=program"
 $dashboardUrl = "$ServerBaseUrl/dashboard/"
-$deadline = (Get-Date).AddSeconds(90)
+$TimeoutSeconds = [Math]::Max(1, $TimeoutSeconds)
+$waitTimer = [Diagnostics.Stopwatch]::StartNew()
+$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+$nextWaitMessageSeconds = 30
 $serverReady = $false
 
 while ((Get-Date) -lt $deadline) {
@@ -334,14 +341,27 @@ while ((Get-Date) -lt $deadline) {
       break
     }
   } catch {
-    Start-Sleep -Milliseconds 500
+    # The server may still be loading or starting its local assets.
   }
+
+  if ($ServerPid -gt 0 -and -not (Get-Process -Id $ServerPid -ErrorAction SilentlyContinue)) {
+    Write-Host '[quiz] LOI: tiến trình máy chủ đã dừng trước khi /health sẵn sàng.'
+    exit 1
+  }
+  if ($waitTimer.Elapsed.TotalSeconds -ge $nextWaitMessageSeconds) {
+    Write-Host '[quiz] đang chờ máy chủ…'
+    $nextWaitMessageSeconds += 30
+  }
+  Start-Sleep -Seconds 1
 }
 
 if (-not $serverReady) {
-  Write-Host "[quiz] LOI: server khong san sang tai $healthUrl trong 90 giay."
+  Write-Host "[quiz] LOI: server khong san sang tai $healthUrl sau $TimeoutSeconds giay."
   exit 1
 }
+$waitTimer.Stop()
+Write-Host ("[quiz] /health 200 sau {0:N1} giây." -f $waitTimer.Elapsed.TotalSeconds)
+$windowTimer = [Diagnostics.Stopwatch]::StartNew()
 
 $tokenPath = Join-Path $Root 'data\admin-token.txt'
 if (Test-Path -LiteralPath $tokenPath) {
@@ -416,6 +436,8 @@ if (-not (Test-DevToolsTarget -DebugPort $debugPort -Url $dashboardUrl)) {
 
 try {
   $metrics = Set-ProgramViewport -DebugPort $debugPort -ProgramUrl $programUrl -TargetWidth $Width -TargetHeight $Height
+  $windowTimer.Stop()
+  Write-Host ("[quiz] mở/xác minh cửa sổ sau {0:N1} giây." -f $windowTimer.Elapsed.TotalSeconds)
   if ($metrics.width -eq $Width -and $metrics.height -eq $Height) {
     $times = [char]0x00D7
     $check = [char]0x2713

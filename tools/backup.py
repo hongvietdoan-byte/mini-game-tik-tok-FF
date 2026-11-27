@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -16,10 +17,12 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from ctypes import wintypes
 
 
 MANIFEST_NAME = "manifest.json"
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
+SUPPORTED_MANIFEST_VERSIONS = {1, MANIFEST_VERSION}
 BACKUP_EXCLUDES = {"_backup", "review"}
 
 
@@ -65,7 +68,11 @@ def read_manifest(backup: Path) -> dict:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise BackupError(f"Không đọc được {manifest_path}: {error}") from error
-    if not isinstance(manifest, dict) or manifest.get("version") != MANIFEST_VERSION or not isinstance(manifest.get("files"), list):
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("version") not in SUPPORTED_MANIFEST_VERSIONS
+        or not isinstance(manifest.get("files"), list)
+    ):
         raise BackupError("Manifest sai phiên bản hoặc thiếu danh sách files.")
     if not manifest["files"]:
         raise BackupError("Manifest không có file nào để xác minh.")
@@ -95,6 +102,9 @@ def verify_backup(backup: Path, *, quiet: bool = False) -> tuple[bool, list[str]
             actual_size = path.stat().st_size
             if actual_size != record.get("sizeBytes"):
                 errors.append(f"Sai kích thước {key}: manifest={record.get('sizeBytes')} thực={actual_size}")
+            recorded_mtime = record.get("mtimeNs")
+            if recorded_mtime is not None and path.stat().st_mtime_ns != recorded_mtime:
+                errors.append(f"Sai thời gian sửa {key} so với manifest.")
             actual_hash = sha256_file(path)
             if actual_hash != record.get("sha256"):
                 errors.append(f"Sai SHA-256: {key}")
@@ -165,6 +175,107 @@ def prune_backups(backup_base: Path, keep: int = 10) -> int:
     return removed
 
 
+def _timestamp_backups(backup_base: Path) -> list[Path]:
+    if not backup_base.is_dir():
+        return []
+    valid_name = re.compile(r"^\d{8}-\d{6}(?:-\d+)?$")
+    candidates = [
+        path for path in backup_base.iterdir()
+        if valid_name.fullmatch(path.name) and path.is_dir() and not path.is_symlink()
+    ]
+    candidates.sort(key=lambda path: (path.stat().st_mtime_ns, path.name))
+    return candidates
+
+
+def _verified_incremental_base(backup_base: Path) -> tuple[Path | None, dict[str, dict[str, object]]]:
+    """Use only the newest intact v2 backup; a damaged newest backup forces a full copy."""
+    candidates = _timestamp_backups(backup_base)
+    if not candidates:
+        return None, {}
+
+    latest = candidates[-1]
+    try:
+        manifest = read_manifest(latest)
+        if manifest.get("version") != MANIFEST_VERSION:
+            return None, {}
+
+        indexed: dict[str, dict[str, object]] = {}
+        for record in manifest["files"]:
+            if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+                return None, {}
+            rel = relative_path(record["path"])
+            key = rel.as_posix()
+            if key in indexed:
+                return None, {}
+            prior_file = resolved_child(latest, rel)
+            if not prior_file.is_file():
+                return None, {}
+            stat = prior_file.stat()
+            if stat.st_size != record.get("sizeBytes"):
+                return None, {}
+            if key.startswith("assets-local/"):
+                mtime_ns = record.get("mtimeNs")
+                sha256 = record.get("sha256")
+                if not isinstance(mtime_ns, int) or not isinstance(sha256, str) or not sha256:
+                    return None, {}
+                if stat.st_mtime_ns != mtime_ns:
+                    return None, {}
+            indexed[key] = record
+
+        if "data/quiz.db" not in indexed:
+            return None, {}
+        if manifest.get("assetCount") != len(indexed) - 1:
+            return None, {}
+        return latest, indexed
+    except (OSError, BackupError, TypeError, ValueError):
+        return None, {}
+
+
+def _is_ntfs(path: Path) -> bool:
+    if os.name != "nt":
+        return False
+    try:
+        root = path.resolve().anchor
+        filesystem = ctypes.create_unicode_buffer(64)
+        get_volume_information = ctypes.WinDLL("kernel32", use_last_error=True).GetVolumeInformationW
+        get_volume_information.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.LPWSTR,
+            wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.POINTER(wintypes.DWORD),
+            wintypes.LPWSTR,
+            wintypes.DWORD,
+        ]
+        get_volume_information.restype = wintypes.BOOL
+        if not get_volume_information(root, None, 0, None, None, None, filesystem, len(filesystem)):
+            return False
+        return filesystem.value.upper() == "NTFS"
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def hardlinks_supported(source_root: Path, backup_base: Path) -> bool:
+    """Allow immutable snapshot-to-snapshot links on the same NTFS volume only.
+
+    The live source is always copied into a backup first and is never a hardlink
+    target, so edits to an asset in the checkout cannot mutate an older backup.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        if os.stat(source_root).st_dev != os.stat(backup_base).st_dev:
+            return False
+    except OSError:
+        return False
+    return _is_ntfs(source_root) and _is_ntfs(backup_base)
+
+
+def _is_no_space(error: OSError) -> bool:
+    return error.errno in {28, 39, 112} or getattr(error, "winerror", None) in {39, 112}
+
+
 def make_backup(root: Path, output_dir: Path | None = None, *, keep: int = 10) -> Path | None:
     root = root.resolve()
     database = root / "data" / "quiz.db"
@@ -180,12 +291,32 @@ def make_backup(root: Path, output_dir: Path | None = None, *, keep: int = 10) -
     backup_base = (output_dir or (root / "backups")).resolve()
     backup_base.mkdir(parents=True, exist_ok=True)
     assets = asset_files(assets_root)
+    previous_backup, previous_records = _verified_incremental_base(backup_base)
+    allow_hardlinks = bool(previous_backup and hardlinks_supported(assets_root, backup_base))
     required_bytes = database.stat().st_size + 64 * 1024
     for suffix in ("-wal", "-shm"):
         sidecar = Path(str(database) + suffix)
         if sidecar.is_file():
             required_bytes += sidecar.stat().st_size
-    required_bytes += sum(source.stat().st_size for source, _ in assets)
+    changed_assets: list[tuple[Path, str, os.stat_result, dict[str, object] | None]] = []
+    for source, relative in assets:
+        stat = source.stat()
+        prior = previous_records.get(relative) if previous_backup else None
+        unchanged = bool(
+            prior
+            and prior.get("sizeBytes") == stat.st_size
+            and prior.get("mtimeNs") == stat.st_mtime_ns
+        )
+        prior_file = resolved_child(previous_backup, relative_path(relative)) if unchanged and previous_backup else None
+        if prior_file is not None:
+            try:
+                prior_stat = prior_file.stat()
+                unchanged = prior_file.is_file() and prior_stat.st_size == stat.st_size and prior_stat.st_mtime_ns == stat.st_mtime_ns
+            except OSError:
+                unchanged = False
+        if not unchanged or not allow_hardlinks:
+            required_bytes += stat.st_size
+        changed_assets.append((source, relative, stat, prior if unchanged else None))
     free_bytes = shutil.disk_usage(backup_base).free
     if free_bytes < required_bytes:
         raise InsufficientSpaceError(
@@ -210,17 +341,36 @@ def make_backup(root: Path, output_dir: Path | None = None, *, keep: int = 10) -
             "sha256": sha256_file(db_copy),
         })
 
-        for source, relative in assets:
+        for source, relative, source_stat, prior in changed_assets:
             rel = relative_path(relative)
             target = resolved_child(destination, rel)
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-            records.append({"path": rel.as_posix(), "sizeBytes": target.stat().st_size, "sha256": sha256_file(target)})
+            sha256 = ""
+            linked = False
+            if prior is not None and previous_backup is not None and allow_hardlinks:
+                prior_file = resolved_child(previous_backup, rel)
+                try:
+                    os.link(prior_file, target)
+                    sha256 = str(prior["sha256"])
+                    linked = True
+                except OSError:
+                    # FAT/exFAT, permissions, or filesystem policy: fall back to a normal copy.
+                    pass
+            if not linked:
+                shutil.copy2(source, target)
+                sha256 = sha256_file(target)
+            records.append({
+                "path": rel.as_posix(),
+                "sizeBytes": source_stat.st_size,
+                "mtimeNs": source_stat.st_mtime_ns,
+                "sha256": sha256,
+            })
 
         manifest = {
             "version": MANIFEST_VERSION,
             "createdAtUtc": datetime.now(timezone.utc).isoformat(),
             "sourceRoot": str(root),
+            "assetCount": len(assets),
             "files": records,
         }
         (destination / MANIFEST_NAME).write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -230,8 +380,10 @@ def make_backup(root: Path, output_dir: Path | None = None, *, keep: int = 10) -
             print(f"backup WARN: không dọn được bản cũ trong {backup_base}: {error}", file=sys.stderr)
         print(f"backup PASS: {len(records)} tệp → {destination}")
         return destination
-    except (BackupError, OSError, subprocess.SubprocessError):
+    except (BackupError, OSError, subprocess.SubprocessError) as error:
         shutil.rmtree(destination, ignore_errors=True)
+        if isinstance(error, OSError) and _is_no_space(error):
+            raise InsufficientSpaceError("Không đủ dung lượng trống để hoàn tất bản backup.") from error
         raise
 
 

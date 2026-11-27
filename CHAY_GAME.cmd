@@ -41,17 +41,41 @@ echo [quiz] Database source-run: %QUIZ_DB%
 echo [quiz] Du lieu Electron trong AppData khong duoc dung cho buoi LIVE 12-14/11.
 echo.
 
+for /f "delims=" %%T in ('py -3 tools\step_timer.py start') do set "QUIZ_STEP_START=%%T"
+py -3 tools\check_workspace_links.py --root "%ROOT%"
+set "QUIZ_STEP_RC=%ERRORLEVEL%"
+for /f "delims=" %%T in ('py -3 tools\step_timer.py elapsed %QUIZ_STEP_START%') do echo [1/5] xong sau %%T s
+if not "%QUIZ_STEP_RC%"=="0" goto workspace_links_error
+
+for /f "delims=" %%T in ('py -3 tools\step_timer.py start') do set "QUIZ_STEP_START=%%T"
 py -3 tools\web_build.py ensure
-if errorlevel 1 goto build_error
+set "QUIZ_STEP_RC=%ERRORLEVEL%"
+for /f "delims=" %%T in ('py -3 tools\step_timer.py elapsed %QUIZ_STEP_START%') do echo [2/5] xong sau %%T s
+if not "%QUIZ_STEP_RC%"=="0" goto build_error
+
+for /f "delims=" %%T in ('py -3 tools\step_timer.py start') do set "QUIZ_STEP_START=%%T"
+py -3 tools\server_build.py ensure --root "%ROOT%"
+set "QUIZ_STEP_RC=%ERRORLEVEL%"
+for /f "delims=" %%T in ('py -3 tools\step_timer.py elapsed %QUIZ_STEP_START%') do echo [3/5] xong sau %%T s
+set "QUIZ_SERVER_USE_TSX=0"
+if not "%QUIZ_STEP_RC%"=="0" goto server_build_fallback
+goto backup
+
+:server_build_fallback
+set "QUIZ_SERVER_USE_TSX=1"
+echo [quiz] Bundle server chua san sang; se chay bang tsx de tiep tuc.
 
 :backup
-echo [2/3] Dang sao luu DB va assets-local truoc khi mo server...
+echo [4/5] Dang sao luu DB va assets-local truoc khi mo server...
+for /f "delims=" %%T in ('py -3 tools\step_timer.py start') do set "QUIZ_STEP_START=%%T"
 py -3 tools\backup.py create --root "%ROOT%"
-if errorlevel 2 goto backup_full
-if errorlevel 1 goto backup_error
+set "QUIZ_STEP_RC=%ERRORLEVEL%"
+for /f "delims=" %%T in ('py -3 tools\step_timer.py elapsed %QUIZ_STEP_START%') do echo [4/5] xong sau %%T s
+if "%QUIZ_STEP_RC%"=="2" goto backup_full
+if not "%QUIZ_STEP_RC%"=="0" goto backup_error
 
 :run
-echo [3/3] Dang chay may chu tai http://127.0.0.1:8787 ...
+echo [5/5] Dang chay may chu tai http://127.0.0.1:8787 ...
 echo.
 echo  - Dashboard (dieu khien): http://127.0.0.1:8787/dashboard/
 echo  - Khung game program yeu cau: %QUIZ_PROGRAM_WIDTH%x%QUIZ_PROGRAM_HEIGHT% CSS px; dung Window Capture cua cua so nay trong LIVE Studio.
@@ -59,10 +83,15 @@ echo  - Neu Edge khong tu mo cua so game: http://127.0.0.1:8787/overlay/?role=pr
 echo  - Ma quan tri da duoc CHEP SAN vao clipboard: bam Ctrl+V o o dang nhap Dashboard.
 echo  - DUNG TAT cua so nay trong luc LIVE. Tat cua so = tat game.
 echo.
-start "" /b powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\open-game-windows.ps1" -Root "%ROOT%"
-call "%~dp0node_modules\.bin\tsx.cmd" "%~dp0apps\server\src\main.ts"
+call powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\start-game.ps1" -Root "%ROOT%"
 pause
 exit /b 0
+
+:workspace_links_error
+echo LOI: lien ket @quiz khong thuoc apps/ hoac packages/ cua checkout nay.
+echo Hay sua bang lenh: corepack pnpm install --frozen-lockfile --offline
+pause
+exit /b 1
 
 :build_error
 echo LOI: khong the dam bao Dashboard/Overlay dist khop voi source; game chua duoc mo.

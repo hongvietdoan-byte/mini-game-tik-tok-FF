@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { questionLengthWarnings } from '@quiz/contracts';
 import { RealScheduler } from '@quiz/live-adapters';
 import { Store } from '@quiz/persistence';
+import { DEMO_PACK, DEMO_QUESTIONS } from '../../../fixtures/index';
 import { buildApp, loadOrCreateAdminToken } from './app';
 import { configuredMcVoiceRuntime } from './voice/configured-runtime';
 
@@ -11,6 +12,7 @@ const ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 const DATA = process.env.QUIZ_DATA_DIR ?? join(ROOT, 'data');
 const HOST = process.env.QUIZ_HOST ?? '127.0.0.1';
 const PORT = Number(process.env.QUIZ_PORT ?? 8787);
+process.env.QUIZ_MIGRATIONS_DIR ??= join(ROOT, 'packages', 'persistence', 'migrations');
 
 if (HOST !== '127.0.0.1' && HOST !== 'localhost' && process.env.QUIZ_ALLOW_REMOTE !== '1') {
   console.error(`Từ chối bind ${HOST}: server chỉ chạy localhost (đặt QUIZ_ALLOW_REMOTE=1 nếu thật sự cần).`);
@@ -25,16 +27,11 @@ if (!mcVoice && process.env.CLIPAI_TOKEN?.trim())
 const tokenPath = join(DATA, 'admin-token.txt');
 const adminToken = loadOrCreateAdminToken(tokenPath);
 
-// Nạp bộ câu hỏi DEMO (hư cấu) nếu có fixtures — không ghi đè câu đã tồn tại.
+// Nạp bộ câu hỏi DEMO (hư cấu) — không ghi đè câu đã tồn tại.
 try {
-  const fixturesPath = join(ROOT, 'fixtures', 'index.ts');
-  const fx = (await import(pathToFileURL(fixturesPath).href)) as {
-    DEMO_PACK: { id: string; name: string };
-    DEMO_QUESTIONS: unknown[];
-  };
-  const added = store.seedQuestions(fx.DEMO_PACK, fx.DEMO_QUESTIONS, scheduler.now());
-  console.log(`[quiz] câu hỏi DEMO: thêm ${added} câu (gói ${fx.DEMO_PACK.id})`);
-  const approvedTooLong = store.listQuestions(fx.DEMO_PACK.id)
+  const added = store.seedQuestions(DEMO_PACK, DEMO_QUESTIONS, scheduler.now());
+  console.log(`[quiz] câu hỏi DEMO: thêm ${added} câu (gói ${DEMO_PACK.id})`);
+  const approvedTooLong = store.listQuestions(DEMO_PACK.id)
     .filter((question) => question.approvalStatus === 'APPROVED' && questionLengthWarnings(question).length > 0);
   if (approvedTooLong.length > 0) {
     console.warn(
