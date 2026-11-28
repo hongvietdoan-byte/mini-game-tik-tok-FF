@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T07:26:01+07:00",
+  "heartbeat": "2026-11-28T07:50:21+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Inbox unchanged: C-0420 and its C-0426/C-0428 instructions remain active; continuing assigned C-0420 work in its worktree.",
+  "note": "Inbox unchanged; branch codex1/c-quiz-20k fast-forwarded to latest origin/main; next: finish worker-mode measurements on copied DB.",
   "done": [
     421
   ]
