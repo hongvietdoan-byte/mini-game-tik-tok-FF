@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T14:32:23+07:00",
+  "heartbeat": "2026-11-28T14:49:37+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Hòm thư vẫn 3 thư; không có câu hỏi mới đã trả lời. Đang rà hotspot REVEAL/ROUND_END còn vượt ngưỡng trước khi hoàn tất C-0420.",
+  "note": "Hòm thư chưa đổi (3 thư). Thử chạy vòng 20k mới bị automatic approval review chặn bước khởi chạy server nền; không retry bằng cách khác. Đang rà theo số liệu/log sẵn có.",
   "done": [
     421
   ]
