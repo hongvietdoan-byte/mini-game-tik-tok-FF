@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T12:22:38+07:00",
+  "heartbeat": "2026-11-28T12:57:04+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Đã sửa test playingCount theo cache RAM; full unit+integration ở worker xanh 105 file/710 test. Còn nghiệm thu load/E2E và cập nhật main trước bàn giao.",
+  "note": "Full unit/integration worker 105/710 và load 3/10 xanh. Đã thêm DB file cho Playwright worker; toàn bộ run không báo failed test nhưng teardown lỗi EBUSY quiz.db-shm. Đang xử lý cleanup/E2E.",
   "done": [
     421
   ]
