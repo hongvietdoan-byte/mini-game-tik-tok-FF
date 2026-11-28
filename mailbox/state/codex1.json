@@ -1,10 +1,10 @@
 {
   "role": "codex1",
   "last_read": 419,
-  "heartbeat": "2026-11-28T12:57:04+07:00",
+  "heartbeat": "2026-11-28T12:59:51+07:00",
   "state": "working",
   "task": "C-0420",
-  "note": "Full unit/integration worker 105/710 và load 3/10 xanh. Đã thêm DB file cho Playwright worker; toàn bộ run không báo failed test nhưng teardown lỗi EBUSY quiz.db-shm. Đang xử lý cleanup/E2E.",
+  "note": "Hòm thư không có thư mới. Worker unit/integration và load xanh; E2E worker chưa nghiệm thu do cleanup EBUSY ở quiz.db-shm, đang tìm cách chạy sạch.",
   "done": [
     421
   ]
