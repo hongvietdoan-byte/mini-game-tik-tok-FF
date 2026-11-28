@@ -1,10 +1,10 @@
 {
   "role": "codex2",
   "last_read": 417,
-  "heartbeat": "2026-11-28T11:02:28+07:00",
+  "heartbeat": "2026-11-28T11:22:29+07:00",
   "state": "blocked",
   "task": "C-0422",
-  "note": "Không có thư mới; C-0422 còn vướng cleanup tệp tạm bị command review chặn.",
+  "note": "Inbox vẫn còn duy nhất C-0422; cleanup tệp tạm bị command review chặn, đã báo Y-0698.",
   "done": [
     423,
     424,
