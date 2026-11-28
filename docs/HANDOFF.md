@@ -1,8 +1,32 @@
-# HANDOFF — phiên coordinator (cập nhật 27/11/2026 ~22:50)
+# HANDOFF — phiên coordinator (cập nhật 28/11/2026 ~06:15)
 
-**PHIÊN KẾ: người dùng đổi tài khoản 27/11 ~22:50. Đọc khối "Mới nhất 27/11 ~22:50" trước, rồi khối 15:00 ngay dưới.**
+**Đọc khối "Mới nhất 28/11 ~06:15" trước, rồi khối 27/11 22:50 và 15:00.**
 
-## Mới nhất 27/11 ~22:50 — đọc trước
+## Mới nhất 28/11 ~06:15 — đọc trước
+- **Chế độ tiết kiệm token tới hết 29/11:**
+  - Thư ACK chỉ cần `done`, báo người dùng ngắn.
+  - Chỉ soát code khi có report.
+  - Người dùng bảo bỏ trình chờ thư; chỉ check theo lịch hoặc khi người dùng gọi.
+- **Rào chắn "không làm hỏng live"** (người dùng 28/11):
+  - Mốc đang chạy tốt: main 13205268.
+  - Gộp chỉ khi người dùng không live.
+- **C-0422 (Codex 2) — XONG, CHỜ GỘP:**
+  - Nhánh `codex2/c-fast-start` HEAD 7e60ab45 (đã merge main 7461cdf2).
+  - Khởi động tới /health: ấm 32 s → 6 s; gần lạnh 133 s → 6 s (độ đẩy cache lúc đo trước/sau khác nhau).
+  - Backup lần 2 mất 8,8 s (đo trên 1.210 tệp); restore khớp từng byte.
+  - Có fallback về TSX. Theo report: 688 test, 32 pytest, E2E 176 đều xanh.
+  - Coordinator đã kiểm tra: không đụng `runtime.ts`/`persistence`, không commit ảnh/DB.
+  - Thư mục tạm E:\temp (~18 GB) đã được coordinator xóa (người dùng đồng ý). Trước đó đã tắt các Edge thử nghiệm của bản sao. Đã gửi C-0429.
+  - Lưu ý gộp: `apps/server/src/main.ts` có thể conflict với C-0420. Lần CHAY_GAME thật đầu tiên sau gộp vẫn chậm, vì phải tạo backup đủ và bundle lần đầu.
+- **C-0420 (Codex 1) — đang làm:**
+  - Áp dụng C-0426 + C-0428:
+    1. chuyển trạng thái KHÔNG chờ ổ đĩa (tính trong RAM, chỉ flush ở cuối vòng/tắt server, có watchdog);
+    2. cách ly lỗi từng comment;
+    3. chạy trên bản sao DB thật;
+    4. lần gộp đầu mặc định `QUIZ_PERSIST_MODE=sync`.
+  - Lúc nghiệm thu, soát lại đủ 4 điểm.
+
+## 27/11 ~22:50
 - **Hai việc đang chạy, coordinator chỉ theo dõi:**
   - **C-0420 (Codex 1, Phase Q — Quiz 20k trọn vòng):**
     - Codex 1 hỏi (X-0690): tối ưu điểm nóng chưa đủ, 20k vẫn p99 1,955 s, max 3,4 s.
