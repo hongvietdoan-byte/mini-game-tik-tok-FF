@@ -1,9 +1,9 @@
 {
   "role": "codex2",
   "last_read": 429,
-  "heartbeat": "2026-11-28T13:02:26+07:00",
+  "heartbeat": "2026-11-28T13:22:29+07:00",
   "state": "waiting",
   "task": "none",
-  "note": "Inbox trống; theo C-0429 chờ task mới, không nhận lại việc dự phòng.",
+  "note": "Inbox trống; C-0429 yêu cầu chờ task mới, không tự nhận việc dự phòng.",
   "done": []
 }
